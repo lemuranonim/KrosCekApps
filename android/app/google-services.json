@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "837386298671",
+    "firebase_url": "https://kroscek-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "kroscek",
+    "storage_bucket": "kroscek.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:837386298671:android:12e0dd2836875ec3152dda",
+        "android_client_info": {
+          "package_name": "com.example.kroscek"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "837386298671-d9pnm7dat8iiuqm12hjvakgc4n8btlsf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.kroscek",
+            "certificate_hash": "be37be8544ca8ae32792c82c9fa7dacbd1a781a8"
+          }
+        },
+        {
+          "client_id": "837386298671-erqqme7km8nuldmu15740vu12lvvd3t5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNZoDIH3DjLrz77c-ihr0HLhYrgPtfKKc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "837386298671-erqqme7km8nuldmu15740vu12lvvd3t5.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "837386298671-ak1dt9h4anb8820dgbe6tqmbpa1vrc1n.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.kroscek.kroscekBeta"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
