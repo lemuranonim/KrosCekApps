@@ -12,15 +12,15 @@ class HarvestScreen extends StatefulWidget {
   const HarvestScreen({super.key, this.selectedDistrict});
 
   @override
-  _HarvestScreenState createState() => _HarvestScreenState();
+  HarvestScreenState createState() => HarvestScreenState(); // Public class
 }
 
-class _HarvestScreenState extends State<HarvestScreen> {
+class HarvestScreenState extends State<HarvestScreen> {
   late final GoogleSheetsApi _googleSheetsApi;
-  final _spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
-  final _worksheetTitle = 'Harvest';
+  final String _spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
+  final String _worksheetTitle = 'Harvest';
 
-  List<List<String>> _sheetData = [];
+  final List<List<String>> _sheetData = []; // Use 'final' as it is not reassigned
   List<List<String>> _filteredData = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -172,7 +172,6 @@ class _HarvestScreenState extends State<HarvestScreen> {
     return defaultValue;
   }
 
-  // Fungsi untuk mengubah teks menjadi Title Case (Proper Case)
   String toTitleCase(String text) {
     if (text.isEmpty) return text;
     return text.split(' ').map((word) {
@@ -197,9 +196,9 @@ class _HarvestScreenState extends State<HarvestScreen> {
     showModalBottomSheet(
       context: context,
       builder: (context) {
-        return StatefulBuilder( // Gunakan StatefulBuilder untuk memastikan modal bisa di-refresh
+        return StatefulBuilder(
           builder: (BuildContext context, StateSetter setState) {
-            return SingleChildScrollView( // Agar modal bisa di-scroll
+            return SingleChildScrollView(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -214,20 +213,20 @@ class _HarvestScreenState extends State<HarvestScreen> {
                     ),
                     ..._faNames.map((fa) {
                       return CheckboxListTile(
-                        title: Text(fa), // Nama FA yang ditampilkan dalam Title Case
-                        value: _selectedFA.contains(fa), // Cek apakah FA sudah dipilih
+                        title: Text(fa),
+                        value: _selectedFA.contains(fa),
                         onChanged: (bool? value) {
-                          setState(() { // Memastikan modal di-refresh setelah perubahan
+                          setState(() {
                             if (value == true) {
-                              _selectedFA.add(fa); // Tambahkan FA ke daftar yang dipilih
+                              _selectedFA.add(fa);
                             } else {
-                              _selectedFA.remove(fa); // Hapus FA dari daftar yang dipilih
+                              _selectedFA.remove(fa);
                             }
                             _filterData();
-                            _saveFilterPreferences(); // Simpan preferensi filter saat diubah
+                            _saveFilterPreferences();
                           });
                         },
-                        controlAffinity: ListTileControlAffinity.leading, // Agar FA ditampilkan mulai dari kolom 1
+                        controlAffinity: ListTileControlAffinity.leading,
                       );
                     }).toList(),
                   ],
@@ -261,7 +260,7 @@ class _HarvestScreenState extends State<HarvestScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list),
-            onPressed: _showFilterOptions, // Menampilkan opsi filter FA
+            onPressed: _showFilterOptions,
           ),
           !_isSearching
               ? IconButton(
@@ -300,11 +299,11 @@ class _HarvestScreenState extends State<HarvestScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     Text(
-                      'Jumlah data: ${_filteredData.length}', // Menampilkan jumlah data
+                      'Jumlah data: ${_filteredData.length}',
                       style: const TextStyle(color: Colors.white),
                     ),
                     Text(
-                      'Total Effective Area: ${_totalEffectiveArea.toStringAsFixed(1)} Ha', // Menampilkan Total Effective Area
+                      'Total Effective Area: ${_totalEffectiveArea.toStringAsFixed(1)} Ha',
                       style: const TextStyle(color: Colors.white),
                     ),
                   ],
@@ -359,7 +358,7 @@ class _HarvestScreenState extends State<HarvestScreen> {
                       'Kec: ${getValue(row, 12, "Unknown")}, '
                       'Kab: ${getValue(row, 13, "Unknown")}, '
                       'Field SPV: ${getValue(row, 15, "Unknown")}, '
-                      'FA: ${getValue(row, 16, "Unknown")}', // Menampilkan FA
+                      'FA: ${getValue(row, 16, "Unknown")}',
                 ),
                 onTap: () {
                   Navigator.of(context).push(

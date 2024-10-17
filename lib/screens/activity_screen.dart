@@ -4,10 +4,10 @@ class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
 
   @override
-  _ActivityScreenState createState() => _ActivityScreenState();
+  ActivityScreenState createState() => ActivityScreenState(); // Mengubah ke public
 }
 
-class _ActivityScreenState extends State<ActivityScreen> {
+class ActivityScreenState extends State<ActivityScreen> {
   // List untuk menyimpan notifikasi
   List<String> notifications = [];
 
@@ -24,10 +24,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
     // Contoh notifikasi saat halaman pertama kali di-load
     addNotification("Aktivitas halaman dimulai");
-
-    // Anda dapat memanggil fungsi ini kapan saja di aplikasi ketika ada aktivitas baru
-    // Contoh:
-    // addNotification("Pengguna menambah data baru");
   }
 
   @override

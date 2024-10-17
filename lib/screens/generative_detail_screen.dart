@@ -9,10 +9,10 @@ class GenerativeDetailScreen extends StatefulWidget { // Halaman detail untuk Ge
   const GenerativeDetailScreen({super.key, required this.fieldNumber});
 
   @override
-  _GenerativeDetailScreenState createState() => _GenerativeDetailScreenState();
+  GenerativeDetailScreenState createState() => GenerativeDetailScreenState(); // Menghapus underscore agar menjadi public
 }
 
-class _GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
+class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
   List<String> row = [];
   bool isLoading = true;
 
@@ -34,18 +34,18 @@ class _GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
       final gSheetsApi = GoogleSheetsApi(spreadsheetId);
       await gSheetsApi.init();
       final List<List<String>> data = await gSheetsApi.getSpreadsheetData(worksheetTitle);
-      // Filter data berdasarkan fieldNumber
+
       final fetchedRow = data.firstWhere(
-              (row) => row[2] == widget.fieldNumber,
-          orElse: () => []
+            (row) => row[2] == widget.fieldNumber,
+        orElse: () => [],
       );
 
       setState(() {
         row = fetchedRow.isNotEmpty ? fetchedRow : ['Data not found'];
-        isLoading = false; // Matikan indikator loading setelah data berhasil diambil
+        isLoading = false;
       });
     } catch (e) {
-      print("Error fetching data: $e");
+      debugPrint("Error fetching data: $e"); // Ganti print dengan debugPrint
       setState(() {
         isLoading = false;
       });
@@ -64,7 +64,7 @@ class _GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator()) // Tampilkan loading jika sedang mengambil data
+          ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(5.0),
@@ -127,8 +127,8 @@ class _GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          await _navigateToEditScreen(context); // Pindah ke halaman edit dan tunggu hasil
-          await _fetchData(); // Setelah kembali dari halaman edit, ambil data terbaru
+          await _navigateToEditScreen(context);
+          await _fetchData();
         },
         backgroundColor: Colors.green,
         child: const Icon(Icons.edit, color: Colors.white),
@@ -229,7 +229,7 @@ class _GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
         return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
-      print("Error converting number to date: $e");
+      debugPrint("Error converting number to date: $e"); // Ganti print dengan debugPrint
     }
     return value;
   }
@@ -241,7 +241,7 @@ class _GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
         return parsedNumber.toStringAsFixed(1); // Membulatkan ke 1 desimal
       }
     } catch (e) {
-      print("Error converting number to fixed decimal: $e");
+      debugPrint("Error converting number to fixed decimal: $e"); // Ganti print dengan debugPrint
     }
     return value;
   }
@@ -261,4 +261,3 @@ class _GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
     }
   }
 }
-

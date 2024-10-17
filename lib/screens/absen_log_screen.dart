@@ -12,10 +12,10 @@ class AbsenLogScreen extends StatefulWidget {
   const AbsenLogScreen({super.key, required this.userName});
 
   @override
-  _AbsenLogScreenState createState() => _AbsenLogScreenState();
+  AbsenLogScreenState createState() => AbsenLogScreenState(); // Mengubah ke public
 }
 
-class _AbsenLogScreenState extends State<AbsenLogScreen> {
+class AbsenLogScreenState extends State<AbsenLogScreen> {
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _inTimeController = TextEditingController();
   Position? _currentPosition;
@@ -36,9 +36,9 @@ class _AbsenLogScreenState extends State<AbsenLogScreen> {
   Future<void> _initGoogleSheets() async {
     try {
       await _googleSheetsApi.init();
-      print('Google Sheets API berhasil diinisialisasi.');
+      debugPrint('Google Sheets API berhasil diinisialisasi.'); // Ganti print dengan debugPrint
     } catch (e) {
-      print('Error inisialisasi Google Sheets API: $e');
+      debugPrint('Error inisialisasi Google Sheets API: $e'); // Ganti print dengan debugPrint
     }
   }
 
@@ -54,14 +54,15 @@ class _AbsenLogScreenState extends State<AbsenLogScreen> {
           ),
         );
 
+        if (!mounted) return; // Memastikan widget masih aktif
         setState(() {
           _currentPosition = position;
         });
       } catch (e) {
-        print('Error while accessing location: $e');
+        debugPrint('Error while accessing location: $e'); // Ganti print dengan debugPrint
       }
     } else {
-      print('Location permission denied');
+      debugPrint('Location permission denied'); // Ganti print dengan debugPrint
     }
   }
 
@@ -74,18 +75,19 @@ class _AbsenLogScreenState extends State<AbsenLogScreen> {
         final XFile? image = await picker.pickImage(source: ImageSource.camera);
 
         if (image != null) {
+          if (!mounted) return; // Memastikan widget masih aktif
           setState(() {
             _image = File(image.path);
             isSubmitEnabled = true; // Gambar diambil, ubah tombol menjadi "Submit"
           });
         } else {
-          print("No image selected");
+          debugPrint("No image selected"); // Ganti print dengan debugPrint
         }
       } else {
-        print('Camera permission denied');
+        debugPrint('Camera permission denied'); // Ganti print dengan debugPrint
       }
     } catch (e) {
-      print("Error while accessing camera: $e");
+      debugPrint("Error while accessing camera: $e"); // Ganti print dengan debugPrint
     }
   }
 
@@ -98,7 +100,6 @@ class _AbsenLogScreenState extends State<AbsenLogScreen> {
 
   Future<void> _submitData() async {
     if (_currentPosition != null) {
-      // Data yang akan dikirim ke Google Sheets
       final List<String> data = [
         widget.userName,
         _dateController.text,
@@ -107,20 +108,19 @@ class _AbsenLogScreenState extends State<AbsenLogScreen> {
       ];
 
       try {
-        // Kirim data ke Google Sheets
         await _googleSheetsApi.addRow(_worksheetTitle, data);
 
-        // Setelah berhasil disimpan, navigasi ke halaman sukses
+        if (!mounted) return; // Memastikan widget masih aktif
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => const SuccessScreen(),
           ),
         );
       } catch (e) {
-        print('Error submitting data: $e');
+        debugPrint('Error submitting data: $e'); // Ganti print dengan debugPrint
       }
     } else {
-      print('No location available');
+      debugPrint('No location available'); // Ganti print dengan debugPrint
     }
   }
 
@@ -139,7 +139,6 @@ class _AbsenLogScreenState extends State<AbsenLogScreen> {
         padding: const EdgeInsets.all(16.0),
         child: ListView(
           children: [
-            // Nama Karyawan field, auto-filled from user profile
             _buildReadOnlyField('Nama Karyawan', widget.userName),
             _buildReadOnlyField('Tanggal Absen', _dateController.text),
             _buildReadOnlyField('Jam Masuk', _inTimeController.text),
@@ -150,16 +149,16 @@ class _AbsenLogScreenState extends State<AbsenLogScreen> {
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: isSubmitEnabled
-                  ? _submitData // Jika gambar sudah diambil, kirim data
+                  ? _submitData
                   : () async {
-                _autoFillDateTime(); // Auto-fill date and time
-                await _getCurrentLocation(); // Auto-fetch location
+                _autoFillDateTime();
+                await _getCurrentLocation();
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
               ),
-              child: Text(isSubmitEnabled ? 'Submit' : 'Absen'), // Ubah label tombol
+              child: Text(isSubmitEnabled ? 'Submit' : 'Absen'),
             ),
           ],
         ),

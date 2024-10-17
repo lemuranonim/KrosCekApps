@@ -9,7 +9,6 @@ class AdminStorageService {
 
   Future<void> uploadExcelFile(BuildContext context) async {
     try {
-      // Menggunakan file picker untuk memilih file Excel
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx', 'xls'],
@@ -27,25 +26,29 @@ class AdminStorageService {
         }
 
         if (fileBytes != null) {
-          // Mendapatkan referensi ke Firebase Storage
           Reference ref = _storage.ref().child('excel_files/${file.name}');
-
-          // Mengunggah file ke Firebase Storage
           await ref.putData(fileBytes);
+
+          // Pastikan widget masih mounted sebelum memanggil BuildContext
+          if (!context.mounted) return;
+
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('File uploaded successfully!')),
           );
         } else {
+          if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Selected file has no data.')),
           );
         }
       } else {
+        if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No file selected.')),
         );
       }
     } catch (e) {
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to upload file: $e')),
       );
@@ -54,39 +57,39 @@ class AdminStorageService {
 
   Future<void> downloadExcelFile(BuildContext context, String fileName) async {
     try {
-      // Mendapatkan referensi ke Firebase Storage
       Reference ref = _storage.ref().child('excel_files/$fileName');
-
-      // Mendapatkan URL download
       final String downloadURL = await ref.getDownloadURL();
 
-      // Menampilkan pesan sukses dengan URL file
+      // Pastikan widget masih mounted sebelum memanggil BuildContext
+      if (!context.mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Download URL: $downloadURL')),
       );
-
-      // Di sini, Anda bisa menggunakan URL untuk mengunduh dan menyimpan file
-      // atau membukanya langsung di perangkat.
-
     } catch (e) {
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to download file: $e')),
       );
     }
   }
 
-  // Fungsi untuk menampilkan daftar file di Firebase Storage
   Future<ListResult> listFiles() async {
     try {
-      // Mendapatkan referensi ke folder excel_files di Firebase Storage
       Reference ref = _storage.ref().child('excel_files');
-
-      // Mendapatkan daftar file yang ada di dalam folder tersebut
       ListResult result = await ref.listAll();
-
       return result;
     } catch (e) {
       throw Exception('Failed to list files: $e');
+    }
+  }
+
+  Future<void> deleteFile(String fileName) async {
+    try {
+      // Menghapus file dari Firebase Storage
+      await _storage.ref().child('excel_files/$fileName').delete();
+    } catch (e) {
+      throw Exception('Failed to delete file: $e');
     }
   }
 }

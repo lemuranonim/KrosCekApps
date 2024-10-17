@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/foundation.dart'; // Import untuk debugPrint
 
 class ApiService {
   final String baseUrl = "https://api.ludtanza.my.id/kroscek/api";
@@ -31,8 +32,8 @@ class ApiService {
       body: json.encode({'username': username, 'password': password, 'role': role}),
     );
 
-    print('Register response status: ${response.statusCode}');
-    print('Register response body: ${response.body}');
+    debugPrint('Register response status: ${response.statusCode}'); // Ganti print dengan debugPrint
+    debugPrint('Register response body: ${response.body}'); // Ganti print dengan debugPrint
 
     return response.statusCode == 201;
   }

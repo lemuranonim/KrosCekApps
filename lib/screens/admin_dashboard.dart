@@ -8,10 +8,10 @@ class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
 
   @override
-  _AdminDashboardState createState() => _AdminDashboardState();
+  AdminDashboardState createState() => AdminDashboardState();
 }
 
-class _AdminDashboardState extends State<AdminDashboard> {
+class AdminDashboardState extends State<AdminDashboard> {
   final AdminStorageService storageService = AdminStorageService();
   late Future<ListResult> futureFiles;
 
@@ -24,11 +24,55 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   Future<void> _logout() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.remove('isLoggedIn'); // Hapus status login
-    await prefs.remove('userRole'); // Hapus peran pengguna
+    await prefs.remove('isLoggedIn');
+    await prefs.remove('userRole');
+
+    if (!mounted) return;
+
+    if (mounted) {
+      await _showNotificationDialog('Logout Berhasil', 'Anda telah berhasil logout.');
+    }
+
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (context) => const LoginScreen()), // Arahkan ke halaman login
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
     );
+  }
+
+  Future<void> _showNotificationDialog(String title, String content) async {
+    // Fungsi untuk menampilkan notifikasi berupa dialog
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(content),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('OK'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteFile(String fileName) async {
+    try {
+      await storageService.deleteFile(fileName);
+
+      // Tampilkan notifikasi setelah file berhasil dihapus
+      _showNotificationDialog('File Dihapus', 'File "$fileName" telah berhasil dihapus.');
+
+      // Refresh daftar file
+      setState(() {
+        futureFiles = storageService.listFiles();
+      });
+    } catch (e) {
+      _showNotificationDialog('Error', 'Gagal menghapus file: $e');
+    }
   }
 
   @override
@@ -36,14 +80,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin Dashboard',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-      ),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.green,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => _logout(), // Tambahkan fungsi logout
+            onPressed: () => _logout(),
           ),
         ],
       ),
@@ -57,7 +100,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
             const SizedBox(height: 40),
             ElevatedButton(
-              onPressed: () => storageService.uploadExcelFile(context),
+              onPressed: () async {
+                await storageService.uploadExcelFile(context);
+
+                // Tampilkan notifikasi setelah file berhasil di-upload
+                _showNotificationDialog('Upload Berhasil', 'File telah berhasil di-upload.');
+
+                // Refresh daftar file
+                setState(() {
+                  futureFiles = storageService.listFiles();
+                });
+              },
               child: const Text('Upload Excel File'),
             ),
             const SizedBox(height: 20),
@@ -79,8 +132,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         return ListTile(
                           title: Text(file.name),
                           onTap: () {
-                            storageService.downloadExcelFile(context, file.name);
+                            _showFileDetailDialog(file);
                           },
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => _deleteFile(file.name),
+                          ),
                         );
                       },
                     );
@@ -91,6 +148,38 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _showFileDetailDialog(Reference file) async {
+    // Fungsi untuk menampilkan detail file dalam dialog
+    final metadata = await file.getMetadata();
+    final createdTime = metadata.timeCreated?.toLocal().toString() ?? 'Unknown';
+    final fileSize = metadata.size?.toString() ?? 'Unknown';
+
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Detail File: ${file.name}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Nama: ${file.name}'),
+              Text('Tanggal Dibuat: $createdTime'),
+              Text('Ukuran File: $fileSize bytes'),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Tutup'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 }

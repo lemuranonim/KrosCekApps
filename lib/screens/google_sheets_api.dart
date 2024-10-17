@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';  // Ini diperlukan untuk memeriksa mode debug
 import 'package:flutter/services.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:intl/intl.dart';
@@ -13,7 +14,14 @@ class GoogleSheetsApi {
 
   GoogleSheetsApi(this.spreadsheetId);
 
-    // Inisialisasi GSheets dengan kredensial dari file JSON
+  // Fungsi untuk logging aman yang hanya berjalan di debug mode
+  void log(String message) {
+    if (kDebugMode) {
+      print(message);  // Hanya akan dipanggil jika mode debug
+    }
+  }
+
+  // Inisialisasi GSheets dengan kredensial dari file JSON
   Future<void> init() async {
     final String credentials = await rootBundle.loadString('assets/credentials.json');
     final Map<String, dynamic> jsonCredentials = jsonDecode(credentials);
@@ -55,7 +63,7 @@ class GoogleSheetsApi {
     if (rows.isNotEmpty) {
       lastFetchedData = rows; // Simpan data terakhir ke cache
     }
-    print("Data diambil dari Google Sheets (pagination): $rows");
+    log("Data diambil dari Google Sheets (pagination): $rows");  // Mengganti debugPrint dengan log
     return rows;
   }
 
@@ -66,7 +74,7 @@ class GoogleSheetsApi {
       throw Exception('Worksheet tidak ditemukan: $worksheetTitle');
     }
     final rows = await sheet.values.allRows();
-    print("Data diambil dari Google Sheets: $rows"); // Logging
+    log("Data diambil dari Google Sheets: $rows");  // Mengganti debugPrint dengan log
     lastFetchedData = rows; // Cache data
     return rows;
   }

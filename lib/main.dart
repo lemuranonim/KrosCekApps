@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-// import 'package:connectivity_plus/connectivity_plus.dart'; // Import untuk memeriksa koneksi internet
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
@@ -21,13 +20,6 @@ void main() async {
   // Aktifkan Firebase App Check
   await FirebaseAppCheck.instance.activate();
 
-  // Periksa koneksi internet sebelum memeriksa status login
-  //bool isConnected = await checkInternetConnection();
-  //if (!isConnected) {
-  //  runApp(NoInternetApp()); // Aplikasi sederhana yang menampilkan pesan tanpa koneksi
-  //  return;
-  //}
-
   // Inisialisasi aplikasi setelah mengecek status login
   bool showLoginScreen = await checkLoginStatus();
 
@@ -40,20 +32,11 @@ Future<bool> checkLoginStatus() async {
   String? userRole = prefs.getString('userRole');
 
   if (isLoggedIn && userRole != null) {
-    // Jika pengguna sudah login dan ada peran yang disimpan
     return false; // Jangan tampilkan login screen
   } else {
-    // Jika belum login, tampilkan login screen
     return true;
   }
 }
-
-// Fungsi untuk memeriksa koneksi internet
-// Future<bool> checkInternetConnection() async {
-//  var connectivityResult = await (Connectivity().checkConnectivity());
-//  return connectivityResult == ConnectivityResult.mobile ||
-//      connectivityResult == ConnectivityResult.wifi;
-//}
 
 class MyApp extends StatelessWidget {
   final bool showLoginScreen;
@@ -67,13 +50,13 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.green,
       ),
-      initialRoute: showLoginScreen ? '/login' : '/', // Ubah initial route sesuai status login
+      initialRoute: showLoginScreen ? '/login' : '/',
       routes: {
         '/': (context) => const SplashScreen(),
         '/login': (context) => const LoginScreen(),
         '/register': (context) => const RegisterScreen(),
-        '/home': (context) => const HomeScreen(), // HomeScreen untuk User
-        '/admin_dashboard': (context) => const AdminDashboard(), // Dashboard untuk Admin
+        '/home': (context) => const HomeScreen(),
+        '/admin_dashboard': (context) => const AdminDashboard(),
       },
     );
   }
@@ -81,6 +64,8 @@ class MyApp extends StatelessWidget {
 
 // Aplikasi alternatif yang ditampilkan ketika tidak ada koneksi internet
 class NoInternetApp extends StatelessWidget {
+  const NoInternetApp({super.key}); // Menambahkan 'key' parameter
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(

@@ -9,10 +9,10 @@ class GenerativeEditScreen extends StatefulWidget {
   const GenerativeEditScreen({super.key, required this.row});
 
   @override
-  _GenerativeEditScreenState createState() => _GenerativeEditScreenState();
+  GenerativeEditScreenState createState() => GenerativeEditScreenState(); // Menghapus underscore agar public
 }
 
-class _GenerativeEditScreenState extends State<GenerativeEditScreen> {
+class GenerativeEditScreenState extends State<GenerativeEditScreen> {
   late List<String> row;
   final _formKey = GlobalKey<FormState>();
 
@@ -674,47 +674,42 @@ class _GenerativeEditScreenState extends State<GenerativeEditScreen> {
     final gSheetsApi = GoogleSheetsApi(spreadsheetId);
     await gSheetsApi.init();
 
-    const maxRetries = 5; // Maksimum jumlah percobaan
+    const maxRetries = 5;
     int retryCount = 0;
 
     while (retryCount < maxRetries) {
       try {
-        await Future.delayed(const Duration(
-            seconds: 2)); // Delay sebelum melakukan permintaan tulis
+        await Future.delayed(const Duration(seconds: 2));
         await gSheetsApi.updateRow(worksheetTitle, rowData, rowData[2]);
 
+        if (!mounted) return; // Memastikan widget masih ter-mount sebelum menggunakan BuildContext
         Navigator.of(context).pop(); // Tutup loading spinner
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Data berhasil disimpan!')),
         );
-        Navigator.pop(context,
-            rowData); // Kembali ke halaman detail dengan data yang diperbarui
-        return; // Berhenti jika permintaan berhasil
+        Navigator.pop(context, rowData); // Kembali ke halaman detail dengan data yang diperbarui
+        return;
 
       } catch (e) {
-        print('Error saving data: $e');
+        debugPrint('Error saving data: $e'); // Mengganti print dengan debugPrint
 
         if (e.toString().contains('Quota exceeded')) {
-          retryCount++; // Tingkatkan retry count jika ada error kuota
-
-          // Hitung durasi delay berdasarkan exponential backoff
+          retryCount++;
           int delaySeconds = pow(2, retryCount).toInt();
           await Future.delayed(Duration(seconds: delaySeconds));
 
           if (retryCount == maxRetries) {
-            // Jika mencapai maksimal percobaan, tampilkan pesan error
-            Navigator.of(context)
-                .pop(); // Tutup loading spinner jika terjadi error
+            if (!mounted) return;
+            Navigator.of(context).pop(); // Tutup loading spinner
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text(
-                  'Gagal menyimpan data setelah beberapa percobaan!')),
+              const SnackBar(content: Text('Gagal menyimpan data setelah beberapa percobaan!')),
             );
             return;
           }
         } else {
-          // Jika error bukan terkait kuota, langsung tampilkan error
-          Navigator.of(context)
-              .pop(); // Tutup loading spinner jika terjadi error
+          if (!mounted) return;
+          Navigator.of(context).pop(); // Tutup loading spinner
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Gagal menyimpan data!')),
           );
@@ -723,18 +718,19 @@ class _GenerativeEditScreenState extends State<GenerativeEditScreen> {
       }
     }
   }
-    String _convertToDateIfNecessary(String value) {
-      try {
-        final parsedNumber = double.tryParse(value);
-        if (parsedNumber != null) {
-          final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
-          return DateFormat('dd/MM/yyyy').format(date);
-        }
-      } catch (e) {
-        print("Error converting number to date: $e");
+
+  String _convertToDateIfNecessary(String value) {
+    try {
+      final parsedNumber = double.tryParse(value);
+      if (parsedNumber != null) {
+        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
+        return DateFormat('dd/MM/yyyy').format(date);
       }
-      return value;
+    } catch (e) {
+      debugPrint("Error converting number to date: $e"); // Mengganti print dengan debugPrint
     }
+    return value;
+  }
 }
 
 // Halaman Success untuk Generative

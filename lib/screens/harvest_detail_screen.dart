@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart';  // Import untuk kDebugMode
 import 'google_sheets_api.dart';
 
 class HarvestDetailScreen extends StatefulWidget {
@@ -8,13 +9,13 @@ class HarvestDetailScreen extends StatefulWidget {
   const HarvestDetailScreen({super.key, required this.row});
 
   @override
-  _HarvestDetailScreenState createState() => _HarvestDetailScreenState();
+  HarvestDetailScreenState createState() => HarvestDetailScreenState();
 }
 
-class _HarvestDetailScreenState extends State<HarvestDetailScreen> {
+class HarvestDetailScreenState extends State<HarvestDetailScreen> {
   List<String> row;
 
-  _HarvestDetailScreenState() : row = [];
+  HarvestDetailScreenState() : row = [];
 
   @override
   void initState() {
@@ -172,7 +173,7 @@ class _HarvestDetailScreenState extends State<HarvestDetailScreen> {
         return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
-      print("Error converting number to date: $e");
+      _log("Error converting number to date: $e");
     }
     return value;
   }
@@ -191,6 +192,12 @@ class _HarvestDetailScreenState extends State<HarvestDetailScreen> {
       });
     }
   }
+
+  void _log(String message) {
+    if (kDebugMode) {
+      print(message); // Digunakan hanya saat debug
+    }
+  }
 }
 
 // Fungsi untuk mengubah angka menjadi format 1 desimal jika diperlukan
@@ -201,7 +208,9 @@ String _convertToFixedDecimalIfNecessary(String value) {
       return parsedNumber.toStringAsFixed(1); // Membulatkan ke 1 desimal
     }
   } catch (e) {
-    print("Error converting number to fixed decimal: $e");
+    if (kDebugMode) {
+      print("Error converting number to fixed decimal: $e");
+    }
   }
   return value; // Kembalikan nilai asli jika bukan angka
 }
@@ -213,10 +222,10 @@ class EditHarvestScreen extends StatefulWidget {
   const EditHarvestScreen({super.key, required this.row});
 
   @override
-  _EditHarvestScreenState createState() => _EditHarvestScreenState();
+  EditHarvestScreenState createState() => EditHarvestScreenState();
 }
 
-class _EditHarvestScreenState extends State<EditHarvestScreen> {
+class EditHarvestScreenState extends State<EditHarvestScreen> {
   late List<String> row;
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _dateAuditController;
@@ -429,12 +438,15 @@ class _EditHarvestScreenState extends State<EditHarvestScreen> {
 
     try {
       await gSheetsApi.updateRow(worksheetTitle, rowData, rowData[2]);
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => SuccessScreen()),
-      );
+
+      if (context.mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const SuccessScreen()),
+        );
+      }
     } catch (e) {
-      print('Error saving data: $e');
+      _log('Error saving data: $e');
     }
   }
 
@@ -446,9 +458,15 @@ class _EditHarvestScreenState extends State<EditHarvestScreen> {
         return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
-      print("Error converting number to date: $e");
+      _log("Error converting number to date: $e");
     }
     return value;
+  }
+
+  void _log(String message) {
+    if (kDebugMode) {
+      print(message); // Logging di mode debug
+    }
   }
 }
 

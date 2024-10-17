@@ -12,15 +12,15 @@ class GenerativeScreen extends StatefulWidget {
   const GenerativeScreen({super.key, this.selectedDistrict});
 
   @override
-  _GenerativeScreenState createState() => _GenerativeScreenState();
+  GenerativeScreenState createState() => GenerativeScreenState(); // Menghapus underscore agar public
 }
 
-class _GenerativeScreenState extends State<GenerativeScreen> {
+class GenerativeScreenState extends State<GenerativeScreen> {
   late final GoogleSheetsApi _googleSheetsApi;
   final _spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
   final _worksheetTitle = 'Generative';
 
-  List<List<String>> _sheetData = [];
+  final List<List<String>> _sheetData = []; // Ubah menjadi final
   List<List<String>> _filteredData = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -32,7 +32,6 @@ class _GenerativeScreenState extends State<GenerativeScreen> {
   Timer? _debounce;
   double _progress = 0.0; // Variabel untuk menyimpan progres
 
-  // Daftar nama FA untuk filter
   List<String> _faNames = []; // Daftar nama FA unik
   List<String> _selectedFA = []; // Daftar nama FA yang dipilih
 
@@ -56,13 +55,13 @@ class _GenerativeScreenState extends State<GenerativeScreen> {
     if (refresh) {
       _currentPage = 1;
       _sheetData.clear();
-      _totalEffectiveArea = 0.0; // Reset total Effective Area saat refresh
+      _totalEffectiveArea = 0.0;
     }
 
     setState(() {
       _isLoading = true;
       _errorMessage = null;
-      _progress = 0.0; // Reset progres saat mulai mengambil data
+      _progress = 0.0;
     });
 
     try {
@@ -75,14 +74,14 @@ class _GenerativeScreenState extends State<GenerativeScreen> {
         _sheetData.addAll(data);
         _filteredData = List.from(_sheetData);
         _isLoading = false;
-        _extractUniqueFA(); // Ekstrak nama-nama FA dari data
-        _filterData(); // Pastikan untuk melakukan filter data setelah data dimuat
+        _extractUniqueFA();
+        _filterData();
         _currentPage++;
-        _progress = (_sheetData.length / totalDataCount).clamp(0.0, 1.0); // Perbarui progres
+        _progress = (_sheetData.length / totalDataCount).clamp(0.0, 1.0);
 
         // Update total Effective Area (Ha)
         _totalEffectiveArea = _filteredData.fold(0.0, (sum, row) {
-          final effectiveArea = double.tryParse(row[8]) ?? 0.0; // Kolom 8 adalah Effective Area
+          final effectiveArea = double.tryParse(row[8]) ?? 0.0;
           return sum + effectiveArea;
         });
       });
@@ -110,18 +109,17 @@ class _GenerativeScreenState extends State<GenerativeScreen> {
     prefs.setString('selectedQA', _selectedQA ?? '');
   }
 
-  // Ekstrak nama-nama FA yang unik dari data
   void _extractUniqueFA() {
-    final faSet = <String>{}; // Menggunakan set untuk menyimpan nama unik
+    final faSet = <String>{};
     for (var row in _sheetData) {
-      final fa = getValue(row, 16, '').toLowerCase(); // FA ada di kolom 16
-      if (fa.isNotEmpty && fa != 'fa') { // Hapus "Fa" dari daftar
+      final fa = getValue(row, 16, '').toLowerCase();
+      if (fa.isNotEmpty && fa != 'fa') {
         faSet.add(fa);
       }
     }
     setState(() {
       _faNames = faSet.map((fa) => toTitleCase(fa)).toList();
-      _faNames.sort(); // Sorting A to Z
+      _faNames.sort();
     });
   }
 
@@ -135,8 +133,8 @@ class _GenerativeScreenState extends State<GenerativeScreen> {
         bool matchesQAFilter = (_selectedQA == null || qaSpv == _selectedQA);
         bool matchesDistrictFilter = selectedDistrict == null || district == selectedDistrict;
 
-        final fa = getValue(row, 16, '').toLowerCase(); // FA berada di kolom 16
-        bool matchesFAFilter = _selectedFA.isEmpty || _selectedFA.contains(toTitleCase(fa)); // Filter FA
+        final fa = getValue(row, 16, '').toLowerCase();
+        bool matchesFAFilter = _selectedFA.isEmpty || _selectedFA.contains(toTitleCase(fa));
 
         final fieldNumber = getValue(row, 2, '').toLowerCase();
         final farmerName = getValue(row, 3, '').toLowerCase();
@@ -157,9 +155,8 @@ class _GenerativeScreenState extends State<GenerativeScreen> {
         return matchesQAFilter && matchesDistrictFilter && matchesFAFilter && matchesSearchQuery;
       }).toList();
 
-      // Hitung ulang Total Effective Area berdasarkan data yang difilter
       _totalEffectiveArea = _filteredData.fold(0.0, (sum, row) {
-        final effectiveArea = double.tryParse(row[8]) ?? 0.0; // Kolom 8 adalah Effective Area
+        final effectiveArea = double.tryParse(row[8]) ?? 0.0;
         return sum + effectiveArea;
       });
     });
@@ -196,9 +193,9 @@ class _GenerativeScreenState extends State<GenerativeScreen> {
     showModalBottomSheet(
       context: context,
       builder: (context) {
-        return StatefulBuilder( // Gunakan StatefulBuilder untuk memastikan modal bisa di-refresh
+        return StatefulBuilder(
           builder: (BuildContext context, StateSetter setState) {
-            return SingleChildScrollView( // Agar modal bisa di-scroll
+            return SingleChildScrollView(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -213,22 +210,22 @@ class _GenerativeScreenState extends State<GenerativeScreen> {
                     ),
                     ..._faNames.map((fa) {
                       return CheckboxListTile(
-                        title: Text(fa), // Nama FA yang ditampilkan dalam Title Case
-                        value: _selectedFA.contains(fa), // Cek apakah FA sudah dipilih
+                        title: Text(fa),
+                        value: _selectedFA.contains(fa),
                         onChanged: (bool? value) {
-                          setState(() { // Memastikan modal di-refresh setelah perubahan
+                          setState(() {
                             if (value == true) {
-                              _selectedFA.add(fa); // Tambahkan FA ke daftar yang dipilih
+                              _selectedFA.add(fa);
                             } else {
-                              _selectedFA.remove(fa); // Hapus FA dari daftar yang dipilih
+                              _selectedFA.remove(fa);
                             }
                             _filterData();
-                            _saveFilterPreferences(); // Simpan preferensi filter saat diubah
+                            _saveFilterPreferences();
                           });
                         },
-                        controlAffinity: ListTileControlAffinity.leading, // Agar FA ditampilkan mulai dari kolom 1
+                        controlAffinity: ListTileControlAffinity.leading,
                       );
-                    }).toList(),
+                    }),
                   ],
                 ),
               ),
@@ -260,7 +257,7 @@ class _GenerativeScreenState extends State<GenerativeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list),
-            onPressed: _showFilterOptions, // Menampilkan opsi filter FA
+            onPressed: _showFilterOptions,
           ),
           !_isSearching
               ? IconButton(
@@ -299,11 +296,11 @@ class _GenerativeScreenState extends State<GenerativeScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     Text(
-                      'Jumlah data: ${_filteredData.length}', // Menampilkan jumlah data
+                      'Jumlah data: ${_filteredData.length}',
                       style: const TextStyle(color: Colors.white),
                     ),
                     Text(
-                      'Total Effective Area: ${_totalEffectiveArea.toStringAsFixed(1)} Ha', // Menampilkan Total Effective Area
+                      'Total Effective Area: ${_totalEffectiveArea.toStringAsFixed(1)} Ha',
                       style: const TextStyle(color: Colors.white),
                     ),
                   ],
@@ -358,7 +355,7 @@ class _GenerativeScreenState extends State<GenerativeScreen> {
                       'Kec: ${getValue(row, 12, "Unknown")}, '
                       'Kab: ${getValue(row, 13, "Unknown")}, '
                       'Field SPV: ${getValue(row, 15, "Unknown")}, '
-                      'FA: ${getValue(row, 16, "Unknown")}', // Menampilkan FA
+                      'FA: ${getValue(row, 16, "Unknown")}',
                 ),
                 onTap: () {
                   Navigator.of(context).push(

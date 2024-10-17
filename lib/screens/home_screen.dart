@@ -18,10 +18,10 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  _HomeScreenState createState() => _HomeScreenState();
+  HomeScreenState createState() => HomeScreenState();  // Changed to public class
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   String _appVersion = 'Fetching...';
   String userEmail = 'Fetching...'; // Tambahkan variabel untuk email pengguna
@@ -87,7 +87,6 @@ class _HomeScreenState extends State<HomeScreen> {
     String documentId = regionDocumentIds[selectedRegion]!;
 
     try {
-      // Ambil data berdasarkan document ID dari Firestore
       DocumentReference regionDoc = firestore.collection('regions').doc(documentId);
       DocumentSnapshot docSnapshot = await regionDoc.get();
 
@@ -99,8 +98,10 @@ class _HomeScreenState extends State<HomeScreen> {
           this.qaSPVList = qaSPVList;
           selectedQA = null; // Selalu reset QA SPV agar pengguna harus memilih manual
         });
-      } else {}
-    } catch (error) {}
+      }
+    } catch (error) {
+      print('Error fetching QA SPV: $error');  // Log the error in catch block
+    }
   }
 
   Future<void> _fetchDistricts(String selectedRegion, String selectedQASPV) async {
@@ -120,8 +121,10 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           faList = districts;
         });
-      } else {}
-    } catch (error) {}
+      }
+    } catch (error) {
+      print('Error fetching districts: $error');  // Log the error in catch block
+    }
   }
 
   Future<void> _fetchAppVersion() async {
@@ -169,6 +172,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 SharedPreferences prefs = await SharedPreferences.getInstance();
                 await prefs.remove('isLoggedIn');
                 await prefs.remove('userRole');
+                if (!mounted) return;  // Ensure the widget is still mounted
                 Navigator.of(context).pop();
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -211,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
             title: const Text('Absen Log'),
             onTap: () {
               Navigator.of(context).pop();
-              _navigateTo(context, AbsenLogScreen(userName: userEmail)); // Kirim userEmail sebagai userName
+              _navigateTo(context, AbsenLogScreen(userName: userEmail));
             },
           ),
         ),
@@ -221,9 +225,8 @@ class _HomeScreenState extends State<HomeScreen> {
             title: const Text('Issue'),
             onTap: () {
               Navigator.of(context).pop();
-              // Pastikan selectedFA memiliki nilai
               if (selectedFA != null) {
-                _navigateTo(context, IssueScreen(selectedFA: selectedFA!)); // Kirim selectedFA
+                _navigateTo(context, IssueScreen(selectedFA: selectedFA!));
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('District belum dipilih!')),
@@ -274,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    userName, // Tampilkan nama pengguna
+                    userName,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
@@ -283,7 +286,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    userEmail, // Tampilkan email pengguna
+                    userEmail,
                     style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 14,
@@ -313,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _selectedIndex,
         children: [
           LiquidPullToRefresh(
-            onRefresh: _refreshData, // Mengambil data QA SPV dari Firestore
+            onRefresh: _refreshData,
             color: Colors.green,
             backgroundColor: Colors.white,
             height: 150,
