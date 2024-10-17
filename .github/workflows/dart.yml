@@ -1,0 +1,46 @@
+name: Flutter CI/CD with Dart Analysis
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Analyze Dart code for best practices
+      - name: Dart Analyze
+        run: dart analyze
+
+      # Run tests using Flutter's built-in test framework
+      - name: Run Flutter Tests
+        run: flutter test
+
+      # Build APK (Android)
+      - name: Build APK
+        run: flutter build apk --release
+
+      # Optionally build Flutter Web
+      - name: Build Web (Optional)
+        run: flutter build web --release
+
+      # Deploy to Firebase Hosting (for Flutter Web)
+      - name: Deploy to Firebase Hosting
+        if: github.ref == 'refs/heads/main'
+        run: |
+          firebase hosting:deploy --token ${{ secrets.FIREBASE_TOKEN }}
+
