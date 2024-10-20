@@ -211,6 +211,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
+                    // Hapus .toList()
                     ..._faNames.map((fa) {
                       return CheckboxListTile(
                         title: Text(fa),
@@ -228,7 +229,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                         },
                         controlAffinity: ListTileControlAffinity.leading,
                       );
-                    }).toList(),
+                    }),
                   ],
                 ),
               ),
@@ -363,7 +364,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => HarvestDetailScreen(row: row),
+                      builder: (context) => HarvestDetailScreen(fieldNumber: getValue(row, 2, "Unknown")),
                     ),
                   );
                 },

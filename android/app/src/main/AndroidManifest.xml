@@ -18,6 +18,10 @@
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true">
 
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyDNZoDIH3DjLrz77c-ihr0HLhYrgPtfKKc"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

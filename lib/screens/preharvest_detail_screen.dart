@@ -1,34 +1,117 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'google_sheets_api.dart';
+import 'preharvest_edit_screen.dart';
 
 class PreHarvestDetailScreen extends StatefulWidget {
-  final List<String> row;
+  final String fieldNumber;
 
-  const PreHarvestDetailScreen({super.key, required this.row});
+  const PreHarvestDetailScreen({super.key, required this.fieldNumber});
 
   @override
-  _PreHarvestDetailScreenState createState() => _PreHarvestDetailScreenState();
+  PreHarvestDetailScreenState createState() => PreHarvestDetailScreenState();
 }
 
-class _PreHarvestDetailScreenState extends State<PreHarvestDetailScreen> {
-  List<String> row;
+class PreHarvestDetailScreenState extends State<PreHarvestDetailScreen> {
+  List<String>? row;
+  bool isLoading = true;
 
-  String? selectedMaleRowsChopping;
-  String? selectedCropHealth;
-  String? selectedRecommendation;
+  String _mapImageUrl = ''; // URL untuk Google Static Maps
+  double? latitude;
+  double? longitude;
 
-  _PreHarvestDetailScreenState() : row = [];
+  // Koordinat default jika tidak ditemukan dalam data Google Sheets
+  final double defaultLat = -7.637017;
+  final double defaultLng = 112.8272303;
 
   @override
   void initState() {
     super.initState();
-    row = List<String>.from(widget.row);
+    _fetchData();
+  }
 
-    // Inisialisasi dropdown dengan nilai yang ada di row
-    selectedMaleRowsChopping = row[32].isNotEmpty ? row[32] : null;
-    selectedCropHealth = row[34].isNotEmpty ? row[34] : null;
-    selectedRecommendation = row[36].isNotEmpty ? row[36] : null;
+  Future<void> _fetchData() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
+    final String worksheetTitle = 'Pre Harvest';
+
+    try {
+      final gSheetsApi = GoogleSheetsApi(spreadsheetId);
+      await gSheetsApi.init();
+      final List<List<String>> data = await gSheetsApi.getSpreadsheetData(worksheetTitle);
+      final fetchedRow = data.firstWhere((row) => row[2] == widget.fieldNumber);
+
+      final String coordinatesStr = fetchedRow[17]; // Example: '-7.986511,111.976340'
+      final coordinates = _parseCoordinates(coordinatesStr);
+
+      // Gunakan koordinat yang ditemukan atau default jika tidak ada
+      latitude = coordinates['lat'] ?? defaultLat;
+      longitude = coordinates['lng'] ?? defaultLng;
+
+      // Buat URL untuk Google Static Maps
+      _mapImageUrl = _buildStaticMapUrl(latitude, longitude);
+
+      setState(() {
+        row = fetchedRow;
+        isLoading = false;
+      });
+
+    } catch (e) {
+      // Jika terjadi error, gunakan koordinat default
+      latitude = defaultLat;
+      longitude = defaultLng;
+      _mapImageUrl = _buildStaticMapUrl(latitude, longitude);
+
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  Map<String, double?> _parseCoordinates(String coordinatesStr) {
+    try {
+      final List<String> parts = coordinatesStr.split(',');
+      final double latitude = double.parse(parts[0]);
+      final double longitude = double.parse(parts[1]);
+      return {'lat': latitude, 'lng': longitude};
+    } catch (e) {
+      return {'lat': null, 'lng': null}; // Nilai null jika parsing gagal
+    }
+  }
+
+  String _buildStaticMapUrl(double? latitude, double? longitude) {
+    const String apiKey = 'AIzaSyDNZoDIH3DjLrz77c-ihr0HLhYrgPtfKKc'; // Ganti dengan API Key Anda
+    const String baseUrl = 'https://maps.googleapis.com/maps/api/staticmap';
+    const int zoomLevel = 15;
+    const String mapSize = '600x400';
+
+    // Gunakan nilai default jika latitude atau longitude null
+    final double lat = latitude ?? defaultLat;  // Default ke yang diberikan
+    final double lng = longitude ?? defaultLng;  // Default ke yang diberikan
+
+    // URL dengan marker di posisi lat/lng
+    return '$baseUrl?center=$lat,$lng&zoom=$zoomLevel&size=$mapSize'
+        '&markers=color:red%7C$lat,$lng&key=$apiKey';
+  }
+
+  Future<void> _openMaps() async {
+    final lat = latitude ?? defaultLat;
+    final lng = longitude ?? defaultLng;
+
+    final googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    final appleMapsUrl = Uri.parse('https://maps.apple.com/?q=$lat,$lng');
+
+    if (await canLaunchUrl(googleMapsUrl)) {
+      await launchUrl(googleMapsUrl); // Buka Google Maps
+    } else if (await canLaunchUrl(appleMapsUrl)) {
+      await launchUrl(appleMapsUrl); // Buka Apple Maps sebagai alternatif
+    } else {
+      throw 'Tidak dapat membuka peta.';
+    }
   }
 
   @override
@@ -36,57 +119,90 @@ class _PreHarvestDetailScreenState extends State<PreHarvestDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          row[2],
+          row != null ? row![2] : 'Loading...',
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.green,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: SingleChildScrollView(
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(12.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildInteractiveMap(), // Peta Statis
+              const SizedBox(height: 10),
+              _buildCoordinatesText(), // Tampilkan koordinat
+              const SizedBox(height: 10),
               _buildDetailCard('Field Information', [
-                _buildDetailRow('Season', row[1]),
-                _buildDetailRow('Farmer', row[3]),
-                _buildDetailRow('Grower', row[4]),
-                _buildDetailRow('Hybrid', row[5]),
-                _buildDetailRow('Effective Area (Ha)', _convertToFixedDecimalIfNecessary(row[8])),
-                _buildDetailRow('Planting Date PDN', _convertToDateIfNecessary(row[9])),
-                _buildDetailRow('Desa', row[11]),
-                _buildDetailRow('Kecamatan', row[12]),
-                _buildDetailRow('Kabupaten', row[13]),
-                _buildDetailRow('Field SPV', row[15]),
-                _buildDetailRow('FA', row[16]),
+                _buildDetailRow('Season', row![1]),
+                _buildDetailRow('Farmer', row![3]),
+                _buildDetailRow('Grower', row![4]),
+                _buildDetailRow('Hybrid', row![5]),
+                _buildDetailRow('Effective Area (Ha)', _convertToFixedDecimalIfNecessary(row![8])),
+                _buildDetailRow('Planting Date PDN', _convertToDateIfNecessary(row![9])),
+                _buildDetailRow('Desa', row![11]),
+                _buildDetailRow('Kecamatan', row![12]),
+                _buildDetailRow('Kabupaten', row![13]),
+                _buildDetailRow('Field SPV', row![15]),
+                _buildDetailRow('FA', row![16]),
+                _buildDetailRow('Week of Pre-Harvest', row![27]),
               ]),
               const SizedBox(height: 20),
               _buildAdditionalInfoCard('Field Audit', [
-                _buildDetailRow('QA FI', row[29]),
-                _buildDetailRow('Date of Audit (dd/MM)', _convertToDateIfNecessary(row[30])),
-                _buildDetailRow('MaleRowsChopping (MRC)', row[32]),
-                _buildDetailRow('MRC Remarks', row[33]),
-                _buildDetailRow('Crop Health', row[34]),
-                _buildDetailRow('Crop Health Remarks', row[35]),
-                _buildDetailRow('Recommendation', row[36]),
+                _buildDetailRow('QA FI', row![29]),
+                _buildDetailRow('Date of Audit', _convertToDateIfNecessary(row![30])),
+                _buildDetailRow('Male Rows Chopping', row![32]),
+                _buildDetailRow('Male Rows Chopping Remarks', row![33]),
+                _buildDetailRow('Crop Health', row![34]),
+                _buildDetailRow('Crop Health Remarks', row![35]),
+                _buildDetailRow('Recommendation', row![36]),
               ]),
             ],
           ),
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _navigateToEditScreen(context);
+        onPressed: () async {
+          await _navigateToEditScreen(context);
+          await _fetchData();
         },
         backgroundColor: Colors.green,
-        child: const Icon(Icons.edit),
+        child: const Icon(Icons.edit, color: Colors.white),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
       bottomNavigationBar: const BottomAppBar(
         shape: CircularNotchedRectangle(),
         child: SizedBox(height: 50.0),
       ),
+    );
+  }
+
+  // Widget untuk menampilkan peta statis dari Google Static Maps dengan GestureDetector
+  Widget _buildInteractiveMap() {
+    return GestureDetector(
+      onTap: _openMaps, // Buka aplikasi maps saat peta diklik
+      child: _mapImageUrl.isNotEmpty
+          ? Image.network(
+        _mapImageUrl,
+        fit: BoxFit.cover,
+        height: 250,
+        width: double.infinity,
+      )
+          : const SizedBox.shrink(), // Tidak ada gambar jika URL tidak ada
+    );
+  }
+
+  // Widget untuk menampilkan koordinat
+  Widget _buildCoordinatesText() {
+    return Text(
+      latitude != null && longitude != null
+          ? 'Koordinat: $latitude, $longitude'
+          : 'Koordinat tidak tersedia',
+      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
     );
   }
 
@@ -149,20 +265,23 @@ class _PreHarvestDetailScreenState extends State<PreHarvestDetailScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
           ),
-          Text(
-            value.isNotEmpty ? value : 'Kosong Lur...', // Menangani nilai kosong dengan aman
-            style: const TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value.isNotEmpty ? value : 'Kosong Lur...',
+              style: const TextStyle(fontSize: 16, color: Colors.grey),
+              softWrap: true,
+              overflow: TextOverflow.visible,
             ),
           ),
         ],
@@ -178,290 +297,35 @@ class _PreHarvestDetailScreenState extends State<PreHarvestDetailScreen> {
         return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
-      print("Error converting number to date: $e");
+      // jeda
     }
     return value;
   }
 
-  void _navigateToEditScreen(BuildContext context) async {
+  String _convertToFixedDecimalIfNecessary(String value) {
+    try {
+      final parsedNumber = double.tryParse(value);
+      if (parsedNumber != null) {
+        return parsedNumber.toStringAsFixed(1);
+      }
+    } catch (e) {
+      // jeda
+    }
+    return value;
+  }
+
+  Future<void> _navigateToEditScreen(BuildContext context) async {
     final updatedRow = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => EditPreHarvestScreen(row: row),
+        builder: (context) => PreHarvestEditScreen(row: row!),
       ),
     );
 
     if (updatedRow != null) {
       setState(() {
-        row = updatedRow;
+        row = updatedRow;  // Update row setelah di-edit
       });
     }
-  }
-}
-
-// Fungsi untuk mengubah angka menjadi format 1 desimal jika diperlukan
-String _convertToFixedDecimalIfNecessary(String value) {
-  try {
-    final parsedNumber = double.tryParse(value);
-    if (parsedNumber != null) {
-      return parsedNumber.toStringAsFixed(1); // Membulatkan ke 1 desimal
-    }
-  } catch (e) {
-    print("Error converting number to fixed decimal: $e");
-  }
-  return value; // Kembalikan nilai asli jika bukan angka
-}
-
-// Halaman Edit untuk Pre Harvest
-class EditPreHarvestScreen extends StatefulWidget {
-  final List<String> row;
-
-  const EditPreHarvestScreen({super.key, required this.row});
-
-  @override
-  _EditPreHarvestScreenState createState() => _EditPreHarvestScreenState();
-}
-
-class _EditPreHarvestScreenState extends State<EditPreHarvestScreen> {
-  late List<String> row;
-  final _formKey = GlobalKey<FormState>();
-
-  String? selectedMaleRowsChopping;
-  String? selectedCropHealth;
-  String? selectedRecommendation;
-  late TextEditingController _dateAuditController;
-
-  @override
-  void initState() {
-    super.initState();
-
-    row = List<String>.from(widget.row);
-
-    _dateAuditController = TextEditingController(text: _convertToDateIfNecessary(row[30]));
-
-    selectedMaleRowsChopping = row[32].isNotEmpty ? row[32] : null;
-    selectedCropHealth = row[34].isNotEmpty ? row[34] : null;
-    selectedRecommendation = row[36].isNotEmpty ? row[36] : null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Edit Pre Harvest Field'),
-        backgroundColor: Colors.green,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                _buildTextFormField('QA FI', 29),
-                _buildDatePickerField('Date of Audit (dd/MM)', 30, _dateAuditController),
-
-                _buildDropdownFormField(
-                  label: 'Male rows chopping',
-                  items: ['A', 'B'],
-                  value: selectedMaleRowsChopping,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedMaleRowsChopping = value;
-                      row[32] = value ?? '';  // Pastikan tidak simpan null
-                    });
-                  },
-                ),
-
-                _buildTextFormField('Male rows chopping Remarks', 33),
-
-                _buildDropdownFormField(
-                  label: 'Crop Health',
-                  items: ['A', 'B', 'C'],
-                  value: selectedCropHealth,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedCropHealth = value;
-                      row[34] = value ?? '';  // Pastikan tidak simpan null
-                    });
-                  },
-                ),
-
-                _buildTextFormField('Crop Health Remarks', 35),
-
-                _buildDropdownFormField(
-                  label: 'Recommendation',
-                  items: ['Continue', 'Discard'],
-                  value: selectedRecommendation,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedRecommendation = value;
-                      row[36] = value ?? '';  // Pastikan tidak simpan null
-                    });
-                  },
-                ),
-
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      _saveToGoogleSheets(row);
-                    }
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextFormField(String label, int index) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextFormField(
-        initialValue: row[index],
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
-        onChanged: (value) {
-          setState(() {
-            row[index] = value;
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _buildDatePickerField(String label, int index, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextFormField(
-        controller: controller,
-        readOnly: true,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
-        onTap: () async {
-          DateTime? pickedDate = await showDatePicker(
-            context: context,
-            initialDate: DateTime.now(),
-            firstDate: DateTime(2000),
-            lastDate: DateTime(2101),
-          );
-
-          if (pickedDate != null) {
-            String formattedDate = DateFormat('dd/MM/yyyy').format(pickedDate);
-            setState(() {
-              controller.text = formattedDate;
-              row[index] = formattedDate;
-            });
-          }
-        },
-      ),
-    );
-  }
-
-  Widget _buildDropdownFormField({
-    required String label,
-    required List<String> items,
-    required String? value,
-    required Function(String?) onChanged,
-  }) {
-    return DropdownButtonFormField<String>(
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(),
-      ),
-      value: value,
-      onChanged: onChanged,
-      items: items.map<DropdownMenuItem<String>>((String item) {
-        return DropdownMenuItem<String>(
-          value: item,
-          child: Text(item),
-        );
-      }).toList(),
-    );
-  }
-
-  Future<void> _saveToGoogleSheets(List<String> rowData) async {
-    final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
-    final String worksheetTitle = 'Pre Harvest';
-
-    final gSheetsApi = GoogleSheetsApi(spreadsheetId);
-    await gSheetsApi.init();
-
-    try {
-      // Ambil fieldNumber dari data
-      String fieldNumber = rowData[2]; // Asumsi bahwa fieldNumber ada di kolom ke-3
-
-      // Periksa apakah baris dengan fieldNumber ada di Google Sheets
-      bool rowExists = await gSheetsApi.checkRowExists(worksheetTitle, fieldNumber);
-      if (!rowExists) {
-        print('Baris dengan fieldNumber $fieldNumber tidak ditemukan.');
-        throw Exception('Data tidak ditemukan untuk diperbarui.');
-      }
-
-      // Lakukan pembaruan jika baris ditemukan
-      await gSheetsApi.updateRow(worksheetTitle, rowData, fieldNumber);
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const SuccessScreen()),
-      );
-    } catch (e) {
-      print('Error saving data: $e');
-    }
-  }
-
-  String _convertToDateIfNecessary(String value) {
-    try {
-      final parsedNumber = double.tryParse(value);
-      if (parsedNumber != null) {
-        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
-        return DateFormat('dd/MM/yyyy').format(date);
-      }
-    } catch (e) {
-      print("Error converting number to date: $e");
-    }
-    return value;
-  }
-}
-
-// Halaman Success untuk Pre Harvest
-class SuccessScreen extends StatelessWidget {
-  const SuccessScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Success'),
-        backgroundColor: Colors.green,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 100),
-            const SizedBox(height: 20),
-            const Text(
-              'Data has been successfully saved!',
-              style: TextStyle(fontSize: 20),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('Back'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

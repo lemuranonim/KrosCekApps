@@ -1,52 +1,116 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'vegetative_edit_screen.dart'; // Pastikan Anda memiliki file edit screen terpisah
-import 'google_sheets_api.dart'; // Pastikan Anda menggunakan API Google Sheets
+import 'package:url_launcher/url_launcher.dart';  // Tambahkan ini untuk menggunakan url_launcher
+import 'vegetative_edit_screen.dart';
+import 'google_sheets_api.dart';
 
 class VegetativeDetailScreen extends StatefulWidget {
-  final String fieldNumber; // Field number yang digunakan untuk mengambil data terbaru
+  final String fieldNumber;
 
   const VegetativeDetailScreen({super.key, required this.fieldNumber});
 
   @override
-  _VegetativeDetailScreenState createState() => _VegetativeDetailScreenState();
+  VegetativeDetailScreenState createState() => VegetativeDetailScreenState();
 }
 
-class _VegetativeDetailScreenState extends State<VegetativeDetailScreen> {
+class VegetativeDetailScreenState extends State<VegetativeDetailScreen> {
   List<String>? row;
   bool isLoading = true;
+
+  String _mapImageUrl = ''; // URL untuk Google Static Maps
+  double? latitude;
+  double? longitude;
+
+  // Koordinat default jika tidak ditemukan dalam data Google Sheets
+  final double defaultLat = -7.637017;
+  final double defaultLng = 112.8272303;
 
   @override
   void initState() {
     super.initState();
-    _fetchData(); // Ambil data terbaru saat halaman dimuat pertama kali
+    _fetchData();
   }
 
-  // Ambil data terbaru dari Google Sheets berdasarkan fieldNumber
   Future<void> _fetchData() async {
     setState(() {
       isLoading = true;
     });
 
-    final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA'; // ID Google Sheets Anda
+    final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
     final String worksheetTitle = 'Vegetative';
 
     try {
       final gSheetsApi = GoogleSheetsApi(spreadsheetId);
       await gSheetsApi.init();
       final List<List<String>> data = await gSheetsApi.getSpreadsheetData(worksheetTitle);
-      // Filter data berdasarkan fieldNumber
       final fetchedRow = data.firstWhere((row) => row[2] == widget.fieldNumber);
+
+      final String coordinatesStr = fetchedRow[17]; // Example: '-7.986511,111.976340'
+      final coordinates = _parseCoordinates(coordinatesStr);
+
+      // Gunakan koordinat yang ditemukan atau default jika tidak ada
+      latitude = coordinates['lat'] ?? defaultLat;
+      longitude = coordinates['lng'] ?? defaultLng;
+
+      // Buat URL untuk Google Static Maps
+      _mapImageUrl = _buildStaticMapUrl(latitude, longitude);
 
       setState(() {
         row = fetchedRow;
-        isLoading = false; // Matikan indikator loading setelah data berhasil diambil
+        isLoading = false;
       });
+
     } catch (e) {
-      print("Error fetching data: $e");
+      // Jika terjadi error, gunakan koordinat default
+      latitude = defaultLat;
+      longitude = defaultLng;
+      _mapImageUrl = _buildStaticMapUrl(latitude, longitude);
+
       setState(() {
         isLoading = false;
       });
+    }
+  }
+
+  Map<String, double?> _parseCoordinates(String coordinatesStr) {
+    try {
+      final List<String> parts = coordinatesStr.split(',');
+      final double latitude = double.parse(parts[0]);
+      final double longitude = double.parse(parts[1]);
+      return {'lat': latitude, 'lng': longitude};
+    } catch (e) {
+      return {'lat': null, 'lng': null}; // Nilai null jika parsing gagal
+    }
+  }
+
+  String _buildStaticMapUrl(double? latitude, double? longitude) {
+    const String apiKey = 'AIzaSyDNZoDIH3DjLrz77c-ihr0HLhYrgPtfKKc'; // Ganti dengan API Key Anda
+    const String baseUrl = 'https://maps.googleapis.com/maps/api/staticmap';
+    const int zoomLevel = 15;
+    const String mapSize = '600x400';
+
+    // Gunakan nilai default jika latitude atau longitude null
+    final double lat = latitude ?? defaultLat;  // Default ke yang diberikan
+    final double lng = longitude ?? defaultLng;  // Default ke yang diberikan
+
+    // URL dengan marker di posisi lat/lng
+    return '$baseUrl?center=$lat,$lng&zoom=$zoomLevel&size=$mapSize'
+        '&markers=color:red%7C$lat,$lng&key=$apiKey';
+  }
+
+  Future<void> _openMaps() async {
+    final lat = latitude ?? defaultLat;
+    final lng = longitude ?? defaultLng;
+
+    final googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    final appleMapsUrl = Uri.parse('https://maps.apple.com/?q=$lat,$lng');
+
+    if (await canLaunchUrl(googleMapsUrl)) {
+      await launchUrl(googleMapsUrl); // Buka Google Maps
+    } else if (await canLaunchUrl(appleMapsUrl)) {
+      await launchUrl(appleMapsUrl); // Buka Apple Maps sebagai alternatif
+    } else {
+      throw 'Tidak dapat membuka peta.';
     }
   }
 
@@ -62,19 +126,23 @@ class _VegetativeDetailScreenState extends State<VegetativeDetailScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator()) // Tampilkan loading jika sedang mengambil data
+          ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(5.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildInteractiveMap(), // Peta Statis
+              const SizedBox(height: 10),
+              _buildCoordinatesText(), // Tampilkan koordinat
+              const SizedBox(height: 10),
               _buildDetailCard('Field Information', [
                 _buildDetailRow('Season', row![1]),
                 _buildDetailRow('Farmer', row![3]),
                 _buildDetailRow('Grower', row![4]),
                 _buildDetailRow('Hybrid', row![5]),
-                _buildDetailRow('Effective Area (Ha)', row![8]),
+                _buildDetailRow('Effective Area (Ha)', _convertToFixedDecimalIfNecessary(row![8])),
                 _buildDetailRow('Planting Date PDN', _convertToDateIfNecessary(row![9])),
                 _buildDetailRow('Desa', row![11]),
                 _buildDetailRow('Kecamatan', row![12]),
@@ -112,8 +180,8 @@ class _VegetativeDetailScreenState extends State<VegetativeDetailScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          await _navigateToEditScreen(context); // Pindah ke halaman edit dan tunggu hasil
-          await _fetchData(); // Setelah kembali dari halaman edit, ambil data terbaru
+          await _navigateToEditScreen(context);
+          await _fetchData();
         },
         backgroundColor: Colors.green,
         child: const Icon(Icons.edit, color: Colors.white),
@@ -123,6 +191,31 @@ class _VegetativeDetailScreenState extends State<VegetativeDetailScreen> {
         shape: CircularNotchedRectangle(),
         child: SizedBox(height: 50.0),
       ),
+    );
+  }
+
+  // Widget untuk menampilkan peta statis dari Google Static Maps dengan GestureDetector
+  Widget _buildInteractiveMap() {
+    return GestureDetector(
+      onTap: _openMaps, // Buka aplikasi maps saat peta diklik
+      child: _mapImageUrl.isNotEmpty
+          ? Image.network(
+        _mapImageUrl,
+        fit: BoxFit.cover,
+        height: 250,
+        width: double.infinity,
+      )
+          : const SizedBox.shrink(), // Tidak ada gambar jika URL tidak ada
+    );
+  }
+
+  // Widget untuk menampilkan koordinat
+  Widget _buildCoordinatesText() {
+    return Text(
+      latitude != null && longitude != null
+          ? 'Koordinat: $latitude, $longitude'
+          : 'Koordinat tidak tersedia',
+      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
     );
   }
 
@@ -185,21 +278,24 @@ class _VegetativeDetailScreenState extends State<VegetativeDetailScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start, // Menyelaraskan konten agar vertikal
         children: [
-          Text(
-              label,
-              style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500
-              )
+          Expanded( // Menggunakan Expanded untuk mengatasi masalah overflow pada teks
+            flex: 2,
+            child: Text(
+                label,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
           ),
-          Text(
+          const SizedBox(width: 10), // Menambahkan sedikit ruang antara label dan value
+          Expanded(
+            flex: 3,
+            child: Text(
               value.isNotEmpty ? value : 'Kosong Lur...',
-              style: const TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey
-              )
+              style: const TextStyle(fontSize: 16, color: Colors.grey),
+              softWrap: true,  // Membungkus teks jika terlalu panjang
+              overflow: TextOverflow.visible, // Memastikan teks tidak terpotong
+            ),
           ),
         ],
       ),
@@ -214,7 +310,7 @@ class _VegetativeDetailScreenState extends State<VegetativeDetailScreen> {
         return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
-      print("Error converting number to date: $e");
+      // jeda
     }
     return value;
   }
@@ -223,10 +319,10 @@ class _VegetativeDetailScreenState extends State<VegetativeDetailScreen> {
     try {
       final parsedNumber = double.tryParse(value);
       if (parsedNumber != null) {
-        return parsedNumber.toStringAsFixed(1); // Membulatkan ke 1 desimal
+        return parsedNumber.toStringAsFixed(1);
       }
     } catch (e) {
-      print("Error converting number to fixed decimal: $e");
+      // jeda
     }
     return value;
   }

@@ -33,9 +33,12 @@ class AdminDashboardState extends State<AdminDashboard> {
       await _showNotificationDialog('Logout Berhasil', 'Anda telah berhasil logout.');
     }
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-    );
+    // Pastikan widget masih mounted sebelum menggunakan BuildContext
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+      );
+    }
   }
 
   Future<void> _showNotificationDialog(String title, String content) async {
@@ -63,15 +66,22 @@ class AdminDashboardState extends State<AdminDashboard> {
     try {
       await storageService.deleteFile(fileName);
 
-      // Tampilkan notifikasi setelah file berhasil dihapus
-      _showNotificationDialog('File Dihapus', 'File "$fileName" telah berhasil dihapus.');
+      // Pastikan widget masih mounted sebelum menampilkan notifikasi
+      if (mounted) {
+        _showNotificationDialog('File Dihapus', 'File "$fileName" telah berhasil dihapus.');
+      }
 
-      // Refresh daftar file
-      setState(() {
-        futureFiles = storageService.listFiles();
-      });
+      // Refresh daftar file jika widget masih mounted
+      if (mounted) {
+        setState(() {
+          futureFiles = storageService.listFiles();
+        });
+      }
     } catch (e) {
-      _showNotificationDialog('Error', 'Gagal menghapus file: $e');
+      // Pastikan widget masih mounted sebelum menampilkan notifikasi
+      if (mounted) {
+        _showNotificationDialog('Error', 'Gagal menghapus file: $e');
+      }
     }
   }
 
@@ -152,11 +162,15 @@ class AdminDashboardState extends State<AdminDashboard> {
   }
 
   Future<void> _showFileDetailDialog(Reference file) async {
-    // Fungsi untuk menampilkan detail file dalam dialog
+    // Ambil metadata file
     final metadata = await file.getMetadata();
     final createdTime = metadata.timeCreated?.toLocal().toString() ?? 'Unknown';
     final fileSize = metadata.size?.toString() ?? 'Unknown';
 
+    // Pastikan widget masih mounted sebelum menampilkan dialog
+    if (!mounted) return;
+
+    // Tampilkan dialog setelah memastikan widget masih mounted
     return showDialog<void>(
       context: context,
       builder: (BuildContext context) {

@@ -14,13 +14,11 @@ class GoogleSignInService {
 
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
-        print("Google Sign-In dibatalkan oleh user.");
+        // Google Sign-In dibatalkan oleh user, tidak perlu tindakan lebih lanjut.
         return null;
       }
 
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      print("Access Token: ${googleAuth.accessToken}");
-      print("ID Token: ${googleAuth.idToken}");
 
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
@@ -29,7 +27,6 @@ class GoogleSignInService {
 
       final UserCredential result = await _auth.signInWithCredential(credential);
       final User? user = result.user;
-      print("Google Sign-In berhasil, User UID: ${user?.uid}");
 
       // Sinkronisasi data pengguna di Firestore jika diperlukan
       if (user != null) {
@@ -40,18 +37,16 @@ class GoogleSignInService {
 
       return user;
     } catch (e) {
-      print("Error saat Google Sign-In: $e");
       return null;
     }
   }
-
 
   Future<void> signOut() async {
     try {
       await _googleSignIn.signOut();
       await _auth.signOut();
     } catch (e) {
-      print(e.toString());
+      // No action required
     }
   }
 }

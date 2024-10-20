@@ -12,15 +12,15 @@ class PreHarvestScreen extends StatefulWidget {
   const PreHarvestScreen({super.key, this.selectedDistrict});
 
   @override
-  _PreHarvestScreenState createState() => _PreHarvestScreenState();
+  PreHarvestScreenState createState() => PreHarvestScreenState();
 }
 
-class _PreHarvestScreenState extends State<PreHarvestScreen> {
+class PreHarvestScreenState extends State<PreHarvestScreen> {
   late final GoogleSheetsApi _googleSheetsApi;
   final _spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
   final _worksheetTitle = 'Pre Harvest';
 
-  List<List<String>> _sheetData = [];
+  final List<List<String>> _sheetData = [];
   List<List<String>> _filteredData = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -94,16 +94,15 @@ class _PreHarvestScreenState extends State<PreHarvestScreen> {
     }
   }
 
-  // Fungsi untuk memuat preferensi filter yang tersimpan
   Future<void> _loadFilterPreferences() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       _selectedQA = prefs.getString('selectedQA');
       _selectedFA = prefs.getStringList('selectedFA') ?? [];
     });
+    _filterData(); // Panggil filter data setelah preferensi diambil
   }
 
-  // Fungsi untuk menyimpan preferensi filter
   Future<void> _saveFilterPreferences() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     prefs.setStringList('selectedFA', _selectedFA);
@@ -131,11 +130,11 @@ class _PreHarvestScreenState extends State<PreHarvestScreen> {
         final qaSpv = getValue(row, 28, '');
         final district = getValue(row, 13, '').toLowerCase();
         final selectedDistrict = widget.selectedDistrict?.toLowerCase(); // District dari halaman sebelumnya
-        final fa = getValue(row, 16, '').toLowerCase(); // FA berada di row 16
 
-        // Logika filtering berdasarkan QA, District, dan FA yang dipilih
         bool matchesQAFilter = (_selectedQA == null || qaSpv == _selectedQA);
         bool matchesDistrictFilter = (selectedDistrict == null || district == selectedDistrict);
+        final fa = getValue(row, 16, '').toLowerCase(); // FA berada di row 16
+
         bool matchesFAFilter = _selectedFA.isEmpty || _selectedFA.contains(toTitleCase(fa)); // Filter berdasarkan FA yang dipilih
 
         final fieldNumber = getValue(row, 2, '').toLowerCase();
@@ -143,6 +142,7 @@ class _PreHarvestScreenState extends State<PreHarvestScreen> {
         final grower = getValue(row, 4, '').toLowerCase();
         final desa = getValue(row, 11, '').toLowerCase();
         final kecamatan = getValue(row, 12, '').toLowerCase();
+        final fieldSpv = getValue(row, 15, '').toLowerCase();
 
         bool matchesSearchQuery = fieldNumber.contains(_searchQuery) ||
             farmer.contains(_searchQuery) ||
@@ -150,16 +150,11 @@ class _PreHarvestScreenState extends State<PreHarvestScreen> {
             desa.contains(_searchQuery) ||
             kecamatan.contains(_searchQuery) ||
             district.contains(_searchQuery) ||
-            fa.contains(_searchQuery);
+            fa.contains(_searchQuery) ||
+            fieldSpv.contains(_searchQuery);
 
         return matchesQAFilter && matchesDistrictFilter && matchesFAFilter && matchesSearchQuery;
       }).toList();
-
-      // Hitung ulang Total Effective Area berdasarkan data yang difilter
-      _totalEffectiveArea = _filteredData.fold(0.0, (sum, row) {
-        final effectiveArea = double.tryParse(row[8]) ?? 0.0; // Row 8 adalah Effective Area
-        return sum + effectiveArea;
-      });
     });
   }
 
@@ -170,7 +165,6 @@ class _PreHarvestScreenState extends State<PreHarvestScreen> {
     return defaultValue;
   }
 
-  // Fungsi untuk mengubah teks menjadi Title Case (Proper Case)
   String toTitleCase(String text) {
     if (text.isEmpty) return text;
     return text.split(' ').map((word) {
@@ -227,7 +221,7 @@ class _PreHarvestScreenState extends State<PreHarvestScreen> {
                         },
                         controlAffinity: ListTileControlAffinity.leading, // Agar FA ditampilkan mulai dari kolom 1
                       );
-                    }).toList(),
+                    }),
                   ],
                 ),
               ),
@@ -237,7 +231,6 @@ class _PreHarvestScreenState extends State<PreHarvestScreen> {
       },
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -363,7 +356,7 @@ class _PreHarvestScreenState extends State<PreHarvestScreen> {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => PreHarvestDetailScreen(row: row),
+                      builder: (context) => PreHarvestDetailScreen(fieldNumber: getValue(row, 2, "Unknown")),
                     ),
                   );
                 },

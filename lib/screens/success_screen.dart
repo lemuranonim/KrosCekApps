@@ -6,10 +6,10 @@ class SuccessScreen extends StatefulWidget {
   const SuccessScreen({super.key});
 
   @override
-  _SuccessScreenState createState() => _SuccessScreenState();
+  SuccessScreenState createState() => SuccessScreenState();
 }
 
-class _SuccessScreenState extends State<SuccessScreen> {
+class SuccessScreenState extends State<SuccessScreen> {
   int _countdown = 5; // Inisialisasi hitung mundur 5 detik
 
   @override

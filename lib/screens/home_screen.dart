@@ -100,7 +100,7 @@ class HomeScreenState extends State<HomeScreen> {
         });
       }
     } catch (error) {
-      print('Error fetching QA SPV: $error');  // Log the error in catch block
+      // Hapus perintah print
     }
   }
 
@@ -123,7 +123,7 @@ class HomeScreenState extends State<HomeScreen> {
         });
       }
     } catch (error) {
-      print('Error fetching districts: $error');  // Log the error in catch block
+      // Hapus perintah print
     }
   }
 
@@ -154,35 +154,49 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _logout(BuildContext context) async {
-    showDialog(
+    // Simpan context sebelum operasi async dimulai
+    final navigator = Navigator.of(context);
+
+    // Tampilkan dialog konfirmasi logout dan tunggu hasilnya
+    bool? confirmLogout = await showDialog<bool>(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text("Konfirmasi Medal"),
           content: const Text("Menopo panjenengan yakin badhe medal?"),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop();
+                Navigator.of(dialogContext).pop(false); // Return false
               },
               child: const Text("Batal"),
             ),
             TextButton(
-              onPressed: () async {
-                SharedPreferences prefs = await SharedPreferences.getInstance();
-                await prefs.remove('isLoggedIn');
-                await prefs.remove('userRole');
-                if (!mounted) return;  // Ensure the widget is still mounted
-                Navigator.of(context).pop();
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
-                );
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true); // Return true
               },
               child: const Text("Medal"),
             ),
           ],
         );
       },
+    );
+
+    // Jika pengguna memilih 'Medal', lakukan logout
+    if (confirmLogout == true) {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.remove('isLoggedIn');
+      await prefs.remove('userRole');
+
+      // Gunakan navigator yang sudah disimpan untuk navigasi
+      _navigateToLoginScreen(navigator);
+    }
+  }
+
+// Fungsi terpisah untuk menangani navigasi
+  void _navigateToLoginScreen(NavigatorState navigator) {
+    navigator.pushReplacement(
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
     );
   }
 

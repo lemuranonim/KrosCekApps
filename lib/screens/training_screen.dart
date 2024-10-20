@@ -6,10 +6,10 @@ class TrainingScreen extends StatefulWidget {
   const TrainingScreen({super.key});
 
   @override
-  _TrainingScreenState createState() => _TrainingScreenState();
+  TrainingScreenState createState() => TrainingScreenState();
 }
 
-class _TrainingScreenState extends State<TrainingScreen> {
+class TrainingScreenState extends State<TrainingScreen> {
   late final TrainingSheetApi _trainingSheetApi;
   final _spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA'; // Spreadsheet ID yang benar
 
@@ -55,7 +55,6 @@ class _TrainingScreenState extends State<TrainingScreen> {
       setState(() {
         _isLoading = false;
       });
-      print("Error loading data: $e");
     }
   }
 
@@ -123,6 +122,8 @@ class _TrainingScreenState extends State<TrainingScreen> {
 
       // Tambahkan data ke worksheet Training
       await _trainingSheetApi.addTrainingRow(rowData);
+
+      if (!mounted) return;  // Pastikan widget masih ter-mount
 
       // Tampilkan notifikasi sukses
       ScaffoldMessenger.of(context).showSnackBar(

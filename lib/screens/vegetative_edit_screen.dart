@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:intl/intl.dart';
-import 'google_sheets_api.dart';  // Pastikan ini adalah API Anda untuk Google Sheets
+import 'google_sheets_api.dart';// Pastikan ini adalah API Anda untuk Google Sheets
 
 class VegetativeEditScreen extends StatefulWidget {
   final List<String> row;
@@ -9,10 +9,10 @@ class VegetativeEditScreen extends StatefulWidget {
   const VegetativeEditScreen({super.key, required this.row});
 
   @override
-  _VegetativeEditScreenState createState() => _VegetativeEditScreenState();
+  VegetativeEditScreenState createState() => VegetativeEditScreenState();
 }
 
-class _VegetativeEditScreenState extends State<VegetativeEditScreen> {
+class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   late List<String> row;
   final _formKey = GlobalKey<FormState>();
 
@@ -399,50 +399,55 @@ class _VegetativeEditScreenState extends State<VegetativeEditScreen> {
     );
   }
 
-  // Fungsi untuk menyimpan data yang diedit ke Google Sheets
   Future<void> _saveToGoogleSheets(List<String> rowData) async {
-    final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA'; // ID Google Sheets Anda
-    final String worksheetTitle = 'Vegetative'; // Nama worksheet
+    final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
+    final String worksheetTitle = 'Vegetative';
 
     final gSheetsApi = GoogleSheetsApi(spreadsheetId);
-    await gSheetsApi.init(); // Inisialisasi API Google Sheets
+    await gSheetsApi.init();
 
-    const maxRetries = 5; // Maksimum jumlah percobaan
+    const maxRetries = 5;
     int retryCount = 0;
 
     while (retryCount < maxRetries) {
       try {
-        await Future.delayed(const Duration(seconds: 2)); // Delay sebelum melakukan permintaan tulis
+        await Future.delayed(const Duration(seconds: 2));
         await gSheetsApi.updateRow(worksheetTitle, rowData, rowData[2]);
 
+        if (!mounted) return; // Pastikan widget masih mounted
         Navigator.of(context).pop(); // Tutup loading spinner
+
+        if (!mounted) return; // Pastikan widget masih mounted sebelum menampilkan SnackBar
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Data berhasil disimpan!')),
         );
-        Navigator.pop(context, rowData); // Kembali ke halaman detail dengan data yang diperbarui
-        return; // Berhenti jika permintaan berhasil
+
+        if (!mounted) return; // Pastikan widget masih mounted sebelum melakukan navigasi
+        Navigator.pop(context, rowData);
+        return;
 
       } catch (e) {
-        print('Error saving data: $e');
-
         if (e.toString().contains('Quota exceeded')) {
-          retryCount++; // Tingkatkan retry count jika ada error kuota
+          retryCount++;
 
-          // Hitung durasi delay berdasarkan exponential backoff
           int delaySeconds = pow(2, retryCount).toInt();
           await Future.delayed(Duration(seconds: delaySeconds));
 
           if (retryCount == maxRetries) {
-            // Jika mencapai maksimal percobaan, tampilkan pesan error
-            Navigator.of(context).pop(); // Tutup loading spinner jika terjadi error
+            if (!mounted) return; // Pastikan widget masih mounted
+            Navigator.of(context).pop();
+
+            if (!mounted) return; // Pastikan widget masih mounted sebelum menampilkan SnackBar
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Gagal menyimpan data setelah beberapa percobaan!')),
             );
             return;
           }
         } else {
-          // Jika error bukan terkait kuota, langsung tampilkan error
-          Navigator.of(context).pop(); // Tutup loading spinner jika terjadi error
+          if (!mounted) return; // Pastikan widget masih mounted
+          Navigator.of(context).pop();
+
+          if (!mounted) return; // Pastikan widget masih mounted sebelum menampilkan SnackBar
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Gagal menyimpan data!')),
           );
@@ -460,8 +465,43 @@ class _VegetativeEditScreenState extends State<VegetativeEditScreen> {
         return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
-      print("Error converting number to date: $e");
+      // jeda
     }
     return value;
+  }
+}
+
+// Halaman Success untuk Harvest
+class SuccessScreen extends StatelessWidget {
+  const SuccessScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Success'),
+        backgroundColor: Colors.green,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green, size: 100),
+            const SizedBox(height: 20),
+            const Text(
+              'Data has been successfully saved!',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Back'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -36,7 +36,6 @@ class TrainingSheetApi {
       final List<List<String>> data = await sheet.values.allRows();
       return data;
     } catch (e) {
-      print('Error mendapatkan data dari Training: $e');
       return [];
     }
   }
@@ -59,7 +58,6 @@ class TrainingSheetApi {
       // Tambahkan baris baru ke worksheet Training
       await sheet.values.appendRow(newRowData);
     } catch (e) {
-      print('Error menambahkan data ke Training: $e');
       rethrow;
     }
   }

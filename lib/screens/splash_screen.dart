@@ -7,10 +7,10 @@ class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  _SplashScreenState createState() => _SplashScreenState();
+  SplashScreenState createState() => SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
+class SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
@@ -50,12 +50,10 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _fetchVersion() async {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-      print('Version: ${packageInfo.version}'); // Debug statement
       setState(() {
         _version = packageInfo.version;
       });
     } catch (e) {
-      print('Failed to get package info: $e');
       setState(() {
         _version = 'beta tester';
       });
@@ -67,6 +65,8 @@ class _SplashScreenState extends State<SplashScreen>
     SharedPreferences prefs = await SharedPreferences.getInstance();
     bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     String? userRole = prefs.getString('userRole');
+
+    if (!mounted) return;  // Pastikan widget masih ter-mount
 
     if (isLoggedIn && userRole != null) {
       // Jika sudah login, cek apakah admin atau user

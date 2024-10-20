@@ -5,10 +5,10 @@ class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
   @override
-  _RegisterScreenState createState() => _RegisterScreenState();
+  RegisterScreenState createState() => RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class RegisterScreenState extends State<RegisterScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _roleController = TextEditingController();
@@ -18,10 +18,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final username = _usernameController.text;
     final password = _passwordController.text;
     final role = _roleController.text;
-
-    print('Attempting to register with username: $username, role: $role');
-
     final success = await _apiService.register(username, password, role);
+
+    if (!mounted) return;  // Pastikan widget masih ter-mount
+
     if (success) {
       Navigator.of(context).pushReplacementNamed('/login');
     } else {

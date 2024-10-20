@@ -12,15 +12,15 @@ class VegetativeScreen extends StatefulWidget {
   const VegetativeScreen({super.key, this.selectedDistrict});
 
   @override
-  _VegetativeScreenState createState() => _VegetativeScreenState();
+  VegetativeScreenState createState() => VegetativeScreenState();
 }
 
-class _VegetativeScreenState extends State<VegetativeScreen> {
+class VegetativeScreenState extends State<VegetativeScreen> {
   late final GoogleSheetsApi _googleSheetsApi;
   final _spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
   final _worksheetTitle = 'Vegetative';
 
-  List<List<String>> _sheetData = [];
+  final List<List<String>> _sheetData = [];
   List<List<String>> _filteredData = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -221,7 +221,7 @@ class _VegetativeScreenState extends State<VegetativeScreen> {
                         },
                         controlAffinity: ListTileControlAffinity.leading,
                       );
-                    }).toList(),
+                    }),
                   ],
                 ),
               ),

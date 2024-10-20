@@ -1,26 +1,118 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter/foundation.dart';  // Import untuk kDebugMode
+import 'package:url_launcher/url_launcher.dart';
+import 'harvest_edit_screen.dart';
 import 'google_sheets_api.dart';
 
 class HarvestDetailScreen extends StatefulWidget {
-  final List<String> row;
+  final String fieldNumber;
 
-  const HarvestDetailScreen({super.key, required this.row});
+  const HarvestDetailScreen({super.key, required this.fieldNumber});
 
   @override
   HarvestDetailScreenState createState() => HarvestDetailScreenState();
 }
 
 class HarvestDetailScreenState extends State<HarvestDetailScreen> {
-  List<String> row;
+  List<String> row = [];
+  bool isLoading = true;
 
-  HarvestDetailScreenState() : row = [];
+  String _mapImageUrl = ''; // URL untuk Google Static Maps
+  double? latitude;
+  double? longitude;
+
+  // Koordinat default jika tidak ditemukan dalam data Google Sheets
+  final double defaultLat = -7.637017;
+  final double defaultLng = 112.8272303;
+
 
   @override
   void initState() {
     super.initState();
-    row = List<String>.from(widget.row);
+    _fetchData();
+  }
+
+  Future<void> _fetchData() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
+    final String worksheetTitle = 'Vegetative';
+
+    try {
+      final gSheetsApi = GoogleSheetsApi(spreadsheetId);
+      await gSheetsApi.init();
+      final List<List<String>> data = await gSheetsApi.getSpreadsheetData(worksheetTitle);
+      final fetchedRow = data.firstWhere((row) => row[2] == widget.fieldNumber);
+
+      final String coordinatesStr = fetchedRow[17]; // Example: '-7.986511,111.976340'
+      final coordinates = _parseCoordinates(coordinatesStr);
+
+      // Gunakan koordinat yang ditemukan atau default jika tidak ada
+      latitude = coordinates['lat'] ?? defaultLat;
+      longitude = coordinates['lng'] ?? defaultLng;
+
+      // Buat URL untuk Google Static Maps
+      _mapImageUrl = _buildStaticMapUrl(latitude, longitude);
+
+      setState(() {
+        row = fetchedRow;
+        isLoading = false;
+      });
+    } catch (e) {
+      // Jika terjadi error, gunakan koordinat default
+      latitude = defaultLat;
+      longitude = defaultLng;
+      _mapImageUrl = _buildStaticMapUrl(latitude, longitude);
+
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  Map<String, double?> _parseCoordinates(String coordinatesStr) {
+    try {
+      final List<String> parts = coordinatesStr.split(',');
+      final double latitude = double.parse(parts[0]);
+      final double longitude = double.parse(parts[1]);
+      return {'lat': latitude, 'lng': longitude};
+    } catch (e) {
+      return {'lat': null, 'lng': null}; // Nilai null jika parsing gagal
+    }
+  }
+
+  String _buildStaticMapUrl(double? latitude, double? longitude) {
+    const String apiKey = 'AIzaSyDNZoDIH3DjLrz77c-ihr0HLhYrgPtfKKc'; // Ganti dengan API Key Anda
+    const String baseUrl = 'https://maps.googleapis.com/maps/api/staticmap';
+    const int zoomLevel = 15;
+    const String mapSize = '600x400';
+
+    // Gunakan nilai default jika latitude atau longitude null
+    final double lat = latitude ?? defaultLat; // Default ke yang diberikan
+    final double lng = longitude ?? defaultLng; // Default ke yang diberikan
+
+    // URL dengan marker di posisi lat/lng
+    return '$baseUrl?center=$lat,$lng&zoom=$zoomLevel&size=$mapSize'
+        '&markers=color:red%7C$lat,$lng&key=$apiKey';
+  }
+
+  Future<void> _openMaps() async {
+    final lat = latitude ?? defaultLat;
+    final lng = longitude ?? defaultLng;
+
+    final googleMapsUrl = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    final appleMapsUrl = Uri.parse('https://maps.apple.com/?q=$lat,$lng');
+
+    if (await canLaunchUrl(googleMapsUrl)) {
+      await launchUrl(googleMapsUrl); // Buka Google Maps
+    } else if (await canLaunchUrl(appleMapsUrl)) {
+      await launchUrl(appleMapsUrl); // Buka Apple Maps sebagai alternatif
+    } else {
+      throw 'Tidak dapat membuka peta.';
+    }
   }
 
   @override
@@ -28,18 +120,24 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          row[2],
+          row.isNotEmpty ? row[2] : 'Loading...',
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.green,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: SingleChildScrollView(
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(5.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildInteractiveMap(),
+              const SizedBox(height: 10),
+              _buildCoordinatesText(),
+              const SizedBox(height: 10),
               _buildDetailCard('Field Information', [
                 _buildDetailRow('Season', row[1]),
                 _buildDetailRow('Farmer', row[3]),
@@ -52,10 +150,11 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
                 _buildDetailRow('Kabupaten', row[13]),
                 _buildDetailRow('Field SPV', row[15]),
                 _buildDetailRow('FA', row[16]),
+                _buildDetailRow('Week of Harvest', row[27]),
               ]),
               const SizedBox(height: 20),
               _buildAdditionalInfoCard('Field Audit', [
-                _buildDetailRow('QA FI', row[29]),
+                _buildDetailRow('QA FI', row[31]),
                 _buildDetailRow('Date of Audit (dd/MM)', _convertToDateIfNecessary(row[30])),
                 _buildDetailRow('Ear Condition Observation', row[32]),
                 _buildDetailRow('Moisture Content - %', row[33]),
@@ -63,25 +162,51 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
                 _buildDetailRow('Remarks', row[35]),
                 _buildDetailRow('Recommendation', row[36]),
                 _buildDetailRow('Date of Downgrade Flag.', row[37]),
-                _buildDetailRow('ReasonToDowngradeFlag.', row[38]),
-                _buildDetailRow('DowngradeFlaggingRecom.', row[39]),
+                _buildDetailRow('Reason to Downgrade Flag.', row[38]),
+                _buildDetailRow('Downgrade Flagging Recommendation', row[39]),
               ]),
             ],
           ),
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _navigateToEditScreen(context);
+        onPressed: () async {
+          await _navigateToEditScreen(context);
+          await _fetchData();
         },
         backgroundColor: Colors.green,
-        child: const Icon(Icons.edit),
+        child: const Icon(Icons.edit, color: Colors.white),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
       bottomNavigationBar: const BottomAppBar(
         shape: CircularNotchedRectangle(),
         child: SizedBox(height: 50.0),
       ),
+    );
+  }
+
+  // Widget untuk menampilkan peta statis dari Google Static Maps dengan GestureDetector
+  Widget _buildInteractiveMap() {
+    return GestureDetector(
+      onTap: _openMaps, // Buka aplikasi maps saat peta diklik
+      child: _mapImageUrl.isNotEmpty
+          ? Image.network(
+        _mapImageUrl,
+        fit: BoxFit.cover,
+        height: 250,
+        width: double.infinity,
+      )
+          : const SizedBox.shrink(), // Tidak ada gambar jika URL tidak ada
+    );
+  }
+
+  // Widget untuk menampilkan koordinat
+  Widget _buildCoordinatesText() {
+    return Text(
+      latitude != null && longitude != null
+          ? 'Koordinat: $latitude, $longitude'
+          : 'Koordinat tidak tersedia',
+      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
     );
   }
 
@@ -144,20 +269,24 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
+          Expanded( // Menggunakan Expanded untuk mengatasi masalah overflow pada teks
+            flex: 2,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
           ),
-          Text(
-            value.isNotEmpty ? value : 'Kosong Lur...',
-            style: const TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
+          const SizedBox(width: 10),
+          // Menambahkan sedikit ruang antara label dan value
+          Expanded(
+            flex: 3,
+            child: Text(
+              value.isNotEmpty ? value : 'Kosong Lur...',
+              style: const TextStyle(fontSize: 16, color: Colors.grey),
+              softWrap: true, // Membungkus teks jika terlalu panjang
+              overflow: TextOverflow.visible, // Memastikan teks tidak terpotong
             ),
           ),
         ],
@@ -169,20 +298,33 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
     try {
       final parsedNumber = double.tryParse(value);
       if (parsedNumber != null) {
-        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
+        final date = DateTime(1899, 12, 30).add(
+            Duration(days: parsedNumber.toInt()));
         return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
-      _log("Error converting number to date: $e");
+      // jeda
     }
     return value;
   }
 
-  void _navigateToEditScreen(BuildContext context) async {
+  String _convertToFixedDecimalIfNecessary(String value) {
+    try {
+      final parsedNumber = double.tryParse(value);
+      if (parsedNumber != null) {
+        return parsedNumber.toStringAsFixed(1);
+      }
+    } catch (e) {
+      // jeda
+    }
+    return value;
+  }
+
+  Future<void> _navigateToEditScreen(BuildContext context) async {
     final updatedRow = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => EditHarvestScreen(row: row),
+        builder: (context) => HarvestEditScreen(row: row),
       ),
     );
 
@@ -191,316 +333,5 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
         row = updatedRow;
       });
     }
-  }
-
-  void _log(String message) {
-    if (kDebugMode) {
-      print(message); // Digunakan hanya saat debug
-    }
-  }
-}
-
-// Fungsi untuk mengubah angka menjadi format 1 desimal jika diperlukan
-String _convertToFixedDecimalIfNecessary(String value) {
-  try {
-    final parsedNumber = double.tryParse(value);
-    if (parsedNumber != null) {
-      return parsedNumber.toStringAsFixed(1); // Membulatkan ke 1 desimal
-    }
-  } catch (e) {
-    if (kDebugMode) {
-      print("Error converting number to fixed decimal: $e");
-    }
-  }
-  return value; // Kembalikan nilai asli jika bukan angka
-}
-
-// Halaman Edit untuk Harvest
-class EditHarvestScreen extends StatefulWidget {
-  final List<String> row;
-
-  const EditHarvestScreen({super.key, required this.row});
-
-  @override
-  EditHarvestScreenState createState() => EditHarvestScreenState();
-}
-
-class EditHarvestScreenState extends State<EditHarvestScreen> {
-  late List<String> row;
-  final _formKey = GlobalKey<FormState>();
-  late TextEditingController _dateAuditController;
-
-  String? selectedEarConditionObservation;
-  String? selectedCropHealth;
-  String? selectedRecommendation;
-  String? selectedReasonToDowngradeFlagging;
-  String? selectedDowngradeFlaggingRecommendation;
-
-  @override
-  void initState() {
-    super.initState();
-    row = List<String>.from(widget.row);
-
-    _dateAuditController = TextEditingController(text: _convertToDateIfNecessary(row[30]));
-
-    // Inisialisasi dropdown dengan nilai yang ada di row
-    selectedEarConditionObservation = row[32];
-    selectedCropHealth = row[34];
-    selectedRecommendation = row[36];
-    selectedReasonToDowngradeFlagging = row[38];
-    selectedDowngradeFlaggingRecommendation = row[39];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Update Field Audit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.green,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(18.0),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                _buildTextFormField('QA FI', 29),
-                _buildDatePickerField('Date of Audit (dd/MM)', 30, _dateAuditController),
-
-                _buildDropdownFormField(
-                  label: 'Ear Condition Observation',
-                  items: ['2', '3', '2'],
-                  value: selectedEarConditionObservation,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedEarConditionObservation = value;
-                      row[32] = value ?? '';
-                    });
-                  },
-                ),
-
-                _buildTextFormField('Moisture Content - %', 33),
-
-                _buildDropdownFormField(
-                  label: 'Crop Health',
-                  items: ['A', 'B', 'C'],
-                  value: selectedCropHealth,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedCropHealth = value;
-                      row[34] = value ?? '';
-                    });
-                  },
-                ),
-
-                _buildTextFormField('Remarks', 35),
-
-                _buildDropdownFormField(
-                  label: 'Recommendation',
-                  items: ['Continue', 'Discard'],
-                  value: selectedRecommendation,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedRecommendation = value;
-                      row[36] = value ?? '';
-                    });
-                  },
-                ),
-
-                _buildTextFormField('Date of Downgrade Flagging', 37),
-
-                _buildDropdownFormField(
-                  label: 'Reason to Downgrade Flagging',
-                  items: ['A', 'B', 'C', 'D'],
-                  value: selectedReasonToDowngradeFlagging,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedReasonToDowngradeFlagging = value;
-                      row[38] = value ?? '';
-                    });
-                  },
-                ),
-
-                const SizedBox(height: 10),
-
-                _buildDropdownFormField(
-                  label: 'Downgrade Flagging Recommendation',
-                  items: ['RFI', 'RFD'],
-                  value: selectedDowngradeFlaggingRecommendation,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedDowngradeFlaggingRecommendation = value;
-                      row[39] = value ?? '';
-                    });
-                  },
-                ),
-
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      _saveToGoogleSheets(row);
-                    }
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextFormField(String label, int index) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10.0),
-      child: TextFormField(
-        initialValue: row[index],
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
-        onChanged: (value) {
-          setState(() {
-            row[index] = value;
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _buildDatePickerField(String label, int index, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextFormField(
-        controller: controller,
-        readOnly: true,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
-        onTap: () async {
-          DateTime? pickedDate = await showDatePicker(
-            context: context,
-            initialDate: DateTime.now(),
-            firstDate: DateTime(2000),
-            lastDate: DateTime(2101),
-          );
-
-          if (pickedDate != null) {
-            String formattedDate = DateFormat('dd/MM/yyyy').format(pickedDate);
-            setState(() {
-              controller.text = formattedDate;
-              row[index] = formattedDate;
-            });
-          }
-        },
-      ),
-    );
-  }
-
-  Widget _buildDropdownFormField({
-    required String label,
-    required List<String> items,
-    required String? value,
-    required Function(String?) onChanged,
-  }) {
-    // Jika nilai tidak ada di dalam daftar item, set nilai awal menjadi null
-    if (!items.contains(value)) {
-      value = null;
-    }
-
-    return DropdownButtonFormField<String>(
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(),
-      ),
-      value: value,
-      onChanged: onChanged,
-      items: items.map<DropdownMenuItem<String>>((String item) {
-        return DropdownMenuItem<String>(
-          value: item,
-          child: Text(item),
-        );
-      }).toList(),
-    );
-  }
-
-  Future<void> _saveToGoogleSheets(List<String> rowData) async {
-    final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
-    final String worksheetTitle = 'Harvest';
-
-    final gSheetsApi = GoogleSheetsApi(spreadsheetId);
-    await gSheetsApi.init();
-
-    try {
-      await gSheetsApi.updateRow(worksheetTitle, rowData, rowData[2]);
-
-      if (context.mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const SuccessScreen()),
-        );
-      }
-    } catch (e) {
-      _log('Error saving data: $e');
-    }
-  }
-
-  String _convertToDateIfNecessary(String value) {
-    try {
-      final parsedNumber = double.tryParse(value);
-      if (parsedNumber != null) {
-        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
-        return DateFormat('dd/MM/yyyy').format(date);
-      }
-    } catch (e) {
-      _log("Error converting number to date: $e");
-    }
-    return value;
-  }
-
-  void _log(String message) {
-    if (kDebugMode) {
-      print(message); // Logging di mode debug
-    }
-  }
-}
-
-// Halaman Success untuk Harvest
-class SuccessScreen extends StatelessWidget {
-  const SuccessScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Success'),
-        backgroundColor: Colors.green,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 100),
-            const SizedBox(height: 20),
-            const Text(
-              'Data has been successfully saved!',
-              style: TextStyle(fontSize: 20),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('Back'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

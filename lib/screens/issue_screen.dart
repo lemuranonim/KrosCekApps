@@ -8,10 +8,10 @@ class IssueScreen extends StatefulWidget {
   const IssueScreen({super.key, required this.selectedFA});
 
   @override
-  _IssueScreenState createState() => _IssueScreenState();
+  IssueScreenState createState() => IssueScreenState();
 }
 
-class _IssueScreenState extends State<IssueScreen> {
+class IssueScreenState extends State<IssueScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _detailController = TextEditingController();
 
@@ -29,9 +29,8 @@ class _IssueScreenState extends State<IssueScreen> {
   Future<void> _initGoogleSheets() async {
     try {
       await _googleSheetsApi.init();
-      print('Google Sheets API berhasil diinisialisasi.');
     } catch (e) {
-      print('Error inisialisasi Google Sheets API: $e');
+      // Hapus print, tidak mencatat error
     }
   }
 
@@ -55,19 +54,23 @@ class _IssueScreenState extends State<IssueScreen> {
       detailIssue,
     ];
 
+    // Simpan Navigator dan ScaffoldMessenger sebelum async
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
     try {
       // Kirim data ke Google Sheets
       await _googleSheetsApi.addRow(_worksheetTitle, data);
 
       // Setelah berhasil disimpan, navigasi ke halaman sukses
-      Navigator.of(context).push(
+      navigator.push(
         MaterialPageRoute(
           builder: (context) => const SuccessScreen(),
         ),
       );
     } catch (e) {
-      print('Error submitting data: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
+      // Tampilkan error menggunakan ScaffoldMessenger yang disimpan
+      scaffoldMessenger.showSnackBar(
         const SnackBar(content: Text('Gagal menyimpan data')),
       );
     }

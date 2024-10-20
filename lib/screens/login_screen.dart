@@ -3,15 +3,16 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/google_sign_in_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  LoginScreenState createState() => LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class LoginScreenState extends State<LoginScreen> {
   final AuthService _auth = AuthService();
   final GoogleSignInService _googleSignInService = GoogleSignInService();
   final TextEditingController _emailController = TextEditingController();
@@ -39,7 +40,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _login() async {
-    print("Proses login dengan email dan password dimulai.");
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -47,27 +47,22 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() {
         _errorMessage = "Email dan password tidak boleh kosong!";
       });
-      print("Email atau password kosong.");
       return;
     }
 
     final user = await _auth.signInWithEmailAndPassword(email, password);
     if (user != null) {
-      print("Login berhasil. UID: ${user.uid}");
       await _handleRoleRedirection(user.uid, email);
     } else {
       setState(() {
         _errorMessage = "Login gagal! Cek email dan password.";
       });
-      print("Login gagal untuk email: $email.");
     }
   }
 
   Future<void> _loginWithGoogle() async {
-    print("Proses login dengan Google Sign-In dimulai.");
     final user = await _googleSignInService.signInWithGoogle(forceSignIn: true);
     if (user != null) {
-      print("Google Sign-In berhasil. UID: ${user.uid}");
       final selectedRole = _isAdmin ? 'admin' : 'user';
       await _auth.createUserInFirestoreIfNeeded(user, role: selectedRole);
       await _handleRoleRedirection(user.uid, user.email ?? "Unknown Email");
@@ -86,107 +81,109 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() {
         _errorMessage = "Google Sign-In gagal!";
       });
-      print("Google Sign-In gagal atau dibatalkan.");
     }
   }
 
   Future<void> _handleRoleRedirection(String uid, String email) async {
-    print("Memeriksa role untuk UID: $uid, Email: $email.");
-    // Daftar email untuk admin dan user
-    List<String> adminEmails = [
-      'krisnabagus09@gmail.com',
-      'ludtanza@gmail.com',
-      'adityangutsamarwaka@gmail.com',
-    ];
+    try {
+      // Ambil data dari Firestore
+      DocumentSnapshot adminDoc = await FirebaseFirestore.instance.collection('roles').doc('adminEmails').get();
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('roles').doc('userEmails').get();
 
-    List<String> userEmails = [
-      'kristantodedi9@gmail.com',
-      'aarsymajid@gmail.com',
-      'anandaariadiwibowo@gmail.com',
-      'mardi.sabawana1945@gmail.com',
-      'aliridlo157@gmail.com',
-      'anggisetyawan55@gmail.com',
-      'masdukirais03@gmail.com',
-      'adelfoantonio80@gmail.com',
-      'teddyfahru1@gmail.com',
-      'chreznaruby@gmail.com',
-      'citrasyh93@gmail.com',
-      'dikyferyirawan6@gmail.com',
-      'lestaputri364@gmail.com',
-      'gayuhdisro91@gmail.com',
-      'aripeno3@gmail.com',
-      'charismafauzi.saputra1@gmail.com',
-      'tiyanas.ta97@gmail.com',
-      'witovanhart88@gmail.com',
-      'fifialeyda923@gmail.com',
-      'dwiferdiansyahaldi@gmail.com',
-      'muhammadhadi.syarifuddin@gmail.com',
-      'edoaldiansyah28@gmail.com',
-      'arrohmaan14@gmail.com',
-      'ekosishadi11@gmail.com',
-      'irfansayfudin414@gmail.com',
-      'mvickybachruddin15@gmail.com',
-      'ahmaddenijulioanggoro@gmail.com',
-      'nanaasna28@gmail.com',
-      'bagussskrisna@gmail.com'
-    ];
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', true);
-    await prefs.setString('userEmail', email);
+      // Pastikan data di-cast ke Map<String, dynamic> sebelum mengaksesnya
+      Map<String, dynamic>? adminData = adminDoc.data() as Map<String, dynamic>?;
+      Map<String, dynamic>? userData = userDoc.data() as Map<String, dynamic>?;
 
-    if (adminEmails.contains(email)) {
-      await prefs.setString('userRole', 'admin');
-      if (!_isAdmin) {  // Jika switch tidak sesuai
-        setState(() {
-          _errorMessage = "Kamu bukan User!";
-        });
-        print("Kamu bukan User.");
-        _auth.signOut();  // Keluar jika role tidak sesuai
+      List<String> adminEmails = adminData != null && adminData.containsKey('emails')
+          ? List<String>.from(adminData['emails'])
+          : [];
+
+      List<String> userEmails = userData != null && userData.containsKey('emails')
+          ? List<String>.from(userData['emails'])
+          : [];
+
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setString('userEmail', email);
+
+      // Pastikan widget masih mounted sebelum menggunakan BuildContext atau setState
+      if (!mounted) return;
+
+      if (adminEmails.contains(email)) {
+        await prefs.setString('userRole', 'admin');
+        if (!_isAdmin) {
+          // Periksa `mounted` sebelum menggunakan setState
+          if (mounted) {
+            setState(() {
+              _errorMessage = "Kamu bukan User!";
+            });
+          }
+          _auth.signOut();
+        } else {
+          // Periksa `mounted` sebelum navigasi
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/admin_dashboard');
+          }
+        }
+      } else if (userEmails.contains(email)) {
+        await prefs.setString('userRole', 'user');
+        if (_isAdmin) {
+          // Periksa `mounted` sebelum menggunakan setState
+          if (mounted) {
+            setState(() {
+              _errorMessage = "Kamu bukan Admin!";
+            });
+          }
+          _auth.signOut();
+        } else {
+          // Periksa `mounted` sebelum navigasi
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/home');
+          }
+        }
       } else {
-        print("User dengan role admin ditemukan. Navigasi ke admin dashboard.");
-        Navigator.pushReplacementNamed(context, '/admin_dashboard');
+        // Periksa `mounted` sebelum menggunakan setState
+        if (mounted) {
+          setState(() {
+            _errorMessage = "Akses tidak diizinkan! Email tidak terdaftar.";
+          });
+        }
+        _auth.signOut();
       }
-    } else if (userEmails.contains(email)) {
-      await prefs.setString('userRole', 'user');
-      if (_isAdmin) {  // Jika switch tidak sesuai
+    } catch (e) {
+      // Periksa `mounted` sebelum menggunakan setState
+      if (mounted) {
         setState(() {
-          _errorMessage = "Kamu bukan Admin!";
+          _errorMessage = "Terjadi kesalahan. Silakan coba lagi.";
         });
-        print("Kamu bukan Admin.");
-        _auth.signOut();  // Keluar jika role tidak sesuai
-      } else {
-        print("User dengan role user ditemukan. Navigasi ke home.");
-        Navigator.pushReplacementNamed(context, '/home');
       }
-    } else {
-      setState(() {
-        _errorMessage = "Akses tidak diizinkan! Email tidak terdaftar.";
-      });
-      print("Email tidak ditemukan dalam daftar admin atau user.");
-      _auth.signOut();  // Keluar jika email tidak terdaftar
     }
   }
 
   void _resetPassword() async {
-    print("Proses reset password dimulai.");
     final email = _emailController.text.trim();
+
     if (email.isEmpty) {
-      setState(() {
-        _errorMessage = "Mohon masukkan email!";
-      });
-      print("Email kosong saat reset password.");
+      if (mounted) {
+        setState(() {
+          _errorMessage = "Mohon masukkan email!";
+        });
+      }
       return;
     }
 
     await _auth.resetPassword(email);
-    print("Email reset password terkirim ke: $email.");
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Email reset password terkirim')),
-    );
+
+    // Pastikan widget masih mounted sebelum menggunakan BuildContext
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Email reset password terkirim')),
+      );
+    }
   }
 
+
   void _showResetPasswordDialog() {
-    print("Dialog reset password ditampilkan.");
     showDialog(
       context: context,
       builder: (context) {
@@ -197,7 +194,6 @@ class _LoginScreenState extends State<LoginScreen> {
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                print("Dialog reset password ditutup (batal).");
               },
               child: const Text('Batal'),
             ),
@@ -205,7 +201,6 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: () {
                 _resetPassword();
                 Navigator.of(context).pop();
-                print("Proses reset password dikonfirmasi.");
               },
               child: const Text('Kirim'),
             ),
@@ -259,7 +254,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   onChanged: (value) {
                     setState(() {
                       _isAdmin = value;
-                      print("Role yang dipilih: ${_isAdmin ? 'admin' : 'user'}");
                     });
                   },
                 ),
