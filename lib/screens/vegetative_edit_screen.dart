@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:intl/intl.dart';
-import 'google_sheets_api.dart';// Pastikan ini adalah API Anda untuk Google Sheets
+import 'google_sheets_api.dart';
+import 'package:lottie/lottie.dart';
 
 class VegetativeEditScreen extends StatefulWidget {
   final List<String> row;
@@ -363,26 +364,40 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     String? hint,
     String? helpText,
   }) {
-    // Pastikan bahwa nilai value ada di dalam items, jika tidak, set ke null
+    // Jika nilai tidak ada di dalam daftar item, set nilai awal menjadi null
     if (!items.contains(value)) {
       value = null;
     }
 
-    return DropdownButtonFormField<String>(
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-        helperText: helpText,
-      ),
-      value: value,
-      hint: Text(hint ?? 'Survey membuktikan!'),
-      onChanged: onChanged,
-      items: items.map<DropdownMenuItem<String>>((String item) {
-        return DropdownMenuItem<String>(
-          value: item,
-          child: Text(item),
-        );
-      }).toList(),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButtonFormField<String>(
+          decoration: InputDecoration(
+            labelText: label,
+            border: const OutlineInputBorder(),
+          ),
+          value: value,
+          hint: Text(hint ?? 'Survey membuktikan!'),
+          onChanged: onChanged,
+          items: items.map<DropdownMenuItem<String>>((String item) {
+            return DropdownMenuItem<String>(
+              value: item,
+              child: Text(item),
+            );
+          }).toList(),
+        ),
+        if (helpText != null) ...[
+          const SizedBox(height: 5), // Spacer between dropdown and helper text
+          Text(
+            helpText,
+            style: const TextStyle(
+              fontStyle: FontStyle.italic, // Mengatur gaya italic pada helpText
+              color: Colors.grey, // Warna teks
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -392,8 +407,19 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
-        return const Center(
-          child: CircularProgressIndicator(),
+        return Dialog(
+          backgroundColor: Colors.transparent, // Transparan untuk efek yang lebih bagus
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Lottie.asset('assets/loading.json', width: 150, height: 150), // Animasi Lottie
+              const SizedBox(height: 20),
+              const Text(
+                "Loading...",
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ],
+          ),
         );
       },
     );

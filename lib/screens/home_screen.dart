@@ -13,6 +13,8 @@ import 'issue_screen.dart';
 import 'login_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
+import 'activity_screen.dart';  // Import halaman aktivitas
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -76,15 +78,21 @@ class HomeScreenState extends State<HomeScreen> {
   // Fungsi untuk menyimpan pilihan QA SPV dan District ke SharedPreferences
   Future<void> _saveFilterPreferences() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('selectedQA', selectedQA ?? '');
-    await prefs.setString('selectedFA', selectedFA ?? '');
+    await prefs.setString('selectedQA', selectedQA ?? ''); // Beri nilai default jika null
+    await prefs.setString('selectedFA', selectedFA ?? ''); // Beri nilai default jika null
   }
 
   Future<void> _fetchQASPV(String selectedRegion) async {
     FirebaseFirestore firestore = FirebaseFirestore.instance;
 
-    // Dapatkan document ID dari region yang dipilih
-    String documentId = regionDocumentIds[selectedRegion]!;
+    // Cek apakah dokumen ID ada di map
+    String? documentId = regionDocumentIds[selectedRegion];
+    if (documentId == null) {
+      setState(() {
+        qaSPVList = [];
+      });
+      return; // Jika tidak ada dokumen, keluar dari fungsi
+    }
 
     try {
       DocumentReference regionDoc = firestore.collection('regions').doc(documentId);
@@ -96,11 +104,13 @@ class HomeScreenState extends State<HomeScreen> {
 
         setState(() {
           this.qaSPVList = qaSPVList;
-          selectedQA = null; // Selalu reset QA SPV agar pengguna harus memilih manual
+          selectedQA = null; // Reset QA SPV agar pengguna harus memilih manual
         });
       }
     } catch (error) {
-      // Hapus perintah print
+      setState(() {
+        qaSPVList = []; // Jika error, kosongkan list
+      });
     }
   }
 
@@ -145,12 +155,6 @@ class HomeScreenState extends State<HomeScreen> {
     if (selectedFieldSPV != null) {
       await _fetchQASPV(selectedFieldSPV!);
     }
-  }
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
   }
 
   Future<void> _logout(BuildContext context) async {
@@ -327,7 +331,7 @@ class HomeScreenState extends State<HomeScreen> {
       )
           : null,
       body: IndexedStack(
-        index: _selectedIndex,
+        index: _selectedIndex, // Pastikan index selalu valid
         children: [
           LiquidPullToRefresh(
             onRefresh: _refreshData,
@@ -337,23 +341,24 @@ class HomeScreenState extends State<HomeScreen> {
             showChildOpacityTransition: false,
             child: _buildHomeContent(context),
           ),
-          _buildActivityContent(context),
+          const ActivityScreen(),
         ],
       ),
       bottomNavigationBar: ConvexAppBar(
-        style: TabStyle.fixedCircle,
         backgroundColor: Colors.green,
         items: const [
-          TabItem(icon: Icons.home, title: 'Beranda'),
-          TabItem(icon: Icons.add, title: ''),
-          TabItem(icon: Icons.local_activity, title: 'Aktivitas'),
+          TabItem(icon: Icons.home, title: 'Beranda'),  // Tab Beranda
+          TabItem(icon: Icons.local_activity, title: 'Aktivitas'),  // Tab Aktivitas
+          TabItem(icon: Icons.add, title: ''),  // Tab '+' untuk memunculkan popup
         ],
-        initialActiveIndex: _selectedIndex,
+        initialActiveIndex: _selectedIndex,  // Menentukan tab awal yang aktif
         onTap: (int index) {
-          if (index == 1) {
-            _showPopupMenu();
+          if (index == 2) {  // Jika tab dengan ikon '+' ditekan
+            _showPopupMenu();  // Memunculkan popup menu
           } else {
-            _onItemTapped(index);
+            setState(() {
+              _selectedIndex = index;  // Hanya ubah state dan halaman untuk tab selain `+`
+            });
           }
         },
       ),
@@ -664,17 +669,6 @@ class HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildActivityContent(BuildContext context) {
-    return const Column(
-      children: [
-        Expanded(
-          child: Center(
-            child: Text('Activity Screen Content'),
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget buildCategoryItem(BuildContext context, String imagePath, String label, Widget screen) {
     return GestureDetector(

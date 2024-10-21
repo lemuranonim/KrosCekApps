@@ -154,11 +154,11 @@ class GenerativeScreenState extends State<GenerativeScreen> {
 
         return matchesQAFilter && matchesDistrictFilter && matchesFAFilter && matchesSearchQuery;
       }).toList();
-
-      _totalEffectiveArea = _filteredData.fold(0.0, (sum, row) {
-        final effectiveArea = double.tryParse(row[8]) ?? 0.0;
-        return sum + effectiveArea;
-      });
+      _faNames = _filteredData
+          .map((row) => toTitleCase(getValue(row, 16, '').toLowerCase())) // Mengambil FA dari kolom 16
+          .toSet() // Menghapus duplikasi
+          .toList()
+        ..sort(); // Sortir FA
     });
   }
 
@@ -208,6 +208,7 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
+                    // Hanya tampilkan FA yang sesuai dengan QA SPV dan District yang dipilih
                     ..._faNames.map((fa) {
                       return CheckboxListTile(
                         title: Text(fa),
@@ -215,12 +216,12 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                         onChanged: (bool? value) {
                           setState(() {
                             if (value == true) {
-                              _selectedFA.add(fa);
+                              _selectedFA.add(fa); // Tambahkan FA ke daftar yang dipilih
                             } else {
-                              _selectedFA.remove(fa);
+                              _selectedFA.remove(fa); // Hapus FA dari daftar yang dipilih
                             }
-                            _filterData();
-                            _saveFilterPreferences();
+                            _filterData(); // Filter ulang data setelah FA diubah
+                            _saveFilterPreferences(); // Simpan filter ke SharedPreferences
                           });
                         },
                         controlAffinity: ListTileControlAffinity.leading,

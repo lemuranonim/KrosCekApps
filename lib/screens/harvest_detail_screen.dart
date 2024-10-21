@@ -38,7 +38,7 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
     });
 
     final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
-    final String worksheetTitle = 'Vegetative';
+    final String worksheetTitle = 'Harvest';
 
     try {
       final gSheetsApi = GoogleSheetsApi(spreadsheetId);
@@ -150,11 +150,11 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
                 _buildDetailRow('Kabupaten', row[13]),
                 _buildDetailRow('Field SPV', row[15]),
                 _buildDetailRow('FA', row[16]),
-                _buildDetailRow('Week of Harvest', row[27]),
+                _buildDetailRow('Week of Harvest', buildWeekOfHarvest(row)),
               ]),
               const SizedBox(height: 20),
               _buildAdditionalInfoCard('Field Audit', [
-                _buildDetailRow('QA FI', row[31]),
+                _buildDetailRow('QA FI', row[29]),
                 _buildDetailRow('Date of Audit (dd/MM)', _convertToDateIfNecessary(row[30])),
                 _buildDetailRow('Ear Condition Observation', row[32]),
                 _buildDetailRow('Moisture Content - %', row[33]),
@@ -334,4 +334,36 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
       });
     }
   }
+}
+
+// Set untuk Validasi Week of Harvest
+
+int getWeekNumber(DateTime date) {
+  int dayOfYear = int.parse(DateFormat("D").format(date));
+  return ((dayOfYear - date.weekday + 10) / 7).floor();
+}
+
+DateTime excelSerialToDate(int serial) {
+  // Excel/Google Sheets menggunakan 30 Desember 1899 sebagai tanggal awal
+  return DateTime(1899, 12, 30).add(Duration(days: serial));
+}
+
+String buildWeekOfHarvest(List<String> row) {
+  // Cek apakah kolom I (row[8]) adalah 0 atau kosong
+  if (row[8] == "0" || row[8].isEmpty) {
+    return "";  // Jika benar, kembalikan string kosong
+  }
+
+  // Coba konversi row[26] (serial number Excel/Google Sheets) menjadi tanggal
+  String dateStr = row[26];
+  int? serialNumber = int.tryParse(dateStr);  // Coba konversi string menjadi integer serial number
+
+  if (serialNumber != null) {
+    // Jika serial number valid, ubah ke DateTime
+    DateTime date = excelSerialToDate(serialNumber);
+
+    // Hitung nomor minggu dan kembalikan hasilnya
+    return getWeekNumber(date).toString();
+  }
+  return "Tanggal tidak tersedia";  // Jika serial number tidak valid
 }

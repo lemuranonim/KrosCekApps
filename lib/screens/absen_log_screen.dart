@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'google_sheets_api.dart'; // Import GoogleSheetsApi
 import 'success_screen.dart';    // Import SuccessScreen
+import 'activity_screen.dart';  // Import halaman aktivitas
 
 class AbsenLogScreen extends StatefulWidget {
   final String userName;
@@ -109,8 +110,9 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
 
       try {
         await _googleSheetsApi.addRow(_worksheetTitle, data);
-
         if (!mounted) return; // Memastikan widget masih aktif
+        // Tambahkan notifikasi ketika absen berhasil
+        onAbsenSuccess(context);
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => const SuccessScreen(),
@@ -223,4 +225,8 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
       ],
     );
   }
+}
+
+void onAbsenSuccess(BuildContext context) {
+  ActivityScreen.addNotificationFromOutside(context, "Absen berhasil dilakukan.");
 }

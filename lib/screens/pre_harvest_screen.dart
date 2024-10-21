@@ -155,6 +155,11 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
 
         return matchesQAFilter && matchesDistrictFilter && matchesFAFilter && matchesSearchQuery;
       }).toList();
+      _faNames = _filteredData
+          .map((row) => toTitleCase(getValue(row, 16, '').toLowerCase())) // Mengambil FA dari kolom 16
+          .toSet() // Menghapus duplikasi
+          .toList()
+        ..sort(); // Sortir FA
     });
   }
 
@@ -189,9 +194,9 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
     showModalBottomSheet(
       context: context,
       builder: (context) {
-        return StatefulBuilder( // Gunakan StatefulBuilder untuk memastikan modal bisa di-refresh
+        return StatefulBuilder(
           builder: (BuildContext context, StateSetter setState) {
-            return SingleChildScrollView( // Agar modal bisa di-scroll
+            return SingleChildScrollView(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -204,22 +209,23 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
+                    // Hanya tampilkan FA yang sesuai dengan QA SPV dan District yang dipilih
                     ..._faNames.map((fa) {
                       return CheckboxListTile(
-                        title: Text(fa), // Nama FA yang ditampilkan dalam Title Case
-                        value: _selectedFA.contains(fa), // Cek apakah FA sudah dipilih
+                        title: Text(fa),
+                        value: _selectedFA.contains(fa),
                         onChanged: (bool? value) {
-                          setState(() { // Memastikan modal di-refresh setelah perubahan
+                          setState(() {
                             if (value == true) {
                               _selectedFA.add(fa); // Tambahkan FA ke daftar yang dipilih
                             } else {
                               _selectedFA.remove(fa); // Hapus FA dari daftar yang dipilih
                             }
-                            _filterData();
-                            _saveFilterPreferences(); // Simpan preferensi filter saat diubah
+                            _filterData(); // Filter ulang data setelah FA diubah
+                            _saveFilterPreferences(); // Simpan filter ke SharedPreferences
                           });
                         },
-                        controlAffinity: ListTileControlAffinity.leading, // Agar FA ditampilkan mulai dari kolom 1
+                        controlAffinity: ListTileControlAffinity.leading,
                       );
                     }),
                   ],

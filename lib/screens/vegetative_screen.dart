@@ -155,6 +155,11 @@ class VegetativeScreenState extends State<VegetativeScreen> {
 
         return matchesQAFilter && matchesDistrictFilter && matchesFAFilter && matchesSearchQuery;
       }).toList();
+      _faNames = _filteredData
+          .map((row) => toTitleCase(getValue(row, 16, '').toLowerCase())) // Mengambil FA dari kolom 16
+          .toSet() // Menghapus duplikasi
+          .toList()
+        ..sort(); // Sortir FA
     });
   }
 
@@ -204,6 +209,7 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
+                    // Hanya tampilkan FA yang sesuai dengan QA SPV dan District yang dipilih
                     ..._faNames.map((fa) {
                       return CheckboxListTile(
                         title: Text(fa),

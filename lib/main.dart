@@ -14,7 +14,7 @@ void main() async {
 
   // Inisialisasi Firebase
   await Firebase.initializeApp(
-    options: firebaseOptions,
+    options: DefaultFirebaseOptions.currentPlatform,  // Ganti 'firebaseOptions' dengan 'DefaultFirebaseOptions.currentPlatform'
   );
 
   // Aktifkan Firebase App Check
