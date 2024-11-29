@@ -795,7 +795,7 @@ class GenerativeEditScreenState extends State<GenerativeEditScreen> {
       await gSheetsApi.updateRow('Generative', rowData, rowData[2]);
       await _saveToHive(rowData);
 
-      _showSnackbar('Data successfully saved to Google Sheets');
+      _showSnackbar('Data successfully saved to Audit Database');
     } catch (e) {
       await _logErrorToActivity('Gagal menyimpan data: ${e.toString()}');
       _showSnackbar('Failed to save data. Please try again.');
@@ -913,7 +913,7 @@ class SuccessScreen extends StatelessWidget {
                 // Kembali ke layar sebelumnya
                 navigator.pop();
               },
-              child: const Text('Back'),
+              child: const Text('Confirm!'),
             ),
           ],
         ),
@@ -969,9 +969,9 @@ class SuccessScreen extends StatelessWidget {
 
     try {
       await gSheetsApi.addRow(worksheetTitle, rowData);
-      debugPrint('Aktivitas berhasil dicatat di Google Sheets');
+      debugPrint('Aktivitas berhasil dicatat di Database $worksheetTitle');
     } catch (e) {
-      debugPrint('Gagal mencatat aktivitas di Google Sheets: $e');
+      debugPrint('Gagal mencatat aktivitas di Database $worksheetTitle: $e');
     }
   }
 }

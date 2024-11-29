@@ -35,8 +35,6 @@ class GenerativeScreenState extends State<GenerativeScreen> {
   final _worksheetTitle = 'Generative';
   String? _selectedSeason;
   List<String> _seasonsList = [];
-  String? _selectedSubDistrict; // Nilai season yang dipilih
-  List<String> _subDistrictList = [];
   final List<List<String>> _sheetData = []; // Ubah menjadi final
   List<List<String>> _filteredData = [];
   bool _isLoading = true;
@@ -151,13 +149,11 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     setState(() {
       _filteredData = _sheetData.where((row) {
         final qaSpv = getValue(row, 30, '');
-        final subDistrict = getValue(row, 12, '').toLowerCase();
         final district = getValue(row, 13, '').toLowerCase();
         final season = getValue(row, 1, '');
         final weekOfGenerative = getValue(row, 28, ''); // Kolom 28 untuk "Week of Generative"
 
         bool matchesSeasonFilter = (_selectedSeason == null || season == _selectedSeason);
-        bool matchesSubDistrictFilter = (_selectedSubDistrict == null || subDistrict == _selectedSubDistrict);
         bool matchesQAFilter = (_selectedQA == null || qaSpv == _selectedQA);
         bool matchesDistrictFilter =
             widget.selectedDistrict == null ||
@@ -191,7 +187,6 @@ class GenerativeScreenState extends State<GenerativeScreen> {
             matchesDistrictFilter &&
             matchesFAFilter &&
             matchesSeasonFilter &&
-            matchesSubDistrictFilter &&
             matchesWeekFilter &&
             matchesSearchQuery;
       }).toList();
@@ -201,12 +196,6 @@ class GenerativeScreenState extends State<GenerativeScreen> {
           .toSet() // Menghapus duplikasi
           .toList()
         ..sort(); // Sortir dari yang terkecil ke yang terbesar
-
-      _subDistrictList = _filteredData
-          .map((row) => getValue(row, 12, '')) // Mengambil Week of Generative dari kolom 27
-          .toSet() // Menghapus duplikasi
-          .toList()
-        ..sort();
 
       _weekOfGenerativeList = _filteredData
           .map((row) => getValue(row, 28, '')) // Mengambil Week of Generative dari kolom 27
@@ -286,31 +275,6 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                           _filterData(); // Filter ulang data berdasarkan season
                         });
                         },
-                    ),
-
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8.0),
-                      child: Text(
-                        'Filter by Kecamatan',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    DropdownButton<String>(
-                      value: _selectedSubDistrict,
-                      hint: const Text("Select Kecamatan"),
-                      isExpanded: true,
-                      items: _subDistrictList.map((season) {
-                        return DropdownMenuItem<String>(
-                          value: season,
-                          child: Text(season),
-                        );
-                      }).toList(),
-                      onChanged: (String? newValue) {
-                        setState(() {
-                          _selectedSubDistrict = newValue; // Atur season yang dipilih
-                          _filterData(); // Filter ulang data berdasarkan season
-                        });
-                      },
                     ),
 
                     const Padding(

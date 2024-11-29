@@ -35,8 +35,6 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
   final _worksheetTitle = 'Pre Harvest';
   String? _selectedSeason;
   List<String> _seasonsList = [];
-  String? _selectedSubDistrict; // Nilai season yang dipilih
-  List<String> _subDistrictList = [];
   final List<List<String>> _sheetData = []; // Ubah menjadi final
   List<List<String>> _filteredData = [];
   bool _isLoading = true;
@@ -151,13 +149,11 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
     setState(() {
       _filteredData = _sheetData.where((row) {
         final qaSpv = getValue(row, 28, '');
-        final subDistrict = getValue(row, 12, '').toLowerCase();
         final district = getValue(row, 13, '').toLowerCase();
         final season = getValue(row, 1, '');
         final weekOfPreHarvest = getValue(row, 27, ''); // Ambil nilai minggu pre-harvest dari kolom 27
 
         bool matchesSeasonFilter = (_selectedSeason == null || season == _selectedSeason);
-        bool matchesSubDistrictFilter = (_selectedSubDistrict == null || subDistrict == _selectedSubDistrict);
         bool matchesQAFilter = (_selectedQA == null || qaSpv == _selectedQA);
         bool matchesDistrictFilter =
             widget.selectedDistrict == null ||
@@ -191,19 +187,12 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
             matchesDistrictFilter &&
             matchesFAFilter &&
             matchesSeasonFilter &&
-            matchesSubDistrictFilter &&
             matchesWeekFilter &&
             matchesSearchQuery;
       }).toList();
 
       _seasonsList = _filteredData
           .map((row) => getValue(row, 1, '')) // Mengambil Week of Generative dari kolom 27
-          .toSet() // Menghapus duplikasi
-          .toList()
-        ..sort();
-
-      _subDistrictList = _filteredData
-          .map((row) => getValue(row, 12, '')) // Mengambil Week of Generative dari kolom 27
           .toSet() // Menghapus duplikasi
           .toList()
         ..sort();
@@ -283,31 +272,6 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                       onChanged: (String? newValue) {
                         setState(() {
                           _selectedSeason = newValue; // Atur season yang dipilih
-                          _filterData(); // Filter ulang data berdasarkan season
-                        });
-                      },
-                    ),
-
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8.0),
-                      child: Text(
-                        'Filter by Kecamatan',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    DropdownButton<String>(
-                      value: _selectedSubDistrict,
-                      hint: const Text("Select Kecamatan"),
-                      isExpanded: true,
-                      items: _subDistrictList.map((season) {
-                        return DropdownMenuItem<String>(
-                          value: season,
-                          child: Text(season),
-                        );
-                      }).toList(),
-                      onChanged: (String? newValue) {
-                        setState(() {
-                          _selectedSubDistrict = newValue; // Atur season yang dipilih
                           _filterData(); // Filter ulang data berdasarkan season
                         });
                       },
