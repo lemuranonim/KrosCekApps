@@ -5,12 +5,10 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'google_sheets_api.dart'; // Import GoogleSheetsApi
 import 'success_screen.dart';    // Import SuccessScreen
-import 'activity_screen.dart';  // Import halaman aktivitas
+import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 
 class AbsenLogScreen extends StatefulWidget {
-  final String userName;
-
-  const AbsenLogScreen({super.key, required this.userName});
+  const AbsenLogScreen({super.key});
 
   @override
   AbsenLogScreenState createState() => AbsenLogScreenState(); // Mengubah ke public
@@ -22,6 +20,7 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
   Position? _currentPosition;
   File? _image;
   bool isSubmitEnabled = false;
+  String _userName = 'Memuat...'; // Inisialisasi userName dengan teks default
 
   // Inisialisasi GoogleSheetsApi
   final GoogleSheetsApi _googleSheetsApi = GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
@@ -31,15 +30,24 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
   void initState() {
     super.initState();
     _initGoogleSheets();
+    _loadUserName(); // Panggil fungsi untuk memuat userName dari SharedPreferences
+  }
+
+  // Fungsi untuk memuat userName dari SharedPreferences
+  Future<void> _loadUserName() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _userName = prefs.getString('userName') ?? 'Pengguna';
+    });
   }
 
   // Inisialisasi API Google Sheets
   Future<void> _initGoogleSheets() async {
     try {
       await _googleSheetsApi.init();
-      debugPrint('Google Sheets API berhasil diinisialisasi.'); // Ganti print dengan debugPrint
+      debugPrint('Google Sheets API berhasil diinisialisasi.');
     } catch (e) {
-      debugPrint('Error inisialisasi Google Sheets API: $e'); // Ganti print dengan debugPrint
+      debugPrint('Error inisialisasi Google Sheets API: $e');
     }
   }
 
@@ -55,15 +63,15 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
           ),
         );
 
-        if (!mounted) return; // Memastikan widget masih aktif
+        if (!mounted) return;
         setState(() {
           _currentPosition = position;
         });
       } catch (e) {
-        debugPrint('Error while accessing location: $e'); // Ganti print dengan debugPrint
+        debugPrint('Error while accessing location: $e');
       }
     } else {
-      debugPrint('Location permission denied'); // Ganti print dengan debugPrint
+      debugPrint('Location permission denied');
     }
   }
 
@@ -76,19 +84,19 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
         final XFile? image = await picker.pickImage(source: ImageSource.camera);
 
         if (image != null) {
-          if (!mounted) return; // Memastikan widget masih aktif
+          if (!mounted) return;
           setState(() {
             _image = File(image.path);
-            isSubmitEnabled = true; // Gambar diambil, ubah tombol menjadi "Submit"
+            isSubmitEnabled = true;
           });
         } else {
-          debugPrint("No image selected"); // Ganti print dengan debugPrint
+          debugPrint("No image selected");
         }
       } else {
-        debugPrint('Camera permission denied'); // Ganti print dengan debugPrint
+        debugPrint('Camera permission denied');
       }
     } catch (e) {
-      debugPrint("Error while accessing camera: $e"); // Ganti print dengan debugPrint
+      debugPrint("Error while accessing camera: $e");
     }
   }
 
@@ -102,7 +110,7 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
   Future<void> _submitData() async {
     if (_currentPosition != null) {
       final List<String> data = [
-        widget.userName,
+        _userName,
         _dateController.text,
         _inTimeController.text,
         '${_currentPosition!.latitude}, ${_currentPosition!.longitude}'
@@ -110,19 +118,24 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
 
       try {
         await _googleSheetsApi.addRow(_worksheetTitle, data);
-        if (!mounted) return; // Memastikan widget masih aktif
-        // Tambahkan notifikasi ketika absen berhasil
-        onAbsenSuccess(context);
+
+        if (!mounted) return;
+
+        // Tampilkan notifikasi sukses saat absen berhasil
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Absen berhasil dilakukan")),
+        );
+
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => const SuccessScreen(),
           ),
         );
       } catch (e) {
-        debugPrint('Error submitting data: $e'); // Ganti print dengan debugPrint
+        debugPrint('Error submitting data: $e');
       }
     } else {
-      debugPrint('No location available'); // Ganti print dengan debugPrint
+      debugPrint('No location available');
     }
   }
 
@@ -141,9 +154,9 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
         padding: const EdgeInsets.all(16.0),
         child: ListView(
           children: [
-            _buildReadOnlyField('Nama Karyawan', widget.userName),
-            _buildReadOnlyField('Tanggal Absen', _dateController.text),
-            _buildReadOnlyField('Jam Masuk', _inTimeController.text),
+            _buildReadOnlyField('Nama', _userName),
+            _buildReadOnlyField('Tanggal', _dateController.text),
+            _buildReadOnlyField('Jam', _inTimeController.text),
             const SizedBox(height: 20),
             _buildLocationField(),
             const SizedBox(height: 20),
@@ -161,6 +174,12 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
                 foregroundColor: Colors.white,
               ),
               child: Text(isSubmitEnabled ? 'Submit' : 'Absen'),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Tekan tombol Absen untuk mengisi tanggal, jam dan lokasi secara otomatis.\nKemudian ambil foto untuk memunculkan tombol Submit.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -225,8 +244,4 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
       ],
     );
   }
-}
-
-void onAbsenSuccess(BuildContext context) {
-  ActivityScreen.addNotificationFromOutside(context, "Absen berhasil dilakukan.");
 }

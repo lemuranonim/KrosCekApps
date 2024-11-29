@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:url_launcher/url_launcher.dart'; // Tambahkan ini untuk menggunakan url_launcher
 import 'generative_edit_screen.dart';
 import 'google_sheets_api.dart';
+import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
+import 'config_manager.dart';
 
 class GenerativeDetailScreen extends StatefulWidget {
   final String fieldNumber;
+  final String region;
 
-  const GenerativeDetailScreen({super.key, required this.fieldNumber});
+  const GenerativeDetailScreen({
+    super.key,
+    required this.fieldNumber,
+    required this.region,
+  });
 
   @override
   GenerativeDetailScreenState createState() => GenerativeDetailScreenState();
@@ -24,24 +32,78 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
   final double defaultLat = -7.637017;
   final double defaultLng = 112.8272303;
 
+  late String spreadsheetId;
+
   @override
   void initState() {
     super.initState();
-    _fetchData();
+    _initializeHive();
+    _determineSpreadsheetId();
+    _loadDataFromCacheOrFetch();
   }
 
-  Future<void> _fetchData() async {
-    setState(() {
-      isLoading = true;
-    });
+  Future<void> _determineSpreadsheetId() async {
+    spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
+  }
 
-    final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
-    final String worksheetTitle = 'Generative';
+  Future<void> _initializeHive() async {
+    await Hive.initFlutter(); // Inisialisasi Hive Flutter
+  }
+
+  @override
+  void dispose() {
+    Hive.close(); // Tutup semua kotak Hive saat aplikasi keluar
+    super.dispose();
+  }
+
+  // Fungsi utama untuk mengecek cache atau mengambil data dari Google Sheets
+  Future<void> _loadDataFromCacheOrFetch() async {
+    final box = await Hive.openBox('generativeData');
+    final cacheKey = 'detailScreenData_${widget.fieldNumber}'; // Kunci unik per fieldNumber
+    final cachedData = box.get(cacheKey);
+
+    if (cachedData != null) {
+      // Konversi cachedData menjadi Map<String, dynamic>
+      _setDataFromCache(Map<String, dynamic>.from(cachedData));
+      setState(() => isLoading = false);
+    } else {
+      await _fetchData();
+      await _saveDataToCache();
+    }
+  }
+
+  Future<void> _saveDataToCache() async {
+    final box = Hive.box('generativeData');
+    final cacheKey = 'detailScreenData_${widget.fieldNumber}';
+    box.put(cacheKey, {
+      'row': row,
+      'latitude': latitude,
+      'longitude': longitude,
+      'mapImageUrl': _mapImageUrl,
+    });
+  }
+
+    void _setDataFromCache(Map<String, dynamic> cachedData) {
+    setState(() {
+      row = List<String>.from(cachedData['row']);
+      latitude = cachedData['latitude'];
+      longitude = cachedData['longitude'];
+      _mapImageUrl = cachedData['mapImageUrl'];
+    });
+  }
+
+  // Fungsi _fetchData tetap sama untuk mengambil data dari Google Sheets
+  Future<void> _fetchData() async {
+    if (spreadsheetId.isEmpty) {
+      throw Exception("Spreadsheet ID belum diatur.");
+    }
+
+    setState(() => isLoading = true);
 
     try {
       final gSheetsApi = GoogleSheetsApi(spreadsheetId);
       await gSheetsApi.init();
-      final List<List<String>> data = await gSheetsApi.getSpreadsheetData(worksheetTitle);
+      final List<List<String>> data = await gSheetsApi.getSpreadsheetData('Generative');
       final fetchedRow = data.firstWhere((row) => row[2] == widget.fieldNumber);
 
       final String coordinatesStr = fetchedRow[17];
@@ -49,7 +111,6 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
 
       latitude = coordinates['lat'] ?? defaultLat;
       longitude = coordinates['lng'] ?? defaultLng;
-
       _mapImageUrl = _buildStaticMapUrl(latitude, longitude);
 
       setState(() {
@@ -60,11 +121,14 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
       latitude = defaultLat;
       longitude = defaultLng;
       _mapImageUrl = _buildStaticMapUrl(latitude, longitude);
-
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
     }
+  }
+
+  // Fungsi untuk memperbarui data ketika pengguna melakukan pull-to-refresh
+  Future<void> _refreshData() async {
+    await _fetchData();  // Ambil data terbaru dari Google Sheets
+    _saveDataToCache();  // Simpan data baru ke dalam cache
   }
 
   Map<String, double?> _parseCoordinates(String coordinatesStr) {
@@ -110,22 +174,27 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+        appBar: AppBar(
         title: Text(
-          row != null ? row![2] : 'Loading...',
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.green,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(5.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        row != null ? row![2] : 'Loading...',
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+    ),
+    backgroundColor: Colors.green,
+    iconTheme: const IconThemeData(color: Colors.white),
+    ),
+    body: isLoading
+    ? const Center(child: CircularProgressIndicator())
+        : LiquidPullToRefresh(
+    onRefresh: _refreshData,  // Menentukan fungsi untuk refresh
+      color: Colors.green,
+      backgroundColor: Colors.white,
+      showChildOpacityTransition: true,
+    child: SingleChildScrollView(
+    child: Padding(
+    padding: const EdgeInsets.all(5.0),
+    child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
               _buildInteractiveMap(),
               const SizedBox(height: 10),
               _buildCoordinatesText(),
@@ -142,6 +211,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                 _buildDetailRow('Kabupaten', row![13]),
                 _buildDetailRow('Field SPV', row![15]),
                 _buildDetailRow('FA', row![16]),
+                _buildDetailRow('Date Flowering (Est + 57 DAP)', _convertToDateIfNecessary(row![27])),
                 _buildDetailRow('Week of Flowering Rev', row![28]),
               ]),
               const SizedBox(height: 20),
@@ -185,6 +255,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
           ),
         ),
       ),
+    ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           await _navigateToEditScreen(context);
@@ -334,7 +405,15 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
     final updatedRow = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => GenerativeEditScreen(row: row!),
+        builder: (context) => GenerativeEditScreen(
+          row: row!,
+          region: widget.region,
+          onSave: (updatedActivity) {
+            setState(() {
+              row = updatedActivity;
+            });
+          },
+        ),
       ),
     );
 

@@ -1,59 +1,117 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'harvest_edit_screen.dart';
 import 'google_sheets_api.dart';
+import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
+import 'config_manager.dart';
 
 class HarvestDetailScreen extends StatefulWidget {
   final String fieldNumber;
+  final String region; // Tambahkan parameter 'region'
 
-  const HarvestDetailScreen({super.key, required this.fieldNumber});
+  const HarvestDetailScreen({
+    super.key,
+    required this.fieldNumber,
+    required this.region,
+  });
 
   @override
   HarvestDetailScreenState createState() => HarvestDetailScreenState();
 }
 
 class HarvestDetailScreenState extends State<HarvestDetailScreen> {
-  List<String> row = [];
+  List<String>? row;
   bool isLoading = true;
 
   String _mapImageUrl = ''; // URL untuk Google Static Maps
   double? latitude;
   double? longitude;
 
-  // Koordinat default jika tidak ditemukan dalam data Google Sheets
   final double defaultLat = -7.637017;
   final double defaultLng = 112.8272303;
 
+  late String spreadsheetId;
 
   @override
   void initState() {
     super.initState();
-    _fetchData();
+    _initializeHive(); // Inisialisasi Hive saat aplikasi dimulai
+    _determineSpreadsheetId().then((_) {
+      _loadDataFromCacheOrFetch(); // Mulai memuat data setelah spreadsheetId diatur
+    });
   }
 
-  Future<void> _fetchData() async {
-    setState(() {
-      isLoading = true;
-    });
+  Future<void> _determineSpreadsheetId() async {
+    spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
+  }
 
-    final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
-    final String worksheetTitle = 'Harvest';
+  Future<void> _initializeHive() async {
+    await Hive.initFlutter(); // Inisialisasi Hive Flutter
+  }
+
+  @override
+  void dispose() {
+    Hive.close(); // Tutup semua kotak Hive saat aplikasi keluar
+    super.dispose();
+  }
+
+  // Fungsi utama untuk mengecek cache atau mengambil data dari Google Sheets
+  Future<void> _loadDataFromCacheOrFetch() async {
+    final box = await Hive.openBox('harvestData');
+    final cacheKey = 'detailScreenData_${widget.fieldNumber}'; // Kunci unik per fieldNumber
+    final cachedData = box.get(cacheKey);
+
+    if (cachedData != null) {
+      // Konversi cachedData menjadi Map<String, dynamic>
+      _setDataFromCache(Map<String, dynamic>.from(cachedData));
+      setState(() => isLoading = false);
+    } else {
+      await _fetchData();
+      await _saveDataToCache();
+    }
+  }
+
+    Future<void> _saveDataToCache() async {
+    final box = Hive.box('harvestData');
+    final cacheKey = 'detailScreenData_${widget.fieldNumber}';
+    await box.put(cacheKey, {
+      'row': row,
+      'latitude': latitude,
+      'longitude': longitude,
+      'mapImageUrl': _mapImageUrl,
+    });
+  }
+
+  void _setDataFromCache(Map<String, dynamic> cachedData) {
+    setState(() {
+      row = List<String>.from(cachedData['row']);
+      latitude = cachedData['latitude'];
+      longitude = cachedData['longitude'];
+      _mapImageUrl = cachedData['mapImageUrl'];
+    });
+  }
+
+  /// Fungsi _fetchData tetap sama untuk mengambil data dari Google Sheets
+  Future<void> _fetchData() async {
+    if (spreadsheetId.isEmpty) {
+      throw Exception("Spreadsheet ID belum diatur.");
+    }
+
+    setState(() => isLoading = true);
 
     try {
       final gSheetsApi = GoogleSheetsApi(spreadsheetId);
       await gSheetsApi.init();
-      final List<List<String>> data = await gSheetsApi.getSpreadsheetData(worksheetTitle);
+      final List<List<String>> data = await gSheetsApi.getSpreadsheetData('Harvest');
       final fetchedRow = data.firstWhere((row) => row[2] == widget.fieldNumber);
 
       final String coordinatesStr = fetchedRow[17]; // Example: '-7.986511,111.976340'
       final coordinates = _parseCoordinates(coordinatesStr);
 
-      // Gunakan koordinat yang ditemukan atau default jika tidak ada
       latitude = coordinates['lat'] ?? defaultLat;
       longitude = coordinates['lng'] ?? defaultLng;
-
-      // Buat URL untuk Google Static Maps
       _mapImageUrl = _buildStaticMapUrl(latitude, longitude);
 
       setState(() {
@@ -61,15 +119,17 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
         isLoading = false;
       });
     } catch (e) {
-      // Jika terjadi error, gunakan koordinat default
       latitude = defaultLat;
       longitude = defaultLng;
       _mapImageUrl = _buildStaticMapUrl(latitude, longitude);
-
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
     }
+  }
+
+  // Fungsi untuk memperbarui data ketika pengguna melakukan pull-to-refresh
+  Future<void> _refreshData() async {
+    await _fetchData();  // Ambil data terbaru dari Google Sheets
+    _saveDataToCache();  // Simpan data baru ke dalam cache
   }
 
   Map<String, double?> _parseCoordinates(String coordinatesStr) {
@@ -93,7 +153,6 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
     final double lat = latitude ?? defaultLat; // Default ke yang diberikan
     final double lng = longitude ?? defaultLng; // Default ke yang diberikan
 
-    // URL dengan marker di posisi lat/lng
     return '$baseUrl?center=$lat,$lng&zoom=$zoomLevel&size=$mapSize'
         '&markers=color:red%7C$lat,$lng&key=$apiKey';
   }
@@ -102,8 +161,7 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
     final lat = latitude ?? defaultLat;
     final lng = longitude ?? defaultLng;
 
-    final googleMapsUrl = Uri.parse(
-        'https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    final googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
     final appleMapsUrl = Uri.parse('https://maps.apple.com/?q=$lat,$lng');
 
     if (await canLaunchUrl(googleMapsUrl)) {
@@ -120,55 +178,61 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          row.isNotEmpty ? row[2] : 'Loading...',
+          row != null ? row![2] : 'Loading...',
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.green,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(5.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+      backgroundColor: Colors.green,
+      iconTheme: const IconThemeData(color: Colors.white),
+    ),
+    body: isLoading
+    ? const Center(child: CircularProgressIndicator())
+        : LiquidPullToRefresh(
+    onRefresh: _refreshData,  // Menentukan fungsi untuk refresh
+      color: Colors.green,
+      backgroundColor: Colors.white,
+      showChildOpacityTransition: true,
+    child: SingleChildScrollView(
+    child: Padding(
+    padding: const EdgeInsets.all(5.0),
+    child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
               _buildInteractiveMap(),
               const SizedBox(height: 10),
               _buildCoordinatesText(),
               const SizedBox(height: 10),
               _buildDetailCard('Field Information', [
-                _buildDetailRow('Season', row[1]),
-                _buildDetailRow('Farmer', row[3]),
-                _buildDetailRow('Grower', row[4]),
-                _buildDetailRow('Hybrid', row[5]),
-                _buildDetailRow('EffectiveAreaHa', _convertToFixedDecimalIfNecessary(row[8])),
-                _buildDetailRow('Planting Date PDN', _convertToDateIfNecessary(row[9])),
-                _buildDetailRow('Desa', row[11]),
-                _buildDetailRow('Kecamatan', row[12]),
-                _buildDetailRow('Kabupaten', row[13]),
-                _buildDetailRow('Field SPV', row[15]),
-                _buildDetailRow('FA', row[16]),
-                _buildDetailRow('Week of Harvest', buildWeekOfHarvest(row)),
+                _buildDetailRow('Season', row![1]),
+                _buildDetailRow('Farmer', row![3]),
+                _buildDetailRow('Grower', row![4]),
+                _buildDetailRow('Hybrid', row![5]),
+                _buildDetailRow('EffectiveAreaHa', _convertToFixedDecimalIfNecessary(row![8])),
+                _buildDetailRow('Planting Date PDN', _convertToDateIfNecessary(row![9])),
+                _buildDetailRow('Desa', row![11]),
+                _buildDetailRow('Kecamatan', row![12]),
+                _buildDetailRow('Kabupaten', row![13]),
+                _buildDetailRow('Field SPV', row![15]),
+                _buildDetailRow('FA', row![16]),
+                _buildDetailRow('Week of Harvest', buildWeekOfHarvest(row!)),
               ]),
               const SizedBox(height: 20),
               _buildAdditionalInfoCard('Field Audit', [
-                _buildDetailRow('QA FI', row[29]),
-                _buildDetailRow('Date of Audit (dd/MM)', _convertToDateIfNecessary(row[30])),
-                _buildDetailRow('Ear Condition Observation', row[32]),
-                _buildDetailRow('Moisture Content - %', row[33]),
-                _buildDetailRow('Crop Health', row[34]),
-                _buildDetailRow('Remarks', row[35]),
-                _buildDetailRow('Recommendation', row[36]),
-                _buildDetailRow('Date of Downgrade Flag.', row[37]),
-                _buildDetailRow('Reason to Downgrade Flag.', row[38]),
-                _buildDetailRow('Downgrade Flagging Recommendation', row[39]),
+                _buildDetailRow('QA FI', row![29]),
+                _buildDetailRow('Date of Audit (dd/MM)', _convertToDateIfNecessary(row![30])),
+                _buildDetailRow('Ear Condition Observation', row![32]),
+                _buildDetailRow('Moisture Content - %', row![33]),
+                _buildDetailRow('Crop Health', row![34]),
+                _buildDetailRow('Remarks', row![35]),
+                _buildDetailRow('Recommendation', row![36]),
+                _buildDetailRow('Date of Downgrade Flag.', row![37]),
+                _buildDetailRow('Reason to Downgrade Flag.', row![38]),
+                _buildDetailRow('Downgrade Flagging Recommendation', row![39]),
               ]),
             ],
           ),
         ),
       ),
+    ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           await _navigateToEditScreen(context);
@@ -185,7 +249,6 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
     );
   }
 
-  // Widget untuk menampilkan peta statis dari Google Static Maps dengan GestureDetector
   Widget _buildInteractiveMap() {
     return GestureDetector(
       onTap: _openMaps, // Buka aplikasi maps saat peta diklik
@@ -279,7 +342,6 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
             ),
           ),
           const SizedBox(width: 10),
-          // Menambahkan sedikit ruang antara label dan value
           Expanded(
             flex: 3,
             child: Text(
@@ -298,8 +360,7 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
     try {
       final parsedNumber = double.tryParse(value);
       if (parsedNumber != null) {
-        final date = DateTime(1899, 12, 30).add(
-            Duration(days: parsedNumber.toInt()));
+        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
         return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
@@ -324,7 +385,15 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
     final updatedRow = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => HarvestEditScreen(row: row),
+        builder: (context) => HarvestEditScreen(
+          row: row!,
+          region: widget.region,
+          onSave: (updatedActivity) {
+            setState(() {
+              row = updatedActivity;
+            });
+          },
+        ),
       ),
     );
 

@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/google_sign_in_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,6 +21,9 @@ class LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   String _errorMessage = '';
   bool _isAdmin = false;  // Default role sebagai User
+  bool _isPsp = false; // Tambahkan variabel untuk role PSP
+  bool _isUser = false;
+  bool _isPasswordHidden = true; // Default password tersembunyi
 
   // Tambahkan variabel untuk email dan nama pengguna
   String userEmail = 'Fetching...';
@@ -52,7 +57,20 @@ class LoginScreenState extends State<LoginScreen> {
 
     final user = await _auth.signInWithEmailAndPassword(email, password);
     if (user != null) {
-      await _handleRoleRedirection(user.uid, email);
+      // Tentukan role berdasarkan input pengguna
+      String? selectedRole;
+      if (_isAdmin) selectedRole = 'admin';
+      if (_isPsp) selectedRole = 'psp';
+      if (_isUser) selectedRole = 'user';
+
+      if (selectedRole == null) {
+        setState(() {
+          _errorMessage = "Pilih salah satu role sebelum login.";
+        });
+        return;
+      }
+
+      await _redirectUserBasedOnRole(email, selectedRole);
     } else {
       setState(() {
         _errorMessage = "Login gagal! Cek email dan password.";
@@ -63,16 +81,31 @@ class LoginScreenState extends State<LoginScreen> {
   Future<void> _loginWithGoogle() async {
     final user = await _googleSignInService.signInWithGoogle(forceSignIn: true);
     if (user != null) {
-      final selectedRole = _isAdmin ? 'admin' : 'user';
-      await _auth.createUserInFirestoreIfNeeded(user, role: selectedRole);
-      await _handleRoleRedirection(user.uid, user.email ?? "Unknown Email");
+      String? selectedRole;
 
-      // Simpan email dan nama pengguna ke SharedPreferences
+      // Tentukan role berdasarkan checkbox yang aktif
+      if (_isAdmin) {
+        selectedRole = 'admin';
+      } else if (_isPsp) {
+        selectedRole = 'psp';
+      } else if (_isUser) {
+        selectedRole = 'user';
+      }
+
+      if (selectedRole == null) {
+        setState(() {
+          _errorMessage = "Pilih role sebelum login.";
+        });
+        return;
+      }
+
+      await _auth.createUserInFirestoreIfNeeded(user, role: selectedRole);
+      await _redirectUserBasedOnRole(user.email ?? "Unknown Email", selectedRole);
+
       SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setString('userEmail', user.email ?? "Unknown Email");
       await prefs.setString('userName', user.displayName ?? "Pengguna");
 
-      // Update state untuk memastikan data diperbarui di UI
       setState(() {
         userEmail = user.email ?? "Unknown Email";
         userName = user.displayName ?? "Pengguna";
@@ -84,74 +117,96 @@ class LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _handleRoleRedirection(String uid, String email) async {
+  Future<void> _loginWithApple() async {
     try {
-      // Ambil data dari Firestore
-      DocumentSnapshot adminDoc = await FirebaseFirestore.instance.collection('roles').doc('adminEmails').get();
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('roles').doc('userEmails').get();
+      // Dapatkan kredensial dari Apple
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
 
-      // Pastikan data di-cast ke Map<String, dynamic> sebelum mengaksesnya
-      Map<String, dynamic>? adminData = adminDoc.data() as Map<String, dynamic>?;
-      Map<String, dynamic>? userData = userDoc.data() as Map<String, dynamic>?;
+      // Konversi ke kredensial Firebase
+      final oAuthCredential = OAuthProvider("apple.com").credential(
+        idToken: appleCredential.identityToken,
+        accessToken: appleCredential.authorizationCode,
+      );
 
-      List<String> adminEmails = adminData != null && adminData.containsKey('emails')
-          ? List<String>.from(adminData['emails'])
-          : [];
+      // Login ke Firebase
+      final userCredential =
+      await FirebaseAuth.instance.signInWithCredential(oAuthCredential);
 
-      List<String> userEmails = userData != null && userData.containsKey('emails')
-          ? List<String>.from(userData['emails'])
-          : [];
+      final user = userCredential.user;
+      if (user != null) {
+        // Simpan data pengguna ke Firestore jika perlu
+        await _auth.createUserInFirestoreIfNeeded(
+          user,
+          role: _isAdmin ? 'admin' : _isUser ? 'user' : 'psp',
+        );
 
-      SharedPreferences prefs = await SharedPreferences.getInstance();
+        // Redirect berdasarkan role
+        await _redirectUserBasedOnRole(user.email ?? "Unknown Email",
+            _isAdmin ? 'admin' : _isUser ? 'user' : 'psp');
+
+        setState(() {
+          userEmail = user.email ?? "Unknown Email";
+          userName = user.displayName ?? "Pengguna";
+        });
+      } else {
+        setState(() {
+          _errorMessage = "Sign in with Apple gagal!";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Error during Apple sign-in: $e";
+      });
+    }
+  }
+
+  Future<void> _redirectUserBasedOnRole(String email, String selectedRole) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isLoggedIn', true);
       await prefs.setString('userEmail', email);
 
-      // Pastikan widget masih mounted sebelum menggunakan BuildContext atau setState
-      if (!mounted) return;
+      // Ambil data role dari Firestore
+      final roleData = await FirebaseFirestore.instance.collection('roles').get();
+      final adminEmails = roleData.docs
+          .firstWhere((doc) => doc.id == 'adminEmails')
+          .data()['emails'] as List<dynamic>;
+      final pspEmails = roleData.docs
+          .firstWhere((doc) => doc.id == 'pspEmails')
+          .data()['emails'] as List<dynamic>;
+      final userEmails = roleData.docs
+          .firstWhere((doc) => doc.id == 'userEmails')
+          .data()['emails'] as List<dynamic>;
 
-      if (adminEmails.contains(email)) {
+      if (selectedRole == 'admin' && adminEmails.contains(email)) {
         await prefs.setString('userRole', 'admin');
-        if (!_isAdmin) {
-          // Periksa `mounted` sebelum menggunakan setState
-          if (mounted) {
-            setState(() {
-              _errorMessage = "Kamu bukan User!";
-            });
-          }
-          _auth.signOut();
-        } else {
-          // Periksa `mounted` sebelum navigasi
-          if (mounted) {
-            Navigator.pushReplacementNamed(context, '/admin_dashboard');
-          }
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/admin_dashboard');
         }
-      } else if (userEmails.contains(email)) {
+      } else if (selectedRole == 'psp' && pspEmails.contains(email)) {
+        await prefs.setString('userRole', 'psp');
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/psp_dashboard');
+        }
+      } else if (selectedRole == 'user' && userEmails.contains(email)) {
         await prefs.setString('userRole', 'user');
-        if (_isAdmin) {
-          // Periksa `mounted` sebelum menggunakan setState
-          if (mounted) {
-            setState(() {
-              _errorMessage = "Kamu bukan Admin!";
-            });
-          }
-          _auth.signOut();
-        } else {
-          // Periksa `mounted` sebelum navigasi
-          if (mounted) {
-            Navigator.pushReplacementNamed(context, '/home');
-          }
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/home');
         }
       } else {
-        // Periksa `mounted` sebelum menggunakan setState
         if (mounted) {
           setState(() {
-            _errorMessage = "Akses tidak diizinkan! Email tidak terdaftar.";
+            _errorMessage = "Login gagal! Email tidak cocok dengan role yang dipilih.";
           });
         }
         _auth.signOut();
       }
     } catch (e) {
-      // Periksa `mounted` sebelum menggunakan setState
       if (mounted) {
         setState(() {
           _errorMessage = "Terjadi kesalahan. Silakan coba lagi.";
@@ -181,7 +236,6 @@ class LoginScreenState extends State<LoginScreen> {
       );
     }
   }
-
 
   void _showResetPasswordDialog() {
     showDialog(
@@ -228,6 +282,7 @@ class LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                const SizedBox(height: 30),
                 Image.asset(  // Gambar logo
                   'assets/logo.png',
                   height: 100,
@@ -242,37 +297,127 @@ class LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                SwitchListTile(
+                CheckboxListTile(
                   title: Text(
-                    _isAdmin ? 'Login sebagai Admin' : 'Login sebagai User',
+                    'Login sebagai Admin',
                     style: TextStyle(
-                      fontWeight: FontWeight.bold,  // Mengubah fontWeight sesuai role
-                      color: _isAdmin ? Colors.red : Colors.green,  // Warna berbeda untuk Admin dan User
+                      color: Colors.black, // Warna hijau
+                      fontWeight: FontWeight.bold, // Teks tebal
                     ),
                   ),
                   value: _isAdmin,
                   onChanged: (value) {
                     setState(() {
-                      _isAdmin = value;
+                      _isAdmin = value ?? false;
+                      if (_isAdmin) {
+                        _isUser = false;
+                        _isPsp = false;
+                      }
                     });
                   },
+                  activeColor: Colors.green, // Warna checkbox saat dicentang
+                  checkColor: Colors.white, // Warna centang di dalam checkbox
+                ),
+
+                CheckboxListTile(
+                  title: const Text('Login sebagai User HSP',
+                    style: TextStyle(
+                      color: Colors.black, // Warna hijau
+                      fontWeight: FontWeight.bold, // Teks tebal
+                    ),
+                  ),
+                  value: _isUser,
+                  onChanged: (value) {
+                    setState(() {
+                      _isUser = value ?? false;
+                      if (_isUser) {
+                        _isAdmin = false;
+                        _isPsp = false;
+                      }
+                    });
+                  },
+                  activeColor: Colors.green, // Warna checkbox saat dicentang
+                  checkColor: Colors.white, // Warna centang di dalam checkbox
+                ),
+                CheckboxListTile(
+                  title: const Text('Login sebagai User PSP',
+                    style: TextStyle(
+                      color: Colors.black, // Warna hijau
+                      fontWeight: FontWeight.bold, // Teks tebal
+                    ),
+                  ),
+                  value: _isPsp,
+                  onChanged: (value) {
+                    setState(() {
+                      _isPsp = value ?? false;
+                      if (_isPsp) {
+                        _isAdmin = false;
+                        _isUser = false;
+                      }
+                    });
+                  },
+                  activeColor: Colors.green, // Warna checkbox saat dicentang
+                  checkColor: Colors.white, // Warna centang di dalam checkbox
                 ),
                 const SizedBox(height: 20),
                 TextField(
                   controller: _emailController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Email',
+                    labelStyle: TextStyle(
+                      color: Colors.green, // Warna teks label
+                      fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                    ),
                     border: OutlineInputBorder(),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(
+                        color: Colors.green, // Warna garis ketika fokus
+                        width: 2.0, // Ketebalan garis ketika fokus
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(
+                        color: Colors.grey, // Warna garis ketika tidak fokus
+                        width: 1.0, // Ketebalan garis ketika tidak fokus
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
                 TextField(
                   controller: _passwordController,
-                  decoration: const InputDecoration(
+                  obscureText: _isPasswordHidden,
+                  decoration: InputDecoration(
                     labelText: 'Password',
+                    labelStyle: TextStyle(
+                      color: Colors.green, // Warna teks label
+                      fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                    ),
                     border: OutlineInputBorder(),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(
+                        color: Colors.green, // Warna garis ketika fokus
+                        width: 2.0, // Ketebalan garis ketika fokus
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(
+                        color: Colors.grey, // Warna garis ketika tidak fokus
+                        width: 1.0, // Ketebalan garis ketika tidak fokus
+                      ),
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isPasswordHidden ? Icons.visibility_off : Icons.visibility,
+                        color: Colors.green, // Warna ikon
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isPasswordHidden = !_isPasswordHidden;
+                        });
+                      },
+                    ),
                   ),
-                  obscureText: true,
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
@@ -297,9 +442,22 @@ class LoginScreenState extends State<LoginScreen> {
                   foregroundColor: Colors.black,
                 ),
                 const SizedBox(height: 20),
+                FloatingActionButton.extended(
+                  onPressed: _loginWithApple,
+                  icon: Icon(Icons.apple, color: Colors.white),
+                  label: const Text('SIGN IN WITH APPLE'),
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                ),
+                const SizedBox(height: 20),
                 TextButton(
                   onPressed: _showResetPasswordDialog,
-                  child: const Text('Lupa Password?'),
+                  child: const Text('Lupa Password?',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold, // Teks tebal
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 20),
                 if (_errorMessage.isNotEmpty)

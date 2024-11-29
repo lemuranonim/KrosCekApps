@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // Import untuk fitur kalender
 import 'training_sheet_api.dart'; // Import TrainingSheetApi
+import 'package:http/http.dart' as http;  // Import http package for POST request
+import 'dart:convert';  // Tambahkan ini untuk mendukung jsonEncode
+import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
 
 class TrainingScreen extends StatefulWidget {
-  const TrainingScreen({super.key});
+  final Function(List<String>) onSave;
+
+  const TrainingScreen({super.key, required this.onSave});
 
   @override
   TrainingScreenState createState() => TrainingScreenState();
@@ -123,6 +128,9 @@ class TrainingScreenState extends State<TrainingScreen> {
       // Tambahkan data ke worksheet Training
       await _trainingSheetApi.addTrainingRow(rowData);
 
+      // Panggil fungsi untuk mengirim POST request ke Apps Script setelah berhasil menyimpan
+      await _sendPostToHistory(rowData);
+
       if (!mounted) return;  // Pastikan widget masih ter-mount
 
       // Tampilkan notifikasi sukses
@@ -147,6 +155,38 @@ class TrainingScreenState extends State<TrainingScreen> {
       );
     }
   }
+
+  Future<void> _sendPostToHistory(List<String> rowData) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String userName = prefs.getString('userName') ?? 'Unknown User';
+
+    final String url = 'https://script.google.com/macros/s/AKfycbwg3XKvFj9tsCCI9eJjHkcF508nqi-kFPXBfPeeJoOssdNTXgT10jV_VAlAebd7QzmZiw/exec';  // URL doPost di Apps Script
+
+    // Susun data yang akan dikirim dalam format JSON
+    final Map<String, dynamic> historyData = {
+      'pageType': 'training',  // Tipe halaman
+      'action': 'add',  // Aksi yang dilakukan
+      'rowData': rowData,  // Data yang disimpan
+      'user': userName,  // Nama pengguna yang melakukan perubahan
+    };
+
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(historyData),  // Encode data ke format JSON
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('Data berhasil dicatat di History');
+      } else {
+        debugPrint('Gagal mencatat data di History: ${response.body}');
+      }
+    } catch (error) {
+      debugPrint('Error saat mengirim data ke History: $error');
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {

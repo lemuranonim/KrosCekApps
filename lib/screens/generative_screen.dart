@@ -5,11 +5,25 @@ import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 import 'google_sheets_api.dart';
 import 'generative_detail_screen.dart'; // Sesuaikan untuk halaman detail generative
+import 'config_manager.dart';
 
 class GenerativeScreen extends StatefulWidget {
+  final String spreadsheetId;
   final String? selectedDistrict;
+  final String? selectedQA;
+  final String? selectedSeason;
+  final String? region;
+  final List<String> seasonList;
 
-  const GenerativeScreen({super.key, this.selectedDistrict});
+  const GenerativeScreen({
+    super.key,
+    required this.spreadsheetId,
+    this.selectedDistrict,
+    this.selectedQA,
+    this.selectedSeason,
+    this.region,
+    required this.seasonList,
+  });
 
   @override
   GenerativeScreenState createState() => GenerativeScreenState(); // Menghapus underscore agar public
@@ -17,12 +31,16 @@ class GenerativeScreen extends StatefulWidget {
 
 class GenerativeScreenState extends State<GenerativeScreen> {
   late final GoogleSheetsApi _googleSheetsApi;
-  final _spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
+  late String region;
   final _worksheetTitle = 'Generative';
-
+  String? _selectedSeason;
+  List<String> _seasonsList = [];
+  String? _selectedSubDistrict; // Nilai season yang dipilih
+  List<String> _subDistrictList = [];
   final List<List<String>> _sheetData = []; // Ubah menjadi final
   List<List<String>> _filteredData = [];
   bool _isLoading = true;
+  String? selectedRegion;
   String? _errorMessage;
   String? _selectedQA;
   String _searchQuery = '';
@@ -32,6 +50,9 @@ class GenerativeScreenState extends State<GenerativeScreen> {
   Timer? _debounce;
   double _progress = 0.0; // Variabel untuk menyimpan progres
 
+  String? _selectedWeekOfGenerative; // Menyimpan minggu yang dipilih
+  List<String> _weekOfGenerativeList = []; // Daftar unik minggu generative dari data
+
   List<String> _faNames = []; // Daftar nama FA unik
   List<String> _selectedFA = []; // Daftar nama FA yang dipilih
 
@@ -40,7 +61,9 @@ class GenerativeScreenState extends State<GenerativeScreen> {
   @override
   void initState() {
     super.initState();
-    _googleSheetsApi = GoogleSheetsApi(_spreadsheetId);
+    final spreadsheetId = ConfigManager.getSpreadsheetId(widget.region ?? "Default Region") ?? '';
+    selectedRegion = widget.region ?? "Unknown Region";
+    _googleSheetsApi = GoogleSheetsApi(spreadsheetId);
     _loadSheetData();
     _loadFilterPreferences(); // Memuat filter FA yang tersimpan
   }
@@ -85,6 +108,7 @@ class GenerativeScreenState extends State<GenerativeScreen> {
           return sum + effectiveArea;
         });
       });
+      _filterData();
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -99,16 +123,16 @@ class GenerativeScreenState extends State<GenerativeScreen> {
       _selectedQA = prefs.getString('selectedQA');
       _selectedFA = prefs.getStringList('selectedFA') ?? [];
     });
-
     _filterData();
   }
 
-  Future<void> _saveFilterPreferences() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    prefs.setStringList('selectedFA', _selectedFA);
-    prefs.setString('selectedQA', _selectedQA ?? '');
-  }
+  // Future<void> _saveFilterPreferences() async {
+  //   SharedPreferences prefs = await SharedPreferences.getInstance();
+  //   prefs.setStringList('selectedFA', _selectedFA);
+  //   prefs.setString('selectedQA', _selectedQA ?? '');
+  // }
 
+  // Ekstrak nama-nama FA yang unik dari data
   void _extractUniqueFA() {
     final faSet = <String>{};
     for (var row in _sheetData) {
@@ -127,14 +151,25 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     setState(() {
       _filteredData = _sheetData.where((row) {
         final qaSpv = getValue(row, 30, '');
+        final subDistrict = getValue(row, 12, '').toLowerCase();
         final district = getValue(row, 13, '').toLowerCase();
-        final selectedDistrict = widget.selectedDistrict?.toLowerCase();
+        final season = getValue(row, 1, '');
+        final weekOfGenerative = getValue(row, 28, ''); // Kolom 28 untuk "Week of Generative"
 
+        bool matchesSeasonFilter = (_selectedSeason == null || season == _selectedSeason);
+        bool matchesSubDistrictFilter = (_selectedSubDistrict == null || subDistrict == _selectedSubDistrict);
         bool matchesQAFilter = (_selectedQA == null || qaSpv == _selectedQA);
-        bool matchesDistrictFilter = selectedDistrict == null || district == selectedDistrict;
+        bool matchesDistrictFilter =
+            widget.selectedDistrict == null ||
+            district == widget.selectedDistrict!.toLowerCase();
+        bool matchesWeekFilter =
+            (_selectedWeekOfGenerative == null || weekOfGenerative == _selectedWeekOfGenerative);
 
         final fa = getValue(row, 16, '').toLowerCase();
-        bool matchesFAFilter = _selectedFA.isEmpty || _selectedFA.contains(toTitleCase(fa));
+
+        bool matchesFAFilter =
+            _selectedFA.isEmpty ||
+                _selectedFA.contains(toTitleCase(fa));
 
         final fieldNumber = getValue(row, 2, '').toLowerCase();
         final farmerName = getValue(row, 3, '').toLowerCase();
@@ -152,14 +187,40 @@ class GenerativeScreenState extends State<GenerativeScreen> {
             fa.contains(_searchQuery) ||
             fieldSpv.contains(_searchQuery);
 
-        return matchesQAFilter && matchesDistrictFilter && matchesFAFilter && matchesSearchQuery;
+        return matchesQAFilter &&
+            matchesDistrictFilter &&
+            matchesFAFilter &&
+            matchesSeasonFilter &&
+            matchesSubDistrictFilter &&
+            matchesWeekFilter &&
+            matchesSearchQuery;
       }).toList();
+
+      _seasonsList = _filteredData
+          .map((row) => getValue(row, 1, '')) // Mengambil Week of Generative dari kolom 27
+          .toSet() // Menghapus duplikasi
+          .toList()
+        ..sort(); // Sortir dari yang terkecil ke yang terbesar
+
+      _subDistrictList = _filteredData
+          .map((row) => getValue(row, 12, '')) // Mengambil Week of Generative dari kolom 27
+          .toSet() // Menghapus duplikasi
+          .toList()
+        ..sort();
+
+      _weekOfGenerativeList = _filteredData
+          .map((row) => getValue(row, 28, '')) // Mengambil Week of Generative dari kolom 27
+          .toSet() // Menghapus duplikasi
+          .toList()
+        ..sort(); // Sortir dari yang terkecil ke yang terbesar
+
       _faNames = _filteredData
           .map((row) => toTitleCase(getValue(row, 16, '').toLowerCase())) // Mengambil FA dari kolom 16
           .toSet() // Menghapus duplikasi
           .toList()
         ..sort(); // Sortir FA
-    });
+
+      });
   }
 
   String getValue(List<String> row, int index, String defaultValue) {
@@ -201,6 +262,82 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(
+                        'Filter by Seasons',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DropdownButton<String>(
+                      value: _selectedSeason,
+                      hint: const Text("Select Season"),
+                      isExpanded: true,
+                      items: _seasonsList.map((season) {
+                        return DropdownMenuItem<String>(
+                          value: season,
+                          child: Text(season),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _selectedSeason = newValue; // Atur season yang dipilih
+                          _filterData(); // Filter ulang data berdasarkan season
+                        });
+                        },
+                    ),
+
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(
+                        'Filter by Kecamatan',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DropdownButton<String>(
+                      value: _selectedSubDistrict,
+                      hint: const Text("Select Kecamatan"),
+                      isExpanded: true,
+                      items: _subDistrictList.map((season) {
+                        return DropdownMenuItem<String>(
+                          value: season,
+                          child: Text(season),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _selectedSubDistrict = newValue; // Atur season yang dipilih
+                          _filterData(); // Filter ulang data berdasarkan season
+                        });
+                      },
+                    ),
+
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(
+                        'Filter by Week of Flowering Rev',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DropdownButton<String>(
+                      value: _selectedWeekOfGenerative,
+                      hint: const Text("Select Week"),
+                      isExpanded: true,
+                      items: _weekOfGenerativeList.map((week) {
+                        return DropdownMenuItem<String>(
+                          value: week,
+                          child: Text(week),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _selectedWeekOfGenerative = newValue; // Memperbarui nilai pilihan
+                          _filterData(); // Filter ulang data berdasarkan pilihan baru
+                        });
+                      },
+                    ),
+
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8.0),
                       child: Text(
@@ -221,12 +358,35 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                               _selectedFA.remove(fa); // Hapus FA dari daftar yang dipilih
                             }
                             _filterData(); // Filter ulang data setelah FA diubah
-                            _saveFilterPreferences(); // Simpan filter ke SharedPreferences
                           });
                         },
+                        activeColor: Colors.green,
                         controlAffinity: ListTileControlAffinity.leading,
                       );
                     }),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          // Reset semua filter ke kondisi awal
+                          _selectedSeason = null;
+                          _selectedWeekOfGenerative = null;
+                          _selectedFA.clear(); // Kosongkan list FA yang dipilih
+                          _filterData();
+                        });
+                        // Tutup bottom sheet
+                        Navigator.pop(context);
+                      },
+                      icon: const Icon(Icons.refresh, color: Colors.white), // Ikon reset dengan warna putih
+                      label: const Text("Reset Filters", style: TextStyle(color: Colors.white)), // Teks dengan warna putih
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green, // Warna latar belakang tombol
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), // Padding dalam tombol
+                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), // Ukuran dan gaya teks
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8), // Membuat tombol dengan sudut melengkung
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -324,16 +484,9 @@ class GenerativeScreenState extends State<GenerativeScreen> {
             : _filteredData.isEmpty
             ? const Center(child: Text('No data available'))
             : ListView.builder(
-          itemCount: _filteredData.length + 1,
+          itemCount: _filteredData.length,
           itemBuilder: (context, index) {
-            if (index == _filteredData.length) {
-              return _isLoading
-                  ? Center(child: CircularProgressIndicator())
-                  : TextButton(
-                onPressed: _loadSheetData,
-                child: const Text('Load More'),
-              );
-            }
+
             final row = _filteredData[index];
 
             return Card(
@@ -348,20 +501,38 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                     fit: BoxFit.contain,
                   ),
                 ),
-                title: Text(getValue(row, 2, "Unknown")),
-                subtitle: Text(
-                  'Farmer: ${getValue(row, 3, "Unknown")}, '
-                      'Grower: ${getValue(row, 4, "Unknown")}, '
-                      'Desa: ${getValue(row, 11, "Unknown")}, '
-                      'Kec: ${getValue(row, 12, "Unknown")}, '
-                      'Kab: ${getValue(row, 13, "Unknown")}, '
-                      'Field SPV: ${getValue(row, 15, "Unknown")}, '
-                      'FA: ${getValue(row, 16, "Unknown")}',
+                title: Text(
+                  getValue(row, 2, "Unknown" ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: RichText(
+                  text: TextSpan(
+                    style: DefaultTextStyle.of(context).style, // Style default untuk teks biasa
+                    children: [
+                      TextSpan(text: 'Farmer: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 3, "Unknown")}, '),
+                      TextSpan(text: 'Grower: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 4, "Unknown")}, '),
+                      TextSpan(text: 'Desa: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 11, "Unknown")}, '),
+                      TextSpan(text: 'Kec: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 12, "Unknown")}, '),
+                      TextSpan(text: 'Kab: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 13, "Unknown")}, '),
+                      TextSpan(text: 'Field SPV: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 15, "Unknown")}, '),
+                      TextSpan(text: 'FA: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: getValue(row, 16, "Unknown")),
+                    ],
+                  ),
                 ),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => GenerativeDetailScreen(fieldNumber: getValue(row, 2, "Unknown")),
+                      builder: (context) => GenerativeDetailScreen(
+                        fieldNumber: getValue(row, 2, "Unknown"),
+                        region: selectedRegion ?? 'Unknown Region',
+                      ),
                     ),
                   );
                 },

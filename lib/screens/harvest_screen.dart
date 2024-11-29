@@ -5,11 +5,25 @@ import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 import 'google_sheets_api.dart';
 import 'harvest_detail_screen.dart'; // Sesuaikan untuk halaman detail harvest
+import 'config_manager.dart';
 
 class HarvestScreen extends StatefulWidget {
+  final String spreadsheetId;
   final String? selectedDistrict;
+  final String? selectedQA;
+  final String? selectedSeason;
+  final String? region;
+  final List<String> seasonList;
 
-  const HarvestScreen({super.key, this.selectedDistrict});
+  const HarvestScreen({
+    super.key,
+    required this.spreadsheetId,
+    this.selectedDistrict,
+    this.selectedQA,
+    this.selectedSeason,
+    this.region,
+    required this.seasonList,
+  });
 
   @override
   HarvestScreenState createState() => HarvestScreenState(); // Public class
@@ -17,22 +31,28 @@ class HarvestScreen extends StatefulWidget {
 
 class HarvestScreenState extends State<HarvestScreen> {
   late final GoogleSheetsApi _googleSheetsApi;
-  final String _spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
+  late String region;
   final String _worksheetTitle = 'Harvest';
-
-  final List<List<String>> _sheetData = []; // Use 'final' as it is not reassigned
+  String? _selectedSeason;
+  List<String> _seasonsList = [];
+  String? _selectedSubDistrict; // Nilai season yang dipilih
+  List<String> _subDistrictList = [];
+  final List<List<String>> _sheetData = []; // Ubah menjadi final
   List<List<String>> _filteredData = [];
   bool _isLoading = true;
+  String? selectedRegion;
   String? _errorMessage;
   String? _selectedQA;
   String _searchQuery = '';
-  bool _isSearching = false;
+  bool _isSearching = false; // Menyimpan status apakah sedang dalam mode pencarian
   int _currentPage = 1;
   final int _rowsPerPage = 100;
   Timer? _debounce;
   double _progress = 0.0; // Variabel untuk menyimpan progres
 
-  // Daftar nama FA untuk filter
+  String? _selectedWeekOfHarvest; // Menyimpan pilihan Week of Harvest
+  List<String> _weekOfHarvestList = []; // Daftar unik minggu panen dari data
+
   List<String> _faNames = []; // Daftar nama FA unik
   List<String> _selectedFA = []; // Daftar nama FA yang dipilih
 
@@ -41,9 +61,11 @@ class HarvestScreenState extends State<HarvestScreen> {
   @override
   void initState() {
     super.initState();
-    _googleSheetsApi = GoogleSheetsApi(_spreadsheetId);
+    final spreadsheetId = ConfigManager.getSpreadsheetId(widget.region ?? "Default Region") ?? '';
+    selectedRegion = widget.region ?? "Unknown Region";
+    _googleSheetsApi = GoogleSheetsApi(spreadsheetId);
     _loadSheetData();
-    _loadFilterPreferences(); // Muat preferensi filter FA
+    _loadFilterPreferences(); // Memuat filter FA yang tersimpan
   }
 
   @override
@@ -86,6 +108,7 @@ class HarvestScreenState extends State<HarvestScreen> {
           return sum + effectiveArea;
         });
       });
+      _filterData();
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -100,15 +123,14 @@ class HarvestScreenState extends State<HarvestScreen> {
       _selectedQA = prefs.getString('selectedQA');
       _selectedFA = prefs.getStringList('selectedFA') ?? [];
     });
-
     _filterData();
   }
 
-  Future<void> _saveFilterPreferences() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    prefs.setStringList('selectedFA', _selectedFA);
-    prefs.setString('selectedQA', _selectedQA ?? '');
-  }
+  // Future<void> _saveFilterPreferences() async {
+  //   SharedPreferences prefs = await SharedPreferences.getInstance();
+  //   prefs.setStringList('selectedFA', _selectedFA);
+  //   prefs.setString('selectedQA', _selectedQA ?? '');
+  // }
 
   // Ekstrak nama-nama FA yang unik dari data
   void _extractUniqueFA() {
@@ -129,14 +151,25 @@ class HarvestScreenState extends State<HarvestScreen> {
     setState(() {
       _filteredData = _sheetData.where((row) {
         final qaSpv = getValue(row, 28, '');
+        final subDistrict = getValue(row, 12, '').toLowerCase();
         final district = getValue(row, 13, '').toLowerCase();
-        final selectedDistrict = widget.selectedDistrict?.toLowerCase();
+        final season = getValue(row, 1, '');
+        final weekOfHarvest = getValue(row, 27, ''); // Ambil nilai minggu panen dari kolom 27
 
+        bool matchesSeasonFilter = (_selectedSeason == null || season == _selectedSeason);
+        bool matchesSubDistrictFilter = (_selectedSubDistrict == null || subDistrict == _selectedSubDistrict);
         bool matchesQAFilter = (_selectedQA == null || qaSpv == _selectedQA);
-        bool matchesDistrictFilter = selectedDistrict == null || district == selectedDistrict;
+        bool matchesDistrictFilter =
+            widget.selectedDistrict == null ||
+                district == widget.selectedDistrict!.toLowerCase();
+        bool matchesWeekFilter =
+        (_selectedWeekOfHarvest == null || weekOfHarvest == _selectedWeekOfHarvest);
 
         final fa = getValue(row, 16, '').toLowerCase(); // FA berada di kolom 16
-        bool matchesFAFilter = _selectedFA.isEmpty || _selectedFA.contains(toTitleCase(fa)); // Filter FA
+
+        bool matchesFAFilter =
+            _selectedFA.isEmpty ||
+                _selectedFA.contains(toTitleCase(fa)); // Filter FA
 
         final fieldNumber = getValue(row, 2, '').toLowerCase();
         final farmerName = getValue(row, 3, '').toLowerCase();
@@ -154,13 +187,39 @@ class HarvestScreenState extends State<HarvestScreen> {
             fa.contains(_searchQuery) ||
             fieldSpv.contains(_searchQuery);
 
-        return matchesQAFilter && matchesDistrictFilter && matchesFAFilter && matchesSearchQuery;
+        return matchesQAFilter &&
+            matchesDistrictFilter &&
+            matchesFAFilter &&
+            matchesSeasonFilter &&
+            matchesSubDistrictFilter &&
+            matchesWeekFilter &&
+            matchesSearchQuery;
       }).toList();
+
+      _seasonsList = _filteredData
+          .map((row) => getValue(row, 1, '')) // Mengambil Week of Generative dari kolom 27
+          .toSet() // Menghapus duplikasi
+          .toList()
+        ..sort(); // Sortir dari yang terkecil ke yang terbesar
+
+      _subDistrictList = _filteredData
+          .map((row) => getValue(row, 12, '')) // Mengambil Week of Generative dari kolom 27
+          .toSet() // Menghapus duplikasi
+          .toList()
+        ..sort();
+
+      _weekOfHarvestList = _filteredData
+          .map((row) => getValue(row, 27, '')) // Mengambil nilai minggu panen dari kolom 27
+          .toSet() // Menghapus duplikasi
+          .toList()
+        ..sort(); // Sortir dari yang terkecil ke yang terbesar
+
       _faNames = _filteredData
           .map((row) => toTitleCase(getValue(row, 16, '').toLowerCase())) // Mengambil FA dari kolom 16
           .toSet() // Menghapus duplikasi
           .toList()
         ..sort(); // Sortir FA
+
     });
   }
 
@@ -203,6 +262,82 @@ class HarvestScreenState extends State<HarvestScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(
+                        'Filter by Seasons',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DropdownButton<String>(
+                      value: _selectedSeason,
+                      hint: const Text("Select Season"),
+                      isExpanded: true,
+                      items: _seasonsList.map((season) {
+                        return DropdownMenuItem<String>(
+                          value: season,
+                          child: Text(season),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _selectedSeason = newValue; // Atur season yang dipilih
+                          _filterData(); // Filter ulang data berdasarkan season
+                        });
+                        },
+                    ),
+
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(
+                        'Filter by Kecamatan',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DropdownButton<String>(
+                      value: _selectedSubDistrict,
+                      hint: const Text("Select Kecamatan"),
+                      isExpanded: true,
+                      items: _subDistrictList.map((season) {
+                        return DropdownMenuItem<String>(
+                          value: season,
+                          child: Text(season),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _selectedSubDistrict = newValue; // Atur season yang dipilih
+                          _filterData(); // Filter ulang data berdasarkan season
+                        });
+                      },
+                    ),
+
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(
+                        'Filter by Week of Harvest',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DropdownButton<String>(
+                      value: _selectedWeekOfHarvest,
+                      hint: const Text("Select Week"),
+                      isExpanded: true,
+                      items: _weekOfHarvestList.map((week) {
+                        return DropdownMenuItem<String>(
+                          value: week,
+                          child: Text(week),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _selectedWeekOfHarvest = newValue;
+                          _filterData(); // Filter ulang data setelah minggu diubah
+                        });
+                        },
+                    ),
+
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8.0),
                       child: Text(
@@ -223,12 +358,35 @@ class HarvestScreenState extends State<HarvestScreen> {
                               _selectedFA.remove(fa); // Hapus FA dari daftar yang dipilih
                             }
                             _filterData(); // Filter ulang data setelah FA diubah
-                            _saveFilterPreferences(); // Simpan filter ke SharedPreferences
-                          });
+                            });
                         },
+                        activeColor: Colors.green,
                         controlAffinity: ListTileControlAffinity.leading,
                       );
                     }),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          // Reset semua filter ke kondisi awal
+                          _selectedSeason = null;
+                          _selectedWeekOfHarvest = null;
+                          _selectedFA.clear(); // Kosongkan list FA yang dipilih
+                          _filterData();
+                        });
+                        // Tutup bottom sheet
+                        Navigator.pop(context);
+                      },
+                      icon: const Icon(Icons.refresh, color: Colors.white), // Ikon reset dengan warna putih
+                      label: const Text("Reset Filters", style: TextStyle(color: Colors.white)), // Teks dengan warna putih
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green, // Warna latar belakang tombol
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), // Padding dalam tombol
+                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), // Ukuran dan gaya teks
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8), // Membuat tombol dengan sudut melengkung
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -326,16 +484,9 @@ class HarvestScreenState extends State<HarvestScreen> {
             : _filteredData.isEmpty
             ? const Center(child: Text('No data available'))
             : ListView.builder(
-          itemCount: _filteredData.length + 1,
+          itemCount: _filteredData.length,
           itemBuilder: (context, index) {
-            if (index == _filteredData.length) {
-              return _isLoading
-                  ? Center(child: CircularProgressIndicator())
-                  : TextButton(
-                onPressed: _loadSheetData,
-                child: const Text('Load More'),
-              );
-            }
+
             final row = _filteredData[index];
 
             return Card(
@@ -350,20 +501,38 @@ class HarvestScreenState extends State<HarvestScreen> {
                     fit: BoxFit.contain,
                   ),
                 ),
-                title: Text(getValue(row, 2, "Unknown")),
-                subtitle: Text(
-                  'Farmer: ${getValue(row, 3, "Unknown")}, '
-                      'Grower: ${getValue(row, 4, "Unknown")}, '
-                      'Desa: ${getValue(row, 11, "Unknown")}, '
-                      'Kec: ${getValue(row, 12, "Unknown")}, '
-                      'Kab: ${getValue(row, 13, "Unknown")}, '
-                      'Field SPV: ${getValue(row, 15, "Unknown")}, '
-                      'FA: ${getValue(row, 16, "Unknown")}',
+                title: Text(
+                  getValue(row, 2, "Unknown" ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: RichText(
+                  text: TextSpan(
+                    style: DefaultTextStyle.of(context).style, // Style default untuk teks biasa
+                    children: [
+                      TextSpan(text: 'Farmer: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 3, "Unknown")}, '),
+                      TextSpan(text: 'Grower: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 4, "Unknown")}, '),
+                      TextSpan(text: 'Desa: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 11, "Unknown")}, '),
+                      TextSpan(text: 'Kec: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 12, "Unknown")}, '),
+                      TextSpan(text: 'Kab: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 13, "Unknown")}, '),
+                      TextSpan(text: 'Field SPV: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 15, "Unknown")}, '),
+                      TextSpan(text: 'FA: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: getValue(row, 16, "Unknown")),
+                    ],
+                  ),
                 ),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => HarvestDetailScreen(fieldNumber: getValue(row, 2, "Unknown")),
+                      builder: (context) => HarvestDetailScreen(
+                          fieldNumber: getValue(row, 2, "Unknown"),
+                        region: selectedRegion ?? 'Unknown Region',
+                      ),
                     ),
                   );
                 },

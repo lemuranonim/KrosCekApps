@@ -2,15 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/admin_dashboard.dart';
+import 'screens/psp_screen.dart';
+import 'screens/config_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await ConfigManager.loadConfig(); // Muat konfigurasi JSON
+
+  // Inisialisasi Hive
+  await Hive.initFlutter();
+
+  // Membuka atau membuat box yang dibutuhkan
+  await Hive.openBox('vegetativeData');
+  await Hive.openBox('generativeData');
+  await Hive.openBox('preHarvestData');
+  await Hive.openBox('harvestData');
 
   // Inisialisasi Firebase
   await Firebase.initializeApp(
@@ -57,6 +71,7 @@ class MyApp extends StatelessWidget {
         '/register': (context) => const RegisterScreen(),
         '/home': (context) => const HomeScreen(),
         '/admin_dashboard': (context) => const AdminDashboard(),
+        '/psp_dashboard': (context) => const PspScreen(),
       },
     );
   }

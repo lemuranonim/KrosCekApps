@@ -94,4 +94,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'kroscek.appspot.com',
     measurementId: 'G-KV86CS0BN1',
   );
+
 }

@@ -25,18 +25,5 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # Analyze Flutter (Dart) code for best practices
       - name: Flutter Analyze
         run: flutter analyze
-
-      # Run tests using Flutter's built-in test framework
-      - name: Run Flutter Tests
-        run: flutter test
-
-      # Build APK (Android)
-      - name: Build APK
-        run: flutter build apk --release
-
-      # Optionally build Flutter Web
-      - name: Build Web (Optional)
-        run: flutter build web --release

@@ -41,3 +41,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Contoh tambahan pada .gitignore
+android/app/google-services.json
+android/app/src/debug/google-services.json
+android/app/src/debug/google-services1.json

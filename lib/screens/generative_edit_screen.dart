@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
-import 'dart:math';
 import 'package:intl/intl.dart';
 import 'google_sheets_api.dart';
 import 'package:lottie/lottie.dart';
-
+import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
+import 'dart:async';  // Untuk menggunakan Timer
+import 'package:hive_flutter/hive_flutter.dart';
+import 'config_manager.dart';
 
 class GenerativeEditScreen extends StatefulWidget {
   final List<String> row;
+  final String region;
+  final Function(List<String>) onSave; // Callback untuk mengirim data yang diperbarui
 
-  const GenerativeEditScreen({super.key, required this.row});
+  const GenerativeEditScreen({
+    super.key,
+    required this.row,
+    required this.region,
+    required this.onSave});
 
   @override
   GenerativeEditScreenState createState() => GenerativeEditScreenState(); // Menghapus underscore agar public
@@ -23,6 +31,10 @@ class GenerativeEditScreenState extends State<GenerativeEditScreen> {
   late TextEditingController _dateAudit2Controller;
   late TextEditingController _dateAudit3Controller;
   late TextEditingController _dateClosedController;
+
+  String userEmail = 'Fetching...'; // Variabel untuk email pengguna
+  String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
+  late String spreadsheetId;
 
   String? selectedDetaselingPlan;
   String? selectedTenagaKerjaDT;
@@ -52,7 +64,7 @@ class GenerativeEditScreenState extends State<GenerativeEditScreen> {
   String? selectedReasonTidakTeraudit;
 
   final List<String> detaselingPlanItems = ['Y', 'N'];
-  final List<String> tenagaKerjaDTItems = ['Y', 'N'];
+  final List<String> tenagaKerjaDTItems = ['A', 'B', 'C', 'D', 'E'];
   final List<String> roguingProsesItems = ['Y', 'N'];
   final List<String> remarksRoguingProsesItems = ['A', 'B', 'C', 'D', 'E'];
   final List<String> tenagaKerjaDetasselingItems = ['A', 'B'];
@@ -81,7 +93,11 @@ class GenerativeEditScreenState extends State<GenerativeEditScreen> {
   @override
   void initState() {
     super.initState();
+    _loadUserCredentials(); // Panggil satu fungsi untuk mengambil nama dan email pengguna
     row = List<String>.from(widget.row);
+
+    _initHive();
+    _fetchSpreadsheetId();
 
     _dateAudit1Controller = TextEditingController(text: _convertToDateIfNecessary(row[32]));
     _datePlantingRevController = TextEditingController(text: _convertToDateIfNecessary(row[34]));
@@ -118,6 +134,32 @@ class GenerativeEditScreenState extends State<GenerativeEditScreen> {
     selectedReasonTidakTeraudit = row[67];
   }
 
+  bool isLoading = false;  // Untuk mengatur status loading
+
+  Future<void> _fetchSpreadsheetId() async {
+    spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
+  }
+
+  void _initHive() async {
+    await Hive.initFlutter();
+    await Hive.openBox('generativeData');  // Buat box Hive untuk menyimpan data vegetative
+  }
+
+  Future<void> _saveToHive(List<String> rowData) async {
+    var box = await Hive.openBox('generativeData');
+    final cacheKey = 'detailScreenData_${rowData[2]}'; // Menggunakan fieldNumber atau ID unik lainnya sebagai kunci
+    await box.put(cacheKey, rowData); // Simpan hanya rowData ke Hive
+  }
+
+  // Fungsi untuk mengambil userName dan userEmail dari SharedPreferences
+  Future<void> _loadUserCredentials() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userEmail = prefs.getString('userEmail') ?? 'Unknown Email';
+      userName = prefs.getString('userName') ?? 'Pengguna';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -133,6 +175,9 @@ class GenerativeEditScreenState extends State<GenerativeEditScreen> {
           child: SingleChildScrollView(
             child: Column(
               children: [
+                // Tampilkan progress bar di atas form jika sedang loading
+                if (isLoading) const LinearProgressIndicator(),  // Tambahkan di sini
+
                 _buildTextFormField('QA FI', 31),
                 _buildDatePickerField('Date of Audit 1 (dd/MM)', 32, _dateAudit1Controller),
                 _buildDatePickerField('Rev Planting Date Based', 34, _datePlantingRevController),
@@ -155,7 +200,7 @@ class GenerativeEditScreenState extends State<GenerativeEditScreen> {
                 const SizedBox(height: 16),
 
                 _buildDropdownFormField(
-                  label: 'Ketersediaan Tenaga kerja DT',
+                  label: 'Ketersediaan Tenaga kerja DT yang Cukup /Ha',
                   items: tenagaKerjaDTItems,
                   value: selectedTenagaKerjaDT,
                   onChanged: (value) {
@@ -164,7 +209,11 @@ class GenerativeEditScreenState extends State<GenerativeEditScreen> {
                       row[36] = value ?? '';
                     });
                   },
-                  helpText: 'Y = Yes\nN = No',
+                  helpText: 'A = 100% 15 req- terpenuhi 15 TKD'
+                      '\nB = 80% 15 req- terpenuhi 12 TKD'
+                      '\nC = 60% 15 req-terpenuhi 9 TKD'
+                      '\nD = 40% 15 req - terpenuhi 6 TKD'
+                      '\nE = 20% 15 req - terpenuhi 3 TKD',
                 ),
 
                 const SizedBox(height: 16),
@@ -551,7 +600,9 @@ class GenerativeEditScreenState extends State<GenerativeEditScreen> {
                 ElevatedButton(
                   onPressed: () {
                     if (_formKey.currentState!.validate()) {
-                      _showLoadingDialog();  // Tampilkan loading spinner
+                      _showLoadingDialogAndClose();  // Tampilkan loading spinner
+                      _showLoadingAndSaveInBackground();
+                      _showConfirmationDialog;
                       _saveToGoogleSheets(row); // Simpan data ke Google Sheets
                     }
                   },
@@ -670,18 +721,218 @@ class GenerativeEditScreenState extends State<GenerativeEditScreen> {
     );
   }
 
-  // Fungsi untuk menampilkan loading spinner
-  void _showLoadingDialog() {
+  // Fungsi untuk menampilkan loading spinner hanya selama 5 detik
+  void _showLoadingDialogAndClose() {
+    bool dialogShown = false;
+
+    // Tampilkan dialog loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        dialogShown = true;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Lottie.asset('assets/loading.json', width: 150, height: 150),
+              const SizedBox(height: 20),
+              const Text(
+                "Loading...",
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    // Timer untuk menutup dialog loading setelah 5 detik
+    Timer(const Duration(seconds: 5), () {
+      if (dialogShown && mounted) {
+        // Tutup dialog jika masih aktif dan widget masih terpasang
+        Navigator.of(context, rootNavigator: true).pop();
+
+        // Lakukan navigasi ke layar Success dalam microtask tanpa async gap
+        Future.microtask(() {
+          if (mounted) { // Pastikan konteks masih valid
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => SuccessScreen(
+                  row: row,
+                  userName: userName,
+                  userEmail: userEmail,
+                ),
+              ),
+            );
+          }
+        });
+      }
+    });
+  }
+
+  void _showLoadingAndSaveInBackground() {
+    // Tampilkan loading spinner dan success setelah 5 detik
+    _showLoadingDialogAndClose();
+
+    // Simpan data ke Hive
+    _saveToHive(row);
+
+    // Jalankan proses penyimpanan di latar belakang
+    _saveToGoogleSheets(row);  // Panggil fungsi penyimpanan yang berjalan di background
+  }
+
+  Future<void> _saveToGoogleSheets(List<String> rowData) async {
+    setState(() {
+      isLoading = true; // Tampilkan loader
+    });
+
+    final gSheetsApi = GoogleSheetsApi(spreadsheetId);
+    await gSheetsApi.init();
+
+    try {
+      await gSheetsApi.updateRow('Generative', rowData, rowData[2]);
+      await _saveToHive(rowData);
+
+      _showSnackbar('Data successfully saved to Google Sheets');
+    } catch (e) {
+      await _logErrorToActivity('Gagal menyimpan data: ${e.toString()}');
+      _showSnackbar('Failed to save data. Please try again.');
+    } finally {
+      setState(() {
+        isLoading = false; // Sembunyikan loader
+      });
+    }
+  }
+
+  Future<void> _showConfirmationDialog() async {
+    final shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Confirm Save'),
+        content: Text('Are you sure you want to save the changes?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (shouldSave == true) {
+      _validateAndSave();
+    }
+  }
+
+  void _validateAndSave() {
+    if (_formKey.currentState!.validate()) {
+      if (_isDataValid()) {
+        _showLoadingDialogAndClose();
+        _saveToGoogleSheets(row);
+      } else {
+        _showSnackbar('Please complete all required fields');
+      }
+    }
+  }
+
+  bool _isDataValid() {
+    return row.every((field) => field.isNotEmpty); // Pastikan semua field terisi
+  }
+
+  void _showSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _convertToDateIfNecessary(String value) {
+    try {
+      final parsedNumber = double.tryParse(value);
+      if (parsedNumber != null) {
+        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
+        return DateFormat('dd/MM/yyyy').format(date);
+      }
+    } catch (e) {
+      // debugPrint("Error converting number to date: $e"); // Mengganti print dengan debugPrint
+    }
+    return value;
+  }
+}
+
+class SuccessScreen extends StatelessWidget {
+  final List<String> row;
+  final String userName;
+  final String userEmail;
+
+  const SuccessScreen({
+    super.key,
+    required this.row,
+    required this.userName,
+    required this.userEmail,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text(
+          'Success',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.green,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green, size: 100),
+            const SizedBox(height: 20),
+            const Text(
+              'Data berhasil disimpan!',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () async {
+                // Tampilkan dialog loading
+                _showLoadingDialog(context);
+
+                // Simpan instance NavigatorState untuk digunakan setelah async gap
+                final navigator = Navigator.of(context);
+
+                // Simpan data ke Google Sheets
+                await _saveBackActivityToGoogleSheets();
+
+                // Tutup dialog loading
+                navigator.pop();
+
+                // Kembali ke layar sebelumnya
+                navigator.pop();
+              },
+              child: const Text('Back'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Fungsi untuk menampilkan dialog loading
+  void _showLoadingDialog(BuildContext context) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
         return Dialog(
-          backgroundColor: Colors.transparent, // Transparan untuk efek yang lebih bagus
+          backgroundColor: Colors.transparent,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Lottie.asset('assets/loading.json', width: 150, height: 150), // Animasi Lottie
+              Lottie.asset('assets/loading.json', width: 150, height: 150),
               const SizedBox(height: 20),
               const Text(
                 "Loading...",
@@ -694,103 +945,40 @@ class GenerativeEditScreenState extends State<GenerativeEditScreen> {
     );
   }
 
-  Future<void> _saveToGoogleSheets(List<String> rowData) async {
+  Future<void> _saveBackActivityToGoogleSheets() async {
     final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
-    final String worksheetTitle = 'Generative';
+    final String worksheetTitle = 'Aktivitas';
 
     final gSheetsApi = GoogleSheetsApi(spreadsheetId);
     await gSheetsApi.init();
 
-    const maxRetries = 5;
-    int retryCount = 0;
+    final String timestamp = DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now());
+    final String fieldNumber = row[2];
+    final String action = 'Update';
+    final String status = 'Success';
 
-    while (retryCount < maxRetries) {
-      try {
-        await Future.delayed(const Duration(seconds: 2));
-        await gSheetsApi.updateRow(worksheetTitle, rowData, rowData[2]);
+    final List<String> rowData = [
+      userEmail,
+      userName,
+      status,
+      action,
+      'Generative',
+      fieldNumber,
+      timestamp,
+    ];
 
-        if (!mounted) return; // Memastikan widget masih ter-mount sebelum menggunakan BuildContext
-        Navigator.of(context).pop(); // Tutup loading spinner
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Data berhasil disimpan!')),
-        );
-        Navigator.pop(context, rowData); // Kembali ke halaman detail dengan data yang diperbarui
-        return;
-
-      } catch (e) {
-        debugPrint('Error saving data: $e'); // Mengganti print dengan debugPrint
-
-        if (e.toString().contains('Quota exceeded')) {
-          retryCount++;
-          int delaySeconds = pow(2, retryCount).toInt();
-          await Future.delayed(Duration(seconds: delaySeconds));
-
-          if (retryCount == maxRetries) {
-            if (!mounted) return;
-            Navigator.of(context).pop(); // Tutup loading spinner
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Gagal menyimpan data setelah beberapa percobaan!')),
-            );
-            return;
-          }
-        } else {
-          if (!mounted) return;
-          Navigator.of(context).pop(); // Tutup loading spinner
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Gagal menyimpan data!')),
-          );
-          return;
-        }
-      }
-    }
-  }
-
-  String _convertToDateIfNecessary(String value) {
     try {
-      final parsedNumber = double.tryParse(value);
-      if (parsedNumber != null) {
-        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
-        return DateFormat('dd/MM/yyyy').format(date);
-      }
+      await gSheetsApi.addRow(worksheetTitle, rowData);
+      debugPrint('Aktivitas berhasil dicatat di Google Sheets');
     } catch (e) {
-      debugPrint("Error converting number to date: $e"); // Mengganti print dengan debugPrint
+      debugPrint('Gagal mencatat aktivitas di Google Sheets: $e');
     }
-    return value;
   }
 }
 
-// Halaman Success untuk Generative
-class SuccessScreen extends StatelessWidget {
-  const SuccessScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Success'),
-        backgroundColor: Colors.green,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 100),
-            const SizedBox(height: 20),
-            const Text(
-              'Data has been successfully saved!',
-              style: TextStyle(fontSize: 20),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('Back'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+Future<void> _logErrorToActivity(String message) async {
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  List<String> logs = prefs.getStringList('activityLogs') ?? [];
+  logs.add('${DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now())}: $message');
+  await prefs.setStringList('activityLogs', logs);
 }

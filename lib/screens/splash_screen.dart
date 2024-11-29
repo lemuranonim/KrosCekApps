@@ -72,6 +72,8 @@ class SplashScreenState extends State<SplashScreen>
       // Jika sudah login, cek apakah admin atau user
       if (userRole == 'admin') {
         Navigator.of(context).pushReplacementNamed('/admin_dashboard');
+      } else if (userRole == 'psp') {
+        Navigator.of(context).pushReplacementNamed('/psp_dashboard'); // Navigasi ke halaman PSP
       } else {
         Navigator.of(context).pushReplacementNamed('/home');
       }
@@ -131,7 +133,7 @@ class SplashScreenState extends State<SplashScreen>
               child: Column(
                 children: [
                   const Text(
-                    'KrosCek Application created by Team QA Advanta Indonesia',
+                    'KrosCek Application Created by Tim Cengoh, Ahli Huru-Hara',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,

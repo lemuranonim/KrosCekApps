@@ -6,8 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'vegetative_screen.dart';
 import 'generative_screen.dart';
-import 'pre_harvest_screen.dart';
-import 'harvest_screen.dart';
 import 'training_screen.dart';
 import 'absen_log_screen.dart';
 import 'issue_screen.dart';
@@ -17,36 +15,32 @@ import 'package:animated_text_kit/animated_text_kit.dart';
 import 'activity_screen.dart';  // Import halaman aktivitas
 import 'config_manager.dart';
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class PspScreen extends StatefulWidget {
+  const PspScreen({super.key});
 
   @override
-  HomeScreenState createState() => HomeScreenState();  // Changed to public class
+  PspScreenState createState() => PspScreenState();
 }
 
-class HomeScreenState extends State<HomeScreen> {
+class PspScreenState extends State<PspScreen> {
   int _selectedIndex = 0;
   String _appVersion = 'Fetching...';
   String userEmail = 'Fetching...'; // Tambahkan variabel untuk email pengguna
-  String userName = 'Fetching...'; // Variabel untuk menyimpan nama pengguna
-  List<String> fieldSPVList = [
-    'NTB',
-    'Region 1',
-    'Region 2',
-    'Region 3',
-    'Region 4',
-    'Region 5',
-    'Region 6'
-  ];
+  String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
+  List<String> fieldSPVList = ['Region 4', 'Region 5'];
   List<String> faList = [];
   List<String> qaSPVList = [];
-  List<String> seasonList = [];
+  List<String> seasonList = ['DS24'];
   String? selectedFieldSPV;
   String? selectedFA;
   String? selectedQA;
   String? selectedSeason;
-  String? selectedRegion;
-  String? selectedSpreadsheetId;
+
+  // Simpan season ke SharedPreferences
+  Future<void> _saveSeasonPreference() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('selectedSeason', selectedSeason ?? '');
+  }
 
   // Fetch season dari SharedPreferences
   Future<void> _loadSeasonPreference() async {
@@ -58,29 +52,22 @@ class HomeScreenState extends State<HomeScreen> {
 
   // Map untuk ID document di Firestore
   final Map<String, String> regionDocumentIds = {
-    'NTB': 'ntb',
-    'Region 1': 'region 1',
-    'Region 2': 'region 2',
-    'Region 3': 'region 3',
     'Region 4': 'region 4',
     'Region 5': 'region 5',
-    'Region 6': 'region 6',
   };
 
   @override
   void initState() {
     super.initState();
-    ConfigManager.loadConfig();
-    _fetchSeason();
     _fetchAppVersion();
-    _fetchUserEmail();
-    _fetchUserData();
-    _loadUserEmail(); // Panggil fungsi untuk mengambil email pengguna
+    _fetchPspEmail();
+    _fetchPspData();
+    _loadPspEmail(); // Panggil fungsi untuk mengambil email pengguna
     _loadSeasonPreference(); // Load season preference on init
   }
 
   // Fungsi untuk mengambil email dan nama dari SharedPreferences
-  Future<void> _fetchUserData() async {
+  Future<void> _fetchPspData() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       userEmail = prefs.getString('userEmail') ?? 'Unknown Email';
@@ -89,7 +76,7 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   // Fungsi untuk mengambil email dari SharedPreferences
-  Future<void> _fetchUserEmail() async {
+  Future<void> _fetchPspEmail() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       userEmail = prefs.getString('userEmail') ?? 'Unknown Email';
@@ -97,7 +84,7 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   // Fungsi untuk mengambil email pengguna dari SharedPreferences
-  Future<void> _loadUserEmail() async {
+  Future<void> _loadPspEmail() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       userEmail = prefs.getString('userEmail') ?? 'Email tidak ditemukan';
@@ -107,11 +94,8 @@ class HomeScreenState extends State<HomeScreen> {
   // Fungsi untuk menyimpan pilihan QA SPV dan District ke SharedPreferences
   Future<void> _saveFilterPreferences() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-        'selectedQA', selectedQA ?? ''); // Beri nilai default jika null
-    await prefs.setString(
-        'selectedFA', selectedFA ?? ''); // Beri nilai default jika null
-    await prefs.setString('selectedSeason', selectedSeason ?? '');
+    await prefs.setString('selectedQA', selectedQA ?? ''); // Beri nilai default jika null
+    await prefs.setString('selectedFA', selectedFA ?? ''); // Beri nilai default jika null
   }
 
   Future<void> _fetchQASPV(String selectedRegion) async {
@@ -140,8 +124,7 @@ class HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      DocumentReference regionDoc = firestore.collection('regions').doc(
-          documentId);
+      DocumentReference regionDoc = firestore.collection('regions').doc(documentId);
       DocumentSnapshot docSnapshot = await regionDoc.get();
 
       if (docSnapshot.exists) {
@@ -162,12 +145,10 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _fetchDistricts(String selectedRegion,
-      String selectedQASPV) async {
+  Future<void> _fetchDistricts(String selectedRegion, String selectedQASPV) async {
     // Cek cache untuk data district berdasarkan region dan QA SPV
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? cachedDistricts = prefs.getString(
-        'districts_${selectedRegion}_$selectedQASPV');
+    String? cachedDistricts = prefs.getString('districts_${selectedRegion}_$selectedQASPV');
 
     if (cachedDistricts != null) {
       setState(() {
@@ -181,18 +162,15 @@ class HomeScreenState extends State<HomeScreen> {
     String documentId = regionDocumentIds[selectedRegion]!;
 
     try {
-      DocumentReference regionDoc = firestore.collection('regions').doc(
-          documentId);
+      DocumentReference regionDoc = firestore.collection('regions').doc(documentId);
       DocumentSnapshot docSnapshot = await regionDoc.get();
 
       if (docSnapshot.exists) {
         Map<String, dynamic> data = docSnapshot.data() as Map<String, dynamic>;
-        List<String> districts = List<String>.from(
-            data['qa_spv'][selectedQASPV]['districts']);
+        List<String> districts = List<String>.from(data['qa_spv'][selectedQASPV]['districts']);
 
         // Simpan hasil ke SharedPreferences untuk cache
-        await prefs.setString('districts_${selectedRegion}_$selectedQASPV',
-            jsonEncode(districts));
+        await prefs.setString('districts_${selectedRegion}_$selectedQASPV', jsonEncode(districts));
 
         setState(() {
           faList = districts;
@@ -200,34 +178,6 @@ class HomeScreenState extends State<HomeScreen> {
       }
     } catch (error) {
       // Handle error
-    }
-  }
-
-  Future<void> _saveSeasonListToPreferences() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('seasonList', seasonList);
-  }
-
-  Future<void> _fetchSeason() async {
-    FirebaseFirestore firestore = FirebaseFirestore.instance;
-
-    try {
-      DocumentSnapshot docSnapshot =
-      await firestore.collection('seasons').doc('season').get();
-
-      if (docSnapshot.exists) {
-        Map<String, dynamic> data = docSnapshot.data() as Map<String, dynamic>;
-        List<String> seasons = List<String>.from(data['sesi']);
-
-        setState(() {
-          seasonList = seasons;
-        });
-
-        // Simpan seasonList ke SharedPreferences
-        await _saveSeasonListToPreferences();
-      }
-    } catch (error) {
-      debugPrint("Error saat mengambil seasons: $error");
     }
   }
 
@@ -252,9 +202,6 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _logout(BuildContext context) async {
-    // Simpan context sebelum operasi async dimulai
-    final navigator = Navigator.of(context);
-
     // Tampilkan dialog konfirmasi logout dan tunggu hasilnya
     bool? confirmLogout = await showDialog<bool>(
       context: context,
@@ -283,19 +230,14 @@ class HomeScreenState extends State<HomeScreen> {
     // Jika pengguna memilih 'Medal', lakukan logout
     if (confirmLogout == true) {
       SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.remove('isLoggedIn');
-      await prefs.remove('userRole');
+      await prefs.clear();
 
-      // Gunakan navigator yang sudah disimpan untuk navigasi
-      _navigateToLoginScreen(navigator);
+      if (context.mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+        );
+      }
     }
-  }
-
-// Fungsi terpisah untuk menangani navigasi
-  void _navigateToLoginScreen(NavigatorState navigator) {
-    navigator.pushReplacement(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-    );
   }
 
   // Fungsi untuk menavigasi ke halaman lain
@@ -375,10 +317,8 @@ class HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: _selectedIndex == 0
-            ? const Text('KrosCekApp',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
-            : const Text('Aktivitas',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ? const Text('PSP Dashboard', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+            : const Text('Aktivitas', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.green,
         iconTheme: const IconThemeData(color: Colors.white),
         leading: _selectedIndex == 1
@@ -454,7 +394,7 @@ class HomeScreenState extends State<HomeScreen> {
             backgroundColor: Colors.white,
             height: 150,
             showChildOpacityTransition: false,
-            child: _buildHomeContent(context),
+            child: _buildPspContent(context),
           ),
           const SizedBox.shrink(),
           const ActivityScreen(),
@@ -463,21 +403,17 @@ class HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: ConvexAppBar(
         backgroundColor: Colors.green,
         items: const [
-          TabItem(icon: Icons.home, title: 'Beranda'),
-          // Tab Beranda
-          TabItem(icon: Icons.add, title: ''),
-          // Tab '+' untuk memunculkan popup
-          TabItem(icon: Icons.restore, title: 'Aktivitas'),
-          // Tab Aktivitas
+          TabItem(icon: Icons.home, title: 'Beranda'),  // Tab Beranda
+          TabItem(icon: Icons.add, title: ''),  // Tab '+' untuk memunculkan popup
+          TabItem(icon: Icons.restore, title: 'Aktivitas'),  // Tab Aktivitas
         ],
-        initialActiveIndex: _selectedIndex, // Menentukan tab awal yang aktif
+        initialActiveIndex: _selectedIndex,  // Menentukan tab awal yang aktif
         onTap: (int index) {
-          if (index == 1) { // Jika tab dengan ikon '+' ditekan
-            _showPopupMenu(); // Memunculkan popup menu
+          if (index == 1) {  // Jika tab dengan ikon '+' ditekan
+            _showPopupMenu();  // Memunculkan popup menu
           } else {
             setState(() {
-              _selectedIndex =
-                  index; // Hanya ubah state dan halaman untuk tab selain `+`
+              _selectedIndex = index;  // Hanya ubah state dan halaman untuk tab selain `+`
             });
           }
         },
@@ -485,7 +421,7 @@ class HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildHomeContent(BuildContext context) {
+  Widget _buildPspContent(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
@@ -495,23 +431,19 @@ class HomeScreenState extends State<HomeScreen> {
             borderRadius: BorderRadius.circular(16.0),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.10),
-                // Shadow color with opacity
-                spreadRadius: 3,
-                // Spread of the shadow
-                blurRadius: 2,
-                // Blur radius of the shadow
-                offset: const Offset(0, 3), // Shadow offset position
+                color: Colors.black.withOpacity(0.10),  // Shadow color with opacity
+                spreadRadius: 3,  // Spread of the shadow
+                blurRadius: 2,  // Blur radius of the shadow
+                offset: const Offset(0, 3),  // Shadow offset position
               ),
             ],
           ),
           child: Card(
             color: Colors.white,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(
-                  16.0), // Rounded corners for the card
+              borderRadius: BorderRadius.circular(16.0),  // Rounded corners for the card
             ),
-            elevation: 0, // Turn off default shadow of the card
+            elevation: 0,  // Turn off default shadow of the card
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -523,35 +455,30 @@ class HomeScreenState extends State<HomeScreen> {
                     child: AnimatedTextKit(
                       animatedTexts: [
                         TyperAnimatedText(
-                          'Sugeng Rawuh Lur...', // First part of the text
+                          'Sugeng Rawuh Lur...',  // First part of the text
                           textStyle: const TextStyle(
                             fontSize: 20.0,
                             fontWeight: FontWeight.bold,
-                            color: Colors.green, // Green text color
+                            color: Colors.green,  // Green text color
                           ),
                           textAlign: TextAlign.center,
-                          speed: const Duration(
-                              milliseconds: 250), // Typing speed
+                          speed: const Duration(milliseconds: 250),  // Typing speed
                         ),
                         TyperAnimatedText(
-                          'Monggo dipun Kroscek!', // Second part of the text
+                          'Monggo dipun Kroscek!',  // Second part of the text
                           textStyle: const TextStyle(
                             fontSize: 20.0,
                             fontWeight: FontWeight.bold,
-                            color: Colors.green, // Green text color
+                            color: Colors.green,  // Green text color
                           ),
                           textAlign: TextAlign.center,
-                          speed: const Duration(
-                              milliseconds: 250), // Typing speed
+                          speed: const Duration(milliseconds: 250),  // Typing speed
                         ),
                       ],
-                      totalRepeatCount: 1,
-                      // Animation runs once
-                      pause: const Duration(milliseconds: 1000),
-                      // Pause between the two animations
-                      displayFullTextOnTap: true,
-                      // Display full text on tap
-                      stopPauseOnTap: true, // Stop the pause on tap
+                      totalRepeatCount: 1,  // Animation runs once
+                      pause: const Duration(milliseconds: 1000),  // Pause between the two animations
+                      displayFullTextOnTap: true,  // Display full text on tap
+                      stopPauseOnTap: true,  // Stop the pause on tap
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -567,47 +494,33 @@ class HomeScreenState extends State<HomeScreen> {
                       );
                     }).toList(),
                     onChanged: (value) async {
-                      if (value != null) {
-                        // Ambil Spreadsheet ID berdasarkan Region
-                        final spreadsheetId = ConfigManager.getSpreadsheetId(value);
-
-                        setState(() {
-                          selectedFieldSPV = value; // Simpan pilihan Region
-                          selectedSpreadsheetId = spreadsheetId; // Simpan Spreadsheet ID
-                          selectedQA = null; // Reset pilihan QA SPV
-                          selectedFA = null; // Reset pilihan District
-                          selectedSeason = null; // Reset pilihan Season
-                          faList.clear(); // Kosongkan daftar FA
-                        });
-
-                        if (spreadsheetId == null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Spreadsheet ID tidak ditemukan untuk region yang dipilih')),
-                          );
-                        } else {
-                          // Ambil QA SPV berdasarkan Region yang dipilih
-                          await _fetchQASPV(value);
-                        }
-                      }
+                      setState(() {
+                        selectedFieldSPV = value; // Simpan pilihan Region
+                        selectedQA = null; // Reset pilihan QA SPV
+                        selectedFA = null; // Reset pilihan District
+                        selectedSeason = null;
+                        faList.clear(); // Kosongkan daftar district
+                      });
+                      await _fetchQASPV(value!); // Ambil QA SPV berdasarkan Region yang dipilih
                     },
                     style: const TextStyle(
-                      color: Colors.black, // Ubah warna teks
-                      fontSize: 16.0, // Ubah ukuran teks
+                      color: Colors.black,  // Change text color
+                      fontSize: 16.0,  // Change text size
                     ),
                     decoration: InputDecoration(
                       labelText: 'Field Region',
                       filled: true,
                       fillColor: Colors.white,
                       enabledBorder: OutlineInputBorder(
-                        borderSide: const BorderSide(color: Colors.green, width: 2.0), // Ubah warna border
-                        borderRadius: BorderRadius.circular(8.0), // Sudut melengkung
+                        borderSide: const BorderSide(color: Colors.green, width: 2.0),  // Change border color
+                        borderRadius: BorderRadius.circular(8.0),  // Optional: round the corners
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderSide: const BorderSide(color: Colors.green, width: 2.0), // Warna border saat fokus
-                        borderRadius: BorderRadius.circular(8.0),
+                        borderSide: const BorderSide(color: Colors.green, width: 2.0),  // Change focused border color
+                        borderRadius: BorderRadius.circular(8.0),  // Optional: round the corners
                       ),
                       border: OutlineInputBorder(
-                        borderSide: const BorderSide(color: Colors.grey, width: 2.0), // Warna border default
+                        borderSide: const BorderSide(color: Colors.grey, width: 2.0),  // Default border color
                         borderRadius: BorderRadius.circular(8.0),
                       ),
                     ),
@@ -631,36 +544,27 @@ class HomeScreenState extends State<HomeScreen> {
                           selectedFA = null; // Reset pilihan District
                           selectedSeason = null;
                         });
-                        await _fetchDistricts(selectedFieldSPV!,
-                            value!); // Ambil district berdasarkan QA SPV
-                        await _saveFilterPreferences(); // Panggil fungsi ini untuk menyimpan data ke SharedPreferences
+                        await _fetchDistricts(selectedFieldSPV!, value!); // Ambil district berdasarkan QA SPV
+                        await _saveFilterPreferences();  // Panggil fungsi ini untuk menyimpan data ke SharedPreferences
                       },
                       style: const TextStyle(
-                        color: Colors.black, // Change text color
-                        fontSize: 16.0, // Change text size
+                        color: Colors.black,  // Change text color
+                        fontSize: 16.0,  // Change text size
                       ),
                       decoration: InputDecoration(
                         labelText: 'QA SPV',
                         filled: true,
-                        fillColor: Colors.white,
-                        // Background color of the dropdown field
+                        fillColor: Colors.white,  // Background color of the dropdown field
                         enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(
-                              color: Colors.green, width: 2.0),
-                          // Green border when not focused
-                          borderRadius: BorderRadius.circular(
-                              8.0), // Optional: round the corners
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0),  // Green border when not focused
+                          borderRadius: BorderRadius.circular(8.0),  // Optional: round the corners
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(
-                              color: Colors.green, width: 2.0),
-                          // Green border when focused
-                          borderRadius: BorderRadius.circular(
-                              8.0), // Optional: round the corners
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0),  // Green border when focused
+                          borderRadius: BorderRadius.circular(8.0),  // Optional: round the corners
                         ),
                         border: OutlineInputBorder(
-                          borderSide: const BorderSide(
-                              color: Colors.grey, width: 2.0), // Default border
+                          borderSide: const BorderSide(color: Colors.grey, width: 2.0),  // Default border
                           borderRadius: BorderRadius.circular(8.0),
                         ),
                       ),
@@ -686,32 +590,66 @@ class HomeScreenState extends State<HomeScreen> {
                         });
                       },
                       style: const TextStyle(
-                        color: Colors.black, // Change text color
-                        fontSize: 16.0, // Change text size
+                        color: Colors.black,  // Change text color
+                        fontSize: 16.0,  // Change text size
                       ),
                       decoration: InputDecoration(
                         labelText: 'District',
                         filled: true,
-                        fillColor: Colors.white,
-                        // Background color for the dropdown
+                        fillColor: Colors.white,  // Background color for the dropdown
                         enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(
-                              color: Colors.green, width: 2.0),
-                          // Green border when not focused
-                          borderRadius: BorderRadius.circular(
-                              8.0), // Rounded corners
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0),  // Green border when not focused
+                          borderRadius: BorderRadius.circular(8.0),  // Rounded corners
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(
-                              color: Colors.green, width: 2.0),
-                          // Green border when focused
-                          borderRadius: BorderRadius.circular(
-                              8.0), // Rounded corners
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0),  // Green border when focused
+                          borderRadius: BorderRadius.circular(8.0),  // Rounded corners
                         ),
                         border: OutlineInputBorder(
-                          borderSide: const BorderSide(
-                              color: Colors.grey, width: 2.0),
-                          // Default border color
+                          borderSide: const BorderSide(color: Colors.grey, width: 2.0),  // Default border color
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 8),
+
+                  // Dropdown untuk memilih Season
+                  if (selectedFA != null && seasonList.isNotEmpty) ...[
+                    DropdownButtonFormField<String>(
+                      value: selectedSeason,
+                      hint: const Text("Pilih Season!"),
+                      items: seasonList.map((season) {
+                        return DropdownMenuItem<String>(
+                          value: season,
+                          child: Text(season),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          selectedSeason = value; // Simpan pilihan Season
+                          _saveSeasonPreference(); // Simpan pilihan season
+                        });
+                      },
+                      style: const TextStyle(
+                        color: Colors.black,  // Change text color
+                        fontSize: 16.0,  // Change text size
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Season',
+                        filled: true,
+                        fillColor: Colors.white,  // Background color for the dropdown
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0),  // Green border when not focused
+                          borderRadius: BorderRadius.circular(8.0),  // Rounded corners
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0),  // Green border when focused
+                          borderRadius: BorderRadius.circular(8.0),  // Rounded corners
+                        ),
+                        border: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.grey, width: 2.0),  // Default border color
                           borderRadius: BorderRadius.circular(8.0),
                         ),
                       ),
@@ -733,8 +671,7 @@ class HomeScreenState extends State<HomeScreen> {
                             color: Colors.grey.withOpacity(0.5),
                             spreadRadius: 2,
                             blurRadius: 7,
-                            offset: const Offset(
-                                0, 3), // changes position of shadow
+                            offset: const Offset(0, 3), // changes position of shadow
                           ),
                         ],
                       ),
@@ -748,15 +685,11 @@ class HomeScreenState extends State<HomeScreen> {
                                 children: [
                                   const TextSpan(
                                     text: 'QA SPV: ',
-                                    style: TextStyle(fontSize: 16,
-                                        color: Colors.green,
-                                        fontWeight: FontWeight
-                                            .bold), // Bold only "QA SPV"
+                                    style: TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold),  // Bold only "QA SPV"
                                   ),
                                   TextSpan(
-                                    text: selectedQA, // Non-bold for the value
-                                    style: const TextStyle(
-                                        fontSize: 16, color: Colors.green),
+                                    text: selectedQA,  // Non-bold for the value
+                                    style: const TextStyle(fontSize: 16, color: Colors.green),
                                   ),
                                 ],
                               ),
@@ -771,20 +704,34 @@ class HomeScreenState extends State<HomeScreen> {
                                 children: [
                                   const TextSpan(
                                     text: 'District: ',
-                                    style: TextStyle(fontSize: 16,
-                                        color: Colors.green,
-                                        fontWeight: FontWeight
-                                            .bold), // Bold only "District"
+                                    style: TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold),  // Bold only "District"
                                   ),
                                   TextSpan(
-                                    text: selectedFA, // Non-bold for the value
-                                    style: const TextStyle(
-                                        fontSize: 16, color: Colors.green),
+                                    text: selectedFA,  // Non-bold for the value
+                                    style: const TextStyle(fontSize: 16, color: Colors.green),
                                   ),
                                 ],
                               ),
                             ),
                             const SizedBox(height: 8),
+                          ],
+
+                          // Tampilkan Season yang dipilih
+                          if (selectedSeason != null) ...[
+                            RichText(
+                              text: TextSpan(
+                                children: [
+                                  const TextSpan(
+                                    text: 'Season: ',
+                                    style: TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold),  // Bold only "District"
+                                  ),
+                                  TextSpan(
+                                    text: selectedSeason,  // Non-bold for the value
+                                    style: const TextStyle(fontSize: 16, color: Colors.green),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
 
                         ],
@@ -798,7 +745,7 @@ class HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 20),
         const Text(
-          'FASE INSPEKSI',
+          'FASE INSPEKSI PSP',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -818,41 +765,17 @@ class HomeScreenState extends State<HomeScreen> {
               context,
               'assets/vegetative.png',
               'Vegetative',
-              selectedSpreadsheetId,   // Dapatkan dari konfigurasi atau state
-              selectedFA,      // District yang dipilih
-              selectedQA,      // QA SPV yang dipilih
-              selectedSeason,
-              selectedFieldSPV, // Tambahkan region sebagai argumen
+              selectedFieldSPV != null
+                  ? ConfigManager.getSpreadsheetId(selectedFieldSPV!) // Ambil spreadsheetId
+                  : null,
             ),
             buildCategoryItem(
               context,
               'assets/generative.png',
               'Generative',
-              selectedSpreadsheetId,
-              selectedFA,
-              selectedQA,
-              selectedSeason,
-              selectedFieldSPV,
-            ),
-            buildCategoryItem(
-              context,
-              'assets/preharvest.png',
-              'Pre-Harvest',
-              selectedSpreadsheetId,
-              selectedFA,
-              selectedQA,
-              selectedSeason,
-              selectedFieldSPV,
-            ),
-            buildCategoryItem(
-              context,
-              'assets/harvest.png',
-              'Harvest',
-              selectedSpreadsheetId,
-              selectedFA,
-              selectedQA,
-              selectedSeason,
-              selectedFieldSPV,
+              selectedFieldSPV != null
+                  ? ConfigManager.getSpreadsheetId(selectedFieldSPV!) // Ambil spreadsheetId
+                  : null,
             ),
           ],
         ),
@@ -865,81 +788,37 @@ class HomeScreenState extends State<HomeScreen> {
       BuildContext context,
       String imagePath,
       String label,
-      String? spreadsheetId,
-      String? selectedDistrict,
-      String? selectedQA,
-      String? selectedSeason,
-      String? region, // Tambahkan parameter region
+      String? spreadsheetId, // Tambahkan spreadsheetId sebagai parameter
       ) {
     return GestureDetector(
       onTap: () {
         if (spreadsheetId == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Harap pilih Region terlebih dahulu')),
-          );
-          return;
-        }
-        if (selectedQA == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('QA SPV belum dipilih gaes!')),
-          );
-          return;
-        }
-        if (selectedDistrict == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Hayo, Districtnya belum dipilih!')),
+            const SnackBar(content: Text('Spreadsheet ID tidak ditemukan!')),
           );
           return;
         }
 
-        // Tentukan targetScreen berdasarkan label
         Widget targetScreen;
         switch (label) {
           case 'Vegetative':
             targetScreen = VegetativeScreen(
               spreadsheetId: spreadsheetId,
-              selectedDistrict: selectedDistrict,
               selectedQA: selectedQA,
               selectedSeason: selectedSeason,
-              region: region ?? 'Unknown Region', // Kirim region ke VegetativeScreen
               seasonList: seasonList,
             );
             break;
           case 'Generative':
             targetScreen = GenerativeScreen(
               spreadsheetId: spreadsheetId,
-              selectedDistrict: selectedDistrict,
-              selectedQA: selectedQA,
-              selectedSeason: selectedSeason,
-              region: region ?? 'Unknown Region',
               seasonList: seasonList,
-            );
-            break;
-          case 'Pre-Harvest':
-            targetScreen = PreHarvestScreen(
-              spreadsheetId: spreadsheetId,
-              selectedDistrict: selectedDistrict,
-              selectedQA: selectedQA,
-              selectedSeason: selectedSeason,
-              region: region ?? 'Unknown Region',
-              seasonList: seasonList,
-            );
-            break;
-          case 'Harvest':
-            targetScreen = HarvestScreen(
-              spreadsheetId: spreadsheetId,
-              selectedDistrict: selectedDistrict,
-              selectedQA: selectedQA,
-              selectedSeason: selectedSeason,
-              region: region ?? 'Unknown Region',
-              seasonList: seasonList,
-            );
+            ); // Kirim spreadsheetId
             break;
           default:
             return;
         }
 
-        // Navigasi ke targetScreen
         Navigator.of(context).push(
           MaterialPageRoute(builder: (context) => targetScreen),
         );

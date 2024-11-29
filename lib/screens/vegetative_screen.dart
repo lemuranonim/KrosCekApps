@@ -5,11 +5,25 @@ import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 import 'google_sheets_api.dart';
 import 'vegetative_detail_screen.dart';
+import 'config_manager.dart';
 
 class VegetativeScreen extends StatefulWidget {
+  final String spreadsheetId;
   final String? selectedDistrict;
+  final String? selectedQA;
+  final String? selectedSeason;
+  final String? region;
+  final List<String> seasonList;
 
-  const VegetativeScreen({super.key, this.selectedDistrict});
+  const VegetativeScreen({
+    super.key,
+    required this.spreadsheetId,
+    this.selectedDistrict,
+    this.selectedQA,
+    this.selectedSeason,
+    this.region, // Tambahkan ini
+    required this.seasonList,
+  });
 
   @override
   VegetativeScreenState createState() => VegetativeScreenState();
@@ -17,12 +31,14 @@ class VegetativeScreen extends StatefulWidget {
 
 class VegetativeScreenState extends State<VegetativeScreen> {
   late final GoogleSheetsApi _googleSheetsApi;
-  final _spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
+  late String region; // Deklarasikan sebagai variabel instance
   final _worksheetTitle = 'Vegetative';
-
+  String? _selectedSeason; // Nilai season yang dipilih
+  List<String> _seasonsList = [];
   final List<List<String>> _sheetData = [];
   List<List<String>> _filteredData = [];
   bool _isLoading = true;
+  String? selectedRegion;
   String? _errorMessage;
   String? _selectedQA;
   String _searchQuery = '';
@@ -32,7 +48,9 @@ class VegetativeScreenState extends State<VegetativeScreen> {
   Timer? _debounce;
   double _progress = 0.0; // Variabel untuk menyimpan progres
 
-  // Daftar nama FA untuk filter
+  String? _selectedWeekOfVegetative; // Variabel untuk menyimpan minggu yang dipilih
+  List<String> _weekOfVegetativeList = []; // Daftar unik untuk "Week of Vegetative"
+
   List<String> _faNames = []; // Daftar nama FA unik
   List<String> _selectedFA = []; // Daftar nama FA yang dipilih
 
@@ -41,7 +59,9 @@ class VegetativeScreenState extends State<VegetativeScreen> {
   @override
   void initState() {
     super.initState();
-    _googleSheetsApi = GoogleSheetsApi(_spreadsheetId);
+    final spreadsheetId = ConfigManager.getSpreadsheetId(widget.region ?? "Default Region") ?? '';
+    selectedRegion = widget.region ?? "Unknown Region";
+    _googleSheetsApi = GoogleSheetsApi(spreadsheetId);
     _loadSheetData();
     _loadFilterPreferences();
   }
@@ -86,6 +106,7 @@ class VegetativeScreenState extends State<VegetativeScreen> {
           return sum + effectiveArea;
         });
       });
+      _filterData();
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -103,11 +124,11 @@ class VegetativeScreenState extends State<VegetativeScreen> {
     _filterData(); // Panggil filter data setelah preferensi diambil
   }
 
-  Future<void> _saveFilterPreferences() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('selectedFA', _selectedFA); // Simpan selectedFA sebagai List<String>
-    await prefs.setString('selectedQA', _selectedQA ?? ''); // Simpan selectedQA sebagai String
-  }
+  // Future<void> _saveFilterPreferences() async {
+  //   SharedPreferences prefs = await SharedPreferences.getInstance();
+  //   await prefs.setStringList('selectedFA', _selectedFA); // Simpan selectedFA sebagai List<String>
+  //   await prefs.setString('selectedQA', _selectedQA ?? ''); // Simpan selectedQA sebagai String
+  // }
 
   // Ekstrak nama-nama FA yang unik dari data
   void _extractUniqueFA() {
@@ -129,13 +150,22 @@ class VegetativeScreenState extends State<VegetativeScreen> {
       _filteredData = _sheetData.where((row) {
         final qaSpv = getValue(row, 30, '');
         final district = getValue(row, 13, '').toLowerCase();
-        final selectedDistrict = widget.selectedDistrict?.toLowerCase();
+        final season = getValue(row, 1, '');
+        final weekOfVegetative = getValue(row, 29, ''); // Ambil dari kolom 29 untuk "Week of Vegetative"
 
+        bool matchesSeasonFilter = (_selectedSeason == null || season == _selectedSeason);
         bool matchesQAFilter = (_selectedQA == null || qaSpv == _selectedQA);
-        bool matchesDistrictFilter = selectedDistrict == null || district == selectedDistrict;
+        bool matchesDistrictFilter =
+            widget.selectedDistrict == null ||
+            district == widget.selectedDistrict!.toLowerCase();
+        bool matchesWeekFilter =
+            (_selectedWeekOfVegetative == null || weekOfVegetative == _selectedWeekOfVegetative);
+
         final fa = getValue(row, 16, '').toLowerCase(); // FA ada di kolom 16
 
-        bool matchesFAFilter = _selectedFA.isEmpty || _selectedFA.contains(toTitleCase(fa)); // Tambahkan filter FA
+        bool matchesFAFilter =
+            _selectedFA.isEmpty ||
+                _selectedFA.contains(toTitleCase(fa)); // Tambahkan filter FA
 
         final fieldNumber = getValue(row, 2, '').toLowerCase();
         final farmerName = getValue(row, 3, '').toLowerCase();
@@ -153,13 +183,32 @@ class VegetativeScreenState extends State<VegetativeScreen> {
             fa.contains(_searchQuery) ||
             fieldSpv.contains(_searchQuery);
 
-        return matchesQAFilter && matchesDistrictFilter && matchesFAFilter && matchesSearchQuery;
+        return matchesQAFilter &&
+            matchesDistrictFilter &&
+            matchesFAFilter &&
+            matchesSeasonFilter &&
+            matchesWeekFilter &&
+            matchesSearchQuery;
       }).toList();
+
+      _seasonsList = _filteredData
+          .map((row) => getValue(row, 1, '')) // Mengambil Week of Generative dari kolom 27
+          .toSet() // Menghapus duplikasi
+          .toList()
+        ..sort(); // Sortir dari yang terkecil ke yang terbesar
+
+      _weekOfVegetativeList = _filteredData
+          .map((row) => getValue(row, 29, '')) // Ambil dari kolom 27
+          .toSet() // Menghapus duplikasi
+          .toList()
+        ..sort(); // Sortir dari yang terkecil ke yang terbesar
+
       _faNames = _filteredData
           .map((row) => toTitleCase(getValue(row, 16, '').toLowerCase())) // Mengambil FA dari kolom 16
           .toSet() // Menghapus duplikasi
           .toList()
         ..sort(); // Sortir FA
+
     });
   }
 
@@ -202,6 +251,57 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(
+                        'Filter by Seasons',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DropdownButton<String>(
+                      value: _selectedSeason,
+                      hint: const Text("Select Season"),
+                      isExpanded: true,
+                      items: _seasonsList.map((season) {
+                        return DropdownMenuItem<String>(
+                          value: season,
+                          child: Text(season),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _selectedSeason = newValue; // Atur season yang dipilih
+                          _filterData(); // Filter ulang data berdasarkan season
+                        });
+                        },
+                    ),
+
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(
+                        'Filter by Week of Vegetative',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DropdownButton<String>(
+                      value: _selectedWeekOfVegetative,
+                      hint: const Text("Select Week"),
+                      isExpanded: true,
+                      items: _weekOfVegetativeList.map((week) {
+                        return DropdownMenuItem<String>(
+                          value: week,
+                          child: Text(week),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _selectedWeekOfVegetative = newValue; // Memperbarui nilai pilihan
+                          _filterData(); // Filter ulang data berdasarkan pilihan baru
+                        });
+                        },
+                    ),
+
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8.0),
                       child: Text(
@@ -222,12 +322,35 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                               _selectedFA.remove(fa); // Hapus FA dari daftar yang dipilih
                             }
                             _filterData(); // Filter ulang data setelah FA diubah
-                            _saveFilterPreferences(); // Simpan filter ke SharedPreferences
                           });
                         },
+                        activeColor: Colors.green,
                         controlAffinity: ListTileControlAffinity.leading,
                       );
                     }),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          // Reset semua filter ke kondisi awal
+                          _selectedSeason = null;
+                          _selectedWeekOfVegetative = null;
+                          _selectedFA.clear(); // Kosongkan list FA yang dipilih
+                          _filterData();
+                        });
+                        // Tutup bottom sheet
+                        Navigator.pop(context);
+                      },
+                      icon: const Icon(Icons.refresh, color: Colors.white), // Ikon reset dengan warna putih
+                      label: const Text("Reset Filters", style: TextStyle(color: Colors.white)), // Teks dengan warna putih
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green, // Warna latar belakang tombol
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), // Padding dalam tombol
+                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), // Ukuran dan gaya teks
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8), // Membuat tombol dengan sudut melengkung
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -325,16 +448,9 @@ class VegetativeScreenState extends State<VegetativeScreen> {
             : _filteredData.isEmpty
             ? const Center(child: Text('No data available'))
             : ListView.builder(
-          itemCount: _filteredData.length + 1,
+          itemCount: _filteredData.length,
           itemBuilder: (context, index) {
-            if (index == _filteredData.length) {
-              return _isLoading
-                  ? Center(child: CircularProgressIndicator())
-                  : TextButton(
-                onPressed: _loadSheetData,
-                child: const Text('Load More'),
-              );
-            }
+
             final row = _filteredData[index];
 
             return Card(
@@ -349,20 +465,38 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                     fit: BoxFit.contain,
                   ),
                 ),
-                title: Text(getValue(row, 2, "Unknown")),
-                subtitle: Text(
-                  'Farmer: ${getValue(row, 3, "Unknown")}, '
-                      'Grower: ${getValue(row, 4, "Unknown")}, '
-                      'Desa: ${getValue(row, 11, "Unknown")}, '
-                      'Kec: ${getValue(row, 12, "Unknown")}, '
-                      'Kab: ${getValue(row, 13, "Unknown")}, '
-                      'Field SPV: ${getValue(row, 15, "Unknown")}, '
-                      'FA: ${getValue(row, 16, "Unknown")}', // Menampilkan FA
+                title: Text(
+                    getValue(row, 2, "Unknown" ),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: RichText(
+                  text: TextSpan(
+                    style: DefaultTextStyle.of(context).style, // Style default untuk teks biasa
+                    children: [
+                      TextSpan(text: 'Farmer: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 3, "Unknown")}, '),
+                      TextSpan(text: 'Grower: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 4, "Unknown")}, '),
+                      TextSpan(text: 'Desa: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 11, "Unknown")}, '),
+                      TextSpan(text: 'Kec: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 12, "Unknown")}, '),
+                      TextSpan(text: 'Kab: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 13, "Unknown")}, '),
+                      TextSpan(text: 'Field SPV: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${getValue(row, 15, "Unknown")}, '),
+                      TextSpan(text: 'FA: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: getValue(row, 16, "Unknown")),
+                    ],
+                  ),
                 ),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => VegetativeDetailScreen(fieldNumber: getValue(row, 2, "Unknown")), // Gunakan fieldNumber
+                      builder: (context) => VegetativeDetailScreen(
+                        fieldNumber: getValue(row, 2, "Unknown"),
+                        region: selectedRegion ?? 'Unknown Region',
+                      ),
                     ),
                   );
                 },

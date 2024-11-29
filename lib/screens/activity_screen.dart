@@ -1,185 +1,205 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-
-// Kelas model NotificationItem
-class NotificationItem {
-  final String message;
-  final DateTime time;
-
-  NotificationItem(this.message, this.time);
-}
+import 'package:shared_preferences/shared_preferences.dart';
+import 'google_sheets_api.dart';
+import 'package:intl/intl.dart';
+import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
 
 class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
 
   @override
   ActivityScreenState createState() => ActivityScreenState();
-
-  // Tambahkan fungsi statis untuk menambah notifikasi dari luar
-  static void addNotificationFromOutside(BuildContext context, String message) {
-    final state = context.findAncestorStateOfType<ActivityScreenState>();
-    if (state != null) {
-      state.addNotification(message);
-    }
-  }
 }
 
 class ActivityScreenState extends State<ActivityScreen> {
-  // List untuk menyimpan notifikasi atau aktivitas
-  List<NotificationItem> notifications = [];
+  List<List<String>> _activityLogs = [];
+  bool _isLoading = true;
 
-  // Variabel untuk menyimpan filter yang dipilih
-  String selectedFilter = 'Semua';
+  final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
+  final String worksheetTitle = 'Aktivitas';
+  late final GoogleSheetsApi _googleSheetsApi;
 
   @override
   void initState() {
     super.initState();
-    // Simulasi notifikasi awal untuk contoh
-    addNotification("Halaman aktivitas dimuat");
+    _googleSheetsApi = GoogleSheetsApi(spreadsheetId);
+    _loadUserDataAndFetchLogs();
   }
 
-  // Fungsi untuk menambah notifikasi ke dalam list
-  void addNotification(String notification) {
-    final now = DateTime.now();
-    setState(() {
-      notifications.add(NotificationItem(notification, now));
-    });
-  }
+  // Ambil userEmail dan userName dari SharedPreferences lalu ambil log aktivitas
+  Future<void> _loadUserDataAndFetchLogs() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final userEmail = prefs.getString('userEmail');
+    final userName = prefs.getString('userName');
 
-  // Fungsi untuk memfilter notifikasi
-  void filterNotifications(String filter) {
-    setState(() {
-      selectedFilter = filter;
-    });
-  }
+    await _googleSheetsApi.init();
 
-  // Fungsi refresh untuk memuat ulang halaman aktivitas
-  Future<void> refreshActivity() async {
-    await Future.delayed(const Duration(seconds: 1)); // Simulasi loading
-    setState(() {
-      addNotification("Halaman aktivitas di-refresh");
-    });
-  }
-
-  // Fungsi untuk menyaring notifikasi berdasarkan filter yang dipilih
-  List<NotificationItem> getFilteredNotifications() {
-    if (selectedFilter == 'Semua') {
-      return notifications;
-    } else if (selectedFilter == 'Hari ini') {
-      final today = DateTime.now();
-      return notifications.where((notif) {
-        return notif.time.day == today.day &&
-            notif.time.month == today.month &&
-            notif.time.year == today.year;
-      }).toList();
-    } else if (selectedFilter == 'Minggu ini') {
-      final now = DateTime.now();
-      final startOfWeek = now.subtract(Duration(days: now.weekday - 1)); // Hari Senin
-      return notifications.where((notif) {
-        return notif.time.isAfter(startOfWeek);
-      }).toList();
+    if (userEmail != null || userName != null) {
+      await _fetchActivityLogs(userEmail, userName);
     }
-    return notifications;
+
+    setState(() => _isLoading = false);
+  }
+
+  Future<void> _fetchActivityLogs(String? userEmail, String? userName) async {
+    try {
+      // Ambil semua data dari Google Sheets
+      final rows = await _googleSheetsApi.getSpreadsheetData(worksheetTitle);
+
+      // Filter data untuk mencocokkan userEmail atau userName
+      setState(() {
+        _activityLogs = rows
+            .skip(1) // Lewati header
+            .where((row) => row[0] == userEmail || row[1] == userName)
+            .toList();
+      });
+    } catch (e) {
+      // print('Error fetching data: $e');
+    }
+  }
+
+  String formatTimestamp(String timestamp) {
+    try {
+      final originalFormat = DateFormat('dd/MM/yyyy HH:mm:ss');
+      final dateTime = originalFormat.parse(timestamp);
+      final newFormat = DateFormat('EEEE, dd MMM yyyy, HH:mm');
+      return newFormat.format(dateTime);
+    } catch (e) {
+      return timestamp;
+    }
+  }
+
+  String formatTanggal(String serialTanggal) {
+    try {
+      final int daysSince1900 = int.parse(serialTanggal);
+      final DateTime date = DateTime(1900, 1, 1).add(Duration(days: daysSince1900 - 2));
+      return DateFormat('dd-MM-yyyy').format(date);
+    } catch (e) {
+      return serialTanggal; // Mengembalikan nilai asli jika bukan angka
+    }
+  }
+
+  String formatWaktu(String serialWaktu) {
+    try {
+      final double fractionalDay = double.parse(serialWaktu);
+      final int totalSeconds = (fractionalDay * 86400).round();
+      final int hours = totalSeconds ~/ 3600;
+      final int minutes = (totalSeconds % 3600) ~/ 60;
+      final int seconds = totalSeconds % 60;
+      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return serialWaktu; // Mengembalikan nilai asli jika bukan angka
+    }
+  }
+
+  String _formatTimestamp(String serialTimestamp) {
+    try {
+      // Pisahkan bagian integer (hari) dan desimal (waktu)
+      final double serial = double.parse(serialTimestamp);
+      final int daysSince1900 = serial.floor();
+      final double fractionalDay = serial - daysSince1900;
+
+      // Konversi ke tanggal berdasarkan hari sejak 1 Jan 1900
+      final DateTime date = DateTime(1900, 1, 1).add(Duration(days: daysSince1900 - 2));
+
+      // Hitung waktu berdasarkan bagian desimal dari hari
+      final int totalSeconds = (fractionalDay * 86400).round();
+      final int hours = totalSeconds ~/ 3600;
+      final int minutes = (totalSeconds % 3600) ~/ 60;
+      final int seconds = totalSeconds % 60;
+
+      // Format gabungan tanggal dan waktu
+      return DateFormat('dd/MM/yyyy HH:mm:ss').format(
+        DateTime(date.year, date.month, date.day, hours, minutes, seconds),
+      );
+    } catch (e) {
+      return serialTimestamp; // Mengembalikan nilai asli jika terjadi error
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    List<NotificationItem> filteredNotifications = getFilteredNotifications();
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Aktivitas',
-          style: TextStyle(color: Colors.green),
-        ),
-        backgroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.green),
-        actions: [
-          // Tombol refresh
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              refreshActivity();
-            },
-          ),
-          // Dropdown untuk filter
-          DropdownButton<String>(
-            value: selectedFilter,
-            items: <String>['Semua', 'Hari ini', 'Minggu ini'].map((String value) {
-              return DropdownMenuItem<String>(
-                value: value,
-                child: Text(value),
-              );
-            }).toList(),
-            onChanged: (String? newValue) {
-              filterNotifications(newValue!);
-            },
-          ),
-        ],
+        backgroundColor: Colors.green,
+        title: const Text('', style: TextStyle(color: Colors.white)),
       ),
-      body: RefreshIndicator(
-        onRefresh: refreshActivity,
-        child: filteredNotifications.isNotEmpty
-            ? ListView.builder(
-          itemCount: filteredNotifications.length,
-          itemBuilder: (context, index) {
-            return ListTile(
-              leading: const Icon(Icons.notifications, color: Colors.green),
-              title: Text(filteredNotifications[index].message),
-              subtitle: Text(filteredNotifications[index].time.toLocal().toString()),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ActivityDetailScreen(
-                      notification: filteredNotifications[index],
-                    ),
-                  ),
-                );
-              },
-            );
-          },
-        )
-            : const Center(
-          child: Text(
-            "Tidak ada notifikasi",
-            style: TextStyle(fontSize: 18),
-          ),
-        ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : LiquidPullToRefresh(
+        onRefresh: _loadUserDataAndFetchLogs, // Tambahkan fungsi refresh
+        color: Colors.green,
+        child: _buildLogActivityList(),
       ),
     );
   }
-}
 
-// Halaman untuk detail notifikasi
-class ActivityDetailScreen extends StatelessWidget {
-  final NotificationItem notification;
+  // Fungsi untuk membangun daftar log aktivitas berdasarkan filter userEmail atau userName
+  Widget _buildLogActivityList() {
+    if (_activityLogs.isEmpty) {
+      return const Center(child: Text('Tidak ada aktivitas yang tercatat'));
+    }
 
-  const ActivityDetailScreen({super.key, required this.notification});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Detail Aktivitas'),
-        backgroundColor: Colors.green,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Detail Notifikasi:",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            Text(notification.message, style: const TextStyle(fontSize: 16)),
-            const SizedBox(height: 10),
-            Text("Waktu: ${notification.time.toLocal().toString()}", style: const TextStyle(fontSize: 16)),
-          ],
-        ),
-      ),
+    return ListView.builder(
+      itemCount: _activityLogs.length,
+      itemBuilder: (context, index) {
+        final log = _activityLogs[index];
+        return ListTile(
+          title: Text(
+            log[3],
+            style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'Status: ',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    TextSpan(text: log[2]),
+                  ],
+                ),
+              ),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'Sheet: ',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    TextSpan(text: log[4]),
+                  ],
+                ),
+              ),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'Field Number: ',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    TextSpan(text: log[5]),
+                  ],
+                ),
+              ),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'Waktu: ',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    TextSpan(text: _formatTimestamp(log[6])),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
