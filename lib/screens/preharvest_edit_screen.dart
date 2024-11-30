@@ -468,7 +468,18 @@ class SuccessScreen extends StatelessWidget {
                 // Kembali ke layar sebelumnya
                 navigator.pop();
               },
-              child: const Text('Confirm!'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
+                backgroundColor: Colors.green, // Warna background tombol
+                foregroundColor: Colors.white, // Warna teks tombol
+                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+              child: const Text(
+                  'Confirm!',
+                style: TextStyle(fontSize: 20),
+              ),
             ),
           ],
         ),
