@@ -1,107 +1,141 @@
-# Kroscek
+# KrosCek
+_A smart app for QA professionals to manage field inspections efficiently._
 
-Kroscek adalah aplikasi berbasis Flutter yang dirancang untuk membantu pengguna dalam melakukan pengecekan atau verifikasi data secara cepat dan mudah. Aplikasi ini berfokus pada pengelolaan dan pengecekan berbagai data untuk meningkatkan efisiensi dan keakuratan verifikasi informasi.
+**KrosCek** adalah solusi digital berbasis Flutter yang dirancang khusus untuk membantu divisi QA PT Advanta Indonesia dalam mengelola proses pelaporan inspeksi lapangan. Dengan KrosCek, pengguna dapat mencatat data secara real-time, memverifikasi informasi di lapangan, dan mengelola aktivitas QA dengan mudah melalui perangkat seluler.
 
-## Fitur Utama
+Aplikasi ini dibangun untuk menyederhanakan tugas-tugas manual yang memakan waktu, meningkatkan akurasi data, dan menyediakan laporan yang terstruktur dengan integrasi penuh ke Google Sheets.
 
-- **Cek data cepat:** Verifikasi data secara instan dengan performa yang optimal.
-- **Antarmuka pengguna yang intuitif:** Desain UI/UX yang ramah pengguna dan mudah digunakan.
-- **Integrasi API:** Mendukung integrasi dengan layanan API eksternal untuk pengambilan data.
-- **Sistem notifikasi:** Memberikan notifikasi real-time tentang perubahan atau update penting.
-- **Penyimpanan lokal:** Data dapat disimpan secara offline dan disinkronkan kembali saat terkoneksi.
+---
 
-## Instalasi
+## Fitur Utama dan Alur Penggunaan
 
-Untuk menjalankan proyek ini secara lokal di mesin Anda, ikuti langkah-langkah berikut:
+### 1. **Login Berbasis Peran**
+- **Admin**:
+  - Mengelola data aktivitas seluruh pengguna.
+  - Mengirimkan notifikasi ke pengguna terkait tugas lapangan.
+  - Melihat history perubahan data secara detail.
+- **User (Field Inspector)**:
+  - Mencatat inspeksi langsung dari lapangan.
+  - Melaporkan absen log secara otomatis dengan geolokasi dan foto.
+  - Memperbarui data inspeksi berdasarkan fase: Vegetative, Generative, Pre-Harvest, atau Harvest.
 
-### Prasyarat
+### 2. **Home Screen**
+- Menampilkan informasi pengguna: nama, role, dan region.
+- **Navigasi utama**:
+  - Fase inspeksi (Vegetative, Generative, Pre-Harvest, Harvest).
+  - Fitur Absen Log, Issue, dan Training.
+- Fitur **filter** berdasarkan:
+  - **Region**: Memilih wilayah kerja pengguna.
+  - **QA SPV**: Supervisor QA terkait.
+  - **District/FA**: Fokus data berdasarkan area spesifik.
 
-Pastikan Anda sudah menginstal beberapa perangkat lunak berikut:
+### 3. **Pengelolaan Data Inspeksi**
+- Sinkronisasi langsung dengan Google Sheets menggunakan Google Sheets API.
+- **Fitur pencarian**:
+  - Filter data berdasarkan QA SPV, District, atau kata kunci spesifik.
+- **Halaman Detail**:
+  - Menampilkan informasi inspeksi dalam bentuk tabel.
+  - Formulir edit dengan komponen dinamis seperti dropdown, date picker, dan input angka.
 
-- [Flutter SDK](https://flutter.dev/docs/get-started/install) (versi terbaru)
-- [Android Studio](https://developer.android.com/studio) atau [Visual Studio Code](https://code.visualstudio.com/) dengan ekstensi Flutter dan Dart.
-- Emulator Android/iOS atau perangkat fisik untuk pengujian.
+### 4. **Absen Log**
+- Pengguna dapat mencatat kehadiran dengan:
+  - **Foto**: Diambil langsung melalui kamera.
+  - **Lokasi**: Koordinat GPS otomatis.
+  - **Waktu**: Waktu masuk otomatis saat absen dilakukan.
+- Data dikirim ke Google Sheets dengan notifikasi sukses.
 
-### Langkah Instalasi
+### 5. **Admin Dashboard**
+- Melihat log aktivitas pengguna.
+- Menelusuri history perubahan data inspeksi.
+- Mengirimkan notifikasi atau tugas baru kepada pengguna.
 
-1. Clone repositori ini ke lokal:
+### 6. **Peningkatan Performa**
+- **Hive Cache**:
+  - Menyimpan data sementara secara lokal untuk mempercepat akses.
+- **Peta Interaktif**:
+  - Menampilkan lokasi inspeksi dalam peta yang terhubung dengan Google Maps API.
 
+### 7. **Analitik dan Pelaporan**
+- Laporan dalam bentuk **chart** untuk memvisualisasikan tren inspeksi.
+- Dashboard analitik untuk mengevaluasi data QA secara keseluruhan.
+
+---
+
+## Teknologi yang Digunakan
+
+1. **Flutter**: Framework lintas platform untuk membangun aplikasi mobile.
+2. **Google Sheets API**: Integrasi real-time dengan spreadsheet untuk menyimpan data inspeksi.
+3. **Firebase Authentication**: Mengelola login berbasis peran dengan dukungan Google Sign-In.
+4. **Hive**: Penyimpanan lokal untuk cache data.
+5. **Google Maps API**: Menampilkan peta lokasi inspeksi.
+6. **Lottie**: Animasi interaktif untuk loading dan splash screen.
+
+---
+
+## Use Case
+
+### **Pengguna:**
+- **Field Inspector (FI)**:
+  - Memasukkan data inspeksi lapangan.
+  - Melaporkan aktivitas absen secara otomatis.
+- **Supervisor QA (QA SPV)**:
+  - Memverifikasi data inspeksi.
+  - Melacak aktivitas FI di lapangan.
+- **Admin**:
+  - Mengelola keseluruhan sistem.
+  - Mengirimkan tugas dan memantau hasil pekerjaan.
+
+### **Masalah yang Diatasi:**
+1. **Pelaporan Manual**:
+   - Mengurangi kesalahan data akibat metode input manual.
+2. **Integrasi Data**:
+   - Data lapangan langsung tersimpan di Google Sheets tanpa perlu rekap manual.
+3. **Akses Data Real-time**:
+   - Memungkinkan tim QA untuk memonitor progres lapangan kapan saja.
+4. **Efisiensi Waktu**:
+   - Menghemat waktu dengan otomatisasi absen dan pelaporan.
+
+---
+
+## Instalasi dan Konfigurasi
+
+1. **Clone Repository**:
    ```bash
    git clone https://github.com/username/kroscek.git
+   ```
+2. **Masuk ke direktori proyek**:
+   ```bash
    cd kroscek
    ```
-
-2. Instal semua dependency proyek:
-
+3. **Instal dependensi**:
    ```bash
    flutter pub get
    ```
+4. **Tambahkan kredensial API**:
+   - **Google Sheets API**:
+     - Aktifkan Google Sheets API di [Google Cloud Console](https://console.cloud.google.com/).
+     - Tambahkan file `credentials.json` ke direktori proyek.
+   - **Firebase**:
+     - Konfigurasi Firebase Authentication untuk email/password dan Google Sign-In.
 
-3. Jalankan aplikasi di emulator atau perangkat yang terhubung:
-
+5. **Jalankan aplikasi**:
    ```bash
    flutter run
    ```
 
-## Struktur Proyek
-
-Proyek ini menggunakan struktur folder standar untuk aplikasi Flutter:
-
-```bash
-.
-├── lib
-│   ├── main.dart        # File entry point aplikasi
-│   ├── screens/         # Folder untuk layar/halaman aplikasi
-│   ├── models/          # Folder untuk model data
-│   ├── services/        # Folder untuk logika backend dan API
-│   └── widgets/         # Folder untuk widget reusable
-├── assets               # Folder untuk gambar dan aset statis
-├── pubspec.yaml         # Konfigurasi dependencies Flutter
-└── README.md            # Dokumentasi proyek
-```
-
-## Penggunaan
-
-Setelah aplikasi berhasil dijalankan, Anda dapat menggunakan aplikasi Kroscek dengan langkah-langkah berikut:
-
-1. **Login/Register:** Buat akun atau login dengan akun Anda yang telah terdaftar.
-2. **Cek data:** Pilih jenis data yang ingin Anda verifikasi melalui beberapa opsi yang tersedia di halaman utama.
-3. **Notifikasi:** Dapatkan notifikasi saat ada perubahan data yang perlu Anda perhatikan.
-
-## Teknologi yang Digunakan
-
-- **Flutter**: Framework untuk membangun aplikasi mobile multiplatform.
-- **Dart**: Bahasa pemrograman yang digunakan dalam Flutter.
-- **RESTful API**: Untuk mengambil dan memverifikasi data dari server eksternal.
-- **SQLite**: Database lokal untuk penyimpanan data offline.
-
-## Kontribusi
-
-Kontribusi sangat kami hargai! Untuk berkontribusi pada proyek ini:
-
-1. Fork repositori ini.
-2. Buat branch baru untuk fitur atau perbaikan: `git checkout -b fitur-baru`.
-3. Commit perubahan Anda: `git commit -m 'Menambahkan fitur baru'`.
-4. Push ke branch: `git push origin fitur-baru`.
-5. Buat pull request.
+---
 
 ## Lisensi
 
-Proyek ini dilisensikan di bawah [MIT License](LICENSE).
+**Hak Cipta Dilindungi**  
+Seluruh kode sumber, dokumentasi, dan aset visual dalam repositori ini adalah milik pribadi. Tidak diperbolehkan untuk digunakan, dimodifikasi, didistribusikan, atau direproduksi tanpa izin tertulis dari pemilik proyek.  
+
+**Copyright © 2024 LemurAnonimDev**
+
+---
 
 ## Kontak
 
-Jika Anda memiliki pertanyaan atau saran, silakan hubungi kami di:
-
-- Email: ludtanza@gmail.com
-
-```
-
-### Penjelasan singkat:
-
-1. **Fitur Utama**: Bagian ini menjelaskan fitur unggulan dari aplikasi Kroscek.
-2. **Instalasi**: Panduan untuk menginstal proyek Flutter secara lokal, mulai dari clone repository hingga menjalankannya di emulator.
-3. **Struktur Proyek**: Gambaran struktur folder proyek untuk membantu pengguna atau pengembang lain memahami di mana letak file penting berada.
-4. **Penggunaan**: Langkah-langkah dasar untuk menggunakan aplikasi setelah dijalankan.
-5. **Kontribusi**: Langkah untuk berkontribusi ke proyek ini.
-6. **Lisensi**: Informasi tentang lisensi yang digunakan proyek ini.
+Untuk pertanyaan atau informasi lebih lanjut, silakan hubungi:  
+- **Email**: mail@lemuranonimdev.com  
+- **Telepon**: (+62) 821 4370 6440
