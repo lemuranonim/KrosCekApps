@@ -1,0 +1,3 @@
+-keepattributes *Annotation*
+-dontwarn android.arch.**
+-dontwarn android.support.**

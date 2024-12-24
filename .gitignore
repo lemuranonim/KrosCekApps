@@ -46,3 +46,6 @@ app.*.map.json
 android/app/google-services.json
 android/app/src/debug/google-services.json
 android/app/src/debug/google-services1.json
+
+# FVM Version Cache
+.fvm/

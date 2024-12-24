@@ -63,32 +63,32 @@ class GenerativeEditScreenState extends State<GenerativeEditScreen> {
   String? selectedReasonPLD;
   String? selectedReasonTidakTeraudit;
 
-  final List<String> detaselingPlanItems = ['Y', 'N'];
-  final List<String> tenagaKerjaDTItems = ['A', 'B', 'C', 'D', 'E'];
-  final List<String> roguingProsesItems = ['Y', 'N'];
-  final List<String> remarksRoguingProsesItems = ['A', 'B', 'C', 'D', 'E'];
-  final List<String> tenagaKerjaDetasselingItems = ['A', 'B'];
-  final List<String> femaleShed1Items = ['A', 'B', 'C', 'D'];
-  final List<String> sheddingMale1Items = ['A', 'B'];
-  final List<String> sheddingFemale1Items = ['A', 'B'];
-  final List<String> femaleShed2Items = ['A', 'B', 'C', 'D'];
-  final List<String> sheddingMale2Items = ['A', 'B'];
-  final List<String> sheddingFemale2Items = ['A', 'B'];
-  final List<String> standingCropMaleItems = ['A', 'B'];
-  final List<String> standingCropFemaleItems = ['A', 'B'];
-  final List<String> lsvItems = ['A', 'B'];
-  final List<String> detasselingObservationItems = ['A', 'B', 'C', 'D'];
-  final List<String> affectedFieldsItems = ['A', 'B'];
-  final List<String> nickCoverItems = ['A', 'B', 'C'];
-  final List<String> cropUniformityItems = ['A', 'B', 'C'];
-  final List<String> isolationItems = ['Y', 'N'];
-  final List<String> isolationTypeItems = ['A', 'B'];
-  final List<String> isolationDistanceItems = ['A', 'B', 'C', 'D'];
-  final List<String> qPIRItems = ['Y', 'N'];
-  final List<String> flaggingItems = ['GF', 'RFI', 'RFD', 'BF'];
-  final List<String> recommendationItems = ['Continue', 'Discard'];
-  final List<String> reasonPLDItems = ['A', 'B'];
-  final List<String> reasonTidakTerauditItems = ['A', 'B', 'C'];
+  final List<String> detaselingPlanItems = ['', 'Y', 'N'];
+  final List<String> tenagaKerjaDTItems = ['', 'A', 'B', 'C', 'D', 'E'];
+  final List<String> roguingProsesItems = ['', 'Y', 'N'];
+  final List<String> remarksRoguingProsesItems = ['', 'A', 'B', 'C', 'D', 'E'];
+  final List<String> tenagaKerjaDetasselingItems = ['', 'A', 'B'];
+  final List<String> femaleShed1Items = ['', 'A', 'B', 'C', 'D'];
+  final List<String> sheddingMale1Items = ['', 'A', 'B'];
+  final List<String> sheddingFemale1Items = ['', 'A', 'B'];
+  final List<String> femaleShed2Items = ['', 'A', 'B', 'C', 'D'];
+  final List<String> sheddingMale2Items = ['', 'A', 'B'];
+  final List<String> sheddingFemale2Items = ['', 'A', 'B'];
+  final List<String> standingCropMaleItems = ['', 'A', 'B'];
+  final List<String> standingCropFemaleItems = ['', 'A', 'B'];
+  final List<String> lsvItems = ['', 'A', 'B'];
+  final List<String> detasselingObservationItems = ['', 'A', 'B', 'C', 'D'];
+  final List<String> affectedFieldsItems = ['', 'A', 'B'];
+  final List<String> nickCoverItems = ['', 'A', 'B', 'C'];
+  final List<String> cropUniformityItems = ['', 'A', 'B', 'C'];
+  final List<String> isolationItems = ['', 'Y', 'N'];
+  final List<String> isolationTypeItems = ['', 'A', 'B'];
+  final List<String> isolationDistanceItems = ['', 'A', 'B', 'C', 'D'];
+  final List<String> qPIRItems = ['', 'Y', 'N'];
+  final List<String> flaggingItems = ['', 'GF', 'RFI', 'RFD', 'BF'];
+  final List<String> recommendationItems = ['', 'Continue', 'Discard'];
+  final List<String> reasonPLDItems = ['', 'A', 'B'];
+  final List<String> reasonTidakTerauditItems = ['', 'A', 'B', 'C'];
 
   @override
   void initState() {

@@ -256,10 +256,10 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                       padding: EdgeInsets.symmetric(vertical: 8.0),
                       child: Text(
                         'Filter by Seasons',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
-                    DropdownButton<String>(
+                    DropdownButtonFormField<String>(
                       value: _selectedSeason,
                       hint: const Text("Select Season"),
                       isExpanded: true,
@@ -274,17 +274,44 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                           _selectedSeason = newValue; // Atur season yang dipilih
                           _filterData(); // Filter ulang data berdasarkan season
                         });
-                        },
+                      },
+                      style: const TextStyle(
+                        color: Colors.black, // Ubah warna teks
+                        fontSize: 16.0, // Ubah ukuran teks
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Season',
+                        labelStyle: TextStyle(
+                          color: Colors.green, // Warna teks label
+                          fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Ubah warna border
+                          borderRadius: BorderRadius.circular(8.0), // Sudut melengkung
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Warna border saat fokus
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        border: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.grey, width: 2.0), // Warna border default
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                      ),
                     ),
+
+                    const SizedBox(height: 20),
 
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8.0),
                       child: Text(
                         'Filter by Week of Flowering Rev',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
-                    DropdownButton<String>(
+                    DropdownButtonFormField<String>(
                       value: _selectedWeekOfGenerative,
                       hint: const Text("Select Week"),
                       isExpanded: true,
@@ -300,13 +327,40 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                           _filterData(); // Filter ulang data berdasarkan pilihan baru
                         });
                       },
+                      style: const TextStyle(
+                        color: Colors.black, // Ubah warna teks
+                        fontSize: 16.0, // Ubah ukuran teks
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Week of Flowering Rev',
+                        labelStyle: TextStyle(
+                          color: Colors.green, // Warna teks label
+                          fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Ubah warna border
+                          borderRadius: BorderRadius.circular(8.0), // Sudut melengkung
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Warna border saat fokus
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        border: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.grey, width: 2.0), // Warna border default
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                      ),
                     ),
+
+                    const SizedBox(height: 20),
 
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8.0),
                       child: Text(
                         'Filter by FA',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
                     // Hanya tampilkan FA yang sesuai dengan QA SPV dan District yang dipilih
@@ -328,6 +382,9 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                         controlAffinity: ListTileControlAffinity.leading,
                       );
                     }),
+
+                    const SizedBox(height: 20),
+
                     ElevatedButton.icon(
                       onPressed: () {
                         setState(() {
@@ -504,6 +561,12 @@ class GenerativeScreenState extends State<GenerativeScreen> {
             );
           },
         ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
+      bottomNavigationBar: const BottomAppBar(
+        color: Colors.green,
+        shape: CircularNotchedRectangle(),
+        child: SizedBox(height: 50.0),
       ),
     );
   }

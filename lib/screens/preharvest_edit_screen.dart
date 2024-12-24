@@ -36,9 +36,9 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
   String? selectedCropHealth;
   String? selectedRecommendation;
 
-  final List<String> maleRowsChoppingItems = ['A', 'B'];
-  final List<String> cropHealthItems = ['A', 'B', 'C'];
-  final List<String> recommendationItems = ['Continue', 'Discard'];
+  final List<String> maleRowsChoppingItems = ['', 'A', 'B'];
+  final List<String> cropHealthItems = ['', 'A', 'B', 'C'];
+  final List<String> recommendationItems = ['', 'Continue', 'Discard'];
 
   @override
   void initState() {

@@ -46,16 +46,16 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   String? selectedFlagging;
   String? selectedRecommendation;
 
-  final List<String> splitFieldItems = ['A', 'B'];
-  final List<String> isolationProblemItems = ['Y', 'N'];
-  final List<String> contaminantTypeItems = ['A', 'B'];
-  final List<String> contaminantDistanceItems = ['A', 'B', 'C', 'D'];
-  final List<String> cropUniformityItems = ['A', 'B', 'C'];
-  final List<String> offtypeItems = ['A', 'B'];
-  final List<String> firAppliedItems = ['Y', 'N'];
-  final List<String> poiAccuracyItems = ['Valid', 'Not Valid'];
-  final List<String> flaggingItems = ['GF', 'RF'];
-  final List<String> recommendationItems = ['Continue', 'Discard'];
+  final List<String> splitFieldItems = ['', 'A', 'B'];
+  final List<String> isolationProblemItems = ['', 'Y', 'N'];
+  final List<String> contaminantTypeItems = ['', 'A', 'B'];
+  final List<String> contaminantDistanceItems = ['', 'A', 'B', 'C', 'D'];
+  final List<String> cropUniformityItems = ['', 'A', 'B', 'C'];
+  final List<String> offtypeItems = ['', 'A', 'B'];
+  final List<String> firAppliedItems = ['', 'Y', 'N'];
+  final List<String> poiAccuracyItems = ['', 'Valid', 'Not Valid'];
+  final List<String> flaggingItems = ['', 'GF', 'RF'];
+  final List<String> recommendationItems = ['', 'Continue', 'Discard'];
 
   @override
   void initState() {

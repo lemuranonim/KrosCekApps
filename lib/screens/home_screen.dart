@@ -375,7 +375,7 @@ class HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: _selectedIndex == 0
-            ? const Text('KrosCekApp',
+            ? const Text('HSP Dashboard',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
             : const Text('Aktivitas',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -495,7 +495,7 @@ class HomeScreenState extends State<HomeScreen> {
             borderRadius: BorderRadius.circular(16.0),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.10),
+                color: Colors.black.withAlpha((0.10 * 255).toInt()),
                 // Shadow color with opacity
                 spreadRadius: 3,
                 // Spread of the shadow
@@ -534,7 +534,7 @@ class HomeScreenState extends State<HomeScreen> {
                               milliseconds: 250), // Typing speed
                         ),
                         TyperAnimatedText(
-                          'Monggo dipun Kroscek!', // Second part of the text
+                          'Monggo dipun KrosCek!', // Second part of the text
                           textStyle: const TextStyle(
                             fontSize: 20.0,
                             fontWeight: FontWeight.bold,
@@ -596,6 +596,10 @@ class HomeScreenState extends State<HomeScreen> {
                     ),
                     decoration: InputDecoration(
                       labelText: 'Field Region',
+                      labelStyle: TextStyle(
+                        color: Colors.green, // Warna teks label
+                        fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                      ),
                       filled: true,
                       fillColor: Colors.white,
                       enabledBorder: OutlineInputBorder(
@@ -641,6 +645,10 @@ class HomeScreenState extends State<HomeScreen> {
                       ),
                       decoration: InputDecoration(
                         labelText: 'QA SPV',
+                        labelStyle: TextStyle(
+                          color: Colors.green, // Warna teks label
+                          fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                        ),
                         filled: true,
                         fillColor: Colors.white,
                         // Background color of the dropdown field
@@ -691,6 +699,10 @@ class HomeScreenState extends State<HomeScreen> {
                       ),
                       decoration: InputDecoration(
                         labelText: 'District',
+                        labelStyle: TextStyle(
+                          color: Colors.green, // Warna teks label
+                          fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                        ),
                         filled: true,
                         fillColor: Colors.white,
                         // Background color for the dropdown
@@ -730,7 +742,7 @@ class HomeScreenState extends State<HomeScreen> {
                         borderRadius: BorderRadius.circular(10),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.grey.withOpacity(0.5),
+                            color: Colors.grey.withAlpha((0.5 * 255).toInt()),
                             spreadRadius: 2,
                             blurRadius: 7,
                             offset: const Offset(
@@ -875,19 +887,19 @@ class HomeScreenState extends State<HomeScreen> {
       onTap: () {
         if (spreadsheetId == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Harap pilih Region terlebih dahulu')),
+            const SnackBar(content: Text('Harap pilih Region terlebih dahulu', textAlign: TextAlign.center,)),
           );
           return;
         }
         if (selectedQA == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('QA SPV belum dipilih gaes!')),
+            const SnackBar(content: Text('QA SPV belum dipilih gaes!', textAlign: TextAlign.center,)),
           );
           return;
         }
         if (selectedDistrict == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Hayo, Districtnya belum dipilih!')),
+            const SnackBar(content: Text('Hayo, Districtnya belum dipilih!', textAlign: TextAlign.center,)),
           );
           return;
         }
@@ -950,7 +962,7 @@ class HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(55.0),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.10),
+              color: Colors.black.withAlpha((0.10 * 255).toInt()),
               spreadRadius: 3,
               blurRadius: 2,
               offset: const Offset(0, 3),

@@ -123,6 +123,8 @@ class GoogleSheetsApi {
       } else if (_isDate(value)) {
         final date = _parseDate(value);
         return DateFormat('dd/MM/yyyy').format(date); // Format tanggal
+      } else if (_isDecimal(value)) {
+        return _formatDecimal(value); // Tangani angka desimal
       } else if (_isNumber(value)) {
         return _normalizeNumber(value); // Format angka (mendukung koma dan titik)
       } else if (_containsRatio(value)) {
@@ -177,6 +179,23 @@ class GoogleSheetsApi {
       }
     }
     return -1; // Tidak ditemukan
+  }
+
+  // Fungsi untuk memeriksa apakah nilai merupakan angka desimal
+  bool _isDecimal(String value) {
+    return RegExp(r'^[0-9]+([.,][0-9]+)?\$').hasMatch(value);
+  }
+
+  // Fungsi untuk format angka desimal tanpa pembulatan
+  String _formatDecimal(String value) {
+    if (value.contains(',')) {
+      value = value.replaceAll(',', '.');
+    }
+    double? number = double.tryParse(value);
+    if (number != null) {
+      return number.toString(); // Kembalikan nilai tanpa pembulatan
+    }
+    return value;
   }
 
   String _normalizeText(String value) {

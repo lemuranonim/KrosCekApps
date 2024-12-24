@@ -431,7 +431,7 @@ class PspScreenState extends State<PspScreen> {
             borderRadius: BorderRadius.circular(16.0),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.10),  // Shadow color with opacity
+                color: Colors.black.withAlpha((0.10 * 255).toInt()),
                 spreadRadius: 3,  // Spread of the shadow
                 blurRadius: 2,  // Blur radius of the shadow
                 offset: const Offset(0, 3),  // Shadow offset position
@@ -668,7 +668,7 @@ class PspScreenState extends State<PspScreen> {
                         borderRadius: BorderRadius.circular(10),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.grey.withOpacity(0.5),
+                            color: Colors.grey.withAlpha((0.5 * 255).toInt()),
                             spreadRadius: 2,
                             blurRadius: 7,
                             offset: const Offset(0, 3), // changes position of shadow
@@ -829,7 +829,7 @@ class PspScreenState extends State<PspScreen> {
           borderRadius: BorderRadius.circular(55.0),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.10),
+              color: Colors.black.withAlpha((0.10 * 255).toInt()),
               spreadRadius: 3,
               blurRadius: 2,
               offset: const Offset(0, 3),

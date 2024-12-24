@@ -38,11 +38,11 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
   String? selectedReasonToDowngradeFlagging;
   String? selectedDowngradeFlaggingRecommendation;
 
-  final List<String> earConditionObservationItems = ['2', '3', '4'];
-  final List<String> cropHealthItems = ['A', 'B', 'C'];
-  final List<String> recommendationItems = ['Continue', 'Discard'];
-  final List<String> reasonToDowngradeFlaggingItems = ['A', 'B', 'C', 'D'];
-  final List<String> downgradeFlaggingRecommendationItems = ['RFI', 'RFD'];
+  final List<String> earConditionObservationItems = ['', '2', '3', '4'];
+  final List<String> cropHealthItems = ['', 'A', 'B', 'C'];
+  final List<String> recommendationItems = ['', 'Continue', 'Discard'];
+  final List<String> reasonToDowngradeFlaggingItems = ['', 'A', 'B', 'C', 'D'];
+  final List<String> downgradeFlaggingRecommendationItems = ['', 'RFI', 'RFD'];
 
   @override
   void initState() {

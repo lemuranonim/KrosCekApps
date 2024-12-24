@@ -239,10 +239,12 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
           await _fetchData();
         },
         backgroundColor: Colors.green,
+        shape: const CircleBorder(),
         child: const Icon(Icons.edit, color: Colors.white),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
       bottomNavigationBar: const BottomAppBar(
+        color: Colors.green,
         shape: CircularNotchedRectangle(),
         child: SizedBox(height: 50.0),
       ),
@@ -373,13 +375,20 @@ class HarvestDetailScreenState extends State<HarvestDetailScreen> {
     try {
       final parsedNumber = double.tryParse(value);
       if (parsedNumber != null) {
-        return parsedNumber.toStringAsFixed(1);
+        // Mengambil jumlah digit desimal dari input
+        List<String> parts = value.split(',');
+        if (parts.length > 1) {
+          int decimalPlaces = parts[1].length; // Hitung digit desimal
+          return parsedNumber.toStringAsFixed(decimalPlaces); // Tampilkan sesuai input
+        }
+        return parsedNumber.toString(); // Jika tidak ada desimal, kembalikan angka asli
       }
     } catch (e) {
-      // jeda
+      // Tangani kesalahan parsing
     }
-    return value;
+    return value; // Kembalikan nilai asli jika gagal parsing
   }
+
 
   Future<void> _navigateToEditScreen(BuildContext context) async {
     final updatedRow = await Navigator.push(
