@@ -1,31 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../services/auth_service.dart';
 import '../services/google_sign_in_service.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/auth_service.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  LoginScreenState createState() => LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> {
   final AuthService _auth = AuthService();
   final GoogleSignInService _googleSignInService = GoogleSignInService();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  String _errorMessage = '';
-  bool _isAdmin = false;  // Default role sebagai User
-  bool _isPsp = false; // Tambahkan variabel untuk role PSP
+  bool _isPasswordHidden = true;
+  bool _isAdmin = false;
   bool _isUser = false;
-  bool _isPasswordHidden = true; // Default password tersembunyi
+  bool _isPsp = false;
+  String _errorMessage = '';
 
-  // Tambahkan variabel untuk email dan nama pengguna
   String userEmail = 'Fetching...';
   String userName = 'Fetching...';
 
@@ -35,7 +33,6 @@ class LoginScreenState extends State<LoginScreen> {
     _fetchUserData();
   }
 
-  // Fungsi untuk mengambil email dan nama dari SharedPreferences
   Future<void> _fetchUserData() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -83,7 +80,6 @@ class LoginScreenState extends State<LoginScreen> {
     if (user != null) {
       String? selectedRole;
 
-      // Tentukan role berdasarkan checkbox yang aktif
       if (_isAdmin) {
         selectedRole = 'admin';
       } else if (_isPsp) {
@@ -99,16 +95,16 @@ class LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      await _auth.createUserInFirestoreIfNeeded(user, role: selectedRole);
-      await _redirectUserBasedOnRole(user.email ?? "Unknown Email", selectedRole);
+      await _auth.createUserInFirestoreIfNeeded(user.email, role: selectedRole);
+      await _redirectUserBasedOnRole(user.email, selectedRole);
 
       SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString('userEmail', user.email ?? "Unknown Email");
-      await prefs.setString('userName', user.displayName ?? "Pengguna");
+      await prefs.setString('userEmail', user.email);
+      await prefs.setString('userName', user.email);
 
       setState(() {
-        userEmail = user.email ?? "Unknown Email";
-        userName = user.displayName ?? "Pengguna";
+        userEmail = user.email;
+        userName = user.email;
       });
     } else {
       setState(() {
@@ -119,7 +115,7 @@ class LoginScreenState extends State<LoginScreen> {
 
   Future<void> _loginWithApple() async {
     try {
-      // Dapatkan kredensial dari Apple
+      // Meminta kredensial Apple ID
       final appleCredential = await SignInWithApple.getAppleIDCredential(
         scopes: [
           AppleIDAuthorizationScopes.email,
@@ -127,43 +123,35 @@ class LoginScreenState extends State<LoginScreen> {
         ],
       );
 
-      // Konversi ke kredensial Firebase
-      final oAuthCredential = OAuthProvider("apple.com").credential(
-        idToken: appleCredential.identityToken,
-        accessToken: appleCredential.authorizationCode,
+      // Mengambil email dan nama lengkap
+      final email = appleCredential.email ?? "Tidak diketahui";
+      final fullName =
+          appleCredential.givenName ?? "Pengguna"; // Nama pertama jika tersedia
+
+      if (!mounted) return;
+      setState(() {
+        userEmail = email;
+        userName = fullName;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Berhasil login sebagai $userName ($userEmail)"),
+        ),
       );
-
-      // Login ke Firebase
-      final userCredential =
-      await FirebaseAuth.instance.signInWithCredential(oAuthCredential);
-
-      final user = userCredential.user;
-      if (user != null) {
-        // Simpan data pengguna ke Firestore jika perlu
-        await _auth.createUserInFirestoreIfNeeded(
-          user,
-          role: _isAdmin ? 'admin' : _isUser ? 'user' : 'psp',
-        );
-
-        // Redirect berdasarkan role
-        await _redirectUserBasedOnRole(user.email ?? "Unknown Email",
-            _isAdmin ? 'admin' : _isUser ? 'user' : 'psp');
-
-        setState(() {
-          userEmail = user.email ?? "Unknown Email";
-          userName = user.displayName ?? "Pengguna";
-        });
-      } else {
-        setState(() {
-          _errorMessage = "Sign in with Apple gagal!";
-        });
-      }
     } catch (e) {
       setState(() {
-        _errorMessage = "Error during Apple sign-in: $e";
+        _errorMessage = "Ups! Login gagal: Hape kamu bukan iPhone";
       });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Ups! Login gagal: Hape kamu bukan iPhone"),
+        ),
+      );
     }
   }
+
 
   Future<void> _redirectUserBasedOnRole(String email, String selectedRole) async {
     try {
@@ -229,7 +217,6 @@ class LoginScreenState extends State<LoginScreen> {
 
     await _auth.resetPassword(email);
 
-    // Pastikan widget masih mounted sebelum menggunakan BuildContext
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Email reset password terkirim')),
@@ -243,7 +230,7 @@ class LoginScreenState extends State<LoginScreen> {
       builder: (context) {
         return AlertDialog(
           title: const Text('Reset Password'),
-          content: const Text('Masukkan alamat email Anda untuk mereset password.'),
+          content: const Text('Masukkan email Anda untuk reset password.'),
           actions: [
             TextButton(
               onPressed: () {
@@ -275,7 +262,7 @@ class LoginScreenState extends State<LoginScreen> {
             fit: BoxFit.cover,
           ),
           Container(  // Lapisan transparan di atas background
-            color: Colors.white.withOpacity(0.5),
+            color: Colors.white.withAlpha((0.5 * 255).toInt()),
           ),
           SingleChildScrollView(  // Konten dapat di-scroll
             padding: const EdgeInsets.all(16.0),

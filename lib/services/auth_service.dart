@@ -1,31 +1,27 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<User?> signInWithEmailAndPassword(String email, String password) async {
     try {
-      UserCredential result = await _auth.signInWithEmailAndPassword(email: email, password: password);
-      User? user = result.user;
-      return user;
+      final doc = await _firestore.collection('users').doc(email).get();
+      if (doc.exists && doc.data()?['password'] == password) {
+        return User(email: email, role: doc.data()?['role']);
+      }
+      return null;
     } catch (e) {
       return null;
     }
   }
 
   Future<void> signOut() async {
-    try {
-      return await _auth.signOut();
-    } catch (e) {
-      return;
-    }
+    // Clear local storage or session management
   }
 
-  Future<String?> getUserRole(String uid) async {
+  Future<String?> getUserRole(String email) async {
     try {
-      DocumentSnapshot snapshot = await _firestore.collection('users').doc(uid).get();
+      DocumentSnapshot snapshot = await _firestore.collection('users').doc(email).get();
       Map<String, dynamic>? data = snapshot.data() as Map<String, dynamic>?;
       return data?['role'];
     } catch (e) {
@@ -33,32 +29,38 @@ class AuthService {
     }
   }
 
-  Future<void> createUserInFirestoreIfNeeded(User user, {required String role}) async {
+  Future<void> createUserInFirestoreIfNeeded(String email, {required String role}) async {
     try {
-      DocumentSnapshot snapshot = await _firestore.collection('users').doc(user.uid).get();
+      DocumentSnapshot snapshot = await _firestore.collection('users').doc(email).get();
       if (!snapshot.exists) {
-        await _firestore.collection('users').doc(user.uid).set({
-          'email': user.email,
+        await _firestore.collection('users').doc(email).set({
+          'email': email,
           'role': role,
         });
       } else {
         Map<String, dynamic>? data = snapshot.data() as Map<String, dynamic>?;
         if (data?['role'] != role) {
-          await _firestore.collection('users').doc(user.uid).update({
+          await _firestore.collection('users').doc(email).update({
             'role': role,
           });
         }
       }
     } catch (e) {
-      // No action required
+      // Handle error
     }
   }
 
   Future<void> resetPassword(String email) async {
     try {
-      await _auth.sendPasswordResetEmail(email: email);
+      // Implement custom logic to reset password if required
     } catch (e) {
-      // No action required
+      // Handle error
     }
   }
+}
+
+class User {
+  final String email;
+  final String role;
+  User({required this.email, required this.role});
 }

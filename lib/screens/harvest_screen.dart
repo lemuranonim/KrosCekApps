@@ -256,10 +256,10 @@ class HarvestScreenState extends State<HarvestScreen> {
                       padding: EdgeInsets.symmetric(vertical: 8.0),
                       child: Text(
                         'Filter by Seasons',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
-                    DropdownButton<String>(
+                    DropdownButtonFormField<String>(
                       value: _selectedSeason,
                       hint: const Text("Select Season"),
                       isExpanded: true,
@@ -274,17 +274,44 @@ class HarvestScreenState extends State<HarvestScreen> {
                           _selectedSeason = newValue; // Atur season yang dipilih
                           _filterData(); // Filter ulang data berdasarkan season
                         });
-                        },
+                      },
+                      style: const TextStyle(
+                        color: Colors.black, // Ubah warna teks
+                        fontSize: 16.0, // Ubah ukuran teks
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Season',
+                        labelStyle: TextStyle(
+                          color: Colors.green, // Warna teks label
+                          fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Ubah warna border
+                          borderRadius: BorderRadius.circular(8.0), // Sudut melengkung
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Warna border saat fokus
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        border: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.grey, width: 2.0), // Warna border default
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                      ),
                     ),
+
+                    const SizedBox(height: 20),
 
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8.0),
                       child: Text(
                         'Filter by Week of Harvest',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
-                    DropdownButton<String>(
+                    DropdownButtonFormField<String>(
                       value: _selectedWeekOfHarvest,
                       hint: const Text("Select Week"),
                       isExpanded: true,
@@ -299,14 +326,41 @@ class HarvestScreenState extends State<HarvestScreen> {
                           _selectedWeekOfHarvest = newValue;
                           _filterData(); // Filter ulang data setelah minggu diubah
                         });
-                        },
+                      },
+                      style: const TextStyle(
+                        color: Colors.black, // Ubah warna teks
+                        fontSize: 16.0, // Ubah ukuran teks
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Week of Harvest',
+                        labelStyle: TextStyle(
+                          color: Colors.green, // Warna teks label
+                          fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Ubah warna border
+                          borderRadius: BorderRadius.circular(8.0), // Sudut melengkung
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Warna border saat fokus
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        border: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Colors.grey, width: 2.0), // Warna border default
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                      ),
                     ),
+
+                    const SizedBox(height: 20),
 
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8.0),
                       child: Text(
                         'Filter by FA',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
                     // Hanya tampilkan FA yang sesuai dengan QA SPV dan District yang dipilih
@@ -328,6 +382,9 @@ class HarvestScreenState extends State<HarvestScreen> {
                         controlAffinity: ListTileControlAffinity.leading,
                       );
                     }),
+
+                    const SizedBox(height: 20),
+
                     ElevatedButton.icon(
                       onPressed: () {
                         setState(() {
@@ -494,7 +551,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (context) => HarvestDetailScreen(
-                          fieldNumber: getValue(row, 2, "Unknown"),
+                        fieldNumber: getValue(row, 2, "Unknown"),
                         region: selectedRegion ?? 'Unknown Region',
                       ),
                     ),
@@ -504,6 +561,12 @@ class HarvestScreenState extends State<HarvestScreen> {
             );
           },
         ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
+      bottomNavigationBar: const BottomAppBar(
+        color: Colors.green,
+        shape: CircularNotchedRectangle(),
+        child: SizedBox(height: 50.0),
       ),
     );
   }
