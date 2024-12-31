@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
-import 'google_sheets_api.dart'; // Import GoogleSheetsApi
-import 'success_screen.dart';    // Import SuccessScreen untuk tampilan sukses
-import 'package:http/http.dart' as http;  // Import http package for POST request
-import 'dart:convert';  // Tambahkan ini untuk mendukung jsonEncode
-import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
+import 'google_sheets_api.dart';
+import 'success_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'config_manager.dart'; // Import ConfigManager
 
 class IssueScreen extends StatefulWidget {
   final Function(List<String>) onSave;
   final String selectedFA; // Terima district dari HomeScreen
 
-  const IssueScreen({super.key, required this.selectedFA, required this.onSave});
+  const IssueScreen({
+    super.key,
+    required this.selectedFA,
+    required this.onSave,
+  });
 
   @override
   IssueScreenState createState() => IssueScreenState();
@@ -18,23 +21,23 @@ class IssueScreen extends StatefulWidget {
 class IssueScreenState extends State<IssueScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _detailController = TextEditingController();
-
-  // Inisialisasi GoogleSheetsApi
-  final GoogleSheetsApi _googleSheetsApi = GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
+  String? _spreadsheetId; // Tambahkan variabel Spreadsheet ID
   final String _worksheetTitle = 'Issue';
 
   @override
   void initState() {
     super.initState();
-    _initGoogleSheets();
+    _loadSpreadsheetId(); // Ambil Spreadsheet ID sesuai Region
   }
 
-  // Inisialisasi Google Sheets API
-  Future<void> _initGoogleSheets() async {
-    try {
-      await _googleSheetsApi.init();
-    } catch (e) {
-      // Hapus print, tidak mencatat error
+  // Ambil Spreadsheet ID dari ConfigManager
+  Future<void> _loadSpreadsheetId() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? selectedRegion = prefs.getString('selectedRegion');
+    if (selectedRegion != null) {
+      setState(() {
+        _spreadsheetId = ConfigManager.getSpreadsheetId(selectedRegion);
+      });
     }
   }
 
@@ -43,7 +46,13 @@ class IssueScreenState extends State<IssueScreen> {
     final String detailIssue = _detailController.text.trim();
     final String area = widget.selectedFA; // Ambil district dari HomeScreen
 
-    // Validasi jika data kosong
+    // Validasi input
+    if (_spreadsheetId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pilih Region terlebih dahulu sebelum menyimpan issue!')),
+      );
+      return;
+    }
     if (issueTitle.isEmpty || detailIssue.isEmpty || area.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Mohon isi semua kolom')),
@@ -51,70 +60,31 @@ class IssueScreenState extends State<IssueScreen> {
       return;
     }
 
-    // Data yang akan dikirim ke Google Sheets
     final List<String> data = [
       issueTitle,
       area,
       detailIssue,
     ];
 
-    // Simpan Navigator dan ScaffoldMessenger sebelum async
+    final GoogleSheetsApi googleSheetsApi = GoogleSheetsApi(_spreadsheetId!); // Inisialisasi dinamis
     final navigator = Navigator.of(context);
     final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     try {
-      // Kirim data ke Google Sheets
-      await _googleSheetsApi.addRow(_worksheetTitle, data);
+      await googleSheetsApi.init(); // Inisialisasi API
+      await googleSheetsApi.addRow(_worksheetTitle, data); // Kirim data ke Google Sheets
 
-      // Panggil fungsi untuk mengirim POST request ke Apps Script setelah berhasil menyimpan
-      await _sendPostToHistory(data);
-
-      // Setelah berhasil disimpan, navigasi ke halaman sukses
       navigator.push(
         MaterialPageRoute(
           builder: (context) => const SuccessScreen(),
         ),
       );
     } catch (e) {
-      // Tampilkan error menggunakan ScaffoldMessenger yang disimpan
       scaffoldMessenger.showSnackBar(
         const SnackBar(content: Text('Gagal menyimpan data')),
       );
     }
   }
-
-  Future<void> _sendPostToHistory(List<String> rowData) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String userName = prefs.getString('userName') ?? 'Unknown User';
-
-    final String url = 'https://script.google.com/macros/s/AKfycbwg3XKvFj9tsCCI9eJjHkcF508nqi-kFPXBfPeeJoOssdNTXgT10jV_VAlAebd7QzmZiw/exec';  // Sesuaikan dengan URL Apps Script Anda
-
-    // Susun data yang akan dikirim dalam format JSON
-    final Map<String, dynamic> historyData = {
-      'pageType': 'issue',  // Tipe halaman, di sini adalah "issue"
-      'action': 'add',  // Aksi yang dilakukan
-      'rowData': rowData,  // Data yang disimpan
-      'user': userName,  // Nama pengguna yang melakukan perubahan
-    };
-
-    try {
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode(historyData),  // Encode data ke format JSON
-      );
-
-      if (response.statusCode == 200) {
-        debugPrint('Data berhasil dicatat di History');
-      } else {
-        debugPrint('Gagal mencatat data di History: ${response.body}');
-        debugPrint('Response status: ${response.statusCode}');
-      }
-    } catch (error) {
-      debugPrint('Error saat mengirim data ke History: $error');
-    }
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -132,11 +102,11 @@ class IssueScreenState extends State<IssueScreen> {
         child: ListView(
           children: [
             _buildTextField('Issue Title', _titleController),
-            _buildDropdownField('Area (District)', widget.selectedFA), // Dropdown District
-            _buildMultilineField('Detail issue', _detailController), // Multiline Field untuk detail issue
+            _buildDropdownField('Area (District)', widget.selectedFA),
+            _buildMultilineField('Detail issue', _detailController),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: _submitData, // Panggil submit data
+              onPressed: _submitData,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,

@@ -6,6 +6,7 @@ import 'dart:io';
 import 'google_sheets_api.dart'; // Import GoogleSheetsApi
 import 'success_screen.dart';    // Import SuccessScreen
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
+import 'config_manager.dart';
 
 class AbsenLogScreen extends StatefulWidget {
   const AbsenLogScreen({super.key});
@@ -21,16 +22,17 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
   File? _image;
   bool isSubmitEnabled = false;
   String _userName = 'Memuat...'; // Inisialisasi userName dengan teks default
+  String? _spreadsheetId;
 
   // Inisialisasi GoogleSheetsApi
-  final GoogleSheetsApi _googleSheetsApi = GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
+  GoogleSheetsApi? _googleSheetsApi; // Ubah menjadi nullable
   final String _worksheetTitle = 'Absen Log';
 
   @override
   void initState() {
     super.initState();
-    _initGoogleSheets();
     _loadUserName(); // Panggil fungsi untuk memuat userName dari SharedPreferences
+    _loadSpreadsheetId();
   }
 
   // Fungsi untuk memuat userName dari SharedPreferences
@@ -41,15 +43,21 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
     });
   }
 
-  // Inisialisasi API Google Sheets
-  Future<void> _initGoogleSheets() async {
-    try {
-      await _googleSheetsApi.init();
-      debugPrint('Google Sheets API berhasil diinisialisasi.');
-    } catch (e) {
-      debugPrint('Error inisialisasi Google Sheets API: $e');
+  Future<void> _loadSpreadsheetId() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? selectedRegion = prefs.getString('selectedRegion'); // Ambil region yang dipilih
+
+    if (selectedRegion != null) {
+      String? spreadsheetId = ConfigManager.getSpreadsheetId(selectedRegion); // Ambil ID dari ConfigManager
+      setState(() {
+        _spreadsheetId = spreadsheetId;
+        if (spreadsheetId != null) {
+          _googleSheetsApi = GoogleSheetsApi(spreadsheetId); // Inisialisasi API
+        }
+      });
     }
   }
+
 
   Future<void> _getCurrentLocation() async {
     var status = await Permission.location.request();
@@ -108,34 +116,74 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
   }
 
   Future<void> _submitData() async {
-    if (_currentPosition != null) {
-      final List<String> data = [
-        _userName,
-        _dateController.text,
-        _inTimeController.text,
-        '${_currentPosition!.latitude}, ${_currentPosition!.longitude}'
-      ];
+    // Validasi region yang dipilih
+    if (_spreadsheetId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Harap pilih Region terlebih dahulu sebelum Absen!'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return; // Berhenti jika Region belum dipilih
+    }
 
-      try {
-        await _googleSheetsApi.addRow(_worksheetTitle, data);
+    if (_currentPosition == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Lokasi tidak tersedia. Silakan coba lagi.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return; // Berhenti jika lokasi tidak tersedia
+    }
 
-        if (!mounted) return;
+    if (_googleSheetsApi == null || _spreadsheetId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Spreadsheet ID tidak ditemukan untuk region yang dipilih.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return; // Berhenti jika Spreadsheet ID tidak valid
+    }
 
-        // Tampilkan notifikasi sukses saat absen berhasil
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Absen berhasil dilakukan")),
-        );
+    // Persiapkan data yang akan disimpan
+    final List<String> data = [
+      _userName,
+      _dateController.text,
+      _inTimeController.text,
+      '${_currentPosition!.latitude}, ${_currentPosition!.longitude}'
+    ];
 
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const SuccessScreen(),
-          ),
-        );
-      } catch (e) {
-        debugPrint('Error submitting data: $e');
-      }
-    } else {
-      debugPrint('No location available');
+    try {
+      // Inisialisasi dan simpan data ke Google Sheets
+      await _googleSheetsApi!.init();
+      await _googleSheetsApi!.addRow(_worksheetTitle, data);
+
+      if (!mounted) return;
+
+      // Tampilkan notifikasi sukses
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Absen berhasil disimpan"),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // Navigasi ke SuccessScreen
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => const SuccessScreen(),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error saat mengirim data: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Gagal menyimpan data. Silakan coba lagi.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -166,6 +214,16 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
               onPressed: isSubmitEnabled
                   ? _submitData
                   : () async {
+                // Validasi Region sebelum Absen
+                if (_spreadsheetId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Harap pilih Region terlebih dahulu sebelum Absen!'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  return; // Keluar dari fungsi jika Region belum dipilih
+                }
                 _autoFillDateTime();
                 await _getCurrentLocation();
               },

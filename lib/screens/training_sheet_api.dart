@@ -3,13 +3,16 @@ import 'package:flutter/services.dart';
 import 'package:gsheets/gsheets.dart';
 
 class TrainingSheetApi {
-  final String spreadsheetId;
-
-  // GSheets instance
+  late String spreadsheetId;
   late GSheets _gSheets;
   late Spreadsheet _spreadsheet;
 
   TrainingSheetApi(this.spreadsheetId);
+
+  Future<void> updateSpreadsheet(String newId) async {
+    spreadsheetId = newId; // Perbarui ID spreadsheet
+    await init(); // Re-inisialisasi koneksi dengan ID baru
+  }
 
   // Inisialisasi GSheets khusus untuk worksheet Training
   Future<void> init() async {
@@ -49,13 +52,20 @@ class TrainingSheetApi {
         throw 'Worksheet Training tidak ditemukan';
       }
 
-      // Hitung jumlah baris yang ada, mulai dari baris 105 jika kurang dari 105
-      final int nextRow = (sheet.rowCount < 105) ? 105 : sheet.rowCount + 1;
+      // Ambil semua data yang sudah terisi di kolom pertama (No)
+      final List<String> numbers = await sheet.values.column(1);
 
-      // Tambahkan nomor urut otomatis di depan baris data
-      final List<String> newRowData = [nextRow.toString()] + rowData;
+      // Hitung nomor berikutnya (nomor dimulai dari baris kedua)
+      int nextRowNumber = 1; // Default jika kosong
+      if (numbers.length > 1) { // Abaikan baris header
+        nextRowNumber = int.tryParse(numbers.last) ?? 1;
+        nextRowNumber++; // Tambahkan 1 ke nomor terakhir
+      }
 
-      // Tambahkan baris baru ke worksheet Training
+      // Gabungkan nomor dengan data lainnya
+      final List<String> newRowData = [nextRowNumber.toString()] + rowData;
+
+      // Tambahkan baris baru ke worksheet
       await sheet.values.appendRow(newRowData);
     } catch (e) {
       rethrow;

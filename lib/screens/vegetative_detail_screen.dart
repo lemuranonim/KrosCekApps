@@ -255,7 +255,7 @@ class VegetativeDetailScreenState extends State<VegetativeDetailScreen> {
       bottomNavigationBar: const BottomAppBar(
         color: Colors.green,
         shape: CircularNotchedRectangle(),
-        child: SizedBox(height: 50.0),
+        child: SizedBox(height: 60.0),
       ),
     );
   }

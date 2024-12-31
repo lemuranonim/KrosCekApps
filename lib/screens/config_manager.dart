@@ -18,4 +18,9 @@ class ConfigManager {
   static String? getSpreadsheetId(String region) {
     return regions[region];
   }
+
+  /// Ambil semua Spreadsheet ID
+  static List<String> getAllSpreadsheetIds() {
+    return regions.values.toList();
+  }
 }

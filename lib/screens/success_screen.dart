@@ -39,10 +39,6 @@ class SuccessScreenState extends State<SuccessScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sukses', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.green,
-      ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
