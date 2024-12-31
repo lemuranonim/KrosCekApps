@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:convex_bottom_bar/convex_bottom_bar.dart';
+import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -47,6 +48,9 @@ class HomeScreenState extends State<HomeScreen> {
   String? selectedSeason;
   String? selectedRegion;
   String? selectedSpreadsheetId;
+  final ZoomDrawerController _drawerController = ZoomDrawerController(); // Tambahkan Controller
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  String? userPhotoUrl; // Variabel untuk foto profil
 
   // Fetch season dari SharedPreferences
   Future<void> _loadSeasonPreference() async {
@@ -55,6 +59,33 @@ class HomeScreenState extends State<HomeScreen> {
       selectedSeason = prefs.getString('selectedSeason');
     });
   }
+
+  Future<void> _fetchGoogleUserData() async {
+    try {
+      // Login atau ambil data user yang sudah login sebelumnya
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signInSilently();
+      if (googleUser != null) {
+        setState(() {
+          userName = googleUser.displayName ?? 'Pengguna'; // Nama pengguna
+          userEmail = googleUser.email; // Email pengguna
+          userPhotoUrl = googleUser.photoUrl;
+        });
+
+        // Simpan data ke SharedPreferences
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userName', googleUser.displayName ?? 'Pengguna');
+        await prefs.setString('userEmail', googleUser.email);
+        await prefs.setString('userPhotoUrl', googleUser.photoUrl ?? '');
+      }
+    } catch (error) {
+      debugPrint("Error mengambil data Google: $error");
+    }
+  }
+
+  Future<void> _logoutGoogle() async {
+    await _googleSignIn.signOut(); // Logout Google
+  }
+
 
   // Map untuk ID document di Firestore
   final Map<String, String> regionDocumentIds = {
@@ -75,6 +106,7 @@ class HomeScreenState extends State<HomeScreen> {
     _fetchAppVersion();
     _fetchUserEmail();
     _fetchUserData();
+    _fetchGoogleUserData();
     _loadUserEmail(); // Panggil fungsi untuk mengambil email pengguna
     _loadSeasonPreference(); // Load season preference on init
   }
@@ -285,6 +317,7 @@ class HomeScreenState extends State<HomeScreen> {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.remove('isLoggedIn');
       await prefs.remove('userRole');
+      await _logoutGoogle(); // Logout dari Google juga
 
       // Gunakan navigator yang sudah disimpan untuk navigasi
       _navigateToLoginScreen(navigator);
@@ -305,148 +338,138 @@ class HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Fungsi untuk menampilkan popup menu
-  void _showPopupMenu() {
-    showMenu(
+  void _showBottomSheetMenu() {
+    showModalBottomSheet(
       context: context,
-      position: const RelativeRect.fromLTRB(25.0, 600.0, 25.0, 100.0),
-      items: [
-        PopupMenuItem(
-          child: ListTile(
-            leading: const Icon(Icons.engineering, color: Colors.green),
-            title: const Text('Training'),
-            onTap: () {
-              Navigator.of(context).pop();
-              _navigateTo(
-                context,
-                TrainingScreen(
-                  onSave: (updatedData) {
-                    setState(() {
-                      // Lakukan sesuatu dengan updatedData setelah disimpan
-                    });
+      isScrollControlled: false, // Tidak memperbolehkan scroll di luar konten
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (BuildContext context) {
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 10), // Padding atas & bawah
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min, // Menyesuaikan tinggi konten
+              children: [
+                // Garis drag handle di atas
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[400],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.engineering, color: Colors.green, size: 35.0),
+                  title: const Text('Training'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _navigateTo(
+                      context,
+                      TrainingScreen(
+                        onSave: (updatedData) {
+                          setState(() {});
+                        },
+                      ),
+                    );
                   },
                 ),
-              );
-            },
+                ListTile(
+                  leading: const Icon(Icons.list, color: Colors.green, size: 35.0),
+                  title: const Text('Absen Log'),
+                  onTap: () {
+                    if (selectedFieldSPV == null) {
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Pilih Regionmu dulu sebelum Absen!'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                      return;
+                    }
+                    Navigator.of(context).pop();
+                    _navigateTo(context, const AbsenLogScreen());
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.warning, color: Colors.green, size: 35.0),
+                  title: const Text('Issue'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    if (selectedFA != null) {
+                      _navigateTo(
+                        context,
+                        IssueScreen(
+                          selectedFA: selectedFA!,
+                          onSave: (updatedIssue) {
+                            setState(() {});
+                          },
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('District belum dipilih!')),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
           ),
-        ),
-        PopupMenuItem(
-          child: ListTile(
-            leading: const Icon(Icons.list, color: Colors.green),
-            title: const Text('Absen Log'),
-            onTap: () {
-              Navigator.of(context).pop();
-              _navigateTo(context, const AbsenLogScreen());
-            },
-          ),
-        ),
-        PopupMenuItem(
-          child: ListTile(
-            leading: const Icon(Icons.warning, color: Colors.green),
-            title: const Text('Issue'),
-            onTap: () {
-              Navigator.of(context).pop();
-              if (selectedFA != null) {
-                _navigateTo(
-                  context,
-                  IssueScreen(
-                    selectedFA: selectedFA!,
-                    onSave: (updatedIssue) {
-                      setState(() {
-                        // Lakukan sesuatu dengan updatedIssue setelah disimpan
-                      });
-                    },
-                  ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('District belum dipilih!')),
-                );
-              }
-            },
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    return ZoomDrawer(
+      controller: _drawerController,
+      style: DrawerStyle.defaultStyle,
+      menuScreen: MenuScreen(
+        userName: userName,
+        userEmail: userEmail,
+        userPhotoUrl: userPhotoUrl,
+        appVersion: _appVersion,
+        onLogout: () => _logout(context),
+      ),
+      mainScreen: _buildMainScreen(context), // Konten utama
+      borderRadius: 24.0,
+      showShadow: true,
+      angle: -1.0,
+      slideWidth: MediaQuery.of(context).size.width * 0.95,
+      openCurve: Curves.fastOutSlowIn,
+      closeCurve: Curves.fastOutSlowIn,
+      menuBackgroundColor: Colors.green[100]!, // Gunakan transparan untuk menyatu
+    );
+  }
+
+  // MainScreen Konten
+  Widget _buildMainScreen(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: _selectedIndex == 0
             ? const Text('HSP Dashboard',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+            style: TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold))
             : const Text('Aktivitas',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            style: TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.green,
         iconTheme: const IconThemeData(color: Colors.white),
-        leading: _selectedIndex == 1
-            ? IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.menu, color: Colors.white),
           onPressed: () {
-            setState(() {
-              _selectedIndex = 0;
-            });
+            _drawerController.toggle!(); // Membuka/menutup drawer
           },
-        )
-            : null,
-      ),
-      drawer: _selectedIndex == 0
-          ? Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: const BoxDecoration(
-                color: Colors.green,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CircleAvatar(
-                    radius: 30,
-                    backgroundImage: AssetImage('assets/logo.png'),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    userName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    userEmail,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    'Version $_appVersion',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.logout, color: Colors.green),
-              title: const Text('Logout'),
-              onTap: () => _logout(context),
-            ),
-          ],
         ),
-      )
-          : null,
+      ),
       body: IndexedStack(
-        index: _selectedIndex, // Pastikan index selalu valid
+        index: _selectedIndex,
         children: [
           LiquidPullToRefresh(
             onRefresh: _refreshData,
@@ -456,31 +479,41 @@ class HomeScreenState extends State<HomeScreen> {
             showChildOpacityTransition: false,
             child: _buildHomeContent(context),
           ),
-          const SizedBox.shrink(),
           const ActivityScreen(),
         ],
       ),
-      bottomNavigationBar: ConvexAppBar(
-        backgroundColor: Colors.green,
-        items: const [
-          TabItem(icon: Icons.home, title: 'Beranda'),
-          // Tab Beranda
-          TabItem(icon: Icons.add, title: ''),
-          // Tab '+' untuk memunculkan popup
-          TabItem(icon: Icons.restore, title: 'Aktivitas'),
-          // Tab Aktivitas
-        ],
-        initialActiveIndex: _selectedIndex, // Menentukan tab awal yang aktif
-        onTap: (int index) {
-          if (index == 1) { // Jika tab dengan ikon '+' ditekan
-            _showPopupMenu(); // Memunculkan popup menu
-          } else {
-            setState(() {
-              _selectedIndex =
-                  index; // Hanya ubah state dan halaman untuk tab selain `+`
-            });
-          }
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          _showBottomSheetMenu();
         },
+        backgroundColor: Colors.green,
+        shape: const CircleBorder(),
+        child: const Icon(Icons.add, color: Colors.white, size: 40.0),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      bottomNavigationBar: BottomAppBar(
+        color: Colors.green,
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 8.0,
+        child: SizedBox(
+          height: 60,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.home_rounded,
+                    color: Colors.white, size: 35.0),
+                onPressed: () => setState(() => _selectedIndex = 0),
+              ),
+              const SizedBox(width: 30),
+              IconButton(
+                icon: const Icon(Icons.restore_rounded,
+                    color: Colors.white, size: 35.0),
+                onPressed: () => setState(() => _selectedIndex = 1),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -567,25 +600,34 @@ class HomeScreenState extends State<HomeScreen> {
                       );
                     }).toList(),
                     onChanged: (value) async {
-                      if (value != null) {
-                        // Ambil Spreadsheet ID berdasarkan Region
-                        final spreadsheetId = ConfigManager.getSpreadsheetId(value);
+                      // Ambil ScaffoldMessenger sebelum operasi async
+                      final scaffoldMessenger = ScaffoldMessenger.of(context);
 
+                      // Ambil SharedPreferences sebelum async
+                      SharedPreferences prefs = await SharedPreferences.getInstance();
+
+                      if (value != null) {
+                        final spreadsheetId = ConfigManager.getSpreadsheetId(value);
+                        await prefs.setString('selectedRegion', value);
+
+                        // Update UI sebelum operasi async
                         setState(() {
-                          selectedFieldSPV = value; // Simpan pilihan Region
-                          selectedSpreadsheetId = spreadsheetId; // Simpan Spreadsheet ID
-                          selectedQA = null; // Reset pilihan QA SPV
-                          selectedFA = null; // Reset pilihan District
-                          selectedSeason = null; // Reset pilihan Season
-                          faList.clear(); // Kosongkan daftar FA
+                          selectedFieldSPV = value;
+                          selectedSpreadsheetId = spreadsheetId;
+                          selectedQA = null;
+                          selectedFA = null;
+                          selectedSeason = null;
+                          faList.clear();
                         });
 
+                        // Validasi Spreadsheet ID tanpa menyentuh context secara langsung
                         if (spreadsheetId == null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Spreadsheet ID tidak ditemukan untuk region yang dipilih')),
+                          scaffoldMessenger.showSnackBar(
+                            const SnackBar(
+                              content: Text('Spreadsheet ID tidak ditemukan untuk region yang dipilih'),
+                            ),
                           );
                         } else {
-                          // Ambil QA SPV berdasarkan Region yang dipilih
                           await _fetchQASPV(value);
                         }
                       }
@@ -994,6 +1036,142 @@ class HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class MenuScreen extends StatelessWidget {
+  final String userName;
+  final String userEmail;
+  final String? userPhotoUrl;
+  final String appVersion;
+  final VoidCallback onLogout;
+
+  const MenuScreen({
+    super.key,
+    required this.userName,
+    required this.userEmail,
+    this.userPhotoUrl,
+    required this.appVersion,
+    required this.onLogout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: MediaQuery.of(context).size.width, // Lebar layar penuh
+      height: MediaQuery.of(context).size.height, // Tinggi layar penuh
+      decoration: BoxDecoration(
+        color: Colors.green, // Warna latar belakang drawer
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(30.0), // Melengkung di pojok kanan atas
+          bottomRight: Radius.circular(30.0), // Melengkung di pojok kanan bawah
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha((0.2 * 255).toInt()),
+            blurRadius: 10,
+            offset: const Offset(2, 5), // Posisi bayangan
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.only(top: 80.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(5.0),
+                child: Column(
+                  children: [
+                    CircleAvatar(
+                      radius: 50,
+                      backgroundColor: Colors.white,
+                      backgroundImage: userPhotoUrl != null && userPhotoUrl!.isNotEmpty
+                          ? NetworkImage(userPhotoUrl!) // Tampilkan foto dari URL
+                          : const AssetImage('assets/logo.png') as ImageProvider, // Placeholder jika kosong
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    Text(
+                      userName,
+                      style: TextStyle(
+                        fontSize: 21,
+                        fontFamily: 'Poppins',
+                        color: Colors.white,
+                        decoration: TextDecoration.none,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 5),
+
+                    Text(
+                      userEmail,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'Poppins',
+                        color: Colors.white60,
+                        decoration: TextDecoration.none,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    Container(
+                      margin: const EdgeInsets.all(25),
+                      width: 200,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+
+                    const SizedBox(height: 350),
+                    // Logout Button
+                    Padding(
+                      padding: const EdgeInsets.only(top: 20.0), // Beri jarak lebih
+                      child: ElevatedButton.icon(
+                        onPressed: onLogout,
+                        icon: Icon(Icons.logout, color: Colors.green),
+                        label: const Text('Logout'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.green,
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 12.0, horizontal: 24.0),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30.0),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // App Version
+                    SizedBox(
+                      height: 30,
+                      child: AnimatedTextKit(
+                        animatedTexts: [
+                          TypewriterAnimatedText(
+                            'Version $appVersion',
+                            textStyle: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              decoration: TextDecoration.none,
+                            ),
+                            speed: const Duration(milliseconds: 200),
+                          ),
+                        ],
+                        repeatForever: true,
+                      ),
+                    ),
+
+                  ],
+                ),
+              ),
+            ],
+          ),
       ),
     );
   }

@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // Import untuk fitur kalender
 import 'training_sheet_api.dart'; // Import TrainingSheetApi
-import 'package:http/http.dart' as http;  // Import http package for POST request
-import 'dart:convert';  // Tambahkan ini untuk mendukung jsonEncode
-import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
+import 'success_screen.dart';
+import 'config_manager.dart';
 
 class TrainingScreen extends StatefulWidget {
   final Function(List<String>) onSave;
@@ -46,8 +45,9 @@ class TrainingScreenState extends State<TrainingScreen> {
   @override
   void initState() {
     super.initState();
-    _trainingSheetApi = TrainingSheetApi(_spreadsheetId);
-    _loadSheetData(); // Memuat data dari Google Sheets
+    _trainingSheetApi = TrainingSheetApi(_spreadsheetId); // Inisialisasi hanya sekali
+    _loadConfig(); // Muat konfigurasi region
+    _loadSheetData(); // Muat data dari Google Sheets
   }
 
   Future<void> _loadSheetData() async {
@@ -61,6 +61,28 @@ class TrainingScreenState extends State<TrainingScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _loadConfig() async {
+    await ConfigManager.loadConfig(); // Muat konfigurasi dari config.json
+  }
+
+  Future<void> _onRegionSelected(String? region) async {
+    setState(() {
+      _selectedRegion = region;
+      _isLoading = true; // Tampilkan loading saat perubahan region
+    });
+
+    // Ambil Spreadsheet ID berdasarkan region yang dipilih
+    final String? spreadsheetId = ConfigManager.getSpreadsheetId(region!);
+    if (spreadsheetId != null) {
+      // Perbarui Spreadsheet ID tanpa inisialisasi ulang
+      await _trainingSheetApi.updateSpreadsheet(spreadsheetId);
+    }
+
+    setState(() {
+      _isLoading = false; // Selesai memuat
+    });
   }
 
   // Fungsi untuk menghitung Man * Hours
@@ -128,14 +150,14 @@ class TrainingScreenState extends State<TrainingScreen> {
       // Tambahkan data ke worksheet Training
       await _trainingSheetApi.addTrainingRow(rowData);
 
-      // Panggil fungsi untuk mengirim POST request ke Apps Script setelah berhasil menyimpan
-      await _sendPostToHistory(rowData);
-
       if (!mounted) return;  // Pastikan widget masih ter-mount
 
       // Tampilkan notifikasi sukses
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Data added successfully')),
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const SuccessScreen(),
+        ),
       );
 
       // Reset form setelah submit
@@ -156,39 +178,7 @@ class TrainingScreenState extends State<TrainingScreen> {
     }
   }
 
-  Future<void> _sendPostToHistory(List<String> rowData) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String userName = prefs.getString('userName') ?? 'Unknown User';
-
-    final String url = 'https://script.google.com/macros/s/AKfycbwg3XKvFj9tsCCI9eJjHkcF508nqi-kFPXBfPeeJoOssdNTXgT10jV_VAlAebd7QzmZiw/exec';  // URL doPost di Apps Script
-
-    // Susun data yang akan dikirim dalam format JSON
-    final Map<String, dynamic> historyData = {
-      'pageType': 'training',  // Tipe halaman
-      'action': 'add',  // Aksi yang dilakukan
-      'rowData': rowData,  // Data yang disimpan
-      'user': userName,  // Nama pengguna yang melakukan perubahan
-    };
-
-    try {
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode(historyData),  // Encode data ke format JSON
-      );
-
-      if (response.statusCode == 200) {
-        debugPrint('Data berhasil dicatat di History');
-      } else {
-        debugPrint('Gagal mencatat data di History: ${response.body}');
-      }
-    } catch (error) {
-      debugPrint('Error saat mengirim data ke History: $error');
-    }
-  }
-
-
-  @override
+    @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -210,10 +200,8 @@ class TrainingScreenState extends State<TrainingScreen> {
               padding: const EdgeInsets.symmetric(vertical: 8.0),
               child: DropdownButtonFormField<String>(
                 value: _selectedRegion,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedRegion = value;
-                  });
+                onChanged: (value) async {
+                  await _onRegionSelected(value); // Fungsi baru untuk menangani pemilihan region
                 },
                 items: _regionOptions.map((region) {
                   return DropdownMenuItem<String>(

@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'google_sheets_api.dart';
 import 'package:intl/intl.dart';
 import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
+import 'config_manager.dart';
 
 class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
@@ -15,15 +16,29 @@ class ActivityScreenState extends State<ActivityScreen> {
   List<List<String>> _activityLogs = [];
   bool _isLoading = true;
 
-  final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
   final String worksheetTitle = 'Aktivitas';
-  late final GoogleSheetsApi _googleSheetsApi;
+  late GoogleSheetsApi _googleSheetsApi;
 
   @override
   void initState() {
     super.initState();
-    _googleSheetsApi = GoogleSheetsApi(spreadsheetId);
-    _loadUserDataAndFetchLogs();
+    _initializeConfigAndLoadData(); // Panggil fungsi untuk muat konfigurasi dan data
+  }
+
+  Future<void> _initializeConfigAndLoadData() async {
+    // Muat konfigurasi dari config.json
+    await ConfigManager.loadConfig();
+
+    // Ambil semua spreadsheet ID dari config.json
+    final List<String> spreadsheetIds = ConfigManager.getAllSpreadsheetIds();
+
+    // Inisialisasi API untuk spreadsheet pertama (contoh)
+    _googleSheetsApi = GoogleSheetsApi(spreadsheetIds.first);
+
+    // Ambil data log aktivitas dari semua spreadsheet
+    await _loadUserDataAndFetchLogs();
+
+    setState(() {});
   }
 
   // Ambil userEmail dan userName dari SharedPreferences lalu ambil log aktivitas
@@ -42,21 +57,38 @@ class ActivityScreenState extends State<ActivityScreen> {
   }
 
   Future<void> _fetchActivityLogs(String? userEmail, String? userName) async {
-    try {
-      // Ambil semua data dari Google Sheets
-      final rows = await _googleSheetsApi.getSpreadsheetData(worksheetTitle);
+    List<List<String>> allLogs = [];
 
-      // Filter data untuk mencocokkan userEmail atau userName
-      setState(() {
-        _activityLogs = rows
+    try {
+      // Ambil semua Spreadsheet ID dari ConfigManager
+      final List<String> spreadsheetIds = ConfigManager.getAllSpreadsheetIds();
+
+      for (String id in spreadsheetIds) {
+        // Inisialisasi API untuk setiap Spreadsheet ID
+        final api = GoogleSheetsApi(id);
+        await api.init();
+
+        // Ambil data dari worksheet 'Aktivitas'
+        final rows = await api.getSpreadsheetData('Aktivitas');
+
+        // Filter data berdasarkan userEmail atau userName
+        final filteredLogs = rows
             .skip(1) // Lewati header
             .where((row) => row[0] == userEmail || row[1] == userName)
             .toList();
+
+        allLogs.addAll(filteredLogs); // Gabungkan semua data yang cocok
+      }
+
+      // Perbarui state dengan semua log yang ditemukan
+      setState(() {
+        _activityLogs = allLogs;
       });
     } catch (e) {
-      // print('Error fetching data: $e');
+      debugPrint('Error fetching data: $e');
     }
   }
+
 
   String formatTimestamp(String timestamp) {
     try {
@@ -120,10 +152,6 @@ class ActivityScreenState extends State<ActivityScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.green,
-        title: const Text('', style: TextStyle(color: Colors.white)),
-      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : LiquidPullToRefresh(
@@ -146,7 +174,7 @@ class ActivityScreenState extends State<ActivityScreen> {
         final log = _activityLogs[index];
         return ListTile(
           title: Text(
-            log[3],
+            log[4],
             style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
           ),
           subtitle: Column(
@@ -167,10 +195,10 @@ class ActivityScreenState extends State<ActivityScreen> {
                 TextSpan(
                   children: [
                     const TextSpan(
-                      text: 'Sheet: ',
+                      text: 'Region: ',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    TextSpan(text: log[4]),
+                    TextSpan(text: log[3]),
                   ],
                 ),
               ),
@@ -178,7 +206,7 @@ class ActivityScreenState extends State<ActivityScreen> {
                 TextSpan(
                   children: [
                     const TextSpan(
-                      text: 'Field Number: ',
+                      text: 'Sheet: ',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     TextSpan(text: log[5]),
@@ -189,10 +217,21 @@ class ActivityScreenState extends State<ActivityScreen> {
                 TextSpan(
                   children: [
                     const TextSpan(
+                      text: 'Field Number: ',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    TextSpan(text: log[6]),
+                  ],
+                ),
+              ),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
                       text: 'Waktu: ',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    TextSpan(text: _formatTimestamp(log[6])),
+                    TextSpan(text: _formatTimestamp(log[7])),
                   ],
                 ),
               ),

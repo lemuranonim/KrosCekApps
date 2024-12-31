@@ -21,7 +21,7 @@ class VegetativeScreen extends StatefulWidget {
     this.selectedDistrict,
     this.selectedQA,
     this.selectedSeason,
-    this.region, // Tambahkan ini
+    this.region,
     required this.seasonList,
   });
 

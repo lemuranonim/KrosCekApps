@@ -488,6 +488,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
                   row: row,
                   userName: userName,
                   userEmail: userEmail,
+                  region: widget.region,
                 ),
               ),
             );
@@ -591,12 +592,14 @@ class SuccessScreen extends StatelessWidget {
   final List<String> row;
   final String userName;
   final String userEmail;
+  final String region;
 
   const SuccessScreen({
     super.key,
     required this.row,
     required this.userName,
     required this.userEmail,
+    required this.region,
   });
 
   @override
@@ -630,7 +633,7 @@ class SuccessScreen extends StatelessWidget {
                 final navigator = Navigator.of(context);
 
                 // Simpan data ke Google Sheets
-                await _saveBackActivityToGoogleSheets();
+                await _saveBackActivityToGoogleSheets(region);
 
                 // Tutup dialog loading
                 navigator.pop();
@@ -681,8 +684,8 @@ class SuccessScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _saveBackActivityToGoogleSheets() async {
-    final String spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
+  Future<void> _saveBackActivityToGoogleSheets(String region) async {
+    final String spreadsheetId = ConfigManager.getSpreadsheetId(region) ?? 'defaultSpreadsheetId';
     final String worksheetTitle = 'Aktivitas';
 
     final gSheetsApi = GoogleSheetsApi(spreadsheetId);
@@ -690,6 +693,7 @@ class SuccessScreen extends StatelessWidget {
 
     final String timestamp = DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now());
     final String fieldNumber = row[2];
+    final String regions = row[18];
     final String action = 'Update';
     final String status = 'Success';
 
@@ -697,6 +701,7 @@ class SuccessScreen extends StatelessWidget {
       userEmail,
       userName,
       status,
+      regions,
       action,
       'Vegetative',
       fieldNumber,
