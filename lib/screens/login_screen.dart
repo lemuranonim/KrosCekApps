@@ -269,20 +269,12 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 30),
-                Image.asset(  // Gambar logo
-                  'assets/logo.png',
-                  height: 100,
-                ),
+                const SizedBox(height: 130),
+                // Image.asset(  // Gambar logo
+                //   'assets/icon.png',
+                //   height: 100,
+                // ),
                 const SizedBox(height: 20),
-                const Text(
-                  'KrosCekApp',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
-                ),
                 const SizedBox(height: 20),
                 CheckboxListTile(
                   title: Text(

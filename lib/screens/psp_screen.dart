@@ -1,75 +1,1122 @@
 import 'package:flutter/material.dart';
-import 'login_screen.dart'; // Pastikan impor halaman login sudah ada
+import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'psp_vegetative_screen.dart';
+import 'psp_generative_screen.dart';
+import 'psp_training_screen.dart';
+import 'psp_absen_log_screen.dart';
+import 'psp_issue_screen.dart';
+import 'login_screen.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:animated_text_kit/animated_text_kit.dart';
+import 'psp_activity_screen.dart';  // Import halaman aktivitas
+import 'config_manager.dart';
 
-class PspScreen extends StatelessWidget {
+class PspScreen extends StatefulWidget {
   const PspScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text(
-          'Under Maintenance',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: Colors.orangeAccent,
-        centerTitle: true,
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Image.asset(
-                'assets/maintenance.png', // Pastikan gambar tersedia di folder assets
-                height: 200,
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'We are currently improving this page.\nPlease check back later!',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 20.0,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orangeAccent,
-                ),
-              ),
-              const SizedBox(height: 30),
-              ElevatedButton.icon(
-                  onPressed: () async {
-                    SharedPreferences prefs = await SharedPreferences.getInstance();
-                    await prefs.clear();
+  PspScreenState createState() => PspScreenState();
+}
 
-                    if (context.mounted) { // Pastikan context masih valid
-                      Navigator.pushReplacement(
+class PspScreenState extends State<PspScreen> {
+  int _selectedIndex = 0;
+  String _appVersion = 'Fetching...';
+  String userEmail = 'Fetching...';
+  String userName = 'Fetching...';
+  List<String> fieldSPVList = [
+    'PSP'
+  ];
+  List<String> faList = [];
+  List<String> qaSPVList = [];
+  List<String> seasonList = [];
+  String? selectedFieldSPV;
+  String? selectedFA;
+  String? selectedQA;
+  String? selectedSeason;
+  String? selectedRegion;
+  String? selectedSpreadsheetId;
+  final ZoomDrawerController _drawerController = ZoomDrawerController(); // Tambahkan Controller
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  String? userPhotoUrl; // Variabel untuk foto profil
+
+  // Fetch season dari SharedPreferences
+  Future<void> _loadSeasonPreference() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      selectedSeason = prefs.getString('selectedSeason');
+    });
+  }
+
+  Future<void> _fetchGoogleUserData() async {
+    try {
+      // Login atau ambil data user yang sudah login sebelumnya
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signInSilently();
+      if (googleUser != null) {
+        setState(() {
+          userName = googleUser.displayName ?? 'Pengguna'; // Nama pengguna
+          userEmail = googleUser.email; // Email pengguna
+          userPhotoUrl = googleUser.photoUrl;
+        });
+
+        // Simpan data ke SharedPreferences
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userName', googleUser.displayName ?? 'Pengguna');
+        await prefs.setString('userEmail', googleUser.email);
+        await prefs.setString('userPhotoUrl', googleUser.photoUrl ?? '');
+      }
+    } catch (error) {
+      debugPrint("Error mengambil data Google: $error");
+    }
+  }
+
+  Future<void> _logoutGoogle() async {
+    await _googleSignIn.signOut(); // Logout Google
+  }
+
+
+  // Map untuk ID document di Firestore
+  final Map<String, String> regionDocumentIds = {
+    'PSP': 'psp',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    ConfigManager.loadConfig();
+    _fetchSeason();
+    _fetchAppVersion();
+    _fetchUserEmail();
+    _fetchUserData();
+    _fetchGoogleUserData();
+    _loadUserEmail(); // Panggil fungsi untuk mengambil email pengguna
+    _loadSeasonPreference(); // Load season preference on init
+  }
+
+  // Fungsi untuk mengambil email dan nama dari SharedPreferences
+  Future<void> _fetchUserData() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userEmail = prefs.getString('userEmail') ?? 'Unknown Email';
+      userName = prefs.getString('userName') ?? 'Pengguna';
+    });
+  }
+
+  // Fungsi untuk mengambil email dari SharedPreferences
+  Future<void> _fetchUserEmail() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userEmail = prefs.getString('userEmail') ?? 'Unknown Email';
+    });
+  }
+
+  // Fungsi untuk mengambil email pengguna dari SharedPreferences
+  Future<void> _loadUserEmail() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userEmail = prefs.getString('userEmail') ?? 'Email tidak ditemukan';
+    });
+  }
+
+  // Fungsi untuk menyimpan pilihan QA SPV dan District ke SharedPreferences
+  Future<void> _saveFilterPreferences() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        'selectedQA', selectedQA ?? ''); // Beri nilai default jika null
+    await prefs.setString(
+        'selectedFA', selectedFA ?? ''); // Beri nilai default jika null
+    await prefs.setString('selectedSeason', selectedSeason ?? '');
+  }
+
+  Future<void> _fetchQASPV(String selectedRegion) async {
+    // Cek apakah data QA SPV sudah ada di SharedPreferences
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? cachedQASPV = prefs.getString('qaSPV_$selectedRegion');
+
+    if (cachedQASPV != null) {
+      // Jika ada cache, gunakan data yang ada
+      setState(() {
+        qaSPVList = List<String>.from(jsonDecode(cachedQASPV));
+        selectedQA = null; // Reset pilihan QA agar pengguna memilih ulang
+      });
+      return;
+    }
+
+    // Jika tidak ada cache, ambil data dari Firestore
+    FirebaseFirestore firestore = FirebaseFirestore.instance;
+    String? documentId = regionDocumentIds[selectedRegion];
+
+    if (documentId == null) {
+      setState(() {
+        qaSPVList = [];
+      });
+      return;
+    }
+
+    try {
+      DocumentReference regionDoc = firestore.collection('regions').doc(
+          documentId);
+      DocumentSnapshot docSnapshot = await regionDoc.get();
+
+      if (docSnapshot.exists) {
+        Map<String, dynamic> data = docSnapshot.data() as Map<String, dynamic>;
+        qaSPVList = (data['qa_spv'] as Map<String, dynamic>).keys.toList();
+
+        // Simpan data ke SharedPreferences untuk cache
+        await prefs.setString('qaSPV_$selectedRegion', jsonEncode(qaSPVList));
+
+        setState(() {
+          selectedQA = null; // Reset QA SPV agar pengguna harus memilih manual
+        });
+      }
+    } catch (error) {
+      setState(() {
+        qaSPVList = [];
+      });
+    }
+  }
+
+  Future<void> _fetchDistricts(String selectedRegion,
+      String selectedQASPV) async {
+    // Cek cache untuk data district berdasarkan region dan QA SPV
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? cachedDistricts = prefs.getString(
+        'districts_${selectedRegion}_$selectedQASPV');
+
+    if (cachedDistricts != null) {
+      setState(() {
+        faList = List<String>.from(jsonDecode(cachedDistricts));
+      });
+      return;
+    }
+
+    // Ambil data dari Firestore jika cache tidak ada
+    FirebaseFirestore firestore = FirebaseFirestore.instance;
+    String documentId = regionDocumentIds[selectedRegion]!;
+
+    try {
+      DocumentReference regionDoc = firestore.collection('regions').doc(
+          documentId);
+      DocumentSnapshot docSnapshot = await regionDoc.get();
+
+      if (docSnapshot.exists) {
+        Map<String, dynamic> data = docSnapshot.data() as Map<String, dynamic>;
+        List<String> districts = List<String>.from(
+            data['qa_spv'][selectedQASPV]['districts']);
+
+        // Simpan hasil ke SharedPreferences untuk cache
+        await prefs.setString('districts_${selectedRegion}_$selectedQASPV',
+            jsonEncode(districts));
+
+        setState(() {
+          faList = districts;
+        });
+      }
+    } catch (error) {
+      // Handle error
+    }
+  }
+
+  Future<void> _saveSeasonListToPreferences() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('seasonList', seasonList);
+  }
+
+  Future<void> _fetchSeason() async {
+    FirebaseFirestore firestore = FirebaseFirestore.instance;
+
+    try {
+      DocumentSnapshot docSnapshot =
+      await firestore.collection('seasons').doc('season').get();
+
+      if (docSnapshot.exists) {
+        Map<String, dynamic> data = docSnapshot.data() as Map<String, dynamic>;
+        List<String> seasons = List<String>.from(data['sesi']);
+
+        setState(() {
+          seasonList = seasons;
+        });
+
+        // Simpan seasonList ke SharedPreferences
+        await _saveSeasonListToPreferences();
+      }
+    } catch (error) {
+      debugPrint("Error saat mengambil seasons: $error");
+    }
+  }
+
+  Future<void> _fetchAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      setState(() {
+        _appVersion = packageInfo.version;
+      });
+    } catch (e) {
+      setState(() {
+        _appVersion = 'Unknown';
+      });
+    }
+  }
+
+  // Fungsi refresh tanpa parameter
+  Future<void> _refreshData() async {
+    if (selectedFieldSPV != null) {
+      await _fetchQASPV(selectedFieldSPV!);
+    }
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    // Simpan context sebelum operasi async dimulai
+    final navigator = Navigator.of(context);
+
+    // Tampilkan dialog konfirmasi logout dan tunggu hasilnya
+    bool? confirmLogout = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text("Konfirmasi Medal"),
+          content: const Text("Menopo panjenengan yakin badhe medal?"),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false); // Return false
+              },
+              child: const Text("Batal"),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true); // Return true
+              },
+              child: const Text("Medal"),
+            ),
+          ],
+        );
+      },
+    );
+
+    // Jika pengguna memilih 'Medal', lakukan logout
+    if (confirmLogout == true) {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.remove('isLoggedIn');
+      await prefs.remove('userRole');
+      await _logoutGoogle(); // Logout dari Google juga
+
+      // Gunakan navigator yang sudah disimpan untuk navigasi
+      _navigateToLoginScreen(navigator);
+    }
+  }
+
+// Fungsi terpisah untuk menangani navigasi
+  void _navigateToLoginScreen(NavigatorState navigator) {
+    navigator.pushReplacement(
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+    );
+  }
+
+  // Fungsi untuk menavigasi ke halaman lain
+  void _navigateTo(BuildContext context, Widget screen) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => screen),
+    );
+  }
+
+  void _showBottomSheetMenu() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: false, // Tidak memperbolehkan scroll di luar konten
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (BuildContext context) {
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 10), // Padding atas & bawah
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min, // Menyesuaikan tinggi konten
+              children: [
+                // Garis drag handle di atas
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[400],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.engineering, color: Colors.redAccent, size: 35.0),
+                  title: const Text('Training'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _navigateTo(
+                      context,
+                      PspTrainingScreen(
+                        onSave: (updatedData) {
+                          setState(() {});
+                        },
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.list, color: Colors.redAccent, size: 35.0),
+                  title: const Text('Absen Log'),
+                  onTap: () {
+                    if (selectedFieldSPV == null) {
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Pilih Regionmu dulu sebelum Absen!'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                      return;
+                    }
+                    Navigator.of(context).pop();
+                    _navigateTo(context, const PspAbsenLogScreen());
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.warning, color: Colors.redAccent, size: 35.0),
+                  title: const Text('Issue'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    if (selectedFA != null) {
+                      _navigateTo(
                         context,
-                        MaterialPageRoute(builder: (context) => const LoginScreen()),
+                        PspIssueScreen(
+                          selectedFA: selectedFA!,
+                          onSave: (updatedIssue) {
+                            setState(() {});
+                          },
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('District belum dipilih!')),
                       );
                     }
                   },
-
-                  icon: const Icon(Icons.logout),
-                label: const Text('Logout'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orangeAccent,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 24.0, vertical: 12.0),
-                  textStyle: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
                 ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ZoomDrawer(
+      controller: _drawerController,
+      style: DrawerStyle.defaultStyle,
+      menuScreen: MenuScreen(
+        userName: userName,
+        userEmail: userEmail,
+        userPhotoUrl: userPhotoUrl,
+        appVersion: _appVersion,
+        onLogout: () => _logout(context),
+      ),
+      mainScreen: _buildMainScreen(context), // Konten utama
+      borderRadius: 24.0,
+      showShadow: true,
+      angle: -1.0,
+      slideWidth: MediaQuery.of(context).size.width * 0.95,
+      openCurve: Curves.fastOutSlowIn,
+      closeCurve: Curves.fastOutSlowIn,
+      menuBackgroundColor: Colors.redAccent[100]!, // Gunakan transparan untuk menyatu
+    );
+  }
+
+  // MainScreen Konten
+  Widget _buildMainScreen(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: _selectedIndex == 0
+            ? const Text('PSP Dashboard',
+            style: TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold))
+            : const Text('Aktivitas',
+            style: TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.redAccent,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.menu, color: Colors.white),
+          onPressed: () {
+            _drawerController.toggle!(); // Membuka/menutup drawer
+          },
+        ),
+      ),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          LiquidPullToRefresh(
+            onRefresh: _refreshData,
+            color: Colors.redAccent,
+            backgroundColor: Colors.white,
+            height: 150,
+            showChildOpacityTransition: false,
+            child: _buildHomeContent(context),
+          ),
+          const PspActivityScreen(),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          _showBottomSheetMenu();
+        },
+        backgroundColor: Colors.redAccent,
+        shape: const CircleBorder(),
+        child: const Icon(Icons.add, color: Colors.white, size: 40.0),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      bottomNavigationBar: BottomAppBar(
+        color: Colors.redAccent,
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 8.0,
+        child: SizedBox(
+          height: 60,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.home_rounded,
+                    color: Colors.white, size: 35.0),
+                onPressed: () => setState(() => _selectedIndex = 0),
+              ),
+              const SizedBox(width: 30),
+              IconButton(
+                icon: const Icon(Icons.restore_rounded,
+                    color: Colors.white, size: 35.0),
+                onPressed: () => setState(() => _selectedIndex = 1),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHomeContent(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16.0),
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16.0),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha((0.10 * 255).toInt()),
+                // Shadow color with opacity
+                spreadRadius: 3,
+                // Spread of the shadow
+                blurRadius: 2,
+                // Blur radius of the shadow
+                offset: const Offset(0, 3), // Shadow offset position
+              ),
+            ],
+          ),
+          child: Card(
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(
+                  16.0), // Rounded corners for the card
+            ),
+            elevation: 0, // Turn off default shadow of the card
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // TyperAnimatedTextKit for "Sugeng Rawuh Lur" and "Monggo dipun Kroscek!"
+                  SizedBox(
+                    width: double.infinity,
+                    child: AnimatedTextKit(
+                      animatedTexts: [
+                        TyperAnimatedText(
+                          'Sugêng Rawuh Lur...', // First part of the text
+                          textStyle: const TextStyle(
+                            fontSize: 20.0,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.redAccent,
+                          ),
+                          textAlign: TextAlign.center,
+                          speed: const Duration(
+                              milliseconds: 250), // Typing speed
+                        ),
+                        TyperAnimatedText(
+                          'Sugêng Ngêrjakakên!', // Second part of the text
+                          textStyle: const TextStyle(
+                            fontSize: 20.0,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.redAccent,
+                          ),
+                          textAlign: TextAlign.center,
+                          speed: const Duration(
+                              milliseconds: 250), // Typing speed
+                        ),
+                      ],
+                      totalRepeatCount: 1,
+                      // Animation runs once
+                      pause: const Duration(milliseconds: 1000),
+                      // Pause between the two animations
+                      displayFullTextOnTap: true,
+                      // Display full text on tap
+                      stopPauseOnTap: true, // Stop the pause on tap
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Dropdown untuk memilih Region
+                  DropdownButtonFormField<String>(
+                    value: selectedFieldSPV,
+                    hint: const Text("Pilih Regionmu!"),
+                    items: fieldSPVList.map((spv) {
+                      return DropdownMenuItem<String>(
+                        value: spv,
+                        child: Text(spv),
+                      );
+                    }).toList(),
+                    onChanged: (value) async {
+                      // Ambil ScaffoldMessenger sebelum operasi async
+                      final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+                      // Ambil SharedPreferences sebelum async
+                      SharedPreferences prefs = await SharedPreferences.getInstance();
+
+                      if (value != null) {
+                        final spreadsheetId = ConfigManager.getSpreadsheetId(value);
+                        await prefs.setString('selectedRegion', value);
+
+                        // Update UI sebelum operasi async
+                        setState(() {
+                          selectedFieldSPV = value;
+                          selectedSpreadsheetId = spreadsheetId;
+                          selectedQA = null;
+                          selectedFA = null;
+                          selectedSeason = null;
+                          faList.clear();
+                        });
+
+                        // Validasi Spreadsheet ID tanpa menyentuh context secara langsung
+                        if (spreadsheetId == null) {
+                          scaffoldMessenger.showSnackBar(
+                            const SnackBar(
+                              content: Text('Spreadsheet ID tidak ditemukan untuk region yang dipilih'),
+                            ),
+                          );
+                        } else {
+                          await _fetchQASPV(value);
+                        }
+                      }
+                    },
+                    style: const TextStyle(
+                      color: Colors.black, // Ubah warna teks
+                      fontSize: 16.0, // Ubah ukuran teks
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Field Scope',
+                      labelStyle: TextStyle(
+                        color: Colors.redAccent, // Warna teks label
+                        fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: const BorderSide(color: Colors.redAccent, width: 2.0), // Ubah warna border
+                        borderRadius: BorderRadius.circular(8.0), // Sudut melengkung
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: const BorderSide(color: Colors.redAccent, width: 2.0), // Warna border saat fokus
+                        borderRadius: BorderRadius.circular(8.0),
+                      ),
+                      border: OutlineInputBorder(
+                        borderSide: const BorderSide(color: Colors.grey, width: 2.0), // Warna border default
+                        borderRadius: BorderRadius.circular(8.0),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Dropdown untuk memilih QA SPV
+                  if (selectedFieldSPV != null && qaSPVList.isNotEmpty) ...[
+                    DropdownButtonFormField<String>(
+                      value: selectedQA,
+                      hint: const Text("Pilih QA SPV!"),
+                      items: qaSPVList.map((qa) {
+                        return DropdownMenuItem<String>(
+                          value: qa,
+                          child: Text(qa),
+                        );
+                      }).toList(),
+                      onChanged: (value) async {
+                        setState(() {
+                          selectedQA = value; // Simpan pilihan QA SPV
+                          selectedFA = null; // Reset pilihan District
+                          selectedSeason = null;
+                        });
+                        await _fetchDistricts(selectedFieldSPV!,
+                            value!); // Ambil district berdasarkan QA SPV
+                        await _saveFilterPreferences(); // Panggil fungsi ini untuk menyimpan data ke SharedPreferences
+                      },
+                      style: const TextStyle(
+                        color: Colors.black, // Change text color
+                        fontSize: 16.0, // Change text size
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'QA SPV',
+                        labelStyle: TextStyle(
+                          color: Colors.redAccent, // Warna teks label
+                          fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        // Background color of the dropdown field
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(
+                              color: Colors.redAccent, width: 2.0),
+                          // border when not focused
+                          borderRadius: BorderRadius.circular(
+                              8.0), // Optional: round the corners
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(
+                              color: Colors.redAccent, width: 2.0),
+                          // border when focused
+                          borderRadius: BorderRadius.circular(
+                              8.0), // Optional: round the corners
+                        ),
+                        border: OutlineInputBorder(
+                          borderSide: const BorderSide(
+                              color: Colors.grey, width: 2.0), // Default border
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+
+                  // Dropdown untuk memilih District
+                  if (selectedQA != null && faList.isNotEmpty) ...[
+                    DropdownButtonFormField<String>(
+                      value: selectedFA,
+                      hint: const Text("Pilih District!"),
+                      items: faList.map((fa) {
+                        return DropdownMenuItem<String>(
+                          value: fa,
+                          child: Text(fa),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          selectedFA = value; // Simpan pilihan District
+                          selectedSeason = null;
+                        });
+                      },
+                      style: const TextStyle(
+                        color: Colors.black, // Change text color
+                        fontSize: 16.0, // Change text size
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'District',
+                        labelStyle: TextStyle(
+                          color: Colors.redAccent, // Warna teks label
+                          fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        // Background color for the dropdown
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(
+                              color: Colors.redAccent, width: 2.0),
+                          // border when not focused
+                          borderRadius: BorderRadius.circular(
+                              8.0), // Rounded corners
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(
+                              color: Colors.redAccent, width: 2.0),
+                          // border when focused
+                          borderRadius: BorderRadius.circular(
+                              8.0), // Rounded corners
+                        ),
+                        border: OutlineInputBorder(
+                          borderSide: const BorderSide(
+                              color: Colors.grey, width: 2.0),
+                          // Default border color
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 8),
+
+                  // Box untuk menampilkan hasil
+                  if (selectedQA != null || selectedFA != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12.0),
+                      margin: const EdgeInsets.only(top: 10.0),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withAlpha((0.5 * 255).toInt()),
+                            spreadRadius: 2,
+                            blurRadius: 7,
+                            offset: const Offset(
+                                0, 3), // changes position of shadow
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Tampilkan QA SPV yang dipilih
+                          if (selectedQA != null) ...[
+                            RichText(
+                              text: TextSpan(
+                                children: [
+                                  const TextSpan(
+                                    text: 'QA SPV: ',
+                                    style: TextStyle(fontSize: 16,
+                                        color: Colors.redAccent,
+                                        fontWeight: FontWeight
+                                            .bold), // Bold only "QA SPV"
+                                  ),
+                                  TextSpan(
+                                    text: selectedQA, // Non-bold for the value
+                                    style: const TextStyle(
+                                        fontSize: 16, color: Colors.redAccent),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+
+                          // Tampilkan District yang dipilih
+                          if (selectedFA != null) ...[
+                            RichText(
+                              text: TextSpan(
+                                children: [
+                                  const TextSpan(
+                                    text: 'District: ',
+                                    style: TextStyle(fontSize: 16,
+                                        color: Colors.redAccent,
+                                        fontWeight: FontWeight
+                                            .bold), // Bold only "District"
+                                  ),
+                                  TextSpan(
+                                    text: selectedFA, // Non-bold for the value
+                                    style: const TextStyle(
+                                        fontSize: 16, color: Colors.redAccent),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'FASE INSPEKSI',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.redAccent,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 12),
+        GridView.count(
+          shrinkWrap: true,
+          crossAxisCount: 2,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
+          physics: const NeverScrollableScrollPhysics(),
+          children: [
+            buildCategoryItem(
+              context,
+              'assets/vegetative.png',
+              'Vegetative',
+              selectedSpreadsheetId,   // Dapatkan dari konfigurasi atau state
+              selectedFA,      // District yang dipilih
+              selectedQA,      // QA SPV yang dipilih
+              selectedSeason,
+              selectedFieldSPV, // Tambahkan region sebagai argumen
+            ),
+            buildCategoryItem(
+              context,
+              'assets/generative.png',
+              'Generative',
+              selectedSpreadsheetId,
+              selectedFA,
+              selectedQA,
+              selectedSeason,
+              selectedFieldSPV,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+
+  Widget buildCategoryItem(
+      BuildContext context,
+      String imagePath,
+      String label,
+      String? spreadsheetId,
+      String? selectedDistrict,
+      String? selectedQA,
+      String? selectedSeason,
+      String? region, // Tambahkan parameter region
+      ) {
+    return GestureDetector(
+      onTap: () {
+        if (spreadsheetId == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Harap pilih Region terlebih dahulu', textAlign: TextAlign.center,)),
+          );
+          return;
+        }
+        if (selectedQA == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('QA SPV belum dipilih gaes!', textAlign: TextAlign.center,)),
+          );
+          return;
+        }
+        if (selectedDistrict == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Hayo, Districtnya belum dipilih!', textAlign: TextAlign.center,)),
+          );
+          return;
+        }
+
+        // Tentukan targetScreen berdasarkan label
+        Widget targetScreen;
+        switch (label) {
+          case 'Vegetative':
+            targetScreen = PspVegetativeScreen(
+              spreadsheetId: spreadsheetId,
+              selectedDistrict: selectedDistrict,
+              selectedQA: selectedQA,
+              selectedSeason: selectedSeason,
+              region: region ?? 'Unknown Region',
+              seasonList: seasonList,
+            );
+            break;
+          case 'Generative':
+            targetScreen = PspGenerativeScreen(
+              spreadsheetId: spreadsheetId,
+              selectedDistrict: selectedDistrict,
+              selectedQA: selectedQA,
+              selectedSeason: selectedSeason,
+              region: region ?? 'Unknown Region',
+              seasonList: seasonList,
+            );
+            break;
+          default:
+            return;
+        }
+
+        // Navigasi ke targetScreen
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => targetScreen),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(55.0),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha((0.10 * 255).toInt()),
+              spreadRadius: 3,
+              blurRadius: 2,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Card(
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(55.0),
+          ),
+          elevation: 0,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(imagePath, height: 60, width: 60, fit: BoxFit.contain),
+                const SizedBox(height: 8),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.redAccent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class MenuScreen extends StatelessWidget {
+  final String userName;
+  final String userEmail;
+  final String? userPhotoUrl;
+  final String appVersion;
+  final VoidCallback onLogout;
+
+  const MenuScreen({
+    super.key,
+    required this.userName,
+    required this.userEmail,
+    this.userPhotoUrl,
+    required this.appVersion,
+    required this.onLogout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: MediaQuery.of(context).size.width, // Lebar layar penuh
+      height: MediaQuery.of(context).size.height, // Tinggi layar penuh
+      decoration: BoxDecoration(
+        color: Colors.redAccent, // Warna latar belakang drawer
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(30.0), // Melengkung di pojok kanan atas
+          bottomRight: Radius.circular(30.0), // Melengkung di pojok kanan bawah
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha((0.2 * 255).toInt()),
+            blurRadius: 10,
+            offset: const Offset(2, 5), // Posisi bayangan
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.only(top: 80.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(5.0),
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: Colors.white,
+                    backgroundImage: userPhotoUrl != null && userPhotoUrl!.isNotEmpty
+                        ? NetworkImage(userPhotoUrl!) // Tampilkan foto dari URL
+                        : const AssetImage('assets/logo.png') as ImageProvider, // Placeholder jika kosong
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  Text(
+                    userName,
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontFamily: 'Poppins',
+                      color: Colors.white,
+                      decoration: TextDecoration.none,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 5),
+
+                  Text(
+                    userEmail,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Poppins',
+                      color: Colors.white60,
+                      decoration: TextDecoration.none,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  Container(
+                    margin: const EdgeInsets.all(25),
+                    width: 200,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+
+                  const SizedBox(height: 350),
+                  // Logout Button
+                  Padding(
+                    padding: const EdgeInsets.only(top: 20.0), // Beri jarak lebih
+                    child: ElevatedButton.icon(
+                      onPressed: onLogout,
+                      icon: Icon(Icons.logout, color: Colors.redAccent),
+                      label: const Text('Logout'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.redAccent,
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 12.0, horizontal: 24.0),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30.0),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // App Version
+                  SizedBox(
+                    height: 30,
+                    child: AnimatedTextKit(
+                      animatedTexts: [
+                        TypewriterAnimatedText(
+                          'Version $appVersion',
+                          textStyle: TextStyle(
+                            color: Colors.white60,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.none,
+                          ),
+                          speed: const Duration(milliseconds: 200),
+                        ),
+                      ],
+                      repeatForever: true,
+                    ),
+                  ),
+
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

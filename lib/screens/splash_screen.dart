@@ -13,7 +13,7 @@ class SplashScreen extends StatefulWidget {
 class SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _animation;
+  // late Animation<double> _animation;
   bool _showDescription = false;
   String _version = 'Fetching...';
 
@@ -26,12 +26,12 @@ class SplashScreenState extends State<SplashScreen>
       vsync: this,
     );
 
-    _animation = Tween<double>(begin: 0.0, end: 0.4).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeInOut,
-      ),
-    );
+    // _animation = Tween<double>(begin: 0.0, end: 0.4).animate(
+    //   CurvedAnimation(
+    //     parent: _controller,
+    //     curve: Curves.easeInOut,
+    //   ),
+    // );
 
     _controller.forward().then((_) {
       setState(() {
@@ -120,22 +120,22 @@ class SplashScreenState extends State<SplashScreen>
               duration: const Duration(seconds: 1),
             ),
             SizedBox(height: screenHeight * 0.05),
-            ScaleTransition(
-              scale: _animation,
-              child: Image.asset(
-                'assets/logo.png',
-                height: screenHeight * 0.3, // Responsive height for the logo
-              ),
-            ),
-            SizedBox(height: screenHeight * 0.2),
+            // ScaleTransition(
+            //   scale: _animation,
+            //   child: Image.asset(
+            //     'assets/icon.png',
+            //     height: screenHeight * 0.3, // Responsive height for the logo
+            //   ),
+            // ),
+            SizedBox(height: screenHeight * 0.5),
             Padding(
               padding: const EdgeInsets.only(bottom: 20.0),
               child: Column(
                 children: [
                   const Text(
-                    'KrosCek Application Created by Tim Cengoh, Ahli Huru-Hara',
+                    'Created by Tim Cengoh, Ahli Huru-Hara',
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 11,
                       fontWeight: FontWeight.bold,
                     ),
                   ),

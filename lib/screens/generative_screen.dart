@@ -56,6 +56,18 @@ class GenerativeScreenState extends State<GenerativeScreen> {
 
   double _totalEffectiveArea = 0.0; // Variabel untuk menyimpan total Effective Area (Ha)
 
+  String getGenerativeStatus(String cekResult, String cekProses) {
+    if (cekResult.toLowerCase() == "audited" && cekProses.toLowerCase() == "audited") {
+      return "Sampun";
+    } else if ((cekResult.toLowerCase() == "audited" && cekProses.toLowerCase() == "not audited") ||
+        (cekResult.toLowerCase() == "not audited" && cekProses.toLowerCase() == "audited")) {
+      return "Dereng Jangkep";
+    } else if (cekResult.toLowerCase() == "not audited" && cekProses.toLowerCase() == "not audited") {
+      return "Dereng Blas";
+    }
+    return "Unknown"; // Default jika ada data yang tidak sesuai
+  }
+
   @override
   void initState() {
     super.initState();
@@ -76,13 +88,13 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     if (refresh) {
       _currentPage = 1;
       _sheetData.clear();
-      _totalEffectiveArea = 0.0;
+      _totalEffectiveArea = 0.0; // Reset total Effective Area saat refresh
     }
 
     setState(() {
       _isLoading = true;
       _errorMessage = null;
-      _progress = 0.0;
+      _progress = 0.0; // Reset progres saat mulai mengambil data
     });
 
     try {
@@ -95,14 +107,14 @@ class GenerativeScreenState extends State<GenerativeScreen> {
         _sheetData.addAll(data);
         _filteredData = List.from(_sheetData);
         _isLoading = false;
-        _extractUniqueFA();
+        _extractUniqueFA(); // Ekstrak nama-nama FA dari data
         _filterData();
         _currentPage++;
-        _progress = (_sheetData.length / totalDataCount).clamp(0.0, 1.0);
+        _progress = (_sheetData.length / totalDataCount).clamp(0.0, 1.0); // Perbarui progres
 
         // Update total Effective Area (Ha)
         _totalEffectiveArea = _filteredData.fold(0.0, (sum, row) {
-          final effectiveArea = double.tryParse(row[8]) ?? 0.0;
+          final effectiveArea = double.tryParse(row[8]) ?? 0.0; // Row 8 adalah Effective Area
           return sum + effectiveArea;
         });
       });
@@ -170,6 +182,7 @@ class GenerativeScreenState extends State<GenerativeScreen> {
         final fieldNumber = getValue(row, 2, '').toLowerCase();
         final farmerName = getValue(row, 3, '').toLowerCase();
         final grower = getValue(row, 4, '').toLowerCase();
+        final hybrid = getValue(row, 5, '').toLowerCase();
         final desa = getValue(row, 11, '').toLowerCase();
         final kecamatan = getValue(row, 12, '').toLowerCase();
         final fieldSpv = getValue(row, 15, '').toLowerCase();
@@ -177,11 +190,16 @@ class GenerativeScreenState extends State<GenerativeScreen> {
         bool matchesSearchQuery = fieldNumber.contains(_searchQuery) ||
             farmerName.contains(_searchQuery) ||
             grower.contains(_searchQuery) ||
+            hybrid.contains(_searchQuery) ||
             desa.contains(_searchQuery) ||
             kecamatan.contains(_searchQuery) ||
             district.contains(_searchQuery) ||
             fa.contains(_searchQuery) ||
-            fieldSpv.contains(_searchQuery);
+            fieldSpv.contains(_searchQuery) ||
+            getGenerativeStatus(
+                getValue(row, 71, ""), // Kolom "Cek Result"
+                getValue(row, 72, "")  // Kolom "Cek Proses"
+            ).toLowerCase().contains(_searchQuery); // Pencarian berdasarkan status
 
         return matchesQAFilter &&
             matchesDistrictFilter &&
@@ -522,9 +540,41 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                     fit: BoxFit.contain,
                   ),
                 ),
-                title: Text(
-                  getValue(row, 2, "Unknown" ),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        getValue(row, 2, "Unknown"),
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis, // Agar teks tidak melampaui batas
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                      decoration: BoxDecoration(
+                        color: getGenerativeStatus(
+                            getValue(row, 71, ""),
+                            getValue(row, 72, "")
+                        ) == "Sampun"
+                            ? Colors.green
+                            : getGenerativeStatus(
+                            getValue(row, 71, ""),
+                            getValue(row, 72, "")
+                        ) == "Dereng Jangkep"
+                            ? Colors.orange
+                            : Colors.red,
+                        borderRadius: BorderRadius.circular(4.0),
+                      ),
+                      child: Text(
+                        getGenerativeStatus(
+                          getValue(row, 71, ""),
+                          getValue(row, 72, ""),
+                        ),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                    ),
+                  ],
                 ),
                 subtitle: RichText(
                   text: TextSpan(

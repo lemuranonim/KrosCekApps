@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // Import untuk fitur kalender
 import 'training_sheet_api.dart'; // Import TrainingSheetApi
 import 'success_screen.dart';
+import 'package:lottie/lottie.dart';
 import 'config_manager.dart';
 
 class TrainingScreen extends StatefulWidget {
@@ -190,7 +191,7 @@ class TrainingScreenState extends State<TrainingScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: Lottie.asset('assets/loading.json'))
           : Padding(
         padding: const EdgeInsets.all(16.0),
         child: ListView(

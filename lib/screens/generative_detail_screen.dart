@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:url_launcher/url_launcher.dart'; // Tambahkan ini untuk menggunakan url_launcher
-import 'generative_edit_screen.dart';
+import 'generative1_edit_screen.dart';
+import 'generative2_edit_screen.dart';
+import 'generative3_edit_screen.dart';
 import 'google_sheets_api.dart';
 import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
+import 'package:lottie/lottie.dart';
 import 'config_manager.dart';
 
 class GenerativeDetailScreen extends StatefulWidget {
@@ -31,7 +35,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
 
   final double defaultLat = -7.637017;
   final double defaultLng = 112.8272303;
-
+  final PageController _pageController = PageController();
   late String spreadsheetId;
 
   @override
@@ -183,18 +187,18 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
     iconTheme: const IconThemeData(color: Colors.white),
     ),
     body: isLoading
-    ? const Center(child: CircularProgressIndicator())
+    ? Center(child: Lottie.asset('assets/loading.json'))
         : LiquidPullToRefresh(
     onRefresh: _refreshData,  // Menentukan fungsi untuk refresh
       color: Colors.green,
       backgroundColor: Colors.white,
       showChildOpacityTransition: true,
     child: SingleChildScrollView(
-    child: Padding(
-    padding: const EdgeInsets.all(5.0),
-    child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
+      child: Padding(
+        padding: const EdgeInsets.all(5.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               _buildInteractiveMap(),
               const SizedBox(height: 10),
               _buildCoordinatesText(),
@@ -206,6 +210,8 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                 _buildDetailRow('Hybrid', row![5]),
                 _buildDetailRow('Effective Area (Ha)', _convertToFixedDecimalIfNecessary(row![8])),
                 _buildDetailRow('Planting Date PDN', _convertToDateIfNecessary(row![9])),
+                _buildDetail2Row('Flowering (Est + 57 DAP)', _convertToDateIfNecessary(row![27])),
+                _buildDetail2Row('FASE', row![26]),
                 _buildDetailRow('Desa', row![11]),
                 _buildDetailRow('Kecamatan', row![12]),
                 _buildDetailRow('Kabupaten', row![13]),
@@ -215,42 +221,82 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                 _buildDetailRow('Week of Flowering Rev', row![28]),
               ]),
               const SizedBox(height: 20),
-              _buildAdditionalInfoCard('Field Audit', [
-                _buildDetailRow('QA FI', row![31]),
-                _buildDetailRow('Date of Audit 1 (dd/MM)', _convertToDateIfNecessary(row![32])),
-                _buildDetailRow('Rev Planting Date Based', _convertToDateIfNecessary(row![34])),
-                _buildDetailRow('Detaseling Plan (Form)', row![35]),
-                _buildDetailRow('Labor Availability for DT', row![36]),
-                _buildDetailRow('Roguing Proses', row![37]),
-                _buildDetailRow('Remarks Roguing Proses', row![38]),
-                _buildDetailRow('Labor Detasseling Process', row![39]),
-                _buildDetailRow('Date of Audit 2 (dd/MM)', _convertToDateIfNecessary(row![40])),
-                _buildDetailRow('Female Shed.', row![42]),
-                _buildDetailRow('Shedding Offtype & CVL M', row![43]),
-                _buildDetailRow('Shedding Offtype & CVL F', row![44]),
-                _buildDetailRow('Date of Audit 3 (dd/MM)', _convertToDateIfNecessary(row![45])),
-                _buildDetailRow('Female Shed.', row![47]),
-                _buildDetailRow('Shedding Offtype & CVL M', row![48]),
-                _buildDetailRow('Shedding Offtype & CVL F', row![49]),
-                _buildDetailRow('StandingCropOfftype&CVLm', row![50]),
-                _buildDetailRow('StandingCropOfftype&CVLf', row![51]),
-                _buildDetailRow('LSV Ditemukan', row![52]),
-                _buildDetailRow('Detasseling Process Observ.', row![53]),
-                _buildDetailRow('Affected by other fields', row![54]),
-                _buildDetailRow('Nick Cover', row![55]),
-                _buildDetailRow('Crop Uniformity', row![56]),
-                _buildDetailRow('Isolation (Y/N)', row![57]),
-                _buildDetailRow('If "YES" IsolationType', row![58]),
-                _buildDetailRow('If "YES" IsolationDist. (m)', row![59]),
-                _buildDetailRow('QPIR Applied', row![60]),
-                _buildDetailRow('Closed out Date', _convertToDateIfNecessary(row![61])),
-                _buildDetailRow('FLAGGING', row![62]),
-                _buildDetailRow('Recommendation', row![63]),
-                _buildDetailRow('Remarks', row![64]),
-                _buildDetailRow('Recommendation PLD (Ha)', _convertToFixedDecimalIfNecessary(row![65])),
-                _buildDetailRow('Reason PLD', row![66]),
-                _buildDetailRow('Reason Tidak Teraudit', row![67]),
-              ]),
+              SizedBox(
+                height: MediaQuery.of(context).size.height * 0.75,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center, // Tengah secara vertikal
+                  children: [
+                    SmoothPageIndicator(
+                      controller: _pageController,
+                      count: 3, // Jumlah halaman audit
+                      effect: WormEffect(
+                        dotHeight: 10,
+                        dotWidth: 10,
+                        activeDotColor: Colors.green,
+                        dotColor: Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: PageView(
+                        controller: _pageController,
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          // Audit 1
+                          _buildAudit1Section(
+                            context, 'Field Audit 1', [
+                            _buildDetailRow('QA FI', row![31]),
+                            _buildDetailRow('Date of Audit 1 (dd/MM)', _convertToDateIfNecessary(row![32])),
+                            _buildDetailRow('Rev Planting Date Based', _convertToDateIfNecessary(row![34])),
+                            _buildDetailRow('Detaseling Plan (Form)', row![35]),
+                            _buildDetailRow('Labor Availability for DT', row![36]),
+                            _buildDetailRow('Roguing Proses', row![37]),
+                            _buildDetailRow('Remarks Roguing Proses', row![38]),
+                            _buildDetailRow('Labor Detasseling Process', row![39]),
+                          ]),
+
+                            // Audit 2
+                          _buildAudit2Section(
+                            context, 'Field Audit 2', [
+                            _buildDetailRow('Date of Audit 2 (dd/MM)', _convertToDateIfNecessary(row![40])),
+                            _buildDetailRow('Female Shed.', row![42]),
+                            _buildDetailRow('Shedding Offtype & CVL M', row![43]),
+                            _buildDetailRow('Shedding Offtype & CVL F', row![44]),
+                          ]),
+
+                            // Audit 3
+                          _buildAudit3Section(
+                              context, 'Field Audit 3', [
+                            _buildDetailRow('Date of Audit 3 (dd/MM)', _convertToDateIfNecessary(row![45])),
+                            _buildDetailRow('Female Shed.', row![47]),
+                            _buildDetailRow('Shedding Offtype & CVL M', row![48]),
+                            _buildDetailRow('Shedding Offtype & CVL F', row![49]),
+                            _buildDetailRow('StandingCropOfftype&CVLm', row![50]),
+                            _buildDetailRow('StandingCropOfftype&CVLf', row![51]),
+                            _buildDetailRow('LSV Ditemukan', row![52]),
+                            _buildDetailRow('Detasseling Process Observ.', row![53]),
+                            _buildDetailRow('Affected by other fields', row![54]),
+                            _buildDetailRow('Nick Cover', row![55]),
+                            _buildDetailRow('Crop Uniformity', row![56]),
+                            _buildDetailRow('Isolation (Y/N)', row![57]),
+                            _buildDetailRow('If "YES" IsolationType', row![58]),
+                            _buildDetailRow('If "YES" IsolationDist. (m)', row![59]),
+                            _buildDetailRow('QPIR Applied', row![60]),
+                            _buildDetailRow('Closed out Date', _convertToDateIfNecessary(row![61])),
+                            _buildDetailRow('FLAGGING', row![62]),
+                            _buildDetailRow('Recommendation', row![63]),
+                            _buildDetailRow('Remarks', row![64]),
+                            _buildDetailRow('Recommendation PLD (Ha)', _convertToFixedDecimalIfNecessary(row![65])),
+                            _buildDetailRow('Reason PLD', row![66]),
+                            _buildDetailRow('Reason Tidak Teraudit', row![67]),
+                          ]),
+
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -258,18 +304,18 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
     ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          await _navigateToEditScreen(context);
           await _fetchData();
+          _saveDataToCache();
         },
         backgroundColor: Colors.green,
         shape: const CircleBorder(),
-        child: const Icon(Icons.edit, color: Colors.white),
+        child: const Icon(Icons.refresh_rounded, color: Colors.white),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
       bottomNavigationBar: const BottomAppBar(
         color: Colors.green,
         shape: CircularNotchedRectangle(),
-        child: SizedBox(height: 50.0),
+        child: SizedBox(height: 60.0),
       ),
     );
   }
@@ -323,32 +369,266 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
     );
   }
 
-  Widget _buildAdditionalInfoCard(String title, List<Widget> children) {
-    return Card(
-      color: Colors.green[50],
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green),
+  // Widget _buildAuditSection(BuildContext context, String title, List<Widget> children) {
+  //   return Card(
+  //     elevation: 4,
+  //     color: Colors.green[50],
+  //     shape: RoundedRectangleBorder(
+  //       borderRadius: BorderRadius.circular(10),
+  //     ),
+  //     margin: const EdgeInsets.all(8), // Memberikan margin untuk jarak antar card
+  //     child: Padding(
+  //       padding: const EdgeInsets.all(14.0),
+  //       child: Column(
+  //         crossAxisAlignment: CrossAxisAlignment.center,
+  //         children: [
+  //           Text(
+  //             title,
+  //             textAlign: TextAlign.center,
+  //             style: const TextStyle(
+  //               color: Colors.green,
+  //               fontSize: 18,
+  //               fontWeight: FontWeight.bold,
+  //             ),
+  //           ),
+  //           const SizedBox(height: 20),
+  //
+  //           // Menampilkan daftar detail audit
+  //           ...children,
+  //
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
+
+  Widget _buildAudit1Section(BuildContext context, String title, List<Widget> children) {
+    // Scroll controller untuk mengatur scroll bar
+    final ScrollController scrollController = ScrollController();
+
+    return Stack( // Menggunakan Stack untuk menempatkan FAB di atas Card
+      children: [
+        Card(
+          elevation: 4,
+          color: Colors.green[50],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50), // Memberi ruang untuk FAB
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.green,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Tambahkan ScrollBar
+                Expanded(
+                  child: Scrollbar(
+                    controller: scrollController,
+                    thumbVisibility: true,
+                    thickness: 8,
+                    radius: const Radius.circular(10),
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      child: Column(
+                        children: children,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            Column(children: children),
-          ],
+          ),
         ),
-      ),
+        Positioned(
+          bottom: 6, // Posisi FAB di bawah card
+          left: MediaQuery.of(context).size.width / 2 - 28, // FAB di tengah card
+          child: FloatingActionButton(
+            onPressed: () async {
+              await _navigateToGenerative1EditScreen(
+                  context); // Navigasi ke layar edit
+              await _fetchData();
+              _saveDataToCache();
+            },
+            backgroundColor: Colors.green,
+            shape: const CircleBorder(),
+            child: const Icon(Icons.edit, color: Colors.white),
+          ),
+        ),
+      ],
     );
   }
+
+  Widget _buildAudit2Section(BuildContext context, String title, List<Widget> children) {
+    // Scroll controller untuk mengatur scroll bar
+    final ScrollController scrollController = ScrollController();
+
+    return Stack( // Menggunakan Stack untuk menempatkan FAB di atas Card
+      children: [
+        Card(
+          elevation: 4,
+          color: Colors.green[50],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50), // Memberi ruang untuk FAB
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.green,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Tambahkan ScrollBar
+                Expanded(
+                  child: Scrollbar(
+                    controller: scrollController,
+                    thumbVisibility: true,
+                    thickness: 8,
+                    radius: const Radius.circular(10),
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      child: Column(
+                        children: children,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 6, // Posisi FAB di bawah card
+          left: MediaQuery.of(context).size.width / 2 - 28, // FAB di tengah card
+          child: FloatingActionButton(
+            onPressed: () async {
+              await _navigateToGenerative2EditScreen(
+                  context); // Navigasi ke layar edit
+              await _fetchData();
+              _saveDataToCache();
+            },
+            backgroundColor: Colors.green,
+            shape: const CircleBorder(),
+            child: const Icon(Icons.edit, color: Colors.white),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAudit3Section(BuildContext context, String title, List<Widget> children) {
+    // Scroll controller untuk mengatur scroll bar
+    final ScrollController scrollController = ScrollController();
+
+    return Stack( // Menggunakan Stack untuk menempatkan FAB di atas Card
+      children: [
+        Card(
+          elevation: 4,
+          color: Colors.green[50],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50), // Memberi ruang untuk FAB
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.green,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Tambahkan ScrollBar
+                Expanded(
+                  child: Scrollbar(
+                    controller: scrollController,
+                    thumbVisibility: true,
+                    thickness: 8,
+                    radius: const Radius.circular(10),
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      child: Column(
+                        children: children,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 6, // Posisi FAB di bawah card
+          left: MediaQuery.of(context).size.width / 2 - 28, // FAB di tengah card
+          child: FloatingActionButton(
+            onPressed: () async {
+              await _navigateToGenerative3EditScreen(
+                  context); // Navigasi ke layar edit
+              await _fetchData();
+              _saveDataToCache();
+            },
+            backgroundColor: Colors.green,
+            shape: const CircleBorder(),
+            child: const Icon(Icons.edit, color: Colors.white),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Widget _buildAdditionalInfoCard(String title, List<Widget> children) {
+  //   return Card(
+  //     color: Colors.green[50],
+  //     elevation: 4,
+  //     shape: RoundedRectangleBorder(
+  //       borderRadius: BorderRadius.circular(10),
+  //     ),
+  //     child: Padding(
+  //       padding: const EdgeInsets.all(16.0),
+  //       child: Column(
+  //         crossAxisAlignment: CrossAxisAlignment.start,
+  //         children: [
+  //           Text(
+  //             title,
+  //             style: const TextStyle(
+  //                 fontSize: 18,
+  //                 fontWeight: FontWeight.bold,
+  //                 color: Colors.green),
+  //           ),
+  //           const SizedBox(height: 10),
+  //           Column(children: children),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
 
   Widget _buildDetailRow(String label, String value) {
     return Padding(
@@ -371,6 +651,34 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
               style: const TextStyle(fontSize: 16, color: Colors.grey),
               softWrap: true,
               overflow: TextOverflow.visible,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetail2Row(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start, // Menyelaraskan konten agar vertikal
+        children: [
+          Expanded( // Menggunakan Expanded untuk mengatasi masalah overflow pada teks
+            flex: 2,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(width: 10), // Menambahkan sedikit ruang antara label dan value
+          Expanded(
+            flex: 3,
+            child: Text(
+              value.isNotEmpty ? value : 'Kosong Lur...',
+              style: const TextStyle(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.bold),
+              softWrap: true,  // Membungkus teks jika terlalu panjang
+              overflow: TextOverflow.visible, // Memastikan teks tidak terpotong
             ),
           ),
         ],
@@ -410,11 +718,57 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
   }
 
 
-  Future<void> _navigateToEditScreen(BuildContext context) async {
+  Future<void> _navigateToGenerative1EditScreen(BuildContext context) async {
     final updatedRow = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => GenerativeEditScreen(
+        builder: (context) => Generative1EditScreen(
+          row: row!,
+          region: widget.region,
+          onSave: (updatedActivity) {
+            setState(() {
+              row = updatedActivity;
+            });
+          },
+        ),
+      ),
+    );
+
+    if (updatedRow != null) {
+      setState(() {
+        row = updatedRow;
+      });
+    }
+  }
+
+  Future<void> _navigateToGenerative2EditScreen(BuildContext context) async {
+    final updatedRow = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Generative2EditScreen(
+          row: row!,
+          region: widget.region,
+          onSave: (updatedActivity) {
+            setState(() {
+              row = updatedActivity;
+            });
+          },
+        ),
+      ),
+    );
+
+    if (updatedRow != null) {
+      setState(() {
+        row = updatedRow;
+      });
+    }
+  }
+
+  Future<void> _navigateToGenerative3EditScreen(BuildContext context) async {
+    final updatedRow = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Generative3EditScreen(
           row: row!,
           region: widget.region,
           onSave: (updatedActivity) {

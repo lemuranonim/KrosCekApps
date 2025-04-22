@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'google_sheets_api.dart';
 import 'preharvest_edit_screen.dart';
 import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
+import 'package:lottie/lottie.dart';
 import 'config_manager.dart';
 
 class PreHarvestDetailScreen extends StatefulWidget {
@@ -184,7 +185,7 @@ class PreHarvestDetailScreenState extends State<PreHarvestDetailScreen> {
     iconTheme: const IconThemeData(color: Colors.white),
     ),
     body: isLoading
-    ? const Center(child: CircularProgressIndicator())
+    ? Center(child: Lottie.asset('assets/loading.json'))
         : LiquidPullToRefresh(
     onRefresh: _refreshData,  // Menentukan fungsi untuk refresh
       color: Colors.green,
@@ -207,6 +208,8 @@ class PreHarvestDetailScreenState extends State<PreHarvestDetailScreen> {
                 _buildDetailRow('Hybrid', row![5]),
                 _buildDetailRow('Effective Area (Ha)', _convertToFixedDecimalIfNecessary(row![8])),
                 _buildDetailRow('Planting Date PDN', _convertToDateIfNecessary(row![9])),
+                _buildDetail2Row('Pre Harvest (Est + 80 DAP)', _convertToDateIfNecessary(row![26])),
+                _buildDetail2Row('FASE', row![25]),
                 _buildDetailRow('Desa', row![11]),
                 _buildDetailRow('Kecamatan', row![12]),
                 _buildDetailRow('Kabupaten', row![13]),
@@ -233,6 +236,7 @@ class PreHarvestDetailScreenState extends State<PreHarvestDetailScreen> {
         onPressed: () async {
           await _navigateToEditScreen(context);
           await _fetchData();
+          _saveDataToCache();
         },
         backgroundColor: Colors.green,
         shape: const CircleBorder(),
@@ -347,6 +351,34 @@ class PreHarvestDetailScreenState extends State<PreHarvestDetailScreen> {
               style: const TextStyle(fontSize: 16, color: Colors.grey),
               softWrap: true,
               overflow: TextOverflow.visible,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetail2Row(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start, // Menyelaraskan konten agar vertikal
+        children: [
+          Expanded( // Menggunakan Expanded untuk mengatasi masalah overflow pada teks
+            flex: 2,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(width: 10), // Menambahkan sedikit ruang antara label dan value
+          Expanded(
+            flex: 3,
+            child: Text(
+              value.isNotEmpty ? value : 'Kosong Lur...',
+              style: const TextStyle(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.bold),
+              softWrap: true,  // Membungkus teks jika terlalu panjang
+              overflow: TextOverflow.visible, // Memastikan teks tidak terpotong
             ),
           ),
         ],

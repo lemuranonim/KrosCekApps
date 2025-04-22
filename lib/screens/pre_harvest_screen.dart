@@ -161,6 +161,10 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
         bool matchesWeekFilter =
         (_selectedWeekOfPreHarvest == null || weekOfPreHarvest == _selectedWeekOfPreHarvest);
 
+        final statusAudit = getValue(row, 39, "NOT Audited").toLowerCase() == "audited"
+            ? "sampun"
+            : "dereng";
+
         final fa = getValue(row, 16, '').toLowerCase(); // FA berada di row 16
 
         bool matchesFAFilter =
@@ -170,6 +174,7 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
         final fieldNumber = getValue(row, 2, '').toLowerCase();
         final farmer = getValue(row, 3, '').toLowerCase();
         final grower = getValue(row, 4, '').toLowerCase();
+        final hybrid = getValue(row, 5, '').toLowerCase();
         final desa = getValue(row, 11, '').toLowerCase();
         final kecamatan = getValue(row, 12, '').toLowerCase();
         final fieldSpv = getValue(row, 15, '').toLowerCase();
@@ -177,11 +182,13 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
         bool matchesSearchQuery = fieldNumber.contains(_searchQuery) ||
             farmer.contains(_searchQuery) ||
             grower.contains(_searchQuery) ||
+            hybrid.contains(_searchQuery) ||
             desa.contains(_searchQuery) ||
             kecamatan.contains(_searchQuery) ||
             district.contains(_searchQuery) ||
             fa.contains(_searchQuery) ||
-            fieldSpv.contains(_searchQuery);
+            fieldSpv.contains(_searchQuery) ||
+            statusAudit.contains(_searchQuery);
 
         return matchesQAFilter &&
             matchesDistrictFilter &&
@@ -522,9 +529,28 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                     fit: BoxFit.contain,
                   ),
                 ),
-                title: Text(
-                  getValue(row, 2, "Unknown" ),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        getValue(row, 2, "Unknown"),
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis, // Agar teks tidak melampaui batas
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                      decoration: BoxDecoration(
+                        color: getValue(row, 39, "NOT Audited") == "Audited" ? Colors.green : Colors.red,
+                        borderRadius: BorderRadius.circular(4.0),
+                      ),
+                      child: Text(
+                        getValue(row, 39, "NOT Audited") == "Audited" ? "Sampun" : "Dereng",
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                    ),
+                  ],
                 ),
                 subtitle: RichText(
                   text: TextSpan(
