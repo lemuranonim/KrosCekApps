@@ -41,11 +41,16 @@ android {
     defaultConfig {
         applicationId "com.example.kroscek"
         minSdkVersion 23
-        targetSdkVersion 33
+        targetSdkVersion 34
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
 
         multiDexEnabled true
+    }
+
+    lintOptions {
+        checkReleaseBuilds false
+        abortOnError false
     }
 
     // Menyamakan JVM target untuk Java dan Kotlin

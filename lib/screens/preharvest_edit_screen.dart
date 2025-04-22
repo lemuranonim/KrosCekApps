@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'google_sheets_api.dart';
+import 'package:gsheets/gsheets.dart';
 import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
 import 'dart:async';  // Untuk menggunakan Timer
@@ -32,13 +33,16 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
   String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
   late String spreadsheetId;
 
+  String? selectedFI; // FI yang dipilih
+  List<String> fiList = []; // Daftar FI untuk dropdown
+
   String? selectedMaleRowsChopping;
   String? selectedCropHealth;
   String? selectedRecommendation;
 
-  final List<String> maleRowsChoppingItems = ['', 'A', 'B'];
-  final List<String> cropHealthItems = ['', 'A', 'B', 'C'];
-  final List<String> recommendationItems = ['', 'Continue', 'Discard'];
+  final List<String> maleRowsChoppingItems = ['A', 'B'];
+  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> recommendationItems = ['Continue', 'Discard'];
 
   @override
   void initState() {
@@ -52,6 +56,8 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
     // Initialize text controllers with existing data
     _dateAuditController = TextEditingController(text: _convertToDateIfNecessary(row[30]));
 
+    _loadFIList(widget.region);
+
     // Initialize dropdown fields
     selectedMaleRowsChopping = row[32];
     selectedCropHealth = row[34];
@@ -62,6 +68,29 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
 
   Future<void> _fetchSpreadsheetId() async {
     spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
+  }
+
+  Future<void> _loadFIList(String region) async {
+    setState(() {
+      isLoading = true; // Tampilkan loading
+    });
+
+    try {
+      final gSheetsApi = GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
+      await gSheetsApi.init(); // Inisialisasi API
+      final List<String> fetchedFI = await gSheetsApi.fetchFIByRegion('FI', region);
+
+      setState(() {
+        fiList = fetchedFI; // Perbarui daftar FI
+        selectedFI = row[31]; // Tetapkan nilai awal dari data row[31]
+      });
+    } catch (e) {
+      debugPrint('Gagal mengambil data FI: $e');
+    } finally {
+      setState(() {
+        isLoading = false; // Sembunyikan loading
+      });
+    }
   }
 
   void _initHive() async {
@@ -102,7 +131,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
                 // Tampilkan progress bar di atas form jika sedang loading
                 if (isLoading) const LinearProgressIndicator(),  // Tambahkan di sini
 
-                _buildTextFormField('QA FI', 29),
+                _buildFIDropdownField('QA FI', 29),
                 _buildDatePickerField('Date of Audit (dd/MM)', 30, _dateAuditController),
 
                 const SizedBox(height: 10),
@@ -194,6 +223,31 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
         onChanged: (value) {
           setState(() {
             row[index] = value;
+          });
+        },
+      ),
+    );
+  }
+
+  Widget _buildFIDropdownField(String label, int index) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: DropdownButtonFormField<String>(
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+        value: selectedFI, // FI yang dipilih
+        items: fiList.map((String fi) {
+          return DropdownMenuItem<String>(
+            value: fi,
+            child: Text(fi),
+          );
+        }).toList(),
+        onChanged: (value) {
+          setState(() {
+            selectedFI = value; // Update nilai yang dipilih
+            row[index] = value ?? ''; // Simpan ke row[index]
           });
         },
       ),
@@ -347,19 +401,85 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
     final gSheetsApi = GoogleSheetsApi(spreadsheetId);
     await gSheetsApi.init();
 
+    String responseMessage;
     try {
       await gSheetsApi.updateRow('Pre Harvest', rowData, rowData[2]);
-      await _saveToHive(rowData); // Update data di Hive juga
-
-      _showSnackbar('Data successfully saved to Audit Database');
+      await _saveToHive(rowData);
+      responseMessage = 'Data successfully saved to Audit Database';
     } catch (e) {
       await _logErrorToActivity('Gagal menyimpan data: ${e.toString()}');
-      _showSnackbar('Failed to save data. Please try again.');
+      if (rowData.isNotEmpty && rowData.length > 2 && rowData[2].isNotEmpty) {
+        final gSheetsApi = GoogleSheetsApi(spreadsheetId);
+        await gSheetsApi.init();
+        final Worksheet? sheet = gSheetsApi.spreadsheet.worksheetByTitle('Pre Harvest');
+
+        if (sheet != null) {
+          final int rowIndex = await _findRowByFieldNumber(sheet, row[2]);
+          if (rowIndex != -1) {
+            await _restorePreHarvestFormulas(gSheetsApi, sheet, rowIndex);
+          }
+        }
+      } else {
+        debugPrint("Field number tidak valid, tidak dapat menerapkan rumus.");
+      }
+
+      responseMessage = 'Failed to save data. Please try again.';
     } finally {
       setState(() {
         isLoading = false; // Sembunyikan loader
       });
     }
+
+    // Lakukan navigasi setelah async selesai, pastikan `mounted` masih true
+    if (mounted) {
+      _navigateBasedOnResponse(context, responseMessage);
+    }
+  }
+
+  Future<void> _restorePreHarvestFormulas(GoogleSheetsApi gSheetsApi, Worksheet sheet, int rowIndex) async {
+    await sheet.values.insertValue( // Cek Result
+        '=IF(OR(AE$rowIndex=0;AE$rowIndex="");"NOT Audited";"Audited")',
+        row: rowIndex, column: 40);
+    await sheet.values.insertValue( // Week of Reporting
+        '=IFERROR(IF(OR(AE$rowIndex=0;AE$rowIndex="");"";WEEKNUM(AE$rowIndex;1));"")',
+        row: rowIndex, column: 32);
+    await sheet.values.insertValue( // Standing Crops
+        '=I$rowIndex-U$rowIndex',
+        row: rowIndex, column: 23);
+    await sheet.values.insertValue( // Hyperlink Coordinate
+        '=IFERROR(IF(AND(LEFT(R$rowIndex;4)-0<6;LEFT(R$rowIndex;4)-0>-11);HYPERLINK("HTTP://MAPS.GOOGLE.COM/maps?q="&R$rowIndex;"LINK");"Not Found");"")',
+        row: rowIndex, column: 24);
+    await sheet.values.insertValue( // Fase
+        '=IF(I$rowIndex=0;"Discard";IF(Y$rowIndex=0;"Harvest";IF(TODAY()-J$rowIndex<46;"Vegetative";IF(AND(TODAY()-J$rowIndex>45;TODAY()-J$rowIndex<56);"Pre Flowering";IF(AND(TODAY()-J$rowIndex>55;TODAY()-J$rowIndex<66);"Flowering";IF(AND(TODAY()-J$rowIndex>65;TODAY()-J$rowIndex<81);"Close Out";IF(TODAY()-J$rowIndex>80;"Male Cutting";"")))))))',
+        row: rowIndex, column: 26);
+    await sheet.values.insertValue( // Pre Harvest (Est + 80 DAP)
+        '=J$rowIndex+80',
+        row: rowIndex, column: 27);
+    await sheet.values.insertValue( // Week of Pre Harvest
+        '=IF(OR(I$rowIndex=0;I$rowIndex="");"";WEEKNUM(AC$rowIndex;1))',
+        row: rowIndex, column: 28);
+    await sheet.values.insertValue( // Effective Area (Ha)
+        '=G$rowIndex-H$rowIndex',
+        row: rowIndex, column: 9);
+    await sheet.values.insertValue( // Discard Area (Ha)
+        '=TEXT(H$rowIndex; "#,##0.00")',
+        row: rowIndex, column: 8);
+    await sheet.values.insertValue( // Total Area Planted (Ha)
+        '=TEXT(G$rowIndex; "#,##0.00")',
+        row: rowIndex, column: 7);
+
+    debugPrint("Rumus berhasil diterapkan di Pre Harvest pada baris $rowIndex.");
+  }
+
+  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber) async { // Mencari baris berdasarkan fieldNumber
+
+    final List<List<String>> rows = await sheet.values.allRows(); // Ambil semua baris
+    for (int i = 0; i < rows.length; i++) { // Iterasi setiap baris
+      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) { // Kolom ke-3 untuk fieldNumber
+        return i + 1; // Index baris di Google Sheets dimulai dari 1
+      }
+    }
+    return -1; // Tidak ditemukan
   }
 
   Future<void> _showConfirmationDialog() async {
@@ -402,6 +522,30 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
 
   void _showSnackbar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _navigateBasedOnResponse(BuildContext context, String response) {
+    if (response == 'Data successfully saved to Audit Database') {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => SuccessScreen(
+            row: row,
+            userName: userName,
+            userEmail: userEmail,
+            region: widget.region,
+          ),
+        ),
+      );
+    } else if (response == 'Failed to save data. Please try again.') {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => FailedScreen(), // Buat halaman FailedScreen untuk tampilan gagal
+        ),
+      );
+    } else {
+      // Tampilkan pesan error atau tetap di halaman
+      _showSnackbar('Unknown response: $response');
+    }
   }
 
   String _convertToDateIfNecessary(String value) {
@@ -544,6 +688,55 @@ class SuccessScreen extends StatelessWidget {
     } catch (e) {
       debugPrint('Gagal mencatat aktivitas di Database $worksheetTitle: $e');
     }
+  }
+}
+
+class FailedScreen extends StatelessWidget {
+  const FailedScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text(
+          'Failed',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.red,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error, color: Colors.red, size: 100),
+            const SizedBox(height: 20),
+            const Text(
+              'Failed to save data. Please try again.',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
+                backgroundColor: Colors.red, // Warna background tombol
+                foregroundColor: Colors.white, // Warna teks tombol
+                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+              child: const Text(
+                'Back',
+                style: TextStyle(fontSize: 20),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

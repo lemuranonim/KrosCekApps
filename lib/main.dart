@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
@@ -25,6 +26,8 @@ void main() async {
   await Hive.openBox('generativeData');
   await Hive.openBox('preHarvestData');
   await Hive.openBox('harvestData');
+  await Hive.openBox('pspVegetativeData');
+  await Hive.openBox('pspGenerativeData');
 
   // Inisialisasi Firebase
   await Firebase.initializeApp(
@@ -94,5 +97,54 @@ class NoInternetApp extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class PermissionScreen extends StatefulWidget {
+  const PermissionScreen({super.key});
+
+  @override
+  State<PermissionScreen> createState() => _PermissionScreenState();
+}
+
+class _PermissionScreenState extends State<PermissionScreen> {
+  @override
+  void initState() {
+    super.initState();
+    checkPermissions(); // Memeriksa izin saat aplikasi dimulai
+  }
+
+  Future<void> checkPermissions() async {
+    // Cek izin lokasi
+    if (await Permission.location.isDenied) {
+      await Permission.location.request(); // Minta izin lokasi
+    }
+
+    // Cek izin notifikasi (Android 13+)
+    if (await Permission.notification.isDenied) {
+      await Permission.notification.request(); // Minta izin notifikasi
+    }
+
+    // Cek izin selalu di latar belakang (Opsional untuk GPS)
+    if (await Permission.locationAlways.isDenied) {
+      await Permission.locationAlways.request();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Permissions')),
+      body: const Center(
+        child: Text('Izin telah diperiksa!'),
+      ),
+    );
+  }
+}
+
+Future<void> requestNotificationPermission() async {
+  var status = await Permission.notification.status;
+  if (!status.isGranted) {
+    await Permission.notification.request();
   }
 }

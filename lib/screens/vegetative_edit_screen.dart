@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'google_sheets_api.dart';
+import 'package:gsheets/gsheets.dart';
 import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
 import 'dart:async';  // Untuk menggunakan Timer
@@ -32,6 +33,10 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   String userEmail = 'Fetching...'; // Variabel untuk email pengguna
   String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
   late String spreadsheetId;
+  late GoogleSheetsApi gSheetsApi; // Tambahkan ini di dalam class VegetativeEditScreenState
+
+  String? selectedFI; // FI yang dipilih
+  List<String> fiList = []; // Daftar FI untuk dropdown
 
   String? selectedSplitField;
   String? selectedIsolationProblem;
@@ -46,20 +51,24 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   String? selectedFlagging;
   String? selectedRecommendation;
 
-  final List<String> splitFieldItems = ['', 'A', 'B'];
-  final List<String> isolationProblemItems = ['', 'Y', 'N'];
-  final List<String> contaminantTypeItems = ['', 'A', 'B'];
-  final List<String> contaminantDistanceItems = ['', 'A', 'B', 'C', 'D'];
-  final List<String> cropUniformityItems = ['', 'A', 'B', 'C'];
-  final List<String> offtypeItems = ['', 'A', 'B'];
-  final List<String> firAppliedItems = ['', 'Y', 'N'];
-  final List<String> poiAccuracyItems = ['', 'Valid', 'Not Valid'];
-  final List<String> flaggingItems = ['', 'GF', 'RF'];
-  final List<String> recommendationItems = ['', 'Continue', 'Discard'];
+  final List<String> splitFieldItems = ['A', 'B'];
+  final List<String> isolationProblemItems = ['Y', 'N'];
+  final List<String> contaminantTypeItems = ['A', 'B'];
+  final List<String> contaminantDistanceItems = ['A', 'B', 'C', 'D'];
+  final List<String> cropUniformityItems = ['A', 'B', 'C'];
+  final List<String> offtypeItems = ['A', 'B'];
+  final List<String> firAppliedItems = ['Y', 'N'];
+  final List<String> poiAccuracyItems = ['Valid', 'Not Valid'];
+  final List<String> flaggingItems = ['GF', 'RF'];
+  final List<String> recommendationItems = ['Continue', 'Discard'];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _fetchSpreadsheetId();
+      await _loadFIList(widget.region);
+    });
     _loadUserCredentials();
     row = List<String>.from(widget.row);
 
@@ -68,6 +77,8 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
 
     _dateAuditController = TextEditingController(text: _convertToDateIfNecessary(row[33]));
     _actualPlantingDateController = TextEditingController(text: _convertToDateIfNecessary(row[35]));
+
+    _loadFIList(widget.region);
 
     // Initialize dropdown fields
     selectedSplitField = row[39];
@@ -88,6 +99,27 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
 
   Future<void> _fetchSpreadsheetId() async {
     spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
+    gSheetsApi = GoogleSheetsApi(spreadsheetId);
+    await gSheetsApi.init(); // Pastikan inisialisasi API
+  }
+
+  Future<void> _loadFIList(String region) async {
+    setState(() => isLoading = true);
+
+    try {
+      final gSheetsApi = GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
+      await gSheetsApi.init(); // Inisialisasi API
+      final List<String> fetchedFI = await gSheetsApi.fetchFIByRegion('FI', region);
+
+      setState(() {
+        fiList = fetchedFI; // Perbarui daftar FI
+        selectedFI = row[31]; // Tetapkan nilai awal dari data row[31]
+      });
+    } catch (e) {
+      debugPrint('Gagal mengambil data FI: $e');
+    } finally {
+      setState(() => isLoading = false);
+    }
   }
 
   void _initHive() async {
@@ -128,12 +160,12 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
                 // Tampilkan progress bar di atas form jika sedang loading
                 if (isLoading) const LinearProgressIndicator(),  // Tambahkan di sini
 
-                _buildTextFormField('QA FI', 31),
+                _buildFIDropdownField('QA FI', 31),
                 _buildTextFormField('Co Detasseling', 32),
                 _buildDatePickerField('Date of Audit', 33, _dateAuditController),
                 _buildDatePickerField('Actual Female Planting Date', 35, _actualPlantingDateController),
-                _buildTextFormField('Field Size by Audit (Ha)', 36),
-                _buildTextFormField('Male Split by Audit', 37),
+                _buildText2FormField('Field Size by Audit (Ha)', 36),
+                _buildText2FormField('Male Split by Audit', 37),
                 _buildTextFormField('Sowing Ratio by Audit', 38),
 
                 const SizedBox(height: 10),
@@ -370,6 +402,53 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     );
   }
 
+  Widget _buildText2FormField(String label, int index) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: TextFormField(
+        // Menambahkan tanda kutip tunggal di depan nilai saat ditampilkan
+        initialValue: row[index].isNotEmpty ? "'${row[index]}" : "'0", // Default nilai '0'
+        keyboardType: TextInputType.number, // Input hanya angka
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+        onChanged: (value) {
+          setState(() {
+            // Memastikan nilai disimpan sebagai string dengan tanda kutip tunggal di depan
+            String cleanedValue = value.replaceAll("'", ""); // Menghapus tanda kutip sementara
+            row[index] = "'$cleanedValue"; // Tambahkan tanda kutip kembali untuk menyimpan sebagai teks
+          });
+        },
+      ),
+    );
+  }
+
+  Widget _buildFIDropdownField(String label, int index) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: DropdownButtonFormField<String>(
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+        value: selectedFI, // FI yang dipilih
+        items: fiList.map((String fi) {
+          return DropdownMenuItem<String>(
+            value: fi,
+            child: Text(fi),
+          );
+        }).toList(),
+        onChanged: (value) {
+          setState(() {
+            selectedFI = value; // Update nilai yang dipilih
+            row[index] = value ?? ''; // Simpan ke row[index]
+          });
+        },
+      ),
+    );
+  }
+
   Widget _buildDatePickerField(String label, int index, TextEditingController controller) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -510,26 +589,80 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   }
 
   Future<void> _saveToGoogleSheets(List<String> rowData) async {
-    setState(() {
-      isLoading = true; // Tampilkan loader
-    });
+    setState(() => isLoading = true);
 
-    final gSheetsApi = GoogleSheetsApi(spreadsheetId);
-    await gSheetsApi.init();
-
+    String responseMessage;
     try {
       await gSheetsApi.updateRow('Vegetative', rowData, rowData[2]);
       await _saveToHive(rowData);
+      responseMessage = 'Data successfully saved to Audit Database';
 
-      _showSnackbar('Data successfully saved to Audit Database');
+      final Worksheet? sheet = gSheetsApi.spreadsheet.worksheetByTitle('Vegetative');
+      if (sheet != null) {
+        final rowIndex = await _findRowByFieldNumber(sheet, row[2]);
+        if (rowIndex != -1) {
+          await _restoreVegetativeFormulas(gSheetsApi, sheet, rowIndex);
+        }
+      }
     } catch (e) {
       await _logErrorToActivity('Gagal menyimpan data: ${e.toString()}');
-      _showSnackbar('Failed to save data. Please try again.');
+      responseMessage = 'Failed to save data. Please try again.';
     } finally {
       setState(() {
         isLoading = false; // Sembunyikan loader
       });
     }
+
+    if (mounted) {
+      _navigateBasedOnResponse(context, responseMessage);
+    }
+  }
+
+
+  Future<void> _restoreVegetativeFormulas(GoogleSheetsApi gSheetsApi, Worksheet sheet, int rowIndex) async {
+    await sheet.values.insertValue( // Cek Result
+        '=IF(OR(AH$rowIndex=0;AH$rowIndex="");"NOT Audited";"Audited")',
+        row: rowIndex, column: 56);
+    await sheet.values.insertValue( // Week of Reporting
+        '=IFERROR(IF(OR(AH$rowIndex=0;AH$rowIndex="");"";WEEKNUM(AH$rowIndex;1));"")',
+        row: rowIndex, column: 35);
+    await sheet.values.insertValue( // Standing Crops
+        '=I$rowIndex-U$rowIndex',
+        row: rowIndex, column: 25);
+    await sheet.values.insertValue( // Hyperlink Coordinate
+        '=IFERROR(IF(AND(LEFT(R$rowIndex;4)-0<6;LEFT(R$rowIndex;4)-0>-11);HYPERLINK("HTTP://MAPS.GOOGLE.COM/maps?q="&R$rowIndex;"LINK");"Not Found");"")',
+        row: rowIndex, column: 26);
+    await sheet.values.insertValue( // Fase
+        '=IF(I$rowIndex=0;"Discard";IF(Y$rowIndex=0;"Harvest";IF(TODAY()-J$rowIndex<46;"Vegetative";IF(AND(TODAY()-J$rowIndex>45;TODAY()-J$rowIndex<56);"Pre Flowering";IF(AND(TODAY()-J$rowIndex>55;TODAY()-J$rowIndex<66);"Flowering";IF(AND(TODAY()-J$rowIndex>65;TODAY()-J$rowIndex<81);"Close Out";IF(TODAY()-J$rowIndex>80;"Male Cutting";"")))))))',
+        row: rowIndex, column: 28);
+    await sheet.values.insertValue( // Veg Audit (Est + 30 DAP)
+        '=J$rowIndex+30',
+        row: rowIndex, column: 29);
+    await sheet.values.insertValue( // Week of Vegetative
+        '=IF(OR(I$rowIndex=0;I$rowIndex="");"";WEEKNUM(AC$rowIndex;1))',
+        row: rowIndex, column: 30);
+    // await sheet.values.insertValue( // Effective Area (Ha)
+    //     '=G$rowIndex-H$rowIndex',
+    //     row: rowIndex, column: 9);
+    // await sheet.values.insertValue( // Discard Area (Ha)
+    //     '=TEXT(H$rowIndex; "#,##0.00")',
+    //     row: rowIndex, column: 8);
+    // await sheet.values.insertValue( // Total Area Planted (Ha)
+    //     '=TEXT(G$rowIndex; "#,##0.00")',
+    //     row: rowIndex, column: 7);
+
+    debugPrint("Rumus berhasil diterapkan di Vegetative pada baris $rowIndex.");
+  }
+
+  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber) async { // Mencari baris berdasarkan fieldNumber
+
+    final List<List<String>> rows = await sheet.values.allRows(); // Ambil semua baris
+    for (int i = 0; i < rows.length; i++) { // Iterasi setiap baris
+      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) { // Kolom ke-3 untuk fieldNumber
+        return i + 1; // Index baris di Google Sheets dimulai dari 1
+      }
+    }
+    return -1; // Tidak ditemukan
   }
 
   Future<void> _showConfirmationDialog() async {
@@ -574,15 +707,39 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _navigateBasedOnResponse(BuildContext context, String response) {
+    if (response == 'Data successfully saved to Audit Database') {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => SuccessScreen(
+            row: row,
+            userName: userName,
+            userEmail: userEmail,
+            region: widget.region,
+          ),
+        ),
+      );
+    } else if (response == 'Failed to save data. Please try again.') {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => FailedScreen(), // Buat halaman FailedScreen untuk tampilan gagal
+        ),
+      );
+    } else {
+      // Tampilkan pesan error atau tetap di halaman
+      _showSnackbar('Unknown response: $response');
+    }
+  }
+
   String _convertToDateIfNecessary(String value) {
     try {
-      final parsedNumber = double.tryParse(value);
-      if (parsedNumber != null) {
-        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
-        return DateFormat('dd/MM/yyyy').format(date);
+      final parsed = double.tryParse(value);
+      if (parsed != null) {
+        return DateFormat('dd/MM/yyyy')
+            .format(DateTime(1899, 12, 30).add(Duration(days: parsed.toInt())));
       }
     } catch (e) {
-      // jeda
+      return value;
     }
     return value;
   }
@@ -714,6 +871,55 @@ class SuccessScreen extends StatelessWidget {
     } catch (e) {
       debugPrint('Gagal mencatat aktivitas di Database $worksheetTitle: $e');
     }
+  }
+}
+
+class FailedScreen extends StatelessWidget {
+  const FailedScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text(
+          'Failed',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.red,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error, color: Colors.red, size: 100),
+            const SizedBox(height: 20),
+            const Text(
+              'Failed to save data. Please try again.',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
+                backgroundColor: Colors.red, // Warna background tombol
+                foregroundColor: Colors.white, // Warna teks tombol
+                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+              child: const Text(
+                'Back',
+                style: TextStyle(fontSize: 20),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

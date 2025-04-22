@@ -13,6 +13,7 @@ import 'training_screen.dart';
 import 'absen_log_screen.dart';
 import 'issue_screen.dart';
 import 'login_screen.dart';
+import 'detaselling_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
 import 'activity_screen.dart';  // Import halaman aktivitas
@@ -280,6 +281,7 @@ class HomeScreenState extends State<HomeScreen> {
   Future<void> _refreshData() async {
     if (selectedFieldSPV != null) {
       await _fetchQASPV(selectedFieldSPV!);
+      await _fetchDistricts(selectedFieldSPV!, selectedQA!);
     }
   }
 
@@ -556,7 +558,7 @@ class HomeScreenState extends State<HomeScreen> {
                     child: AnimatedTextKit(
                       animatedTexts: [
                         TyperAnimatedText(
-                          'Sugeng Rawuh Lur...', // First part of the text
+                          'Sugêng Rawuh Lur...', // First part of the text
                           textStyle: const TextStyle(
                             fontSize: 20.0,
                             fontWeight: FontWeight.bold,
@@ -567,7 +569,7 @@ class HomeScreenState extends State<HomeScreen> {
                               milliseconds: 250), // Typing speed
                         ),
                         TyperAnimatedText(
-                          'Monggo dipun KrosCek!', // Second part of the text
+                          'Sugêng Ngêrjakakên!', // Second part of the text
                           textStyle: const TextStyle(
                             fontSize: 20.0,
                             fontWeight: FontWeight.bold,
@@ -847,6 +849,38 @@ class HomeScreenState extends State<HomeScreen> {
                   ],
                 ],
               ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 20),
+        // Tombol menuju halaman estimasi tkd
+        ElevatedButton.icon(
+          onPressed: () {
+            if (selectedFieldSPV == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Pilih Region dulu sebelum cek Estimasi TKD!', textAlign: TextAlign.center)),
+              );
+              return;
+            }
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => KalkulatorTKDPage(
+                  selectedRegion: selectedFieldSPV!,
+                ),
+              ),
+            );
+          },
+          icon: const Icon(Icons.calculate_outlined, size: 20, color: Colors.white),
+          label: const Text(
+            'Est. TKD',
+            style: TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10.0),
             ),
           ),
         ),

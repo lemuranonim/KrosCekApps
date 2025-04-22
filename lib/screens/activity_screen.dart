@@ -4,6 +4,7 @@ import 'google_sheets_api.dart';
 import 'package:intl/intl.dart';
 import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
 import 'config_manager.dart';
+import 'package:lottie/lottie.dart';
 
 class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
@@ -153,7 +154,7 @@ class ActivityScreenState extends State<ActivityScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: Lottie.asset('assets/loading.json'))
           : LiquidPullToRefresh(
         onRefresh: _loadUserDataAndFetchLogs, // Tambahkan fungsi refresh
         color: Colors.green,

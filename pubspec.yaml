@@ -2,7 +2,7 @@ name: kroscek
 description: "Crop Inspection and Check Result"
 publish_to: 'none'
 
-version: 2.3.1+25
+version: 2.7.3+46
 
 environment:
   sdk: '>=3.5.4 <4.0.0'
@@ -50,7 +50,7 @@ dependencies:
   latlong2: ^0.9.1
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  fl_chart: ^0.69.2
+  fl_chart: ^0.70.0
   sign_in_with_apple: ^6.1.4
   get: ^4.6.6
   connectivity_plus: ^6.1.1
@@ -59,6 +59,8 @@ dependencies:
   spincircle_bottom_bar: ^2.0.0
   awesome_drawer_bar: ^1.2.1
   flutter_zoom_drawer: ^3.2.0
+  smooth_page_indicator: ^1.2.0+3
+  icons_launcher: ^3.0.0
 #  firebase_crashlytics: ^4.2.0
 
 dev_dependencies:
@@ -84,8 +86,20 @@ flutter:
     - assets/harvest.png
     - assets/config.json
     - assets/maintenance.png
+    - assets/icon/icon.png
 
 flutter_icons:
   android: true
   ios: true
   image_path: "assets/icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon.png"
+
+
+icons_launcher:
+  image_path: 'assets/icon.png'
+  platforms:
+    android:
+      enable: true
+    ios:
+      enable: true
