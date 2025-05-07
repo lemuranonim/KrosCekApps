@@ -1,0 +1,29 @@
+name: Flutter CI/CD with Dart Analysis
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.3'  # Menggunakan channel stable tanpa arsitektur
+
+      - name: Flutter Doctor (Debugging)
+        run: flutter doctor
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Flutter Analyze
+        run: flutter analyze
