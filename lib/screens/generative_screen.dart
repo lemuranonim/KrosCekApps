@@ -1,11 +1,13 @@
-import 'dart:async'; // Import untuk debounce
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
+import 'package:shared_preferences/shared_preferences.dart';
 import 'google_sheets_api.dart';
-import 'generative_detail_screen.dart'; // Sesuaikan untuk halaman detail generative
+import 'generative_detail_screen.dart';
 import 'config_manager.dart';
+import 'generative_filter_options.dart';
+import 'generative_listview_builder.dart';
 
 class GenerativeScreen extends StatefulWidget {
   final String spreadsheetId;
@@ -26,7 +28,7 @@ class GenerativeScreen extends StatefulWidget {
   });
 
   @override
-  GenerativeScreenState createState() => GenerativeScreenState(); // Menghapus underscore agar public
+  GenerativeScreenState createState() => GenerativeScreenState();
 }
 
 class GenerativeScreenState extends State<GenerativeScreen> {
@@ -35,26 +37,30 @@ class GenerativeScreenState extends State<GenerativeScreen> {
   final _worksheetTitle = 'Generative';
   String? _selectedSeason;
   List<String> _seasonsList = [];
-  final List<List<String>> _sheetData = []; // Ubah menjadi final
+  final List<List<String>> _sheetData = [];
   List<List<String>> _filteredData = [];
   bool _isLoading = true;
   String? selectedRegion;
   String? _errorMessage;
   String? _selectedQA;
   String _searchQuery = '';
-  bool _isSearching = false; // Menyimpan status apakah sedang dalam mode pencarian
+  bool _isSearching = false;
   int _currentPage = 1;
   final int _rowsPerPage = 100;
   Timer? _debounce;
-  double _progress = 0.0; // Variabel untuk menyimpan progres
+  double _progress = 0.0;
 
-  String? _selectedWeekOfGenerative; // Menyimpan minggu yang dipilih
-  List<String> _weekOfGenerativeList = []; // Daftar unik minggu generative dari data
+  String? _selectedWeekOfGenerative;
+  List<String> _weekOfGenerativeList = [];
 
-  List<String> _faNames = []; // Daftar nama FA unik
-  List<String> _selectedFA = []; // Daftar nama FA yang dipilih
+  List<String> _faNames = [];
+  List<String> _selectedFA = [];
 
-  double _totalEffectiveArea = 0.0; // Variabel untuk menyimpan total Effective Area (Ha)
+  double _totalEffectiveArea = 0.0;
+
+  bool _showSampunOnly = false;
+  bool _showDerengJangkepOnly = false;
+  bool _showDerengBlasOnly = false;
 
   String getGenerativeStatus(String cekResult, String cekProses) {
     if (cekResult.toLowerCase() == "audited" && cekProses.toLowerCase() == "audited") {
@@ -65,7 +71,7 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     } else if (cekResult.toLowerCase() == "not audited" && cekProses.toLowerCase() == "not audited") {
       return "Dereng Blas";
     }
-    return "Unknown"; // Default jika ada data yang tidak sesuai
+    return "Unknown";
   }
 
   @override
@@ -75,7 +81,7 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     selectedRegion = widget.region ?? "Unknown Region";
     _googleSheetsApi = GoogleSheetsApi(spreadsheetId);
     _loadSheetData();
-    _loadFilterPreferences(); // Memuat filter FA yang tersimpan
+    _loadFilterPreferences();
   }
 
   @override
@@ -88,18 +94,18 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     if (refresh) {
       _currentPage = 1;
       _sheetData.clear();
-      _totalEffectiveArea = 0.0; // Reset total Effective Area saat refresh
+      _totalEffectiveArea = 0.0;
     }
 
     setState(() {
       _isLoading = true;
       _errorMessage = null;
-      _progress = 0.0; // Reset progres saat mulai mengambil data
+      _progress = 0.0;
     });
 
     try {
       await _googleSheetsApi.init();
-      final totalDataCount = 12000; // Estimasi jumlah total data (bisa dinamis)
+      final totalDataCount = 12000;
       final data = await _googleSheetsApi.getSpreadsheetDataWithPagination(
           _worksheetTitle, (_currentPage - 1) * _rowsPerPage + 1, _rowsPerPage);
 
@@ -107,14 +113,16 @@ class GenerativeScreenState extends State<GenerativeScreen> {
         _sheetData.addAll(data);
         _filteredData = List.from(_sheetData);
         _isLoading = false;
-        _extractUniqueFA(); // Ekstrak nama-nama FA dari data
+        _extractUniqueFA();
+        _extractUniqueSeasons(); // Ekstrak unique seasons
+        _extractUniqueWeeks(); // Ekstrak unique weeks
         _filterData();
         _currentPage++;
-        _progress = (_sheetData.length / totalDataCount).clamp(0.0, 1.0); // Perbarui progres
+        _progress = (_sheetData.length / totalDataCount).clamp(0.0, 1.0);
 
-        // Update total Effective Area (Ha)
         _totalEffectiveArea = _filteredData.fold(0.0, (sum, row) {
-          final effectiveArea = double.tryParse(row[8]) ?? 0.0; // Row 8 adalah Effective Area
+          final effectiveAreaStr = getValue(row, 8, '0').replaceAll(',', '.');
+          final effectiveArea = double.tryParse(effectiveAreaStr) ?? 0.0;
           return sum + effectiveArea;
         });
       });
@@ -136,13 +144,6 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     _filterData();
   }
 
-  // Future<void> _saveFilterPreferences() async {
-  //   SharedPreferences prefs = await SharedPreferences.getInstance();
-  //   prefs.setStringList('selectedFA', _selectedFA);
-  //   prefs.setString('selectedQA', _selectedQA ?? '');
-  // }
-
-  // Ekstrak nama-nama FA yang unik dari data
   void _extractUniqueFA() {
     final faSet = <String>{};
     for (var row in _sheetData) {
@@ -157,24 +158,49 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     });
   }
 
+  void _extractUniqueSeasons() {
+    final seasonsSet = <String>{};
+    for (var row in _sheetData) {
+      final season = getValue(row, 1, ''); // Assuming season is in column 1
+      if (season.isNotEmpty) {
+        seasonsSet.add(season);
+      }
+    }
+    setState(() {
+      _seasonsList = seasonsSet.toList()..sort(); // Sort the seasons
+    });
+  }
+
+  void _extractUniqueWeeks() {
+    final weeksSet = <String>{};
+    for (var row in _sheetData) {
+      final week = getValue(row, 29, ''); // Assuming week is in column 29
+      if (week.isNotEmpty) {
+        weeksSet.add(week);
+      }
+    }
+    setState(() {
+      _weekOfGenerativeList = weeksSet.toList()..sort(); // Sort the weeks
+    });
+  }
+
   void _filterData() {
     setState(() {
       _filteredData = _sheetData.where((row) {
         final qaSpv = getValue(row, 30, '');
         final district = getValue(row, 13, '').toLowerCase();
         final season = getValue(row, 1, '');
-        final weekOfGenerative = getValue(row, 28, ''); // Kolom 28 untuk "Week of Generative"
+        final weekOfGenerative = getValue(row, 28, '');
 
         bool matchesSeasonFilter = (_selectedSeason == null || season == _selectedSeason);
         bool matchesQAFilter = (_selectedQA == null || qaSpv == _selectedQA);
         bool matchesDistrictFilter =
             widget.selectedDistrict == null ||
-            district == widget.selectedDistrict!.toLowerCase();
+                district == widget.selectedDistrict!.toLowerCase();
         bool matchesWeekFilter =
-            (_selectedWeekOfGenerative == null || weekOfGenerative == _selectedWeekOfGenerative);
+        (_selectedWeekOfGenerative == null || weekOfGenerative == _selectedWeekOfGenerative);
 
         final fa = getValue(row, 16, '').toLowerCase();
-
         bool matchesFAFilter =
             _selectedFA.isEmpty ||
                 _selectedFA.contains(toTitleCase(fa));
@@ -197,37 +223,54 @@ class GenerativeScreenState extends State<GenerativeScreen> {
             fa.contains(_searchQuery) ||
             fieldSpv.contains(_searchQuery) ||
             getGenerativeStatus(
-                getValue(row, 71, ""), // Kolom "Cek Result"
-                getValue(row, 72, "")  // Kolom "Cek Proses"
-            ).toLowerCase().contains(_searchQuery); // Pencarian berdasarkan status
+                getValue(row, 71, ""),
+                getValue(row, 72, "")
+            ).toLowerCase().contains(_searchQuery);
+
+        bool matchesStatusFilter = true;
+        if (_showSampunOnly && getGenerativeStatus(getValue(row, 71, ""), getValue(row, 72, "")) != "Sampun") {
+          matchesStatusFilter = false;
+        }
+        if (_showDerengJangkepOnly && getGenerativeStatus(getValue(row, 71, ""), getValue(row, 72, "")) != "Dereng Jangkep") {
+          matchesStatusFilter = false;
+        }
+        if (_showDerengBlasOnly && getGenerativeStatus(getValue(row, 71, ""), getValue(row, 72, "")) != "Dereng Blas") {
+          matchesStatusFilter = false;
+        }
 
         return matchesQAFilter &&
             matchesDistrictFilter &&
             matchesFAFilter &&
             matchesSeasonFilter &&
             matchesWeekFilter &&
-            matchesSearchQuery;
+            matchesSearchQuery &&
+            matchesStatusFilter;
       }).toList();
 
       _seasonsList = _filteredData
-          .map((row) => getValue(row, 1, '')) // Mengambil Week of Generative dari kolom 27
-          .toSet() // Menghapus duplikasi
+          .map((row) => getValue(row, 1, ''))
+          .toSet()
           .toList()
-        ..sort(); // Sortir dari yang terkecil ke yang terbesar
+        ..sort();
 
       _weekOfGenerativeList = _filteredData
-          .map((row) => getValue(row, 28, '')) // Mengambil Week of Generative dari kolom 27
-          .toSet() // Menghapus duplikasi
+          .map((row) => getValue(row, 28, ''))
+          .toSet()
           .toList()
-        ..sort(); // Sortir dari yang terkecil ke yang terbesar
+        ..sort();
 
       _faNames = _filteredData
-          .map((row) => toTitleCase(getValue(row, 16, '').toLowerCase())) // Mengambil FA dari kolom 16
-          .toSet() // Menghapus duplikasi
+          .map((row) => toTitleCase(getValue(row, 16, '').toLowerCase()))
+          .toSet()
           .toList()
-        ..sort(); // Sortir FA
+        ..sort();
 
+      _totalEffectiveArea = _filteredData.fold(0.0, (sum, row) {
+        final effectiveAreaStr = getValue(row, 8, '0').replaceAll(',', '.');
+        final effectiveArea = double.tryParse(effectiveAreaStr) ?? 0.0;
+        return sum + effectiveArea;
       });
+    });
   }
 
   String getValue(List<String> row, int index, String defaultValue) {
@@ -260,175 +303,39 @@ class GenerativeScreenState extends State<GenerativeScreen> {
   void _showFilterOptions() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent, // Keep transparent for rounded corners
       builder: (context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setState) {
-            return SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+            return GenerativeFilterOptions(
+              selectedSeason: _selectedSeason,
+              seasonsList: _seasonsList,
+              onSeasonChanged: (value) {
+                _selectedSeason = value;
+              },
 
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8.0),
-                      child: Text(
-                        'Filter by Seasons',
-                        style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    DropdownButtonFormField<String>(
-                      value: _selectedSeason,
-                      hint: const Text("Select Season"),
-                      isExpanded: true,
-                      items: _seasonsList.map((season) {
-                        return DropdownMenuItem<String>(
-                          value: season,
-                          child: Text(season),
-                        );
-                      }).toList(),
-                      onChanged: (String? newValue) {
-                        setState(() {
-                          _selectedSeason = newValue; // Atur season yang dipilih
-                          _filterData(); // Filter ulang data berdasarkan season
-                        });
-                      },
-                      style: const TextStyle(
-                        color: Colors.black, // Ubah warna teks
-                        fontSize: 16.0, // Ubah ukuran teks
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Season',
-                        labelStyle: TextStyle(
-                          color: Colors.green, // Warna teks label
-                          fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Ubah warna border
-                          borderRadius: BorderRadius.circular(8.0), // Sudut melengkung
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Warna border saat fokus
-                          borderRadius: BorderRadius.circular(8.0),
-                        ),
-                        border: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.grey, width: 2.0), // Warna border default
-                          borderRadius: BorderRadius.circular(8.0),
-                        ),
-                      ),
-                    ),
+              selectedWeekOfGenerative: _selectedWeekOfGenerative,
+              weekOfGenerativeList: _weekOfGenerativeList,
+              onWeekOfGenerativeChanged: (value) {
+                _selectedWeekOfGenerative = value;
+              },
 
-                    const SizedBox(height: 20),
+              selectedFA: _selectedFA,
+              faNames: _faNames,
+              onFAChanged: (selected) {
+                _selectedFA = selected;
+              },
 
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8.0),
-                      child: Text(
-                        'Filter by Week of Flowering Rev',
-                        style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    DropdownButtonFormField<String>(
-                      value: _selectedWeekOfGenerative,
-                      hint: const Text("Select Week"),
-                      isExpanded: true,
-                      items: _weekOfGenerativeList.map((week) {
-                        return DropdownMenuItem<String>(
-                          value: week,
-                          child: Text(week),
-                        );
-                      }).toList(),
-                      onChanged: (String? newValue) {
-                        setState(() {
-                          _selectedWeekOfGenerative = newValue; // Memperbarui nilai pilihan
-                          _filterData(); // Filter ulang data berdasarkan pilihan baru
-                        });
-                      },
-                      style: const TextStyle(
-                        color: Colors.black, // Ubah warna teks
-                        fontSize: 16.0, // Ubah ukuran teks
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Week of Flowering Rev',
-                        labelStyle: TextStyle(
-                          color: Colors.green, // Warna teks label
-                          fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Ubah warna border
-                          borderRadius: BorderRadius.circular(8.0), // Sudut melengkung
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Warna border saat fokus
-                          borderRadius: BorderRadius.circular(8.0),
-                        ),
-                        border: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.grey, width: 2.0), // Warna border default
-                          borderRadius: BorderRadius.circular(8.0),
-                        ),
-                      ),
-                    ),
+              onResetAll: () {
+                _selectedSeason = null;
+                _selectedWeekOfGenerative = null;
+                _selectedFA.clear();
+              },
 
-                    const SizedBox(height: 20),
-
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8.0),
-                      child: Text(
-                        'Filter by FA',
-                        style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    // Hanya tampilkan FA yang sesuai dengan QA SPV dan District yang dipilih
-                    ..._faNames.map((fa) {
-                      return CheckboxListTile(
-                        title: Text(fa),
-                        value: _selectedFA.contains(fa),
-                        onChanged: (bool? value) {
-                          setState(() {
-                            if (value == true) {
-                              _selectedFA.add(fa); // Tambahkan FA ke daftar yang dipilih
-                            } else {
-                              _selectedFA.remove(fa); // Hapus FA dari daftar yang dipilih
-                            }
-                            _filterData(); // Filter ulang data setelah FA diubah
-                          });
-                        },
-                        activeColor: Colors.green,
-                        controlAffinity: ListTileControlAffinity.leading,
-                      );
-                    }),
-
-                    const SizedBox(height: 20),
-
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          // Reset semua filter ke kondisi awal
-                          _selectedSeason = null;
-                          _selectedWeekOfGenerative = null;
-                          _selectedFA.clear(); // Kosongkan list FA yang dipilih
-                          _filterData();
-                        });
-                        // Tutup bottom sheet
-                        Navigator.pop(context);
-                      },
-                      icon: const Icon(Icons.refresh, color: Colors.white), // Ikon reset dengan warna putih
-                      label: const Text("Reset Filters", style: TextStyle(color: Colors.white)), // Teks dengan warna putih
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green, // Warna latar belakang tombol
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), // Padding dalam tombol
-                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), // Ukuran dan gaya teks
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8), // Membuat tombol dengan sudut melengkung
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              onApplyFilters: () {
+                _filterData();
+              },
             );
           },
         );
@@ -440,28 +347,78 @@ class GenerativeScreenState extends State<GenerativeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: !_isSearching
-            ? const Text('Generative Data', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
-            : TextField(
-          onChanged: _onSearchChanged,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: 'Search...',
-            hintStyle: const TextStyle(color: Colors.white60),
-            border: InputBorder.none,
-            prefixIcon: const Icon(Icons.search, color: Colors.white),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () {
+            // Gunakan Navigator.of(context).pop() untuk kembali ke HomeScreen
+            Navigator.of(context).pop();
+          },
+        ),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.green.shade800, Colors.green.shade600],
+            ),
           ),
         ),
-        backgroundColor: Colors.green,
+        title: !_isSearching
+            ? Row(
+          children: [
+            const Icon(Icons.eco_rounded, size: 24),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Generative Data',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+                Text(
+                  selectedRegion ?? 'Unknown Region',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        )
+            : TextField(
+          onChanged: _onSearchChanged,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          cursorColor: Colors.white,
+          decoration: InputDecoration(
+            hintText: 'Search field number, farmer, grower...',
+            hintStyle: const TextStyle(color: Colors.white70),
+            border: InputBorder.none,
+            prefixIcon: const Icon(Icons.search, color: Colors.white),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.clear, color: Colors.white70),
+              onPressed: () {
+                setState(() {
+                  _searchQuery = '';
+                  _filterData();
+                });
+              },
+            ),
+          ),
+        ),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: _showFilterOptions,
-          ),
           !_isSearching
               ? IconButton(
-            icon: const Icon(Icons.search),
+            icon: const Icon(Icons.search, color: Colors.white),
+            tooltip: 'Search',
             onPressed: () {
               setState(() {
                 _isSearching = true;
@@ -469,7 +426,8 @@ class GenerativeScreenState extends State<GenerativeScreen> {
             },
           )
               : IconButton(
-            icon: const Icon(Icons.cancel),
+            icon: const Icon(Icons.cancel, color: Colors.white),
+            tooltip: 'Cancel Search',
             onPressed: () {
               setState(() {
                 _isSearching = false;
@@ -478,145 +436,548 @@ class GenerativeScreenState extends State<GenerativeScreen> {
               });
             },
           ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48.0),
-          child: Column(
-            children: [
-              _isLoading
-                  ? LinearProgressIndicator(
-                value: _progress,
-                backgroundColor: Colors.white,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.greenAccent),
-              )
-                  : const SizedBox.shrink(),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
+          IconButton(
+            icon: Stack(
+              children: [
+                const Icon(Icons.filter_list_rounded, color: Colors.white),
+                if (_selectedSeason != null || _selectedWeekOfGenerative != null || _selectedFA.isNotEmpty)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 12,
+                        minHeight: 12,
+                      ),
+                      child: Text(
+                        '!',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            tooltip: 'Filter Options',
+            onPressed: _showFilterOptions,
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            tooltip: 'More options',
+            onSelected: (value) {
+              if (value == 'refresh') {
+                _loadSheetData(refresh: true);
+              } else if (value == 'help') {
+                // Show help dialog
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text(
+                      'Bantuan!',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    content: const Text('Koco iki nampilake data Vegetative. Sampeyan biso nggoleki, nyaring, lan ndeleng rincian kanthi nutul item sing pengin dideleng.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text(
+                          'OK',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'refresh',
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    Text(
-                      'Jumlah data: ${_filteredData.length}',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    Text(
-                      'Total Effective Area: ${_totalEffectiveArea.toStringAsFixed(1)} Ha',
-                      style: const TextStyle(color: Colors.white),
-                    ),
+                    Icon(Icons.refresh, color: Colors.green),
+                    SizedBox(width: 8),
+                    Text('Refresh Data'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'help',
+                child: Row(
+                  children: [
+                    Icon(Icons.help_outline, color: Colors.green),
+                    SizedBox(width: 8),
+                    Text('Bantuan'),
                   ],
                 ),
               ),
             ],
           ),
-        ),
-      ),
-      body: LiquidPullToRefresh(
-        onRefresh: () => _loadSheetData(refresh: true),
-        color: Colors.green,
-        backgroundColor: Colors.white,
-        height: 150,
-        showChildOpacityTransition: false,
-        child: _isLoading
-            ? Center(child: Lottie.asset('assets/loading.json'))
-            : _errorMessage != null
-            ? Center(child: Text(_errorMessage!))
-            : _filteredData.isEmpty
-            ? const Center(child: Text('No data available'))
-            : ListView.builder(
-          itemCount: _filteredData.length,
-          itemBuilder: (context, index) {
-
-            final row = _filteredData[index];
-
-            return Card(
-              margin: const EdgeInsets.all(8.0),
-              child: ListTile(
-                leading: Hero(
-                  tag: 'generative_${getValue(row, 2, "Unknown")}',
-                  child: Image.asset(
-                    'assets/generative.png',
-                    height: 60,
-                    width: 60,
-                    fit: BoxFit.contain,
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(80.0),
+          child: Container(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Colors.green.shade800, Colors.green.shade600],
+              ),
+            ),
+            child: Column(
+              children: [
+                _isLoading
+                    ? LinearProgressIndicator(
+                  value: _progress,
+                  backgroundColor: Colors.green.shade300.withAlpha(76),
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                )
+                    : const SizedBox(height: 4),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(51),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.format_list_numbered, color: Colors.white, size: 16),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${_filteredData.length} Data',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(51),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.crop, color: Colors.white, size: 16),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Σ Effective Area:${_totalEffectiveArea.toStringAsFixed(1)} Ha',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                title: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              ],
+            ),
+          ),
+        ),
+      ),
+      body: Column(
+        children: [
+          // Replace the current Filter Chips Container with this premium version
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Colors.green.shade800, Colors.green.shade600],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(25),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8.0, left: 4.0),
+                  child: Text(
+                    'Filter Audit Status',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                Row(
                   children: [
+                    // Replace the existing button containers with the following code
                     Expanded(
-                      child: Text(
-                        getValue(row, 2, "Unknown"),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                        overflow: TextOverflow.ellipsis, // Agar teks tidak melampaui batas
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: _showSampunOnly
+                              ? [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(38),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            )
+                          ]
+                              : null,
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              setState(() {
+                                _showSampunOnly = !_showSampunOnly;
+                                if (_showSampunOnly) {
+                                  _showDerengJangkepOnly = false;
+                                  _showDerengBlasOnly = false;
+                                }
+                                _filterData();
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                gradient: _showSampunOnly
+                                    ? LinearGradient(
+                                  colors: [Colors.green.shade400, Colors.green.shade500],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                                    : null,
+                                color: _showSampunOnly ? null : Colors.white,
+                                border: Border.all(
+                                  color: _showSampunOnly ? Colors.transparent : Colors.green.shade200,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.check_circle_outline,
+                                    color: _showSampunOnly ? Colors.white : Colors.green.shade700,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Updated Text widget with overflow handling
+                                  Flexible(
+                                    child: Text(
+                                      'Sampun',
+                                      style: TextStyle(
+                                        color: _showSampunOnly ? Colors.white : Colors.green.shade700,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                      overflow: TextOverflow.ellipsis, // Handle overflow
+                                      maxLines: 1, // Limit to one line
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                      decoration: BoxDecoration(
-                        color: getGenerativeStatus(
-                            getValue(row, 71, ""),
-                            getValue(row, 72, "")
-                        ) == "Sampun"
-                            ? Colors.green
-                            : getGenerativeStatus(
-                            getValue(row, 71, ""),
-                            getValue(row, 72, "")
-                        ) == "Dereng Jangkep"
-                            ? Colors.orange
-                            : Colors.red,
-                        borderRadius: BorderRadius.circular(4.0),
-                      ),
-                      child: Text(
-                        getGenerativeStatus(
-                          getValue(row, 71, ""),
-                          getValue(row, 72, ""),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: _showDerengJangkepOnly
+                              ? [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(38),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            )
+                          ]
+                              : null,
                         ),
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              setState(() {
+                                _showDerengJangkepOnly = !_showDerengJangkepOnly;
+                                if (_showDerengJangkepOnly) {
+                                  _showSampunOnly = false;
+                                  _showDerengBlasOnly = false;
+                                }
+                                _filterData();
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                gradient: _showDerengJangkepOnly
+                                    ? LinearGradient(
+                                  colors: [Colors.orange.shade400, Colors.orange.shade500],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                                    : null,
+                                color: _showDerengJangkepOnly ? null : Colors.white,
+                                border: Border.all(
+                                  color: _showDerengJangkepOnly ? Colors.transparent : Colors.orange.shade200,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons .hourglass_empty,
+                                    color: _showDerengJangkepOnly ? Colors.white : Colors.orange.shade700,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Updated Text widget with overflow handling
+                                  Flexible(
+                                    child: Text(
+                                      'Dereng Jangkep',
+                                      style: TextStyle(
+                                        color: _showDerengJangkepOnly ? Colors.white : Colors.orange.shade700,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                      overflow: TextOverflow.ellipsis, // Handle overflow
+                                      maxLines: 1, // Limit to one line
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: _showDerengBlasOnly
+                              ? [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(38),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            )
+                          ]
+                              : null,
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              setState(() {
+                                _showDerengBlasOnly = !_showDerengBlasOnly;
+                                if (_showDerengBlasOnly) {
+                                  _showSampunOnly = false;
+                                  _showDerengJangkepOnly = false;
+                                }
+                                _filterData();
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                gradient: _showDerengBlasOnly
+                                    ? LinearGradient(
+                                  colors: [Colors.red.shade400, Colors.red.shade500],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                                    : null,
+                                color: _showDerengBlasOnly ? null : Colors.white,
+                                border: Border.all(
+                                  color: _showDerengBlasOnly ? Colors.transparent : Colors.red.shade200,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.cancel,
+                                    color: _showDerengBlasOnly ? Colors.white : Colors.red.shade600,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Updated Text widget with overflow handling
+                                  Flexible(
+                                    child: Text(
+                                      'Dereng Blas',
+                                      style: TextStyle(
+                                        color: _showDerengBlasOnly ? Colors.white : Colors.red.shade600,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                      overflow: TextOverflow.ellipsis, // Handle overflow
+                                      maxLines: 1, // Limit to one line
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
-                subtitle: RichText(
-                  text: TextSpan(
-                    style: DefaultTextStyle.of(context).style, // Style default untuk teks biasa
+              ],
+            ),
+          ),
+          // Main Content
+          Expanded(
+            child: LiquidPullToRefresh(
+                onRefresh: () => _loadSheetData(refresh: true),
+                color: Colors.green,
+                backgroundColor: Colors.white,
+                height: 150,
+                showChildOpacityTransition: false,
+                child: _isLoading
+                    ? Center(child: Lottie.asset('assets/loading.json'))
+                    : _errorMessage != null
+                    ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      TextSpan(text: 'Farmer: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: '${getValue(row, 3, "Unknown")}, '),
-                      TextSpan(text: 'Grower: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: '${getValue(row, 4, "Unknown")}, '),
-                      TextSpan(text: 'Desa: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: '${getValue(row, 11, "Unknown")}, '),
-                      TextSpan(text: 'Kec: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: '${getValue(row, 12, "Unknown")}, '),
-                      TextSpan(text: 'Kab: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: '${getValue(row, 13, "Unknown")}, '),
-                      TextSpan(text: 'Field SPV: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: '${getValue(row, 15, "Unknown")}, '),
-                      TextSpan(text: 'FA: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: getValue(row, 16, "Unknown")),
+                      Icon(Icons.error_outline, size: 60, color: Colors.red.shade300),
+                      const SizedBox(height: 16),
+                      Text(
+                        _errorMessage!,
+                        style: TextStyle(color: Colors.red.shade700),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: () => _loadSheetData(refresh: true),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Try Again'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                ),
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => GenerativeDetailScreen(
-                        fieldNumber: getValue(row, 2, "Unknown"),
-                        region: selectedRegion ?? 'Unknown Region',
+                )
+                    : _filteredData.isEmpty
+                    ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Lottie.asset('assets/empty.json', height: 180),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Ora ono data sing kasedhiya',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
                       ),
-                    ),
-                  );
-                },
-              ),
-            );
-          },
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
-      bottomNavigationBar: const BottomAppBar(
-        color: Colors.green,
-        shape: CircularNotchedRectangle(),
-        child: SizedBox(height: 50.0),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Cobo ganti saringan utowo kritéria telusuran',
+                        style: TextStyle(color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _selectedSeason = null;
+                            _selectedWeekOfGenerative = null;
+                            _selectedFA.clear();
+                            _searchQuery = '';
+                            _showSampunOnly = false;
+                            _showDerengJangkepOnly = false;
+                            _showDerengBlasOnly = false;
+                            _filterData();
+                          });
+                        },
+                        icon: const Icon(Icons.refresh, color: Colors.white),
+                        label: const Text('Reset Filters'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+                    : GenerativeListViewBuilder(
+                  filteredData: _filteredData,
+                  selectedRegion: selectedRegion,
+                  onItemTap: (fieldNumber) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => GenerativeDetailScreen(
+                          fieldNumber: fieldNumber,
+                          region: selectedRegion ?? 'Unknown Region',
+                        ),
+                      ),
+                    );
+                  },
+                )
+            ),
+          ),
+        ],
       ),
     );
   }

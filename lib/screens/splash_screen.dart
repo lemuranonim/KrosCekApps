@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';  // Tambahkan ini untuk menggunakan SharedPreferences
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -13,78 +13,80 @@ class SplashScreen extends StatefulWidget {
 class SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  // late Animation<double> _animation;
-  bool _showDescription = false;
-  String _version = 'Fetching...';
+  late Animation<double> _opacityAnimation;
+  late Animation<double> _scaleAnimation;
+  late Animation<Offset> _slideAnimation;
+  String _version = 'Loading...';
 
   @override
   void initState() {
     super.initState();
 
     _controller = AnimationController(
-      duration: const Duration(seconds: 2),
+      duration: const Duration(seconds: 4),
       vsync: this,
     );
 
-    // _animation = Tween<double>(begin: 0.0, end: 0.4).animate(
-    //   CurvedAnimation(
-    //     parent: _controller,
-    //     curve: Curves.easeInOut,
-    //   ),
-    // );
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeInOut,
+      ),
+    );
 
-    _controller.forward().then((_) {
-      setState(() {
-        _showDescription = true;
-      });
-    });
+    _scaleAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.elasticOut,
+      ),
+    );
 
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.2),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.decelerate,
+      ),
+    );
+
+    _controller.forward();
     _fetchVersion();
 
-    // Atur timer untuk cek status login dan navigasi
-    Timer(const Duration(seconds: 5), () {
-      _checkLoginStatus();  // Cek status login sebelum navigasi
+    Timer(const Duration(seconds: 4), () {
+      if (mounted) _checkLoginStatus();
     });
   }
 
   Future<void> _fetchVersion() async {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-      setState(() {
-        _version = packageInfo.version;
-      });
-    } catch (e) {
-      setState(() {
-        _version = 'beta tester';
-      });
-    }
-  }
-
-  // Cek status login dan arahkan pengguna ke halaman yang sesuai
-  Future<void> _checkLoginStatus() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    String? userRole = prefs.getString('userRole');
-
-    if (!mounted) return;  // Pastikan widget masih ter-mount
-
-    if (isLoggedIn && userRole != null) {
-      // Jika sudah login, cek apakah admin atau user
-      if (userRole == 'admin') {
-        Navigator.of(context).pushReplacementNamed('/admin_dashboard');
-      } else if (userRole == 'psp') {
-        Navigator.of(context).pushReplacementNamed('/psp_dashboard'); // Navigasi ke halaman PSP
-      } else {
-        Navigator.of(context).pushReplacementNamed('/home');
+      if (mounted) {
+        setState(() => _version = 'updated v${packageInfo.version}');
       }
-    } else {
-      // Jika belum login, arahkan ke halaman login
-      _navigateToLogin();
+    } catch (e) {
+      if (mounted) setState(() => _version = 'Development Version');
     }
   }
 
-  void _navigateToLogin() {
-    Navigator.of(context).pushReplacementNamed('/login');
+  Future<void> _checkLoginStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+    final userRole = prefs.getString('userRole');
+
+    if (!mounted) return;
+
+    Navigator.pushReplacementNamed(
+      context,
+      isLoggedIn && userRole != null
+          ? userRole == 'admin'
+          ? '/admin_dashboard'
+          : userRole == 'psp'
+          ? '/psp_dashboard'
+          : '/home'
+          : '/login',
+    );
   }
 
   @override
@@ -95,62 +97,71 @@ class SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    double screenHeight = MediaQuery.of(context).size.height;
-    double screenWidth = MediaQuery.of(context).size.width;
+    final size = MediaQuery.of(context).size;
+    final theme = Theme.of(context);
+    final white200 = Colors.white.withAlpha(200); // 200/255 ≈ 78% opacity
+    final white150 = Colors.white.withAlpha(150); // 150/255 ≈ 59% opacity
 
     return Scaffold(
-      body: SizedBox(
-        height: screenHeight,
-        width: screenWidth,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedCrossFade(
-              firstChild: Container(),
-              secondChild: const Text(
-                'Crop Inspection and Check Result',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+      backgroundColor: Colors.green,
+      body: Center(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Opacity(
+              opacity: _opacityAnimation.value,
+              child: Transform.scale(
+                scale: _scaleAnimation.value,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Image.asset(
+                      //   'assets/icon.png',
+                      //   height: size.height * 0.15,
+                      //   errorBuilder: (_, __, ___) => Icon(
+                      //     Icons.agriculture,
+                      //     size: size.height * 0.15,
+                      //     color: Colors.white,
+                      //   ),
+                      // ),
+                      const SizedBox(height: 35),
+                      Text(
+                        'Crop Inspection\nand Check Result',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 24,
+                        ),
+                      ),
+                      SizedBox(height: size.height * 0.1),
+                      Column(
+                        children: [
+                          Text(
+                            '© ${DateTime.now().year} Tim Cengoh, Ahli Huru-Hara',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: white200, // Replaced withAlpha
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _version,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: white150, // Replaced withAlpha
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              crossFadeState: _showDescription
-                  ? CrossFadeState.showSecond
-                  : CrossFadeState.showFirst,
-              duration: const Duration(seconds: 1),
-            ),
-            SizedBox(height: screenHeight * 0.05),
-            // ScaleTransition(
-            //   scale: _animation,
-            //   child: Image.asset(
-            //     'assets/icon.png',
-            //     height: screenHeight * 0.3, // Responsive height for the logo
-            //   ),
-            // ),
-            SizedBox(height: screenHeight * 0.5),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 20.0),
-              child: Column(
-                children: [
-                  const Text(
-                    'Created by Tim Cengoh, Ahli Huru-Hara',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'Version $_version',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

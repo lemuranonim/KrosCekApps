@@ -3,8 +3,8 @@ import 'package:intl/intl.dart';
 import 'google_sheets_api.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:lottie/lottie.dart';
-import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
-import 'dart:async';  // Untuk menggunakan Timer
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'config_manager.dart';
 
@@ -29,12 +29,12 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
 
   late TextEditingController _dateAuditController;
 
-  String userEmail = 'Fetching...'; // Variabel untuk email pengguna
-  String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
+  String userEmail = 'Fetching...';
+  String userName = 'Fetching...';
   late String spreadsheetId;
 
-  String? selectedFI; // FI yang dipilih
-  List<String> fiList = []; // Daftar FI untuk dropdown
+  String? selectedFI;
+  List<String> fiList = [];
 
   String? selectedEarConditionObservation;
   String? selectedCropHealth;
@@ -47,6 +47,8 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
   final List<String> recommendationItems = ['Continue', 'Discard'];
   final List<String> reasonToDowngradeFlaggingItems = ['A', 'B', 'C', 'D'];
   final List<String> downgradeFlaggingRecommendationItems = ['RFI', 'RFD'];
+
+  bool isLoading = false;
 
   @override
   void initState() {
@@ -61,7 +63,6 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
 
     _loadFIList(widget.region);
 
-    // Inisialisasi dropdown dengan nilai yang ada di row
     selectedEarConditionObservation = row[32];
     selectedCropHealth = row[34];
     selectedRecommendation = row[36];
@@ -69,47 +70,44 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
     selectedDowngradeFlaggingRecommendation = row[39];
   }
 
-  bool isLoading = false;  // Untuk mengatur status loading
-
   Future<void> _fetchSpreadsheetId() async {
     spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
   }
 
   Future<void> _loadFIList(String region) async {
     setState(() {
-      isLoading = true; // Tampilkan loading
+      isLoading = true;
     });
 
     try {
       final gSheetsApi = GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
-      await gSheetsApi.init(); // Inisialisasi API
+      await gSheetsApi.init();
       final List<String> fetchedFI = await gSheetsApi.fetchFIByRegion('FI', region);
 
       setState(() {
-        fiList = fetchedFI; // Perbarui daftar FI
-        selectedFI = row[31]; // Tetapkan nilai awal dari data row[31]
+        fiList = fetchedFI;
+        selectedFI = row[31];
       });
     } catch (e) {
       debugPrint('Gagal mengambil data FI: $e');
     } finally {
       setState(() {
-        isLoading = false; // Sembunyikan loading
+        isLoading = false;
       });
     }
   }
 
   void _initHive() async {
     await Hive.initFlutter();
-    await Hive.openBox('harvestData');  // Buat box Hive untuk menyimpan data vegetative
+    await Hive.openBox('harvestData');
   }
 
   Future<void> _saveToHive(List<String> rowData) async {
     var box = await Hive.openBox('harvestData');
-    final cacheKey = 'detailScreenData_${rowData[2]}'; // Menggunakan fieldNumber atau ID unik lainnya sebagai kunci
-    await box.put(cacheKey, rowData); // Simpan hanya rowData ke Hive
+    final cacheKey = 'detailScreenData_${rowData[2]}';
+    await box.put(cacheKey, rowData);
   }
 
-  // Fungsi untuk mengambil userName dan userEmail dari SharedPreferences
   Future<void> _loadUserCredentials() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -122,122 +120,217 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit Harvest Field', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.green,
+        title: const Text(
+            'Edit Harvest Field',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            )
+        ),
+        backgroundColor: Colors.green.shade700,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(18.0),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                // Tampilkan progress bar di atas form jika sedang loading
-                if (isLoading) const LinearProgressIndicator(),  // Tambahkan di sini
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.green.shade700, Colors.green.shade100],
+            stops: const [0.0, 0.3],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                child: Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isLoading)
+                          const LinearProgressIndicator(
+                            backgroundColor: Colors.green,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
 
-                _buildFIDropdownField('QA FI', 29),
-                _buildDatePickerField('Date of Audit (dd/MM)', 30, _dateAuditController),
+                        const SizedBox(height: 10),
 
-                _buildDropdownFormField(
-                  label: 'Ear Condition Observation',
-                  items: earConditionObservationItems,
-                  value: selectedEarConditionObservation,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedEarConditionObservation = value;
-                      row[32] = value ?? '';
-                    });
-                  },
-                  helpText: 'Kernel Milk Line (2; 3; 4)',
-                ),
+                        // Field Information Section
+                        _buildSectionHeader('Field Information'),
 
-                _buildTextFormField('Moisture Content - %', 33),
+                        _buildInfoCard(
+                          title: 'Field Number',
+                          value: row[2],
+                          icon: Icons.numbers,
+                        ),
 
-                _buildDropdownFormField(
-                  label: 'Crop Health',
-                  items: cropHealthItems,
-                  value: selectedCropHealth,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedCropHealth = value;
-                      row[34] = value ?? '';
-                    });
-                  },
-                  helpText: 'A (Low)\nB (Moderate)\nC (High)',
-                ),
+                        _buildInfoCard(
+                          title: 'Region',
+                          value: widget.region,
+                          icon: Icons.location_on,
+                        ),
 
-                _buildTextFormField('Remarks', 35),
+                        const SizedBox(height: 20),
 
-                _buildDropdownFormField(
-                  label: 'Recommendation',
-                  items: recommendationItems,
-                  value: selectedRecommendation,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedRecommendation = value;
-                      row[36] = value ?? '';
-                    });
-                  },
-                  helpText: 'Continue to Next Process/Discard',
-                ),
+                        // Audit Information Section
+                        _buildSectionHeader('Audit Information'),
 
-                const SizedBox(height: 10),
+                        _buildFIDropdownField('QA FI', 29),
+                        const SizedBox(height: 15),
 
-                _buildTextFormField('Date of Downgrade Flagging', 37),
+                        _buildDatePickerField('Date of Audit (dd/MM)', 30, _dateAuditController),
+                        const SizedBox(height: 15),
 
-                _buildDropdownFormField(
-                  label: 'Reason to Downgrade Flagging',
-                  items: reasonToDowngradeFlaggingItems,
-                  value: selectedReasonToDowngradeFlagging,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedReasonToDowngradeFlagging = value;
-                      row[38] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = Suspect Mix Material\nB = Not Accessable during Detasseling\nC = Not Sure during Harvest\nD = Other (please mention in remarks)',
-                ),
+                        // Ear Condition Section
+                        _buildSectionHeader('Ear Condition Assessment'),
 
-                const SizedBox(height: 20),
+                        _buildDropdownFormField(
+                          label: 'Ear Condition Observation',
+                          items: earConditionObservationItems,
+                          value: selectedEarConditionObservation,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedEarConditionObservation = value;
+                              row[32] = value ?? '';
+                            });
+                          },
+                          helpText: 'Kernel Milk Line (2; 3; 4)',
+                          icon: Icons.agriculture,
+                        ),
+                        const SizedBox(height: 15),
 
-                _buildDropdownFormField(
-                  label: 'Downgrade Flagging Recommendation',
-                  items: downgradeFlaggingRecommendationItems,
-                  value: selectedDowngradeFlaggingRecommendation,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedDowngradeFlaggingRecommendation = value;
-                      row[39] = value ?? '';
-                    });
-                  },
-                  helpText: 'RFI / RFD',
-                ),
+                        _buildTextFormField(
+                          'Moisture Content - %',
+                          33,
+                          icon: Icons.water_drop,
+                        ),
+                        const SizedBox(height: 15),
 
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      _showLoadingDialogAndClose();  // Tampilkan loading spinner
-                      _showLoadingAndSaveInBackground();
-                      _showConfirmationDialog;
-                      _saveToGoogleSheets(row); // Simpan data ke Google Sheets
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                    backgroundColor: Colors.green, // Warna background tombol
-                    foregroundColor: Colors.white, // Warna teks tombol
-                    shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
-                      borderRadius: BorderRadius.circular(30),
+                        // Crop Health Section
+                        _buildSectionHeader('Crop Health Assessment'),
+
+                        _buildDropdownFormField(
+                          label: 'Crop Health',
+                          items: cropHealthItems,
+                          value: selectedCropHealth,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedCropHealth = value;
+                              row[34] = value ?? '';
+                            });
+                          },
+                          helpText: 'A (Low)\nB (Moderate)\nC (High)',
+                          icon: Icons.health_and_safety,
+                        ),
+                        const SizedBox(height: 15),
+
+                        _buildTextFormField(
+                          'Remarks',
+                          35,
+                          icon: Icons.comment,
+                          maxLines: 3,
+                        ),
+                        const SizedBox(height: 15),
+
+                        _buildDropdownFormField(
+                          label: 'Recommendation',
+                          items: recommendationItems,
+                          value: selectedRecommendation,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedRecommendation = value;
+                              row[36] = value ?? '';
+                            });
+                          },
+                          helpText: 'Continue to Next Process/Discard',
+                          icon: Icons.recommend,
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Downgrade Flagging Section
+                        _buildSectionHeader('Downgrade Flagging'),
+
+                        _buildTextFormField(
+                          'Date of Downgrade Flagging',
+                          37,
+                          icon: Icons.calendar_today,
+                        ),
+                        const SizedBox(height: 15),
+
+                        _buildDropdownFormField(
+                          label: 'Reason to Downgrade Flagging',
+                          items: reasonToDowngradeFlaggingItems,
+                          value: selectedReasonToDowngradeFlagging,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedReasonToDowngradeFlagging = value;
+                              row[38] = value ?? '';
+                            });
+                          },
+                          helpText: 'A = Suspect Mix Material\nB = Not Accessable during Detasseling\nC = Not Sure during Harvest\nD = Other (please mention in remarks)',
+                          icon: Icons.flag,
+                        ),
+                        const SizedBox(height: 15),
+
+                        _buildDropdownFormField(
+                          label: 'Downgrade Flagging Recommendation',
+                          items: downgradeFlaggingRecommendationItems,
+                          value: selectedDowngradeFlaggingRecommendation,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedDowngradeFlaggingRecommendation = value;
+                              row[39] = value ?? '';
+                            });
+                          },
+                          helpText: 'RFI / RFD',
+                          icon: Icons.assignment_turned_in,
+                        ),
+
+                        const SizedBox(height: 30),
+
+                        // Save Button
+                        Center(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              if (_formKey.currentState!.validate()) {
+                                _showLoadingDialogAndClose();
+                                _showLoadingAndSaveInBackground();
+                                _showConfirmationDialog;
+                                _saveToGoogleSheets(row);
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size(220, 60),
+                              backgroundColor: Colors.green.shade700,
+                              foregroundColor: Colors.white,
+                              elevation: 5,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                            icon: const Icon(Icons.save, size: 26, color: Colors.white),
+                            label: const Text(
+                              'Simpan',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                     ),
                   ),
-                  child: const Text(
-                    'Simpan',
-                    style: TextStyle(fontSize: 20), // Ukuran teks lebih besar
-                  ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -245,21 +338,100 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
     );
   }
 
-  Widget _buildTextFormField(String label, int index) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+  Widget _buildSectionHeader(String title) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.green.shade800,
+          ),
+        ),
+        const Divider(thickness: 2, color: Colors.green),
+        const SizedBox(height: 10),
+      ],
+    );
+  }
+
+  Widget _buildInfoCard({required String title, required String value, required IconData icon}) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.green.shade700),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextFormField(String label, int index, {IconData? icon, int maxLines = 1}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: TextFormField(
-        // Menambahkan tanda kutip tunggal di depan nilai saat ditampilkan
-        initialValue: row[index].isNotEmpty ? "'${row[index]}" : "'0", // Default nilai '0'
+        initialValue: row[index].isNotEmpty ? "'${row[index]}" : "'0",
+        maxLines: maxLines,
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
         ),
         onChanged: (value) {
           setState(() {
-            // Memastikan nilai disimpan sebagai string dengan tanda kutip tunggal di depan
-            String cleanedValue = value.replaceAll("'", ""); // Menghapus tanda kutip sementara
-            row[index] = "'$cleanedValue"; // Tambahkan tanda kutip kembali untuk menyimpan sebagai teks
+            String cleanedValue = value.replaceAll("'", "");
+            row[index] = "'$cleanedValue";
           });
         },
       ),
@@ -267,14 +439,40 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
   }
 
   Widget _buildFIDropdownField(String label, int index) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: DropdownButtonFormField<String>(
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(Icons.person, color: Colors.green.shade600),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
         ),
-        value: selectedFI, // FI yang dipilih
+        value: selectedFI,
         items: fiList.map((String fi) {
           return DropdownMenuItem<String>(
             value: fi,
@@ -283,23 +481,52 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
         }).toList(),
         onChanged: (value) {
           setState(() {
-            selectedFI = value; // Update nilai yang dipilih
-            row[index] = value ?? ''; // Simpan ke row[index]
+            selectedFI = value;
+            row[index] = value ?? '';
           });
         },
+        dropdownColor: Colors.white,
+        icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
       ),
     );
   }
 
   Widget _buildDatePickerField(String label, int index, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: TextFormField(
         controller: controller,
         readOnly: true,
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
+          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
         ),
         onTap: () async {
           DateTime? pickedDate = await showDatePicker(
@@ -307,6 +534,18 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
             initialDate: DateTime.now(),
             firstDate: DateTime(2000),
             lastDate: DateTime(2101),
+            builder: (context, child) {
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  colorScheme: ColorScheme.light(
+                    primary: Colors.green.shade700,
+                    onPrimary: Colors.white,
+                    onSurface: Colors.black,
+                  ),
+                ),
+                child: child!,
+              );
+            },
           );
 
           if (pickedDate != null) {
@@ -321,7 +560,6 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
     );
   }
 
-  // Fungsi untuk membangun dropdown
   Widget _buildDropdownFormField({
     required String label,
     required List<String> items,
@@ -329,8 +567,8 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
     required Function(String?) onChanged,
     String? hint,
     String? helpText,
+    IconData? icon,
   }) {
-    // Jika nilai tidak ada di dalam daftar item, set nilai awal menjadi null
     if (!items.contains(value)) {
       value = null;
     }
@@ -338,28 +576,62 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DropdownButtonFormField<String>(
-          decoration: InputDecoration(
-            labelText: label,
-            border: const OutlineInputBorder(),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withAlpha(51),
+                spreadRadius: 1,
+                blurRadius: 3,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          value: value,
-          hint: Text(hint ?? 'Survey membuktikan!'),
-          onChanged: onChanged,
-          items: items.map<DropdownMenuItem<String>>((String item) {
-            return DropdownMenuItem<String>(
-              value: item,
-              child: Text(item),
-            );
-          }).toList(),
+          child: DropdownButtonFormField<String>(
+            decoration: InputDecoration(
+              labelText: label,
+              labelStyle: TextStyle(color: Colors.green.shade700),
+              prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            value: value,
+            hint: Text(hint ?? 'Select an option'),
+            onChanged: onChanged,
+            items: items.map<DropdownMenuItem<String>>((String item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(item),
+              );
+            }).toList(),
+            dropdownColor: Colors.white,
+            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          ),
         ),
         if (helpText != null) ...[
-          const SizedBox(height: 5), // Spacer between dropdown and helper text
-          Text(
-            helpText,
-            style: const TextStyle(
-              fontStyle: FontStyle.italic, // Mengatur gaya italic pada helpText
-              color: Colors.grey, // Warna teks
+          Padding(
+            padding: const EdgeInsets.only(left: 12, top: 6),
+            child: Text(
+              helpText,
+              style: TextStyle(
+                fontStyle: FontStyle.italic,
+                color: Colors.grey.shade700,
+                fontSize: 12,
+              ),
             ),
           ),
         ],
@@ -367,11 +639,9 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
     );
   }
 
-// Fungsi untuk menampilkan loading spinner hanya selama 5 detik
   void _showLoadingDialogAndClose() {
     bool dialogShown = false;
 
-    // Tampilkan dialog loading
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -385,8 +655,8 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
               Lottie.asset('assets/loading.json', width: 150, height: 150),
               const SizedBox(height: 20),
               const Text(
-                "Loading...",
-                style: TextStyle(color: Colors.white, fontSize: 18),
+                "Saving data...",
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -394,15 +664,12 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
       },
     );
 
-    // Timer untuk menutup dialog loading setelah 5 detik
     Timer(const Duration(seconds: 5), () {
       if (dialogShown && mounted) {
-        // Tutup dialog jika masih aktif dan widget masih terpasang
         Navigator.of(context, rootNavigator: true).pop();
 
-        // Lakukan navigasi ke layar Success dalam microtask tanpa async gap
         Future.microtask(() {
-          if (mounted) { // Pastikan konteks masih valid
+          if (mounted) {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
                 builder: (context) => SuccessScreen(
@@ -420,19 +687,14 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
   }
 
   void _showLoadingAndSaveInBackground() {
-    // Tampilkan loading spinner dan success setelah 5 detik
     _showLoadingDialogAndClose();
-
-    // Simpan data ke Hive
     _saveToHive(row);
-
-    // Jalankan proses penyimpanan di latar belakang
-    _saveToGoogleSheets(row);  // Panggil fungsi penyimpanan yang berjalan di background
+    _saveToGoogleSheets(row);
   }
 
   Future<void> _saveToGoogleSheets(List<String> rowData) async {
     setState(() {
-      isLoading = true; // Tampilkan loader
+      isLoading = true;
     });
 
     final gSheetsApi = GoogleSheetsApi(spreadsheetId);
@@ -463,60 +725,58 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
       responseMessage = 'Failed to save data. Please try again.';
     } finally {
       setState(() {
-        isLoading = false; // Sembunyikan loader
+        isLoading = false;
       });
     }
 
-    // Lakukan navigasi setelah async selesai, pastikan `mounted` masih true
     if (mounted) {
       _navigateBasedOnResponse(context, responseMessage);
     }
   }
 
   Future<void> _restoreHarvestFormulas(GoogleSheetsApi gSheetsApi, Worksheet sheet, int rowIndex) async {
-    await sheet.values.insertValue( // Cek Result
+    await sheet.values.insertValue(
         '=IF(OR(AE$rowIndex=0;AE$rowIndex="");"NOT Audited";"Audited")',
         row: rowIndex, column: 44);
-    await sheet.values.insertValue( // Week of Reporting
+    await sheet.values.insertValue(
         '=IFERROR(IF(OR(AE$rowIndex=0;AE$rowIndex="");"";WEEKNUM(AE$rowIndex;1));"")',
         row: rowIndex, column: 32);
-    await sheet.values.insertValue( // Standing Crops
+    await sheet.values.insertValue(
         '=I$rowIndex-U$rowIndex',
         row: rowIndex, column: 23);
-    await sheet.values.insertValue( // Hyperlink Coordinate
+    await sheet.values.insertValue(
         '=IFERROR(IF(AND(LEFT(R$rowIndex;4)-0<6;LEFT(R$rowIndex;4)-0>-11);HYPERLINK("HTTP://MAPS.GOOGLE.COM/maps?q="&R$rowIndex;"LINK");"Not Found");"")',
         row: rowIndex, column: 24);
-    await sheet.values.insertValue( // Fase
+    await sheet.values.insertValue(
         '=IF(I$rowIndex=0;"Discard";IF(Y$rowIndex=0;"Harvest";IF(TODAY()-J$rowIndex<46;"Vegetative";IF(AND(TODAY()-J$rowIndex>45;TODAY()-J$rowIndex<56);"Pre Flowering";IF(AND(TODAY()-J$rowIndex>55;TODAY()-J$rowIndex<66);"Flowering";IF(AND(TODAY()-J$rowIndex>65;TODAY()-J$rowIndex<81);"Close Out";IF(TODAY()-J$rowIndex>80;"Male Cutting";"")))))))',
         row: rowIndex, column: 26);
-    await sheet.values.insertValue( // Harvest (Est + 100 DAP)
+    await sheet.values.insertValue(
         '=J$rowIndex+110',
         row: rowIndex, column: 27);
-    await sheet.values.insertValue( // Week of Harvest
+    await sheet.values.insertValue(
         '=IF(OR(I$rowIndex=0;I$rowIndex="");"";WEEKNUM(AC$rowIndex;1))',
         row: rowIndex, column: 28);
-    await sheet.values.insertValue( // Effective Area (Ha)
+    await sheet.values.insertValue(
         '=G$rowIndex-H$rowIndex',
-        row: rowIndex, column: 9);
-    await sheet.values.insertValue( // Discard Area (Ha)
+        row: rowIndex, column: 9 );
+    await sheet.values.insertValue(
         '=TEXT(H$rowIndex; "#,##0.00")',
         row: rowIndex, column: 8);
-    await sheet.values.insertValue( // Total Area Planted (Ha)
+    await sheet.values.insertValue(
         '=TEXT(G$rowIndex; "#,##0.00")',
         row: rowIndex, column: 7);
 
     debugPrint("Rumus berhasil diterapkan di Harvest pada baris $rowIndex.");
   }
 
-  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber) async { // Mencari baris berdasarkan fieldNumber
-
-    final List<List<String>> rows = await sheet.values.allRows(); // Ambil semua baris
-    for (int i = 0; i < rows.length; i++) { // Iterasi setiap baris
-      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) { // Kolom ke-3 untuk fieldNumber
-        return i + 1; // Index baris di Google Sheets dimulai dari 1
+  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber) async {
+    final List<List<String>> rows = await sheet.values.allRows();
+    for (int i = 0; i < rows.length; i++) {
+      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) {
+        return i + 1;
       }
     }
-    return -1; // Tidak ditemukan
+    return -1;
   }
 
   Future<void> _showConfirmationDialog() async {
@@ -554,7 +814,7 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
   }
 
   bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty); // Pastikan semua field terisi
+    return row.every((field) => field.isNotEmpty);
   }
 
   void _showSnackbar(String message) {
@@ -576,11 +836,10 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
     } else if (response == 'Failed to save data. Please try again.') {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => FailedScreen(), // Buat halaman FailedScreen untuk tampilan gagal
+          builder: (context) => FailedScreen(),
         ),
       );
     } else {
-      // Tampilkan pesan error atau tetap di halaman
       _showSnackbar('Unknown response: $response');
     }
   }
@@ -593,7 +852,7 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
         return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
-      // jeda
+      // Handle error
     }
     return value;
   }
@@ -622,7 +881,7 @@ class SuccessScreen extends StatelessWidget {
           'Success',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.green,
+        backgroundColor: Colors.green.shade700,
       ),
       body: Center(
         child: Column(
@@ -637,26 +896,17 @@ class SuccessScreen extends StatelessWidget {
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () async {
-                // Tampilkan dialog loading
                 _showLoadingDialog(context);
-
-                // Simpan instance NavigatorState untuk digunakan setelah async gap
                 final navigator = Navigator.of(context);
-
-                // Simpan data ke Google Sheets
                 await _saveBackActivityToGoogleSheets(region);
-
-                // Tutup dialog loading
                 navigator.pop();
-
-                // Kembali ke layar sebelumnya
                 navigator.pop();
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.green, // Warna background tombol
-                foregroundColor: Colors.white, // Warna teks tombol
-                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                minimumSize: const Size(200, 60),
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
@@ -671,7 +921,6 @@ class SuccessScreen extends StatelessWidget {
     );
   }
 
-  // Fungsi untuk menampilkan dialog loading
   void _showLoadingDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -685,7 +934,7 @@ class SuccessScreen extends StatelessWidget {
               Lottie.asset('assets/loading.json', width: 150, height: 150),
               const SizedBox(height: 20),
               const Text(
-                "Loading...",
+                "Ngrantos sekedap...",
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ],
@@ -740,7 +989,7 @@ class FailedScreen extends StatelessWidget {
           'Failed',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.red,
+        backgroundColor: Colors.red.shade700,
       ),
       body: Center(
         child: Column(
@@ -758,10 +1007,10 @@ class FailedScreen extends StatelessWidget {
                 Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.red, // Warna background tombol
-                foregroundColor: Colors.white, // Warna teks tombol
-                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                minimumSize: const Size(200, 60),
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),

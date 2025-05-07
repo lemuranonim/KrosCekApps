@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart'; // Masih diperlukan
 import 'google_sheets_api.dart';
 import 'preharvest_detail_screen.dart';
 import 'config_manager.dart';
+import 'pre_harvest_filter_options.dart';
+import 'pre_harvest_listview_builder.dart';
 
 class PreHarvestScreen extends StatefulWidget {
   final String spreadsheetId;
@@ -56,6 +58,9 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
 
   double _totalEffectiveArea = 0.0; // Variabel untuk menyimpan total Effective Area (Ha)
 
+  bool _showAuditedOnly = false;
+  bool _showNotAuditedOnly = false;
+
   @override
   void initState() {
     super.initState();
@@ -96,13 +101,16 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
         _filteredData = List.from(_sheetData);
         _isLoading = false;
         _extractUniqueFA(); // Ekstrak nama-nama FA dari data
+        _extractUniqueSeasons(); // Ekstrak unique seasons
+        _extractUniqueWeeks(); // Ekstrak unique weeks
         _filterData();
         _currentPage++;
         _progress = (_sheetData.length / totalDataCount).clamp(0.0, 1.0); // Perbarui progres
 
         // Update total Effective Area (Ha)
-        _totalEffectiveArea += _filteredData.fold(0.0, (sum, row) {
-          final effectiveArea = double.tryParse(row[8]) ?? 0.0; // Row 8 adalah Effective Area
+        _totalEffectiveArea = _filteredData.fold(0.0, (sum, row) {
+          final effectiveAreaStr = getValue(row, 8, '0').replaceAll(',', '.'); // Handle decimal separators
+          final effectiveArea = double.tryParse(effectiveAreaStr) ?? 0.0;
           return sum + effectiveArea;
         });
       });
@@ -124,12 +132,6 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
     _filterData(); // Panggil filter data setelah preferensi diambil
   }
 
-  // Future<void> _saveFilterPreferences() async {
-  //   SharedPreferences prefs = await SharedPreferences.getInstance();
-  //   prefs.setStringList('selectedFA', _selectedFA);
-  //   prefs.setString('selectedQA', _selectedQA ?? '');
-  // }
-
   // Ekstrak nama-nama FA yang unik dari data
   void _extractUniqueFA() {
     final faSet = <String>{}; // Menggunakan set untuk menyimpan nama unik
@@ -142,6 +144,32 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
     setState(() {
       _faNames = faSet.map((fa) => toTitleCase(fa)).toList();
       _faNames.sort(); // Sorting A to Z
+    });
+  }
+
+  void _extractUniqueSeasons() {
+    final seasonsSet = <String>{};
+    for (var row in _sheetData) {
+      final season = getValue(row, 1, ''); // Assuming season is in column 1
+      if (season.isNotEmpty) {
+        seasonsSet.add(season);
+      }
+    }
+    setState(() {
+      _seasonsList = seasonsSet.toList()..sort(); // Sort the seasons
+    });
+  }
+
+  void _extractUniqueWeeks() {
+    final weeksSet = <String>{};
+    for (var row in _sheetData) {
+      final week = getValue(row, 29, ''); // Assuming week is in column 29
+      if (week.isNotEmpty) {
+        weeksSet.add(week);
+      }
+    }
+    setState(() {
+      _weekOfPreHarvestList = weeksSet.toList()..sort(); // Sort the weeks
     });
   }
 
@@ -160,10 +188,15 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                 district == widget.selectedDistrict!.toLowerCase();
         bool matchesWeekFilter =
         (_selectedWeekOfPreHarvest == null || weekOfPreHarvest == _selectedWeekOfPreHarvest);
+        final statusAudit = getValue(row, 39, "NOT Audited").toLowerCase() == "audited";
+        bool matchesAuditFilter = true;
 
-        final statusAudit = getValue(row, 39, "NOT Audited").toLowerCase() == "audited"
-            ? "sampun"
-            : "dereng";
+        if (_showAuditedOnly && !statusAudit) {
+          matchesAuditFilter = false;
+        }
+        if (_showNotAuditedOnly && statusAudit) {
+          matchesAuditFilter = false;
+        }
 
         final fa = getValue(row, 16, '').toLowerCase(); // FA berada di row 16
 
@@ -187,15 +220,16 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
             kecamatan.contains(_searchQuery) ||
             district.contains(_searchQuery) ||
             fa.contains(_searchQuery) ||
-            fieldSpv.contains(_searchQuery) ||
-            statusAudit.contains(_searchQuery);
+            fieldSpv.contains(_searchQuery);
 
         return matchesQAFilter &&
             matchesDistrictFilter &&
             matchesFAFilter &&
             matchesSeasonFilter &&
             matchesWeekFilter &&
-            matchesSearchQuery;
+            matchesSearchQuery &&
+            matchesAuditFilter;
+
       }).toList();
 
       _seasonsList = _filteredData
@@ -216,6 +250,12 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
           .toList()
         ..sort(); // Sortir FA
 
+      // Calculate total effective area
+      _totalEffectiveArea = _filteredData.fold(0.0, (sum, row) {
+        final effectiveAreaStr = getValue(row, 8, '0').replaceAll(',', '.');
+        final effectiveArea = double.tryParse(effectiveAreaStr) ?? 0.0;
+        return sum + effectiveArea;
+      });
     });
   }
 
@@ -249,175 +289,39 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
   void _showFilterOptions() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent, // Keep transparent for rounded corners
       builder: (context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setState) {
-            return SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+            return PreHarvestFilterOptions(
+              selectedSeason: _selectedSeason,
+              seasonsList: _seasonsList,
+              onSeasonChanged: (value) {
+                _selectedSeason = value;
+              },
 
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8.0),
-                      child: Text(
-                        'Filter by Seasons',
-                        style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    DropdownButtonFormField<String>(
-                      value: _selectedSeason,
-                      hint: const Text("Select Season"),
-                      isExpanded: true,
-                      items: _seasonsList.map((season) {
-                        return DropdownMenuItem<String>(
-                          value: season,
-                          child: Text(season),
-                        );
-                      }).toList(),
-                      onChanged: (String? newValue) {
-                        setState(() {
-                          _selectedSeason = newValue; // Atur season yang dipilih
-                          _filterData(); // Filter ulang data berdasarkan season
-                        });
-                      },
-                      style: const TextStyle(
-                        color: Colors.black, // Ubah warna teks
-                        fontSize: 16.0, // Ubah ukuran teks
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Season',
-                        labelStyle: TextStyle(
-                          color: Colors.green, // Warna teks label
-                          fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Ubah warna border
-                          borderRadius: BorderRadius.circular(8.0), // Sudut melengkung
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Warna border saat fokus
-                          borderRadius: BorderRadius.circular(8.0),
-                        ),
-                        border: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.grey, width: 2.0), // Warna border default
-                          borderRadius: BorderRadius.circular(8.0),
-                        ),
-                      ),
-                    ),
+              selectedWeekOfPreHarvest: _selectedWeekOfPreHarvest,
+              weekOfPreHarvestList: _weekOfPreHarvestList,
+              onWeekOfPreHarvestChanged: (value) {
+                _selectedWeekOfPreHarvest = value;
+              },
 
-                    const SizedBox(height: 20),
+              selectedFA: _selectedFA,
+              faNames: _faNames,
+              onFAChanged: (selected) {
+                _selectedFA = selected;
+              },
 
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8.0),
-                      child: Text(
-                        'Filter by Week of Pre Harvest',
-                        style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    DropdownButtonFormField<String>(
-                      value: _selectedWeekOfPreHarvest,
-                      hint: const Text("Select Week"),
-                      isExpanded: true,
-                      items: _weekOfPreHarvestList.map((week) {
-                        return DropdownMenuItem<String>(
-                          value: week,
-                          child: Text(week),
-                        );
-                      }).toList(),
-                      onChanged: (String? newValue) {
-                        setState(() {
-                          _selectedWeekOfPreHarvest = newValue;
-                          _filterData(); // Filter ulang data setelah minggu diubah
-                        });
-                      },
-                      style: const TextStyle(
-                        color: Colors.black, // Ubah warna teks
-                        fontSize: 16.0, // Ubah ukuran teks
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Week of Pre Harvest',
-                        labelStyle: TextStyle(
-                          color: Colors.green, // Warna teks label
-                          fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Ubah warna border
-                          borderRadius: BorderRadius.circular(8.0), // Sudut melengkung
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.green, width: 2.0), // Warna border saat fokus
-                          borderRadius: BorderRadius.circular(8.0),
-                        ),
-                        border: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.grey, width: 2.0), // Warna border default
-                          borderRadius: BorderRadius.circular(8.0),
-                        ),
-                      ),
-                    ),
+              onResetAll: () {
+                _selectedSeason = null;
+                _selectedWeekOfPreHarvest = null;
+                _selectedFA.clear();
+              },
 
-                    const SizedBox(height: 20),
-
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8.0),
-                      child: Text(
-                        'Filter by FA',
-                        style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    // Checkbox untuk FA yang dipilih
-                    ..._faNames.map((fa) {
-                      return CheckboxListTile(
-                        title: Text(fa),
-                        value: _selectedFA.contains(fa),
-                        onChanged: (bool? value) {
-                          setState(() {
-                            if (value == true) {
-                              _selectedFA.add(fa); // Tambahkan FA ke daftar yang dipilih
-                            } else {
-                              _selectedFA.remove(fa); // Hapus FA dari daftar yang dipilih
-                            }
-                            _filterData(); // Filter ulang data setelah FA diubah
-                          });
-                        },
-                        activeColor: Colors.green,
-                        controlAffinity: ListTileControlAffinity.leading,
-                      );
-                    }),
-
-                    const SizedBox(height: 20),
-
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          // Reset semua filter ke kondisi awal
-                          _selectedSeason = null;
-                          _selectedWeekOfPreHarvest = null;
-                          _selectedFA.clear(); // Kosongkan list FA yang dipilih
-                          _filterData();
-                        });
-                        // Tutup bottom sheet
-                        Navigator.pop(context);
-                      },
-                      icon: const Icon(Icons.refresh, color: Colors.white), // Ikon reset dengan warna putih
-                      label: const Text("Reset Filters", style: TextStyle(color: Colors.white)), // Teks dengan warna putih
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green, // Warna latar belakang tombol
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), // Padding dalam tombol
-                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), // Ukuran dan gaya teks
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8), // Membuat tombol dengan sudut melengkung
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              onApplyFilters: () {
+                _filterData();
+              },
             );
           },
         );
@@ -425,32 +329,115 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
     );
   }
 
+  void _navigateBackToHome() {
+    // Simpan context dalam variabel lokal
+    final currentContext = context;
+
+    // Tampilkan loading overlay sebelum kembali
+    showDialog(
+      context: currentContext,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return PopScope(
+          canPop: false,
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: Center(
+              child: Lottie.asset(
+                'assets/loading.json',
+                width: 150,
+                height: 150,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    // Delay sebentar untuk menampilkan loading
+    Timer(const Duration(milliseconds: 600), () {
+      // Navigasi kembali ke HomeScreen
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop(); // Tutup dialog loading
+        Navigator.of(context).pop(); // Kembali ke HomeScreen
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: !_isSearching
-            ? const Text('Pre-Harvest Data', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
-            : TextField(
-          onChanged: _onSearchChanged,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: 'Search...',
-            hintStyle: const TextStyle(color: Colors.white60),
-            border: InputBorder.none,
-            prefixIcon: const Icon(Icons.search, color: Colors.white),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: _navigateBackToHome,
+        ),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.green.shade800, Colors.green.shade600],
+            ),
           ),
         ),
-        backgroundColor: Colors.green,
+        title: !_isSearching
+            ? Row(
+          children: [
+            const Icon(Icons.eco_rounded, size: 24),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Pre-Harvest Data',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+                Text(
+                  selectedRegion ?? 'Unknown Region',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        )
+            : TextField(
+          onChanged: _onSearchChanged,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          cursorColor: Colors.white,
+          decoration: InputDecoration(
+            hintText: 'Search field number, farmer, grower...',
+            hintStyle: const TextStyle(color: Colors.white70),
+            border: InputBorder.none,
+            prefixIcon: const Icon(Icons.search, color: Colors.white),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.clear, color: Colors.white70),
+              onPressed: () {
+                setState(() {
+                  _searchQuery = '';
+                  _filterData();
+                });
+              },
+            ),
+          ),
+        ),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: _showFilterOptions, // Menampilkan opsi filter FA
-          ),
           !_isSearching
               ? IconButton(
-            icon: const Icon(Icons.search),
+            icon: const Icon(Icons.search, color: Colors.white),
+            tooltip: 'Search',
             onPressed: () {
               setState(() {
                 _isSearching = true;
@@ -458,7 +445,8 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
             },
           )
               : IconButton(
-            icon: const Icon(Icons.cancel),
+            icon: const Icon(Icons.cancel, color: Colors.white),
+            tooltip: 'Cancel Search',
             onPressed: () {
               setState(() {
                 _isSearching = false;
@@ -467,132 +455,454 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
               });
             },
           ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48.0),
-          child: Column(
-            children: [
-              _isLoading
-                  ? LinearProgressIndicator(
-                value: _progress,
-                backgroundColor: Colors.white,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.greenAccent),
-              )
-                  : const SizedBox.shrink(),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
+          IconButton(
+            icon: Stack(
+              children: [
+                const Icon(Icons.filter_list_rounded, color: Colors.white),
+                if (_selectedSeason != null || _selectedWeekOfPreHarvest != null || _selectedFA.isNotEmpty)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 12,
+                        minHeight: 12,
+                      ),
+                      child: Text(
+                        '!',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            tooltip: 'Filter Options',
+            onPressed: _showFilterOptions,
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            tooltip: 'More options',
+            onSelected: (value) {
+              if (value == 'refresh') {
+                _loadSheetData(refresh: true);
+              } else if (value == 'help') {
+                // Show help dialog
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text(
+                      'Bantuan!',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    content: const Text('Koco iki nampilake data Pre-Harvest. Sampeyan biso nggoleki, nyaring, lan ndeleng rincian kanthi nutul item sing pengin dideleng.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text(
+                          'OK',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'refresh',
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    Text(
-                      'Jumlah data: ${_filteredData.length}', // Menampilkan jumlah data
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    Text(
-                      'Total Effective Area: ${_totalEffectiveArea.toStringAsFixed(1)} Ha', // Menampilkan Total Effective Area
-                      style: const TextStyle(color: Colors.white),
-                    ),
+                    Icon(Icons.refresh, color: Colors.green),
+                    SizedBox(width: 8),
+                    Text('Refresh Data'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'help',
+                child: Row(
+                  children: [
+                    Icon(Icons.help_outline, color: Colors.green),
+                    SizedBox(width: 8),
+                    Text('Bantuan'),
                   ],
                 ),
               ),
             ],
           ),
-        ),
-      ),
-      body: LiquidPullToRefresh(
-        onRefresh: () => _loadSheetData(refresh: true),
-        color: Colors.green,
-        backgroundColor: Colors.white,
-        height: 150,
-        showChildOpacityTransition: false,
-        child: _isLoading
-            ? Center(child: Lottie.asset('assets/loading.json'))
-            : _errorMessage != null
-            ? Center(child: Text(_errorMessage!))
-            : _filteredData.isEmpty
-            ? const Center(child: Text('No data available'))
-            : ListView.builder(
-          itemCount: _filteredData.length,
-          itemBuilder: (context, index) {
-
-            final row = _filteredData[index];
-
-            return Card(
-              margin: const EdgeInsets.all(8.0),
-              child: ListTile(
-                leading: Hero(
-                  tag: 'pre_harvest_${getValue(row, 2, "Unknown")}',
-                  child: Image.asset(
-                    'assets/preharvest.png',
-                    height: 60,
-                    width: 60,
-                    fit: BoxFit.contain,
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(80.0),
+          child: Container(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Colors.green.shade800, Colors.green.shade600],
+              ),
+            ),
+            child: Column(
+              children: [
+                _isLoading
+                    ? LinearProgressIndicator(
+                  value: _progress,
+                  backgroundColor: Colors.green.shade300.withAlpha(76),
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                )
+                    : const SizedBox(height: 4),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(51),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.format_list_numbered, color: Colors.white, size: 16),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${_filteredData.length} Data',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(51),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.crop, color: Colors.white, size: 16),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Σ Effective Area:${_totalEffectiveArea.toStringAsFixed(1)} Ha',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                title: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              ],
+            ),
+          ),
+        ),
+      ),
+      body: Column(
+        children: [
+          // Filter Chips Container
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Colors.green.shade800, Colors.green.shade600],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(25),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8.0, left: 4.0),
+                  child: Text(
+                    'Filter Audit Status',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        getValue(row, 2, "Unknown"),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                        overflow: TextOverflow.ellipsis, // Agar teks tidak melampaui batas
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: _showAuditedOnly
+                              ? [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(38),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            )
+                          ]
+                              : null,
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              setState(() {
+                                _showAuditedOnly = !_showAuditedOnly;
+                                if (_showAuditedOnly) _showNotAuditedOnly = false;
+                                _filterData();
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                gradient: _showAuditedOnly
+                                    ? LinearGradient(
+                                  colors: [Colors.green.shade400, Colors.green.shade500],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                                    : null,
+                                color: _showAuditedOnly ? null : Colors.white,
+                                border: Border.all(
+                                  color: _showAuditedOnly ? Colors.transparent : Colors.green.shade200,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.check_circle_outline,
+                                    color: _showAuditedOnly ? Colors.white : Colors.green.shade700,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Sampun',
+                                    style: TextStyle(
+                                      color: _showAuditedOnly ? Colors.white : Colors.green.shade700,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                      decoration: BoxDecoration(
-                        color: getValue(row, 39, "NOT Audited") == "Audited" ? Colors.green : Colors.red,
-                        borderRadius: BorderRadius.circular(4.0),
-                      ),
-                      child: Text(
-                        getValue(row, 39, "NOT Audited") == "Audited" ? "Sampun" : "Dereng",
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: _showNotAuditedOnly
+                              ? [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(38),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            )
+                          ]
+                              : null,
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              setState(() {
+                                _showNotAuditedOnly = !_showNotAuditedOnly;
+                                if (_showNotAuditedOnly) _showAuditedOnly = false;
+                                _filterData();
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                gradient: _showNotAuditedOnly
+                                    ? LinearGradient(
+                                  colors: [Colors.red.shade400, Colors.red.shade600],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                                    : null,
+                                color: _showNotAuditedOnly ? null : Colors.white,
+                                border: Border.all(
+                                  color: _showNotAuditedOnly ? Colors.transparent : Colors.red.shade200,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.pending_outlined,
+                                    color: _showNotAuditedOnly ? Colors.white : Colors.red.shade600,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Dereng',
+                                    style: TextStyle(
+                                      color: _showNotAuditedOnly ? Colors.white : Colors.red.shade600,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
-                subtitle: RichText(
-                  text: TextSpan(
-                    style: DefaultTextStyle.of(context).style, // Style default untuk teks biasa
+              ],
+            ),
+          ),
+          // Main Content
+          Expanded(
+            child: LiquidPullToRefresh(
+                onRefresh: () => _loadSheetData(refresh: true),
+                color: Colors.green,
+                backgroundColor: Colors.white,
+                height: 150,
+                showChildOpacityTransition: false,
+                child: _isLoading
+                    ? Center(child: Lottie.asset('assets/loading.json'))
+                    : _errorMessage != null
+                    ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      TextSpan(text: 'Farmer: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: '${getValue(row, 3, "Unknown")}, '),
-                      TextSpan(text: 'Grower: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: '${getValue(row, 4, "Unknown")}, '),
-                      TextSpan(text: 'Desa: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: '${getValue(row, 11, "Unknown")}, '),
-                      TextSpan(text: 'Kec: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: '${getValue(row, 12, "Unknown")}, '),
-                      TextSpan(text: 'Kab: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: '${getValue(row, 13, "Unknown")}, '),
-                      TextSpan(text: 'Field SPV: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: '${getValue(row, 15, "Unknown")}, '),
-                      TextSpan(text: 'FA: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: getValue(row, 16, "Unknown")),
+                      Icon(Icons.error_outline, size: 60, color: Colors.red.shade300),
+                      const SizedBox(height: 16),
+                      Text(
+                        _errorMessage!,
+                        style: TextStyle(color: Colors.red.shade700),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: () => _loadSheetData(refresh: true),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Try Again'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                ),
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => PreHarvestDetailScreen(
-                        fieldNumber: getValue(row, 2, "Unknown"),
-                        region: selectedRegion ?? 'Unknown Region',
+                )
+                    : _filteredData.isEmpty
+                    ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Lottie.asset('assets/empty.json', height: 180),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Ora ono data sing kasedhiya',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
                       ),
-                    ),
-                  );
-                },
-              ),
-            );
-          },
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
-      bottomNavigationBar: const BottomAppBar(
-        color: Colors.green,
-        shape: CircularNotchedRectangle(),
-        child: SizedBox(height: 50.0),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Cobo ganti saringan utowo kritéria telusuran',
+                        style: TextStyle(color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _selectedSeason = null;
+                            _selectedWeekOfPreHarvest = null;
+                            _selectedFA.clear();
+                            _searchQuery = '';
+                            _showAuditedOnly = false;
+                            _showNotAuditedOnly = false;
+                            _filterData();
+                          });
+                        },
+                        icon: const Icon(Icons.refresh, color: Colors.white),
+                        label: const Text('Reset Filters'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+                    : PreHarvestListviewBuilder(
+                  filteredData: _filteredData,
+                  selectedRegion: selectedRegion,
+                  onItemTap: (fieldNumber) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => PreHarvestDetailScreen(
+                          fieldNumber: fieldNumber,
+                          region: selectedRegion ?? 'Unknown Region',
+                        ),
+                      ),
+                    );
+                  },
+                )
+            ),
+          ),
+        ],
       ),
     );
   }

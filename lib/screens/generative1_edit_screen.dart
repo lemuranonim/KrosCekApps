@@ -3,15 +3,15 @@ import 'package:intl/intl.dart';
 import 'google_sheets_api.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:lottie/lottie.dart';
-import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
-import 'dart:async';  // Untuk menggunakan Timer
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'config_manager.dart';
 
 class Generative1EditScreen extends StatefulWidget {
   final List<String> row;
   final String region;
-  final Function(List<String>) onSave; // Callback untuk mengirim data yang diperbarui
+  final Function(List<String>) onSave;
 
   const Generative1EditScreen({
     super.key,
@@ -20,23 +20,23 @@ class Generative1EditScreen extends StatefulWidget {
     required this.onSave});
 
   @override
-  Generative1EditScreenState createState() => Generative1EditScreenState(); // Menghapus underscore agar public
+  Generative1EditScreenState createState() => Generative1EditScreenState();
 }
 
 class Generative1EditScreenState extends State<Generative1EditScreen> {
   late List<String> row;
-  late GoogleSheetsApi gSheetsApi; // Tambahkan variabel ini
+  late GoogleSheetsApi gSheetsApi;
   final _formKey = GlobalKey<FormState>();
 
   late TextEditingController _dateAudit1Controller;
   late TextEditingController _datePlantingRevController;
 
-  String userEmail = 'Fetching...'; // Variabel untuk email pengguna
-  String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
+  String userEmail = 'Fetching...';
+  String userName = 'Fetching...';
   late String spreadsheetId;
 
-  String? selectedFI; // FI yang dipilih
-  List<String> fiList = []; // Daftar FI untuk dropdown
+  String? selectedFI;
+  List<String> fiList = [];
 
   String? selectedDetaselingPlan;
   String? selectedTenagaKerjaDT;
@@ -50,10 +50,12 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
   final List<String> remarksRoguingProsesItems = ['A', 'B', 'C', 'D', 'E'];
   final List<String> tenagaKerjaDetasselingItems = ['A', 'B'];
 
+  bool isLoading = false;
+
   @override
   void initState() {
     super.initState();
-    _loadUserCredentials(); // Panggil satu fungsi untuk mengambil nama dan email pengguna
+    _loadUserCredentials();
     row = List<String>.from(widget.row);
 
     _initHive();
@@ -64,11 +66,9 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
 
     _loadFIList(widget.region);
 
-    // Inisialisasi GoogleSheetsApi dengan spreadsheetId yang sesuai
     gSheetsApi = GoogleSheetsApi(spreadsheetId);
-    gSheetsApi.init(); // Pastikan API diinisialisasi di awal
+    gSheetsApi.init();
 
-    // Inisialisasi dropdown dengan nilai yang ada di row
     selectedDetaselingPlan = row[35];
     selectedTenagaKerjaDT = row[36];
     selectedRoguingProses = row[37];
@@ -76,47 +76,44 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
     selectedTenagaKerjaDetasseling = row[39];
   }
 
-  bool isLoading = false;  // Untuk mengatur status loading
-
   Future<void> _fetchSpreadsheetId() async {
     spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
   }
 
   Future<void> _loadFIList(String region) async {
     setState(() {
-      isLoading = true; // Tampilkan loading
+      isLoading = true;
     });
 
     try {
       final gSheetsApi = GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
-      await gSheetsApi.init(); // Inisialisasi API
+      await gSheetsApi.init();
       final List<String> fetchedFI = await gSheetsApi.fetchFIByRegion('FI', region);
 
       setState(() {
-        fiList = fetchedFI; // Perbarui daftar FI
-        selectedFI = row[31]; // Tetapkan nilai awal dari data row[31]
+        fiList = fetchedFI;
+        selectedFI = row[31];
       });
     } catch (e) {
       debugPrint('Gagal mengambil data FI: $e');
     } finally {
       setState(() {
-        isLoading = false; // Sembunyikan loading
+        isLoading = false;
       });
     }
   }
 
   void _initHive() async {
     await Hive.initFlutter();
-    await Hive.openBox('generativeData');  // Buat box Hive untuk menyimpan data vegetative
+    await Hive.openBox('generativeData');
   }
 
   Future<void> _saveToHive(List<String> rowData) async {
     var box = await Hive.openBox('generativeData');
-    final cacheKey = 'detailScreenData_${rowData[2]}'; // Menggunakan fieldNumber atau ID unik lainnya sebagai kunci
-    await box.put(cacheKey, rowData); // Simpan hanya rowData ke Hive
+    final cacheKey = 'detailScreenData_${rowData[2]}';
+    await box.put(cacheKey, rowData);
   }
 
-  // Fungsi untuk mengambil userName dan userEmail dari SharedPreferences
   Future<void> _loadUserCredentials() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -129,127 +126,202 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Field Audit 1 Edit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.green,
+        title: const Text(
+            'Field Audit 1 Edit',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            )
+        ),
+        backgroundColor: Colors.green.shade700,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                // Tampilkan progress bar di atas form jika sedang loading
-                if (isLoading) const LinearProgressIndicator(),  // Tambahkan di sini
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.green.shade700, Colors.green.shade100],
+            stops: const [0.0, 0.3],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                child: Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isLoading)
+                          const LinearProgressIndicator(
+                            backgroundColor: Colors.green,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
 
-                _buildFIDropdownField('QA FI', 31),
-                _buildDatePickerField('Date of Audit 1 (dd/MM)', 32, _dateAudit1Controller),
-                _buildDatePickerField('Rev Planting Date Based', 34, _datePlantingRevController),
+                        const SizedBox(height: 10),
 
-                const SizedBox(height: 10),
+                        // Field Information Section
+                        _buildSectionHeader('Field Information', Icons.info_outline),
 
-                _buildDropdownFormField(
-                  label: 'Detaseling Plan (Mengacu Form)',
-                  items: detaselingPlanItems,
-                  value: selectedDetaselingPlan,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedDetaselingPlan = value;
-                      row[35] = value ?? '';
-                    });
-                  },
-                  helpText: 'Y = Yes\nN = No',
-                ),
+                        _buildInfoCard(
+                          title: 'Field Number',
+                          value: row[2],
+                          icon: Icons.numbers,
+                        ),
 
-                const SizedBox(height: 16),
+                        _buildInfoCard(
+                          title: 'Region',
+                          value: widget.region,
+                          icon: Icons.location_on,
+                        ),
 
-                _buildDropdownFormField(
-                  label: 'Ketersediaan Tenaga kerja DT yang Cukup /Ha',
-                  items: tenagaKerjaDTItems,
-                  value: selectedTenagaKerjaDT,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedTenagaKerjaDT = value;
-                      row[36] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = 100% 15 req- terpenuhi 15 TKD'
-                      '\nB = 80% 15 req- terpenuhi 12 TKD'
-                      '\nC = 60% 15 req-terpenuhi 9 TKD'
-                      '\nD = 40% 15 req - terpenuhi 6 TKD'
-                      '\nE = 20% 15 req - terpenuhi 3 TKD',
-                ),
+                        const SizedBox(height: 20),
 
-                const SizedBox(height: 16),
+                        // Audit Information Section
+                        _buildSectionHeader('Audit Information', Icons.assignment),
 
-                _buildDropdownFormField(
-                  label: 'Roguing Proses',
-                  items: roguingProsesItems,
-                  value: selectedRoguingProses,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedRoguingProses = value;
-                      row[37] = value ?? '';
-                    });
-                  },
-                  helpText: 'Y = Yes\nN = No',
-                ),
+                        _buildFIDropdownField('QA FI', 31),
+                        const SizedBox(height: 15),
 
-                const SizedBox(height: 16),
+                        _buildDatePickerField('Date of Audit 1 (dd/MM)', 32, _dateAudit1Controller),
+                        const SizedBox(height: 15),
 
-                _buildDropdownFormField(
-                    label: 'Remarks Roguing Proses',
-                    items: remarksRoguingProsesItems,
-                    value: selectedRemarksRoguingProses,
-                    onChanged: (value) {
-                      setState(() {
-                        selectedRemarksRoguingProses = value;
-                        row[38] = value ?? '';
-                      });
-                    },
-                    helpText: 'A = CVL\nB = Offtype\nC = LSV\nD = Male Salah Baris\nE = All'
-                ),
+                        _buildDatePickerField('Rev Planting Date Based', 34, _datePlantingRevController),
+                        const SizedBox(height: 20),
 
-                const SizedBox(height: 16),
+                        // Detasseling Section
+                        _buildSectionHeader('Detasseling Assessment', Icons.agriculture),
 
-                _buildDropdownFormField(
-                  label: 'Tenaga Kerja Detasseling Process',
-                  items: tenagaKerjaDetasselingItems,
-                  value: selectedTenagaKerjaDetasseling,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedTenagaKerjaDetasseling = value;
-                      row[39] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = Effective\nB = Tidak Effective',
-                ),
+                        _buildDropdownFormField(
+                          label: 'Detaseling Plan (Mengacu Form)',
+                          items: detaselingPlanItems,
+                          value: selectedDetaselingPlan,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedDetaselingPlan = value;
+                              row[35] = value ?? '';
+                            });
+                          },
+                          helpText: 'Y = Yes\nN = No',
+                          icon: Icons.assignment_turned_in,
+                        ),
+                        const SizedBox(height: 15),
 
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      _showLoadingDialogAndClose();  // Tampilkan loading spinner
-                      _showLoadingAndSaveInBackground();
-                      _showConfirmationDialog;
-                      _saveToGoogleSheets(row); // Simpan data ke Google Sheets
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                    backgroundColor: Colors.green, // Warna background tombol
-                    foregroundColor: Colors.white, // Warna teks tombol
-                    shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
-                      borderRadius: BorderRadius.circular(30),
+                        _buildDropdownFormField(
+                          label: 'Ketersediaan Tenaga kerja DT yang Cukup /Ha',
+                          items: tenagaKerjaDTItems,
+                          value: selectedTenagaKerjaDT,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedTenagaKerjaDT = value;
+                              row[36] = value ?? '';
+                            });
+                          },
+                          helpText: 'A = 100% 15 req- terpenuhi 15 TKD'
+                              '\nB = 80% 15 req- terpenuhi 12 TKD'
+                              '\nC = 60% 15 req-terpenuhi 9 TKD'
+                              '\nD = 40% 15 req - terpenuhi 6 TKD'
+                              '\nE = 20% 15 req - terpenuhi 3 TKD',
+                          icon: Icons.people,
+                        ),
+                        const SizedBox(height: 20),
+
+// Roguing Section
+                        _buildSectionHeader('Roguing Process', Icons.grass),
+
+                        _buildDropdownFormField(
+                          label: 'Roguing Proses',
+                          items: roguingProsesItems,
+                          value: selectedRoguingProses,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedRoguingProses = value;
+                              row[37] = value ?? '';
+                            });
+                          },
+                          helpText: 'Y = Yes\nN = No',
+                          icon: Icons.check_circle_outline,
+                        ),
+                        const SizedBox(height: 15),
+
+                        _buildDropdownFormField(
+                          label: 'Remarks Roguing Proses',
+                          items: remarksRoguingProsesItems,
+                          value: selectedRemarksRoguingProses,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedRemarksRoguingProses = value;
+                              row[38] = value ?? '';
+                            });
+                          },
+                          helpText: 'A = CVL\nB = Offtype\nC = LSV\nD = Male Salah Baris\nE = All',
+                          icon: Icons.comment,
+                        ),
+                        const SizedBox(height: 20),
+
+// Workforce Effectiveness Section
+                        _buildSectionHeader('Workforce Effectiveness', Icons.engineering),
+
+                        _buildDropdownFormField(
+                          label: 'Tenaga Kerja Detasseling Process',
+                          items: tenagaKerjaDetasselingItems,
+                          value: selectedTenagaKerjaDetasseling,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedTenagaKerjaDetasseling = value;
+                              row[39] = value ?? '';
+                            });
+                          },
+                          helpText: 'A = Effective\nB = Tidak Effective',
+                          icon: Icons.rate_review,
+                        ),
+
+                        const SizedBox(height: 30),
+
+// Save Button
+                        Center(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              if (_formKey.currentState!.validate()) {
+                                _showLoadingDialogAndClose();
+                                _showLoadingAndSaveInBackground();
+                                _showConfirmationDialog;
+                                _saveToGoogleSheets(row);
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size(220, 60),
+                              backgroundColor: Colors.green.shade700,
+                              foregroundColor: Colors.white,
+                              elevation: 5,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                            icon: const Icon(Icons.save, size: 26, color: Colors.white),
+                            label: const Text(
+                              'Simpan',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                     ),
                   ),
-                  child: const Text(
-                    'Simpan',
-                    style: TextStyle(fontSize: 20), // Ukuran teks lebih besar
-                  ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -257,15 +329,101 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
     );
   }
 
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: Colors.green.shade800, size: 24),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.green.shade800,
+              ),
+            ),
+          ],
+        ),
+        const Divider(thickness: 2, color: Colors.green),
+        const SizedBox(height: 10),
+      ],
+    );
+  }
+
+  Widget _buildInfoCard({required String title, required String value, required IconData icon}) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.green.shade700),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildFIDropdownField(String label, int index) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: DropdownButtonFormField<String>(
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(Icons.person, color: Colors.green.shade600),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
         ),
-        value: selectedFI, // FI yang dipilih
+        value: selectedFI,
         items: fiList.map((String fi) {
           return DropdownMenuItem<String>(
             value: fi,
@@ -274,23 +432,52 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
         }).toList(),
         onChanged: (value) {
           setState(() {
-            selectedFI = value; // Update nilai yang dipilih
-            row[index] = value ?? ''; // Simpan ke row[index]
+            selectedFI = value;
+            row[index] = value ?? '';
           });
         },
+        dropdownColor: Colors.white,
+        icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
       ),
     );
   }
 
   Widget _buildDatePickerField(String label, int index, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: TextFormField(
         controller: controller,
         readOnly: true,
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
+          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
         ),
         onTap: () async {
           DateTime? pickedDate = await showDatePicker(
@@ -298,6 +485,18 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
             initialDate: DateTime.now(),
             firstDate: DateTime(2000),
             lastDate: DateTime(2101),
+            builder: (context, child) {
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  colorScheme: ColorScheme.light(
+                    primary: Colors.green.shade700,
+                    onPrimary: Colors.white,
+                    onSurface: Colors.black,
+                  ),
+                ),
+                child: child!,
+              );
+            },
           );
 
           if (pickedDate != null) {
@@ -312,7 +511,6 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
     );
   }
 
-  // Fungsi untuk membangun dropdown
   Widget _buildDropdownFormField({
     required String label,
     required List<String> items,
@@ -320,8 +518,8 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
     required Function(String?) onChanged,
     String? hint,
     String? helpText,
+    IconData? icon,
   }) {
-    // Jika nilai tidak ada di dalam daftar item, set nilai awal menjadi null
     if (!items.contains(value)) {
       value = null;
     }
@@ -329,28 +527,62 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DropdownButtonFormField<String>(
-          decoration: InputDecoration(
-            labelText: label,
-            border: const OutlineInputBorder(),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withAlpha(51),
+                spreadRadius: 1,
+                blurRadius: 3,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          value: value,
-          hint: Text(hint ?? 'Survey membuktikan!'),
-          onChanged: onChanged,
-          items: items.map<DropdownMenuItem<String>>((String item) {
-            return DropdownMenuItem<String>(
-              value: item,
-              child: Text(item),
-            );
-          }).toList(),
+          child: DropdownButtonFormField<String>(
+            decoration: InputDecoration(
+              labelText: label,
+              labelStyle: TextStyle(color: Colors.green.shade700),
+              prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            value: value,
+            hint: Text(hint ?? 'Select an option'),
+            onChanged: onChanged,
+            items: items.map<DropdownMenuItem<String>>((String item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(item),
+              );
+            }).toList(),
+            dropdownColor: Colors.white,
+            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          ),
         ),
         if (helpText != null) ...[
-          const SizedBox(height: 5), // Spacer between dropdown and helper text
-          Text(
-            helpText,
-            style: const TextStyle(
-              fontStyle: FontStyle.italic, // Mengatur gaya italic pada helpText
-              color: Colors.grey, // Warna teks
+          Padding(
+            padding: const EdgeInsets.only(left: 12, top: 6),
+            child: Text(
+              helpText,
+              style: TextStyle(
+                fontStyle: FontStyle.italic,
+                color: Colors.grey.shade700,
+                fontSize: 12,
+              ),
             ),
           ),
         ],
@@ -358,11 +590,9 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
     );
   }
 
-  // Fungsi untuk menampilkan loading spinner hanya selama 5 detik
   void _showLoadingDialogAndClose() {
     bool dialogShown = false;
 
-    // Tampilkan dialog loading
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -376,8 +606,8 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
               Lottie.asset('assets/loading.json', width: 150, height: 150),
               const SizedBox(height: 20),
               const Text(
-                "Loading...",
-                style: TextStyle(color: Colors.white, fontSize: 18),
+                "Saving data...",
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -385,15 +615,12 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
       },
     );
 
-    // Timer untuk menutup dialog loading setelah 5 detik
     Timer(const Duration(seconds: 5), () {
       if (dialogShown && mounted) {
-        // Tutup dialog jika masih aktif dan widget masih terpasang
         Navigator.of(context, rootNavigator: true).pop();
 
-        // Lakukan navigasi ke layar Success dalam microtask tanpa async gap
         Future.microtask(() {
-          if (mounted) { // Pastikan konteks masih valid
+          if (mounted) {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
                 builder: (context) => SuccessScreen(
@@ -411,14 +638,9 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
   }
 
   void _showLoadingAndSaveInBackground() {
-    // Tampilkan loading spinner dan success setelah 5 detik
     _showLoadingDialogAndClose();
-
-    // Simpan data ke Hive
     _saveToHive(row);
-
-    // Jalankan proses penyimpanan di latar belakang
-    _saveToGoogleSheets(row);  // Panggil fungsi penyimpanan yang berjalan di background
+    _saveToGoogleSheets(row);
   }
 
   Future<void> _saveToGoogleSheets(List<String> rowData) async {
@@ -442,7 +664,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
       responseMessage = 'Failed to save data. Please try again.';
     } finally {
       setState(() {
-        isLoading = false; // Sembunyikan loader
+        isLoading = false;
       });
     }
 
@@ -452,49 +674,53 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
   }
 
   Future<void> _restoreGenerativeFormulas(GoogleSheetsApi gSheetsApi, Worksheet sheet, int rowIndex) async {
-    await sheet.values.insertValue( // Cek Result
+    await sheet.values.insertValue(
         '=IF(OR(AT$rowIndex=0;AT$rowIndex="");"Not Audited";"Audited")',
         row: rowIndex, column: 72);
-    await sheet.values.insertValue( // Cek Proses
+    await sheet.values.insertValue(
         '=IF(OR(AG$rowIndex>0;AO$rowIndex>0);"Audited";"Not Audited")',
         row: rowIndex, column: 73);
-    await sheet.values.insertValue( // Week of Audit 1
-        '=IFERROR(IF(OR(AG$rowIndex=0;AG$rowIndex="");" ";WEEKNUM(AG$rowIndex;1));"")',
+    await sheet.values.insertValue(
+        '=IFERROR(IF(OR(AG$rowIndex=0;AG$rowIndex="");"";WEEKNUM(AG$rowIndex;1));"0")',
         row: rowIndex, column: 34);
-    await sheet.values.insertValue( // Week of Audit 2
-        '=IFERROR(IF(OR(AO$rowIndex=0;AO$rowIndex="");" ";WEEKNUM(AO$rowIndex;1));"")',
+    await sheet.values.insertValue(
+        '=IFERROR(IF(OR(AO$rowIndex=0;AO$rowIndex="");"";WEEKNUM(AO$rowIndex;1));"0")',
         row: rowIndex, column: 42);
-    await sheet.values.insertValue( // Week of Audit 3
-        '=IFERROR(IF(OR(AT$rowIndex=0;AT$rowIndex="");" ";WEEKNUM(AT$rowIndex;1));"")',
+    await sheet.values.insertValue(
+        '=IFERROR(IF(OR(AT$rowIndex=0;AT$rowIndex="");"";WEEKNUM(AT$rowIndex;1));"0")',
         row: rowIndex, column: 47);
     debugPrint("Rumus berhasil diterapkan di Generative pada baris $rowIndex.");
   }
 
-  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber) async { // Mencari baris berdasarkan fieldNumber
-
-    final List<List<String>> rows = await sheet.values.allRows(); // Ambil semua baris
-    for (int i = 0; i < rows.length; i++) { // Iterasi setiap baris
-      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) { // Kolom ke-3 untuk fieldNumber
-        return i + 1; // Index baris di Google Sheets dimulai dari 1
+  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber) async {
+    final List<List<String>> rows = await sheet.values.allRows();
+    for (int i = 0; i < rows.length; i++) {
+      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) {
+        return i + 1;
       }
     }
-    return -1; // Tidak ditemukan
+    return -1;
   }
 
   Future<void> _showConfirmationDialog() async {
     final shouldSave = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Confirm Save'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Confirm Save', style: TextStyle(color: Colors.green.shade800)),
         content: Text('Are you sure you want to save the changes?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey.shade700)),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Save'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Save'),
           ),
         ],
       ),
@@ -516,7 +742,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
   }
 
   bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty); // Pastikan semua field terisi
+    return row.every((field) => field.isNotEmpty);
   }
 
   void _showSnackbar(String message) {
@@ -542,11 +768,9 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
         ),
       );
     } else {
-      // Tampilkan pesan error atau tetap di halaman
       _showSnackbar('Unknown response: $response');
     }
   }
-
 
   String _convertToDateIfNecessary(String value) {
     try {
@@ -600,26 +824,17 @@ class SuccessScreen extends StatelessWidget {
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () async {
-                // Tampilkan dialog loading
                 _showLoadingDialog(context);
-
-                // Simpan instance NavigatorState untuk digunakan setelah async gap
                 final navigator = Navigator.of(context);
-
-                // Simpan data ke Google Sheets
                 await _saveBackActivityToGoogleSheets(region);
-
-                // Tutup dialog loading
                 navigator.pop();
-
-                // Kembali ke layar sebelumnya
                 navigator.pop();
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.green, // Warna background tombol
-                foregroundColor: Colors.white, // Warna teks tombol
-                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                minimumSize: const Size(200, 60),
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
@@ -648,7 +863,7 @@ class SuccessScreen extends StatelessWidget {
               Lottie.asset('assets/loading.json', width: 150, height: 150),
               const SizedBox(height: 20),
               const Text(
-                "Loading...",
+                "Ngrantos sekedap...",
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ],
@@ -703,7 +918,7 @@ class FailedScreen extends StatelessWidget {
           'Failed',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.red,
+        backgroundColor: Colors.red.shade700,
       ),
       body: Center(
         child: Column(
@@ -722,7 +937,7 @@ class FailedScreen extends StatelessWidget {
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.red, // Warna background tombol
+                backgroundColor: Colors.red. shade700, // Warna background tombol
                 foregroundColor: Colors.white, // Warna teks tombol
                 shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
                   borderRadius: BorderRadius.circular(30),

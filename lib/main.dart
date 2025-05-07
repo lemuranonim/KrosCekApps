@@ -21,6 +21,11 @@ void main() async {
   // Inisialisasi Hive
   await Hive.initFlutter();
 
+  // // Register adapter untuk List<Map<String, dynamic>>
+  // if (!Hive.isAdapterRegistered(1)) {
+  //   Hive.registerAdapter(MapAdapter());
+  // }
+
   // Membuka atau membuat box yang dibutuhkan
   await Hive.openBox('vegetativeData');
   await Hive.openBox('generativeData');
@@ -38,9 +43,9 @@ void main() async {
   await FirebaseAppCheck.instance.activate();
 
   // Inisialisasi aplikasi setelah mengecek status login
-  bool showLoginScreen = await checkLoginStatus();
+  // bool showLoginScreen = await checkLoginStatus();
 
-  runApp(MyApp(showLoginScreen: showLoginScreen));
+  runApp(const MyApp());
 }
 
 Future<bool> checkLoginStatus() async {
@@ -56,9 +61,7 @@ Future<bool> checkLoginStatus() async {
 }
 
 class MyApp extends StatelessWidget {
-  final bool showLoginScreen;
-
-  const MyApp({super.key, required this.showLoginScreen});
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -67,9 +70,9 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.green,
       ),
-      initialRoute: showLoginScreen ? '/login' : '/',
+      initialRoute: '/splash', // Selalu mulai dari splash screen
       routes: {
-        '/': (context) => const SplashScreen(),
+        '/splash': (context) => const SplashScreen(),
         '/login': (context) => const LoginScreen(),
         '/register': (context) => const RegisterScreen(),
         '/home': (context) => const HomeScreen(),

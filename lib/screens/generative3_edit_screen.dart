@@ -3,15 +3,15 @@ import 'package:intl/intl.dart';
 import 'google_sheets_api.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:lottie/lottie.dart';
-import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
-import 'dart:async';  // Untuk menggunakan Timer
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'config_manager.dart';
 
 class Generative3EditScreen extends StatefulWidget {
   final List<String> row;
   final String region;
-  final Function(List<String>) onSave; // Callback untuk mengirim data yang diperbarui
+  final Function(List<String>) onSave;
 
   const Generative3EditScreen({
     super.key,
@@ -20,19 +20,19 @@ class Generative3EditScreen extends StatefulWidget {
     required this.onSave});
 
   @override
-  Generative3EditScreenState createState() => Generative3EditScreenState(); // Menghapus underscore agar public
+  Generative3EditScreenState createState() => Generative3EditScreenState();
 }
 
 class Generative3EditScreenState extends State<Generative3EditScreen> {
   late List<String> row;
-  late GoogleSheetsApi gSheetsApi; // Tambahkan variabel ini
+  late GoogleSheetsApi gSheetsApi;
   final _formKey = GlobalKey<FormState>();
 
   late TextEditingController _dateAudit3Controller;
   late TextEditingController _dateClosedController;
 
-  String userEmail = 'Fetching...'; // Variabel untuk email pengguna
-  String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
+  String userEmail = 'Fetching...';
+  String userName = 'Fetching...';
   late String spreadsheetId;
 
   String? selectedFemaleShed2;
@@ -73,10 +73,12 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
   final List<String> reasonPLDItems = ['A', 'B'];
   final List<String> reasonTidakTerauditItems = ['A', 'B', 'C'];
 
+  bool isLoading = false;
+
   @override
   void initState() {
     super.initState();
-    _loadUserCredentials(); // Panggil satu fungsi untuk mengambil nama dan email pengguna
+    _loadUserCredentials();
     row = List<String>.from(widget.row);
 
     _initHive();
@@ -85,11 +87,6 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
     _dateAudit3Controller = TextEditingController(text: _convertToDateIfNecessary(row[45]));
     _dateClosedController = TextEditingController(text: _convertToDateIfNecessary(row[61]));
 
-    // Inisialisasi GoogleSheetsApi dengan spreadsheetId yang sesuai
-    gSheetsApi = GoogleSheetsApi(spreadsheetId);
-    gSheetsApi.init(); // Pastikan API diinisialisasi di awal
-
-    // Inisialisasi dropdown dengan nilai yang ada di row
     selectedFemaleShed2 = row[47];
     selectedSheddingMale2 = row[48];
     selectedSheddingFemale2 = row[49];
@@ -110,24 +107,21 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
     selectedReasonTidakTeraudit = row[67];
   }
 
-  bool isLoading = false;  // Untuk mengatur status loading
-
   Future<void> _fetchSpreadsheetId() async {
     spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
   }
 
   void _initHive() async {
     await Hive.initFlutter();
-    await Hive.openBox('generativeData');  // Buat box Hive untuk menyimpan data vegetative
+    await Hive.openBox('generativeData');
   }
 
   Future<void> _saveToHive(List<String> rowData) async {
     var box = await Hive.openBox('generativeData');
-    final cacheKey = 'detailScreenData_${rowData[2]}'; // Menggunakan fieldNumber atau ID unik lainnya sebagai kunci
-    await box.put(cacheKey, rowData); // Simpan hanya rowData ke Hive
+    final cacheKey = 'detailScreenData_${rowData[2]}';
+    await box.put(cacheKey, rowData);
   }
 
-  // Fungsi untuk mengambil userName dan userEmail dari SharedPreferences
   Future<void> _loadUserCredentials() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -140,328 +134,421 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Field Audit 3 Edit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.green,
+        title: const Text(
+            'Field Audit 3 Edit',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            )
+        ),
+        backgroundColor: Colors.green.shade700,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                // Tampilkan progress bar di atas form jika sedang loading
-                if (isLoading) const LinearProgressIndicator(),  // Tambahkan di sini
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.green.shade700, Colors.green.shade100],
+            stops: const [0.0, 0.3],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                child: Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isLoading)
+                          const LinearProgressIndicator(
+                            backgroundColor: Colors.green,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
 
-                _buildDatePickerField('Date of Audit 3 (dd/MM)', 45, _dateAudit3Controller),
+                        const SizedBox(height: 10),
 
-                const SizedBox(height: 10),
+                        // Field Information Section
+                        _buildSectionHeader('Field Information'),
 
-                _buildDropdownFormField(
-                  label: 'Female Shed.',
-                  items: femaleShed2Items,
-                  value: selectedFemaleShed2,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedFemaleShed2 = value;
-                      row[47] = value ?? '';
-                    });
-                  },
-                  helpText: 'A (GF) = 0-5 shedd / Ha\nB (RF) = 6-30 shedd / Ha\nC (BF) = >30 shedd / Ha',
-                ),
+                        _buildInfoCard(
+                          title: 'Field Number',
+                          value: row[2],
+                          icon: Icons.numbers,
+                        ),
 
-                const SizedBox(height: 16),
+                        _buildInfoCard(
+                          title: 'Region',
+                          value: widget.region,
+                          icon: Icons.location_on,
+                        ),
 
-                _buildDropdownFormField(
-                  label: 'Shedding Offtype & CVL M',
-                  items: sheddingMale2Items,
-                  value: selectedSheddingMale2,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedSheddingMale2 = value;
-                      row[48] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = 0 plants / Ha\nB = > 0 plants / Ha',
-                ),
+                        const SizedBox(height: 20),
 
-                const SizedBox(height: 16),
+                        // Audit Information Section
+                        _buildSectionHeader('Audit 3 Information'),
 
-                _buildDropdownFormField(
-                  label: 'Shedding Offtype & CVL F',
-                  items: sheddingFemale2Items,
-                  value: selectedSheddingFemale2,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedSheddingFemale2 = value;
-                      row[49] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = 0-5 plants / Ha\nB = > 5 plants / Ha',
-                ),
+                        _buildDatePickerField('Date of Audit 3 (dd/MM)', 45, _dateAudit3Controller),
+                        const SizedBox(height: 20),
 
-                const SizedBox(height: 16),
+                        // Female Shedding Section
+                        _buildSectionHeader('Female Shedding Assessment'),
 
-                _buildDropdownFormField(
-                  label: 'Standing crop Offtype & CVL M',
-                  items: standingCropMaleItems,
-                  value: selectedStandingCropMale,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedStandingCropMale = value;
-                      row[50] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = 0 plants / Ha\nB = > 0 plants / Ha',
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'Standing crop Offtype & CVL F',
-                  items: standingCropFemaleItems,
-                  value: selectedStandingCropFemale,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedStandingCropFemale = value;
-                      row[51] = value ?? '';
-                    });
-                  },
-                  helpText: 'A (GF) = 0-5 plants / Ha\nB (RF) = >5-10 plants / Ha',
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'LSV Ditemukan',
-                  items: lsvItems,
-                  value: selectedLSV,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedLSV = value;
-                      row[52] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = 0 plants / Ha\nB = > 0 plants / Ha',
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'Detasseling Process Observation',
-                  items: detasselingObservationItems,
-                  value: selectedDetasselingObservation,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedDetasselingObservation = value;
-                      row[53] = value ?? '';
-                    });
-                  },
-                  helpText: 'A=Best (0,5)\nB=Good (5,5)\nC=Poor (5,7)\nD=Very Poor (>7)',
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'Affected by other fields',
-                  items: affectedFieldsItems,
-                  value: selectedAffectedFields,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedAffectedFields = value;
-                      row[54] = value ?? '';
-                    });
-                  },
-                  helpText: 'A (GF) = Not Affected\nB (RF) = Severly Affected (if distance <50 mtr)',
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'Nick Cover',
-                  items: nickCoverItems,
-                  value: selectedNickCover,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedNickCover = value;
-                      row[55] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = Good Nick - Male early or 1% Male Shedd at 5% Silk or reverse\nB = >10-25 % receptive silks at either end & no male shedding\nC = >25% receptive silks at either end & no male shedding',
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                    label: 'Crop Uniformity',
-                    items: cropUniformityItems,
-                    value: selectedCropUniformity,
-                    onChanged: (value) {
-                      setState(() {
-                        selectedCropUniformity = value;
-                        row[56] = value ?? '';
-                      });
-                    },
-                    helpText: 'A=Good\nB= Fair\nC=Poor'
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                    label: 'Isolation (Y/N)',
-                    items: isolationItems,
-                    value: selectedIsolation,
-                    onChanged: (value) {
-                      setState(() {
-                        selectedIsolation = value;
-                        row[57] = value ?? '';
-                      });
-                    },
-                    helpText: 'Y = Yes\nN = No'
-                ),
-
-                const SizedBox(height: 16),
-
-                if (selectedIsolation == 'Y')
-                  Column(
-                    children: [
-                      _buildDropdownFormField(
-                          label: 'If "YES" IsolationType',
-                          items: isolationTypeItems,
-                          value: selectedIsolationType,
+                        _buildDropdownFormField(
+                          label: 'Female Shedding',
+                          items: femaleShed2Items,
+                          value: selectedFemaleShed2,
                           onChanged: (value) {
                             setState(() {
-                              selectedIsolationType = value;
-                              row[58] = value ?? '';
+                              selectedFemaleShed2 = value;
+                              row[47] = value ?? '';
                             });
                           },
-                          helpText: 'A : Seed Production\nB : Jagung Komersial'
-                      ),
-                      const SizedBox(height: 16),
-                      _buildDropdownFormField(
-                        label: 'If "YES" IsolationDist. (m)',
-                        items: isolationDistanceItems,
-                        value: selectedIsolationDistance,
-                        onChanged: (value) {
-                          setState(() {
-                            selectedIsolationDistance = value;
-                            row[59] = value ?? '';
-                          });
-                        },
-                        helpText: 'A (GF) = >300 m\nB (GF) = >200-<300 m\nC (RF) = >100 & <200 m\nD (RF) = <100 m',
-                      ),
-                    ],
-                  ),
+                          helpText: 'A (GF) = 0-5 shedd / Ha\nB (RF) = 6-30 shedd / Ha\nC (BF) = >30 shedd / Ha',
+                          icon: Icons.spa,
+                        ),
+                        const SizedBox(height: 20),
 
-                const SizedBox(height: 16),
+                        // Shedding Offtype Section
+                        _buildSectionHeader('Shedding Offtype Assessment'),
 
-                _buildDropdownFormField(
-                  label: 'QPIR Applied',
-                  items: qPIRItems,
-                  value: selectedQPIR,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedQPIR = value;
-                      row[60] = value ?? '';
-                    });
-                  },
-                  helpText: 'Y = Ada\nN = Tidak Ada',
-                ),
+                        _buildDropdownFormField(
+                          label: 'Shedding Offtype & CVL Male',
+                          items: sheddingMale2Items,
+                          value: selectedSheddingMale2,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedSheddingMale2 = value;
+                              row[48] = value ?? '';
+                            });
+                          },
+                          helpText: 'A = 0 plants / Ha\nB = > 0 plants / Ha',
+                          icon: Icons.male,
+                        ),
+                        const SizedBox(height: 15),
 
-                const SizedBox(height: 10),
+                        _buildDropdownFormField(
+                          label: 'Shedding Offtype & CVL Female',
+                          items: sheddingFemale2Items,
+                          value: selectedSheddingFemale2,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedSheddingFemale2 = value;
+                              row[49] = value ?? '';
+                            });
+                          },
+                          helpText: 'A = 0-5 plants / Ha\nB = > 5 plants / Ha',
+                          icon: Icons.female,
+                        ),
+                        const SizedBox(height: 20),
 
-                _buildDatePickerField('Closed out Date', 61, _dateClosedController),
+                        // Standing Crop Section
+                        _buildSectionHeader('Standing Crop Assessment'),
 
-                const SizedBox(height: 10),
+                        _buildDropdownFormField(
+                          label: 'Standing crop Offtype & CVL Male',
+                          items: standingCropMaleItems,
+                          value: selectedStandingCropMale,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedStandingCropMale = value;
+                              row[50] = value ?? '';
+                            });
+                          },
+                          helpText: 'A = 0 plants / Ha\nB = > 0 plants / Ha',
+                          icon: Icons.agriculture,
+                        ),
+                        const SizedBox(height: 15),
 
-                _buildDropdownFormField(
-                  label: 'FLAGGING',
-                  items: flaggingItems,
-                  value: selectedFlagging,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedFlagging = value;
-                      row[62] = value ?? '';
-                    });
-                  },
-                  helpText: 'GF/RFI/RFD/BF',
-                ),
+                        _buildDropdownFormField(
+                          label: 'Standing crop Offtype & CVL Female',
+                          items: standingCropFemaleItems,
+                          value: selectedStandingCropFemale,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedStandingCropFemale = value;
+                              row[51] = value ?? '';
+                            });
+                          },
+                          helpText: 'A (GF) = 0-5 plants / Ha\nB (RF) = >5-10 plants / Ha',
+                          icon: Icons.agriculture,
+                        ),
+                        const SizedBox(height: 20),
 
-                const SizedBox(height: 16),
+                        // LSV Section
+                        _buildSectionHeader('LSV Assessment'),
 
-                _buildDropdownFormField(
-                  label: 'Recommendation',
-                  items: recommendationItems,
-                  value: selectedRecommendation,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedRecommendation = value;
-                      row[63] = value ?? '';
-                    });
-                  },
-                  helpText: 'Continue to Next Process/Discard',
-                ),
+                        _buildDropdownFormField(
+                          label: 'LSV Ditemukan',
+                          items: lsvItems,
+                          value: selectedLSV,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedLSV = value;
+                              row[52] = value ?? '';
+                            });
+                          },
+                          helpText: 'A = 0 plants / Ha\nB = > 0 plants / Ha',
+                          icon: Icons.bug_report,
+                        ),
+                        const SizedBox(height: 20),
 
-                const SizedBox(height: 16),
+                        // Detasseling Section
+                        _buildSectionHeader('Detasseling Assessment'),
 
-                _buildTextFormField('Remarks', 64),
-                _buildText2FormField('Recommendation PLD (Ha)', 65),
+                        _buildDropdownFormField(
+                          label: 'Detasseling Process Observation',
+                          items: detasselingObservationItems,
+                          value: selectedDetasselingObservation,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedDetasselingObservation = value;
+                              row[53] = value ?? '';
+                            });
+                          },
+                          helpText: 'A=Best (0,5)\nB=Good (5,5)\nC=Poor (5,7)\nD=Very Poor (>7)',
+                          icon: Icons.content_cut,
+                        ),
+                        const SizedBox(height: 20),
 
-                const SizedBox(height: 10),
+                        // Field Conditions Section
+                        _buildSectionHeader('Field Conditions'),
 
-                _buildDropdownFormField(
-                  label: 'Reason PLD',
-                  items: reasonPLDItems,
-                  value: selectedReasonPLD,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedReasonPLD = value;
-                      row[66] = value ?? '';
-                    });
-                  },
-                  helpText: 'A : No Plant\nB : Class D (Uniformity)',
-                ),
+                        _buildDropdownFormField(
+                          label: 'Affected by other fields',
+                          items: affectedFieldsItems,
+                          value: selectedAffectedFields,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedAffectedFields = value;
+                              row[54] = value ?? '';
+                            });
+                          },
+                          helpText: 'A (GF) = Not Affected\nB (RF) = Severly Affected (if distance < 50 mtr)',
+                          icon: Icons.landscape,
+                        ),
+                        const SizedBox(height: 15),
 
-                const SizedBox(height: 16),
+                        _buildDropdownFormField(
+                          label: 'Nick Cover',
+                          items: nickCoverItems,
+                          value: selectedNickCover,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedNickCover = value;
+                              row[55] = value ?? '';
+                            });
+                          },
+                          helpText: 'A = Good Nick - Male early or 1% Male Shedd at 5% Silk or reverse\nB = >10-25 % receptive silks at either end & no male shedding\nC = >25% receptive silks at either end & no male shedding',
+                          icon: Icons.eco,
+                        ),
+                        const SizedBox(height: 15),
 
-                _buildDropdownFormField(
-                  label: 'Reason Tidak Teraudit',
-                  items: reasonTidakTerauditItems,
-                  value: selectedReasonTidakTeraudit,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedReasonTidakTeraudit = value;
-                      row[67] = value ?? '';
-                    });
-                  },
-                  helpText: 'A= Discard/PLD\nB= Lokasi tidak ditemukan\nC = Mised Out',
-                ),
+                        _buildDropdownFormField(
+                          label: 'Crop Uniformity',
+                          items: cropUniformityItems,
+                          value: selectedCropUniformity,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedCropUniformity = value;
+                              row[56] = value ?? '';
+                            });
+                          },
+                          helpText: 'A=Good\nB= Fair\nC=Poor',
+                          icon: Icons.grass,
+                        ),
+                        const SizedBox(height: 20),
 
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      _showLoadingDialogAndClose();  // Tampilkan loading spinner
-                      _showLoadingAndSaveInBackground();
-                      _showConfirmationDialog;
-                      _saveToGoogleSheets(row); // Simpan data ke Google Sheets
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                    backgroundColor: Colors.green, // Warna background tombol
-                    foregroundColor: Colors.white, // Warna teks tombol
-                    shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
-                      borderRadius: BorderRadius.circular(30),
+                        // Isolation Section
+                        _buildSectionHeader('Isolation Assessment'),
+
+                        _buildDropdownFormField(
+                          label: 'Isolation (Y/N)',
+                          items: isolationItems,
+                          value: selectedIsolation,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedIsolation = value;
+                              row[57] = value ?? '';
+                            });
+                          },
+                          helpText: 'Y = Yes\nN = No',
+                          icon: Icons.fence,
+                        ),
+                        const SizedBox(height: 15),
+
+                        if (selectedIsolation == 'Y')
+                          Column(
+                            children: [
+                              _buildDropdownFormField(
+                                label: 'If "YES" IsolationType',
+                                items: isolationTypeItems,
+                                value: selectedIsolationType,
+                                onChanged: (value) {
+                                  setState(() {
+                                    selectedIsolationType = value;
+                                    row[58] = value ?? '';
+                                  });
+                                },
+                                helpText: 'A : Seed Production\nB : Jagung Komersial',
+                                icon: Icons.category,
+                              ),
+                              const SizedBox(height: 15),
+                              _buildDropdownFormField(
+                                label: 'If "YES" IsolationDist. (m)',
+                                items: isolationDistanceItems,
+                                value: selectedIsolationDistance,
+                                onChanged: (value) {
+                                  setState(() {
+                                    selectedIsolationDistance = value;
+                                    row[59] = value ?? '';
+                                  });
+                                },
+                                helpText: 'A (GF) = >300 m\nB (GF) = >200-<300 m\nC (RF) = >100 & <200 m\nD (RF) = <100 m',
+                                icon: Icons.social_distance,
+                              ),
+                              const SizedBox(height: 15),
+                            ],
+                          ),
+
+                        // QPIR Section
+                        _buildSectionHeader('QPIR & Closing Information'),
+
+                        _buildDropdownFormField(
+                          label: 'QPIR Applied',
+                          items: qPIRItems,
+                          value: selectedQPIR,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedQPIR = value;
+                              row[60] = value ?? '';
+                            });
+                          },
+                          helpText: 'Y = Ada\nN = Tidak Ada',
+                          icon: Icons.check_circle_outline,
+                        ),
+                        const SizedBox(height: 15),
+
+                        _buildDatePickerField('Closed out Date', 61, _dateClosedController),
+                        const SizedBox(height: 15),
+
+                        _buildDropdownFormField(
+                          label: 'FLAGGING',
+                          items: flaggingItems,
+                          value: selectedFlagging,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedFlagging = value;
+                              row[62] = value ?? '';
+                            });
+                          },
+                          helpText: 'GF/RFI/RFD/BF',
+                          icon: Icons.flag,
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Recommendation Section
+                        _buildSectionHeader('Recommendation'),
+
+                        _buildDropdownFormField(
+                          label: 'Recommendation',
+                          items: recommendationItems,
+                          value: selectedRecommendation,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedRecommendation = value;
+                              row[63] = value ?? '';
+                            });
+                          },
+                          helpText: 'Continue to Next Process/Discard',
+                          icon: Icons.recommend,
+                        ),
+                        const SizedBox(height: 15),
+
+                        _buildTextFormField('Remarks', 64, icon: Icons.comment, maxLines: 2),
+                        const SizedBox(height: 15),
+
+                        _buildTextFormField('Recommendation PLD (Ha)', 65,
+                            icon: Icons.area_chart,
+                            keyboardType: TextInputType.number,
+                            prefix: "'"),
+                            const SizedBox(height: 15),
+
+                        _buildDropdownFormField(
+                          label: 'Reason PLD',
+                          items: reasonPLDItems,
+                          value: selectedReasonPLD,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedReasonPLD = value;
+                              row[66] = value ?? '';
+                            });
+                          },
+                          helpText: 'A : No Plant\nB : Class D (Uniformity)',
+                          icon: Icons.info_outline,
+                        ),
+                        const SizedBox(height: 15),
+
+                        _buildDropdownFormField(
+                          label: 'Reason Tidak Teraudit',
+                          items: reasonTidakTerauditItems,
+                          value: selectedReasonTidakTeraudit,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedReasonTidakTeraudit = value;
+                              row[67] = value ?? '';
+                            });
+                          },
+                          helpText: 'A= Discard/PLD\nB= Lokasi tidak ditemukan\nC = Mised Out',
+                          icon: Icons.not_interested,
+                        ),
+
+                        const SizedBox(height: 30),
+
+                        // Save Button
+                        Center(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              if (_formKey.currentState!.validate()) {
+                                _showLoadingDialogAndClose();
+                                _showLoadingAndSaveInBackground();
+                                _showConfirmationDialog();
+                                _saveToGoogleSheets(row);
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size(220, 60),
+                              backgroundColor: Colors.green.shade700,
+                              foregroundColor: Colors.white,
+                              elevation: 5,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                            icon: const Icon(Icons.save, size: 26, color: Colors.white),
+                            label: const Text(
+                              'Simpan',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                     ),
                   ),
-                  child: const Text(
-                    'Simpan',
-                    style: TextStyle(fontSize: 20), // Ukuran teks lebih besar
-                  ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -469,55 +556,163 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
     );
   }
 
-  Widget _buildTextFormField(String label, int index) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextFormField(
-        initialValue: row[index],
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
+  Widget _buildSectionHeader(String title) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.green.shade800,
+          ),
         ),
-        onChanged: (value) {
-          setState(() {
-            row[index] = value;
-          });
-        },
+        const Divider(thickness: 2, color: Colors.green),
+        const SizedBox(height: 10),
+      ],
+    );
+  }
+
+  Widget _buildInfoCard({required String title, required String value, required IconData icon}) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.green.shade700),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildText2FormField(String label, int index) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+  Widget _buildTextFormField(String label, int index, {
+    IconData? icon,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+    String? prefix,
+  }) {
+    String initialValue = row[index];
+    if (prefix != null && initialValue.isNotEmpty && !initialValue.startsWith(prefix)) {
+      initialValue = '$prefix$initialValue';
+    } else if (prefix != null && initialValue.isEmpty) {
+      initialValue = prefix;
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: TextFormField(
-        // Menambahkan tanda kutip tunggal di depan nilai saat ditampilkan
-        initialValue: row[index].isNotEmpty ? "'${row[index]}" : "'0", // Default nilai '0'
-        keyboardType: TextInputType.number, // Input hanya angka
+        initialValue: initialValue,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.green.shade200),
         ),
-        onChanged: (value) {
-          setState(() {
-            // Memastikan nilai disimpan sebagai string dengan tanda kutip tunggal di depan
-            String cleanedValue = value.replaceAll("'", ""); // Menghapus tanda kutip sementara
-            row[index] = "'$cleanedValue"; // Tambahkan tanda kutip kembali untuk menyimpan sebagai teks
-          });
-        },
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.green.shade200),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+        ),
+        filled: true,
+        fillColor: Colors.white,
       ),
+      onChanged: (value) {
+        setState(() {
+          if (prefix != null) {
+            // Remove prefix for storage if it exists
+            if (value.startsWith(prefix)) {
+              value = value.substring(prefix.length);
+            }
+            // Add prefix back for storage
+            row[index] = '$prefix$value';
+          } else {
+            row[index] = value;
+          }
+        });
+      },
+    ),
     );
   }
 
   Widget _buildDatePickerField(String label, int index, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: TextFormField(
         controller: controller,
         readOnly: true,
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
+          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
         ),
         onTap: () async {
           DateTime? pickedDate = await showDatePicker(
@@ -525,6 +720,18 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
             initialDate: DateTime.now(),
             firstDate: DateTime(2000),
             lastDate: DateTime(2101),
+            builder: (context, child) {
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  colorScheme: ColorScheme.light(
+                    primary: Colors.green.shade700,
+                    onPrimary: Colors.white,
+                    onSurface: Colors.black,
+                  ),
+                ),
+                child: child!,
+              );
+            },
           );
 
           if (pickedDate != null) {
@@ -539,7 +746,6 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
     );
   }
 
-  // Fungsi untuk membangun dropdown
   Widget _buildDropdownFormField({
     required String label,
     required List<String> items,
@@ -547,8 +753,8 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
     required Function(String?) onChanged,
     String? hint,
     String? helpText,
+    IconData? icon,
   }) {
-    // Jika nilai tidak ada di dalam daftar item, set nilai awal menjadi null
     if (!items.contains(value)) {
       value = null;
     }
@@ -556,28 +762,62 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DropdownButtonFormField<String>(
-          decoration: InputDecoration(
-            labelText: label,
-            border: const OutlineInputBorder(),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withAlpha(51),
+                spreadRadius: 1,
+                blurRadius: 3,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          value: value,
-          hint: Text(hint ?? 'Survey membuktikan!'),
-          onChanged: onChanged,
-          items: items.map<DropdownMenuItem<String>>((String item) {
-            return DropdownMenuItem<String>(
-              value: item,
-              child: Text(item),
-            );
-          }).toList(),
+          child: DropdownButtonFormField<String>(
+            decoration: InputDecoration(
+              labelText: label,
+              labelStyle: TextStyle(color: Colors.green.shade700),
+              prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            value: value,
+            hint: Text(hint ?? 'Select an option '),
+            onChanged: onChanged,
+            items: items.map<DropdownMenuItem<String>>((String item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(item),
+              );
+            }).toList(),
+            dropdownColor: Colors.white,
+            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          ),
         ),
         if (helpText != null) ...[
-          const SizedBox(height: 5), // Spacer between dropdown and helper text
-          Text(
-            helpText,
-            style: const TextStyle(
-              fontStyle: FontStyle.italic, // Mengatur gaya italic pada helpText
-              color: Colors.grey, // Warna teks
+          Padding(
+            padding: const EdgeInsets.only(left: 12, top: 6),
+            child: Text(
+              helpText,
+              style: TextStyle(
+                fontStyle: FontStyle.italic,
+                color: Colors.grey.shade700,
+                fontSize: 12,
+              ),
             ),
           ),
         ],
@@ -585,11 +825,9 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
     );
   }
 
-  // Fungsi untuk menampilkan loading spinner hanya selama 5 detik
   void _showLoadingDialogAndClose() {
     bool dialogShown = false;
 
-    // Tampilkan dialog loading
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -603,8 +841,8 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
               Lottie.asset('assets/loading.json', width: 150, height: 150),
               const SizedBox(height: 20),
               const Text(
-                "Loading...",
-                style: TextStyle(color: Colors.white, fontSize: 18),
+                "Saving data...",
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -612,15 +850,12 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
       },
     );
 
-    // Timer untuk menutup dialog loading setelah 5 detik
     Timer(const Duration(seconds: 5), () {
       if (dialogShown && mounted) {
-        // Tutup dialog jika masih aktif dan widget masih terpasang
         Navigator.of(context, rootNavigator: true).pop();
 
-        // Lakukan navigasi ke layar Success dalam microtask tanpa async gap
         Future.microtask(() {
-          if (mounted) { // Pastikan konteks masih valid
+          if (mounted) {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
                 builder: (context) => SuccessScreen(
@@ -638,18 +873,18 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
   }
 
   void _showLoadingAndSaveInBackground() {
-    // Tampilkan loading spinner dan success setelah 5 detik
     _showLoadingDialogAndClose();
-
-    // Simpan data ke Hive
     _saveToHive(row);
-
-    // Jalankan proses penyimpanan di latar belakang
-    _saveToGoogleSheets(row);  // Panggil fungsi penyimpanan yang berjalan di background
+    _saveToGoogleSheets(row);
   }
 
   Future<void> _saveToGoogleSheets(List<String> rowData) async {
-    setState(() => isLoading = true);
+    setState(() {
+      isLoading = true;
+    });
+
+    final gSheetsApi = GoogleSheetsApi(spreadsheetId);
+    await gSheetsApi.init();
 
     String responseMessage;
     try {
@@ -665,11 +900,11 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
         }
       }
     } catch (e) {
-      await _logErrorToActivity('Gagal menyimpan data: ${e.toString()}');
+      await _logErrorToActivity('Failed to save data: ${e.toString()}');
       responseMessage = 'Failed to save data. Please try again.';
     } finally {
       setState(() {
-        isLoading = false; // Sembunyikan loader
+        isLoading = false;
       });
     }
 
@@ -679,80 +914,54 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
   }
 
   Future<void> _restoreGenerativeFormulas(GoogleSheetsApi gSheetsApi, Worksheet sheet, int rowIndex) async {
-    await sheet.values.insertValue( // Cek Result
+    await sheet.values.insertValue(
         '=IF(OR(AT$rowIndex=0;AT$rowIndex="");"Not Audited";"Audited")',
         row: rowIndex, column: 72);
-    await sheet.values.insertValue( // Cek Proses
+    await sheet.values.insertValue(
         '=IF(OR(AG$rowIndex>0;AO$rowIndex>0);"Audited";"Not Audited")',
         row: rowIndex, column: 73);
-    await sheet.values.insertValue( // Week of Audit 1
-        '=IFERROR(IF(OR(AG$rowIndex=0;AG$rowIndex="");"";WEEKNUM(AG$rowIndex;1));"")',
+    await sheet.values.insertValue(
+        '=IFERROR(IF(OR(AG$rowIndex=0;AG$rowIndex="");"";WEEKNUM(AG$rowIndex;1));"0")',
         row: rowIndex, column: 34);
-    await sheet.values.insertValue( // Week of Audit 2
-        '=IFERROR(IF(OR(AO$rowIndex=0;AO$rowIndex="");"";WEEKNUM(AO$rowIndex;1));"")',
+    await sheet.values.insertValue(
+        '=IFERROR(IF(OR(AO$rowIndex=0;AO$rowIndex="");"";WEEKNUM(AO$rowIndex;1));"0")',
         row: rowIndex, column: 42);
-    await sheet.values.insertValue( // Week of Audit 3
-        '=IFERROR(IF(OR(AT$rowIndex=0;AT$rowIndex="");"";WEEKNUM(AT$rowIndex;1));"")',
+    await sheet.values.insertValue(
+        '=IFERROR(IF(OR(AT$rowIndex=0;AT$rowIndex="");"";WEEKNUM(AT$rowIndex;1));"0")',
         row: rowIndex, column: 47);
-    // await sheet.values.insertValue( // Planting Date Rev (dd/mm)
-    //     '=IF(AI$rowIndex>0;AI$rowIndex;J$rowIndex)',
-    //     row: rowIndex, column: 23);
-    // await sheet.values.insertValue( // Standing Crops
-    //     '=I$rowIndex-U$rowIndex',
-    //     row: rowIndex, column: 24);
-    // await sheet.values.insertValue( // Hyperlink Coordinate
-    //     '=IFERROR(IF(AND(LEFT(R$rowIndex;4)-0<6;LEFT(R$rowIndex;4)-0>-11);HYPERLINK("HTTP://MAPS.GOOGLE.COM/maps?q="&R$rowIndex;"LINK");"Not Found");"")',
-    //     row: rowIndex, column: 25);
-    // await sheet.values.insertValue( // Fase
-    //     '=IF(I$rowIndex=0;"Discard";IF(X$rowIndex=0;"Harvest";IF(TODAY()-W$rowIndex<46;"Vegetative";IF(AND(TODAY()-W$rowIndex>45;TODAY()-W$rowIndex<56);"Pre Flowering";IF(AND(TODAY()-W$rowIndex>55;TODAY()-W$rowIndex<66);"Flowering";IF(AND(TODAY()-W$rowIndex>65;TODAY()-W$rowIndex<80);"Close Out";IF(TODAY()-W$rowIndex>79;"Male Cutting";"")))))))',
-    //     row: rowIndex, column: 27);
-    // await sheet.values.insertValue( // Flowering (Est + 57 DAP)
-    //     '=IF(OR(F$rowIndex="PX02";F$rowIndex="PX01";F$rowIndex="PX03";F$rowIndex="PX04";F$rowIndex="PX05";F$rowIndex="PX06";F$rowIndex="PX07";F$rowIndex="PX09");W$rowIndex+57;W$rowIndex+47)',
-    //     row: rowIndex, column: 28);
-    // await sheet.values.insertValue( // Week of Flowering Rev
-    //     '=WEEKNUM(AB$rowIndex)',
-    //     row: rowIndex, column: 29);
-    // await sheet.values.insertValue( // Week of Flowering PDN
-    //     '=WEEKNUM(IF(F$rowIndex="ac01";J$rowIndex+60;J$rowIndex+57))',
-    //     row: rowIndex, column: 30);
-    // await sheet.values.insertValue( // Effective Area (Ha)
-    //     '=G$rowIndex-H$rowIndex',
-    //     row: rowIndex, column: 9);
-    // await sheet.values.insertValue( // Discard Area (Ha)
-    //     '=TEXT(H$rowIndex; "#,##0.00")',
-    //     row: rowIndex, column: 8);
-    // await sheet.values.insertValue( // Total Area Planted (Ha)
-    //     '=TEXT(G$rowIndex; "#,##0.00")',
-    //     row: rowIndex, column: 7);
-
-    debugPrint("Rumus berhasil diterapkan di Generative pada baris $rowIndex.");
+    debugPrint("Formulas successfully applied in Generative at row $rowIndex.");
   }
 
-  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber) async { // Mencari baris berdasarkan fieldNumber
-
-    final List<List<String>> rows = await sheet.values.allRows(); // Ambil semua baris
-    for (int i = 0; i < rows.length; i++) { // Iterasi setiap baris
-      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) { // Kolom ke-3 untuk fieldNumber
-        return i + 1; // Index baris di Google Sheets dimulai dari 1
-      }
-    }
-    return -1; // Tidak ditemukan
+  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber)
+  async {
+  final List<List<String>> rows = await sheet.values.allRows();
+  for (int i = 0; i < rows.length; i++) {
+  if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) {
+  return i + 1;
   }
+  }
+  return -1;
+}
 
   Future<void> _showConfirmationDialog() async {
     final shouldSave = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Confirm Save'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Confirm Save', style: TextStyle(color: Colors.green.shade800)),
         content: Text('Are you sure you want to save the changes?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey.shade700)),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Save'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Save'),
           ),
         ],
       ),
@@ -762,61 +971,60 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
     }
   }
 
-  void _validateAndSave() {
-    if (_formKey.currentState!.validate()) {
-      if (_isDataValid()) {
-        _showLoadingDialogAndClose();
-        _saveToGoogleSheets(row);
-      } else {
-        _showSnackbar('Please complete all required fields');
-      }
-    }
-  }
-
-  bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty); // Pastikan semua field terisi
-  }
-
-  void _showSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  void _navigateBasedOnResponse(BuildContext context, String response) {
-    if (response == 'Data successfully saved to Audit Database') {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => SuccessScreen(
-            row: row,
-            userName: userName,
-            userEmail: userEmail,
-            region: widget.region,
-          ),
-        ),
-      );
-    } else if (response == 'Failed to save data. Please try again.') {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => FailedScreen(), // Buat halaman FailedScreen untuk tampilan gagal
-        ),
-      );
+void _validateAndSave() {
+  if (_formKey.currentState!.validate()) {
+    if (_isDataValid()) {
+      _showLoadingDialogAndClose();
+      _saveToGoogleSheets(row);
     } else {
-      // Tampilkan pesan error atau tetap di halaman
-      _showSnackbar('Unknown response: $response');
+      _showSnackbar('Please complete all required fields');
     }
   }
+}
 
-  String _convertToDateIfNecessary(String value) {
-    try {
-      final parsedNumber = double.tryParse(value);
-      if (parsedNumber != null) {
-        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
-        return DateFormat('dd/MM/yyyy').format(date);
-      }
-    } catch (e) {
-      // debugPrint("Error converting number to date: $e"); // Mengganti print dengan debugPrint
-    }
-    return value;
+bool _isDataValid() {
+  return row.every((field) => field.isNotEmpty);
+}
+
+void _showSnackbar(String message) {
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+}
+
+void _navigateBasedOnResponse(BuildContext context, String response) {
+  if (response == 'Data successfully saved to Audit Database') {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => SuccessScreen(
+          row: row,
+          userName: userName,
+          userEmail: userEmail,
+          region: widget.region,
+        ),
+      ),
+    );
+  } else if (response == 'Failed to save data. Please try again.') {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => FailedScreen(),
+      ),
+    );
+  } else {
+    _showSnackbar('Unknown response: $response');
   }
+}
+
+String _convertToDateIfNecessary(String value) {
+  try {
+    final parsedNumber = double.tryParse(value);
+    if (parsedNumber != null) {
+      final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
+      return DateFormat('dd/MM/yyyy').format(date);
+    }
+  } catch (e) {
+    // Handle parsing error
+  }
+  return value;
+}
 }
 
 class SuccessScreen extends StatelessWidget {
@@ -842,7 +1050,7 @@ class SuccessScreen extends StatelessWidget {
           'Success',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.green,
+        backgroundColor: Colors.green.shade700,
       ),
       body: Center(
         child: Column(
@@ -857,26 +1065,17 @@ class SuccessScreen extends StatelessWidget {
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () async {
-                // Tampilkan dialog loading
                 _showLoadingDialog(context);
-
-                // Simpan instance NavigatorState untuk digunakan setelah async gap
                 final navigator = Navigator.of(context);
-
-                // Simpan data ke Google Sheets
                 await _saveBackActivityToGoogleSheets(region);
-
-                // Tutup dialog loading
                 navigator.pop();
-
-                // Kembali ke layar sebelumnya
                 navigator.pop();
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.green, // Warna background tombol
-                foregroundColor: Colors.white, // Warna teks tombol
-                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                minimumSize: const Size(200, 60),
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
@@ -891,7 +1090,6 @@ class SuccessScreen extends StatelessWidget {
     );
   }
 
-  // Fungsi untuk menampilkan dialog loading
   void _showLoadingDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -905,7 +1103,7 @@ class SuccessScreen extends StatelessWidget {
               Lottie.asset('assets/loading.json', width: 150, height: 150),
               const SizedBox(height: 20),
               const Text(
-                "Loading...",
+                "Ngrantos sekedap...",
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ],
@@ -960,7 +1158,7 @@ class FailedScreen extends StatelessWidget {
           'Failed',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.red,
+        backgroundColor: Colors.red.shade700,
       ),
       body: Center(
         child: Column(
@@ -978,10 +1176,10 @@ class FailedScreen extends StatelessWidget {
                 Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.red, // Warna background tombol
-                foregroundColor: Colors.white, // Warna teks tombol
-                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                minimumSize: const Size(200, 60),
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),

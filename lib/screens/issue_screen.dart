@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'google_sheets_api.dart';
 import 'success_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'config_manager.dart'; // Import ConfigManager
+import 'config_manager.dart';
+import 'package:lottie/lottie.dart';
 
 class IssueScreen extends StatefulWidget {
   final Function(List<String>) onSave;
-  final String selectedFA; // Terima district dari HomeScreen
+  final String selectedFA;
 
   const IssueScreen({
     super.key,
@@ -21,16 +22,16 @@ class IssueScreen extends StatefulWidget {
 class IssueScreenState extends State<IssueScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _detailController = TextEditingController();
-  String? _spreadsheetId; // Tambahkan variabel Spreadsheet ID
+  String? _spreadsheetId;
   final String _worksheetTitle = 'Issue';
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadSpreadsheetId(); // Ambil Spreadsheet ID sesuai Region
+    _loadSpreadsheetId();
   }
 
-  // Ambil Spreadsheet ID dari ConfigManager
   Future<void> _loadSpreadsheetId() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String? selectedRegion = prefs.getString('selectedRegion');
@@ -42,21 +43,27 @@ class IssueScreenState extends State<IssueScreen> {
   }
 
   Future<void> _submitData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
     final String issueTitle = _titleController.text.trim();
     final String detailIssue = _detailController.text.trim();
-    final String area = widget.selectedFA; // Ambil district dari HomeScreen
+    final String area = widget.selectedFA;
 
-    // Validasi input
     if (_spreadsheetId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pilih Region terlebih dahulu sebelum menyimpan issue!')),
-      );
+      _showErrorSnackBar('Please select a region before saving the issue!');
+      setState(() {
+        _isLoading = false;
+      });
       return;
     }
+
     if (issueTitle.isEmpty || detailIssue.isEmpty || area.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mohon isi semua kolom')),
-      );
+      _showErrorSnackBar('Please fill in all fields');
+      setState(() {
+        _isLoading = false;
+      });
       return;
     }
 
@@ -66,13 +73,16 @@ class IssueScreenState extends State<IssueScreen> {
       detailIssue,
     ];
 
-    final GoogleSheetsApi googleSheetsApi = GoogleSheetsApi(_spreadsheetId!); // Inisialisasi dinamis
+    final GoogleSheetsApi googleSheetsApi = GoogleSheetsApi(_spreadsheetId!);
     final navigator = Navigator.of(context);
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     try {
-      await googleSheetsApi.init(); // Inisialisasi API
-      await googleSheetsApi.addRow(_worksheetTitle, data); // Kirim data ke Google Sheets
+      await googleSheetsApi.init();
+      await googleSheetsApi.addRow(_worksheetTitle, data);
+
+      setState(() {
+        _isLoading = false;
+      });
 
       navigator.push(
         MaterialPageRoute(
@@ -80,10 +90,24 @@ class IssueScreenState extends State<IssueScreen> {
         ),
       );
     } catch (e) {
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(content: Text('Gagal menyimpan data')),
-      );
+      setState(() {
+        _isLoading = false;
+      });
+      _showErrorSnackBar('Failed to save data');
     }
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade800,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
   }
 
   @override
@@ -91,83 +115,232 @@ class IssueScreenState extends State<IssueScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Issue',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          'Report Issue',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
         ),
-        backgroundColor: Colors.green,
+        backgroundColor: Colors.green.shade700,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            bottom: Radius.circular(20),
+          ),
+        ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ListView(
-          children: [
-            _buildTextField('Issue Title', _titleController),
-            _buildDropdownField('Area (District)', widget.selectedFA),
-            _buildMultilineField('Detail issue', _detailController),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _submitData,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Submit'),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.green.shade50, Colors.white],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-          ],
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: ListView(
+                children: [
+                  const SizedBox(height: 20),
+                  _buildTextField(
+                    'Issue Title',
+                    _titleController,
+                    Icons.title,
+                    'Enter a descriptive title',
+                  ),
+                  const SizedBox(height: 16),
+                  _buildAreaField('Area (District)', widget.selectedFA),
+                  const SizedBox(height: 16),
+                  _buildMultilineField(
+                    'Detail Issue',
+                    _detailController,
+                    Icons.description,
+                    'Describe the issue in detail',
+                  ),
+                  const SizedBox(height: 30),
+                  _buildSubmitButton(),
+                  const SizedBox(height: 10),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
+  Widget _buildTextField(
+      String label,
+      TextEditingController controller,
+      IconData icon,
+      String hint,
+      ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            color: Colors.black87,
+          ),
         ),
-      ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withAlpha(25),
+                spreadRadius: 1,
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: controller,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(color: Colors.grey.shade400),
+              prefixIcon: Icon(icon, color: Colors.green),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildDropdownField(String label, String selectedFA) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
+  Widget _buildAreaField(String label, String selectedFA) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            color: Colors.black87,
+          ),
         ),
-        child: DropdownButton<String>(
-          value: selectedFA,
-          isExpanded: true,
-          items: <String>[selectedFA].map((String value) {
-            return DropdownMenuItem<String>(
-              value: value,
-              child: Text(value),
-            );
-          }).toList(),
-          onChanged: (String? newValue) {
-            // Disable interaction (hanya satu pilihan)
-          },
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withAlpha(25),
+                spreadRadius: 1,
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: InputDecorator(
+            decoration: InputDecoration(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            child: DropdownButton<String>(
+              value: selectedFA,
+              isExpanded: true,
+              items: <String>[selectedFA].map((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                // Disable interaction
+              },
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 
-  Widget _buildMultilineField(String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextField(
-        controller: controller,
-        maxLines: 5, // Membuat kolom input menjadi multiline
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
+  Widget _buildMultilineField(
+      String label,
+      TextEditingController controller,
+      IconData icon,
+      String hint,
+      ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withAlpha(25),
+                spreadRadius: 1,
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: controller,
+            maxLines: 5,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(color: Colors.grey.shade400),
+              prefixIcon: Icon(icon, color: Colors.green),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSubmitButton() {
+    return ElevatedButton(
+      onPressed: _isLoading ? null : _submitData,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
+      child: _isLoading
+          ? Center(child: Lottie.asset('assets/loading.json'))
+          : const Text('Ngirim', style: TextStyle(fontSize: 16)),
     );
   }
 }
