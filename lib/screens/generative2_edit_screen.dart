@@ -3,15 +3,15 @@ import 'package:intl/intl.dart';
 import 'google_sheets_api.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:lottie/lottie.dart';
-import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
-import 'dart:async';  // Untuk menggunakan Timer
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'config_manager.dart';
 
 class Generative2EditScreen extends StatefulWidget {
   final List<String> row;
   final String region;
-  final Function(List<String>) onSave; // Callback untuk mengirim data yang diperbarui
+  final Function(List<String>) onSave;
 
   const Generative2EditScreen({
     super.key,
@@ -20,18 +20,17 @@ class Generative2EditScreen extends StatefulWidget {
     required this.onSave});
 
   @override
-  Generative2EditScreenState createState() => Generative2EditScreenState(); // Menghapus underscore agar public
+  Generative2EditScreenState createState() => Generative2EditScreenState();
 }
 
 class Generative2EditScreenState extends State<Generative2EditScreen> {
   late List<String> row;
-  late GoogleSheetsApi gSheetsApi;
   final _formKey = GlobalKey<FormState>();
 
   late TextEditingController _dateAudit2Controller;
 
-  String userEmail = 'Fetching...'; // Variabel untuk email pengguna
-  String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
+  String userEmail = 'Fetching...';
+  String userName = 'Fetching...';
   late String spreadsheetId;
 
   String? selectedFemaleShed1;
@@ -42,10 +41,12 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
   final List<String> sheddingMale1Items = ['A', 'B'];
   final List<String> sheddingFemale1Items = ['A', 'B'];
 
+  bool isLoading = false;
+
   @override
   void initState() {
     super.initState();
-    _loadUserCredentials(); // Panggil satu fungsi untuk mengambil nama dan email pengguna
+    _loadUserCredentials();
     row = List<String>.from(widget.row);
 
     _initHive();
@@ -53,17 +54,10 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
 
     _dateAudit2Controller = TextEditingController(text: _convertToDateIfNecessary(row[40]));
 
-    // Inisialisasi GoogleSheetsApi dengan spreadsheetId yang sesuai
-    gSheetsApi = GoogleSheetsApi(spreadsheetId);
-    gSheetsApi.init(); // Pastikan API diinisialisasi di awal
-
-    // Inisialisasi dropdown dengan nilai yang ada di row
     selectedFemaleShed1 = row[42];
     selectedSheddingMale1 = row[43];
     selectedSheddingFemale1 = row[44];
   }
-
-  bool isLoading = false;  // Untuk mengatur status loading
 
   Future<void> _fetchSpreadsheetId() async {
     spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
@@ -71,16 +65,15 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
 
   void _initHive() async {
     await Hive.initFlutter();
-    await Hive.openBox('generativeData');  // Buat box Hive untuk menyimpan data vegetative
+    await Hive.openBox('generativeData');
   }
 
   Future<void> _saveToHive(List<String> rowData) async {
     var box = await Hive.openBox('generativeData');
-    final cacheKey = 'detailScreenData_${rowData[2]}'; // Menggunakan fieldNumber atau ID unik lainnya sebagai kunci
-    await box.put(cacheKey, rowData); // Simpan hanya rowData ke Hive
+    final cacheKey = 'detailScreenData_${rowData[2]}';
+    await box.put(cacheKey, rowData);
   }
 
-  // Fungsi untuk mengambil userName dan userEmail dari SharedPreferences
   Future<void> _loadUserCredentials() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -93,91 +86,159 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Field Audit 2 Edit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.green,
+        title: const Text(
+            'Field Audit 2 Edit',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            )
+        ),
+        backgroundColor: Colors.green.shade700,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                // Tampilkan progress bar di atas form jika sedang loading
-                if (isLoading) const LinearProgressIndicator(),  // Tambahkan di sini
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.green.shade700, Colors.green.shade100],
+            stops: const [0.0, 0.3],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                child: Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isLoading)
+                          const LinearProgressIndicator(
+                            backgroundColor: Colors.green,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
 
-                _buildDatePickerField('Date of Audit 2 (dd/MM)', 40, _dateAudit2Controller),
+                        const SizedBox(height: 10),
 
-                const SizedBox(height: 10),
+                        // Field Information Section
+                        _buildSectionHeader('Field Information'),
 
-                _buildDropdownFormField(
-                  label: 'Female Shed.',
-                  items: femaleShed1Items,
-                  value: selectedFemaleShed1,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedFemaleShed1 = value;
-                      row[42] = value ?? '';
-                    });
-                  },
-                  helpText: 'A (GF) = 0-5 shedd / Ha\nB (RF) = 6-30 shedd / Ha\nC (BF) = >30 shedd / Ha',
-                ),
+                        _buildInfoCard(
+                          title: 'Field Number',
+                          value: row[2],
+                          icon: Icons.numbers,
+                        ),
 
-                const SizedBox(height: 16),
+                        _buildInfoCard(
+                          title: 'Region',
+                          value: widget.region,
+                          icon: Icons.location_on,
+                        ),
 
-                _buildDropdownFormField(
-                  label: 'Shedding Offtype & CVL Male',
-                  items: sheddingMale1Items,
-                  value: selectedSheddingMale1,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedSheddingMale1 = value;
-                      row[43] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = 0 plants / Ha\nB = > 0 plants / Ha',
-                ),
+                        const SizedBox(height: 20),
 
-                const SizedBox(height: 16),
+                        // Audit Information Section
+                        _buildSectionHeader('Audit 2 Information'),
 
-                _buildDropdownFormField(
-                  label: 'Shedding Offtype & CVL Female',
-                  items: sheddingFemale1Items,
-                  value: selectedSheddingFemale1,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedSheddingFemale1 = value;
-                      row[44] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = 0-5 plants / Ha\nB = > 5 plants / Ha',
-                ),
+                        _buildDatePickerField('Date of Audit 2 (dd/MM)', 40, _dateAudit2Controller),
+                        const SizedBox(height: 20),
 
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      _showLoadingDialogAndClose();  // Tampilkan loading spinner
-                      _showLoadingAndSaveInBackground();
-                      _showConfirmationDialog;
-                      _saveToGoogleSheets(row); // Simpan data ke Google Sheets
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                    backgroundColor: Colors.green, // Warna background tombol
-                    foregroundColor: Colors.white, // Warna teks tombol
-                    shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
-                      borderRadius: BorderRadius.circular(30),
+                        // Female Shedding Section
+                        _buildSectionHeader('Female Shedding Assessment'),
+
+                        _buildDropdownFormField(
+                          label: 'Female Shedding',
+                          items: femaleShed1Items,
+                          value: selectedFemaleShed1,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedFemaleShed1 = value;
+                              row[42] = value ?? '';
+                            });
+                          },
+                          helpText: 'A (GF) = 0-5 shedd / Ha\nB (RF) = 6-30 shedd / Ha\nC (BF) = >30 shedd / Ha',
+                          icon: Icons.spa,
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Shedding Offtype Section
+                        _buildSectionHeader('Shedding Offtype Assessment'),
+
+                        _buildDropdownFormField(
+                          label: 'Shedding Offtype & CVL Male',
+                          items: sheddingMale1Items,
+                          value: selectedSheddingMale1,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedSheddingMale1 = value;
+                              row[43] = value ?? '';
+                            });
+                          },
+                          helpText: 'A = 0 plants / Ha\nB = > 0 plants / Ha',
+                          icon: Icons.male,
+                        ),
+                        const SizedBox(height: 15),
+
+                        _buildDropdownFormField(
+                          label: 'Shedding Offtype & CVL Female',
+                          items: sheddingFemale1Items,
+                          value: selectedSheddingFemale1,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedSheddingFemale1 = value;
+                              row[44] = value ?? '';
+                            });
+                          },
+                          helpText: 'A = 0-5 plants / Ha\nB = > 5 plants / Ha',
+                          icon: Icons.female,
+                        ),
+
+                        const SizedBox(height: 30),
+
+                        // Save Button
+                        Center(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              if (_formKey.currentState!.validate()) {
+                                _showLoadingDialogAndClose();
+                                _showLoadingAndSaveInBackground();
+                                _showConfirmationDialog;
+                                _saveToGoogleSheets(row);
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size(220, 60),
+                              backgroundColor: Colors.green.shade700,
+                              foregroundColor: Colors.white,
+                              elevation: 5,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                            icon: const Icon(Icons.save, size: 24, color: Colors.white),
+                            label: const Text(
+                              'Simpan',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                     ),
                   ),
-                  child: const Text(
-                    'Simpan',
-                    style: TextStyle(fontSize: 20), // Ukuran teks lebih besar
-                  ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -185,15 +246,96 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
     );
   }
 
+  Widget _buildSectionHeader(String title) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.green.shade800,
+          ),
+        ),
+        const Divider(thickness: 2, color: Colors.green),
+        const SizedBox(height: 10),
+      ],
+    );
+  }
+
+  Widget _buildInfoCard({required String title, required String value, required IconData icon}) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.green.shade700),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildDatePickerField(String label, int index, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: TextFormField(
         controller: controller,
         readOnly: true,
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
+          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
         ),
         onTap: () async {
           DateTime? pickedDate = await showDatePicker(
@@ -201,6 +343,18 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
             initialDate: DateTime.now(),
             firstDate: DateTime(2000),
             lastDate: DateTime(2101),
+            builder: (context, child) {
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  colorScheme: ColorScheme.light(
+                    primary: Colors.green.shade700,
+                    onPrimary: Colors.white,
+                    onSurface: Colors.black,
+                  ),
+                ),
+                child: child!,
+              );
+            },
           );
 
           if (pickedDate != null) {
@@ -215,7 +369,6 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
     );
   }
 
-  // Fungsi untuk membangun dropdown
   Widget _buildDropdownFormField({
     required String label,
     required List<String> items,
@@ -223,8 +376,8 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
     required Function(String?) onChanged,
     String? hint,
     String? helpText,
+    IconData? icon,
   }) {
-    // Jika nilai tidak ada di dalam daftar item, set nilai awal menjadi null
     if (!items.contains(value)) {
       value = null;
     }
@@ -232,28 +385,62 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DropdownButtonFormField<String>(
-          decoration: InputDecoration(
-            labelText: label,
-            border: const OutlineInputBorder(),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withAlpha(51),
+                spreadRadius: 1,
+                blurRadius: 3,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          value: value,
-          hint: Text(hint ?? 'Survey membuktikan!'),
-          onChanged: onChanged,
-          items: items.map<DropdownMenuItem<String>>((String item) {
-            return DropdownMenuItem<String>(
-              value: item,
-              child: Text(item),
-            );
-          }).toList(),
+          child: DropdownButtonFormField<String>(
+            decoration: InputDecoration(
+              labelText: label,
+              labelStyle: TextStyle(color: Colors.green.shade700),
+              prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            value: value,
+            hint: Text(hint ?? 'Select an option'),
+            onChanged: onChanged,
+            items: items.map<DropdownMenuItem<String>>((String item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(item),
+              );
+            }).toList(),
+            dropdownColor: Colors.white,
+            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          ),
         ),
         if (helpText != null) ...[
-          const SizedBox(height: 5), // Spacer between dropdown and helper text
-          Text(
-            helpText,
-            style: const TextStyle(
-              fontStyle: FontStyle.italic, // Mengatur gaya italic pada helpText
-              color: Colors.grey, // Warna teks
+          Padding(
+            padding: const EdgeInsets.only(left: 12, top: 6),
+            child: Text(
+              helpText,
+              style: TextStyle(
+                fontStyle: FontStyle.italic,
+                color: Colors.grey.shade700,
+                fontSize: 12,
+              ),
             ),
           ),
         ],
@@ -261,11 +448,9 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
     );
   }
 
-  // Fungsi untuk menampilkan loading spinner hanya selama 5 detik
   void _showLoadingDialogAndClose() {
     bool dialogShown = false;
 
-    // Tampilkan dialog loading
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -279,8 +464,8 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
               Lottie.asset('assets/loading.json', width: 150, height: 150),
               const SizedBox(height: 20),
               const Text(
-                "Loading...",
-                style: TextStyle(color: Colors.white, fontSize: 18),
+                "Saving data...",
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -288,15 +473,12 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
       },
     );
 
-    // Timer untuk menutup dialog loading setelah 5 detik
     Timer(const Duration(seconds: 5), () {
       if (dialogShown && mounted) {
-        // Tutup dialog jika masih aktif dan widget masih terpasang
         Navigator.of(context, rootNavigator: true).pop();
 
-        // Lakukan navigasi ke layar Success dalam microtask tanpa async gap
         Future.microtask(() {
-          if (mounted) { // Pastikan konteks masih valid
+          if (mounted) {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
                 builder: (context) => SuccessScreen(
@@ -314,18 +496,18 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
   }
 
   void _showLoadingAndSaveInBackground() {
-    // Tampilkan loading spinner dan success setelah 5 detik
     _showLoadingDialogAndClose();
-
-    // Simpan data ke Hive
     _saveToHive(row);
-
-    // Jalankan proses penyimpanan di latar belakang
-    _saveToGoogleSheets(row);  // Panggil fungsi penyimpanan yang berjalan di background
+    _saveToGoogleSheets(row);
   }
 
   Future<void> _saveToGoogleSheets(List<String> rowData) async {
-    setState(() => isLoading = true);
+    setState(() {
+      isLoading = true;
+    });
+
+    final gSheetsApi = GoogleSheetsApi(spreadsheetId);
+    await gSheetsApi.init();
 
     String responseMessage;
     try {
@@ -345,7 +527,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
       responseMessage = 'Failed to save data. Please try again.';
     } finally {
       setState(() {
-        isLoading = false; // Sembunyikan loader
+        isLoading = false;
       });
     }
 
@@ -355,49 +537,53 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
   }
 
   Future<void> _restoreGenerativeFormulas(GoogleSheetsApi gSheetsApi, Worksheet sheet, int rowIndex) async {
-    await sheet.values.insertValue( // Cek Result
+    await sheet.values.insertValue(
         '=IF(OR(AT$rowIndex=0;AT$rowIndex="");"Not Audited";"Audited")',
         row: rowIndex, column: 72);
-    await sheet.values.insertValue( // Cek Proses
+    await sheet.values.insertValue(
         '=IF(OR(AG$rowIndex>0;AO$rowIndex>0);"Audited";"Not Audited")',
         row: rowIndex, column: 73);
-    await sheet.values.insertValue( // Week of Audit 1
-        '=IFERROR(IF(OR(AG$rowIndex=0;AG$rowIndex="");" ";WEEKNUM(AG$rowIndex;1));"")',
+    await sheet.values.insertValue(
+        '=IFERROR(IF(OR(AG$rowIndex=0;AG$rowIndex="");"";WEEKNUM(AG$rowIndex;1));"0")',
         row: rowIndex, column: 34);
-    await sheet.values.insertValue( // Week of Audit 2
-        '=IFERROR(IF(OR(AO$rowIndex=0;AO$rowIndex="");" ";WEEKNUM(AO$rowIndex;1));"")',
+    await sheet.values.insertValue(
+        '=IFERROR(IF(OR(AO$rowIndex=0;AO$rowIndex="");"";WEEKNUM(AO$rowIndex;1));"0")',
         row: rowIndex, column: 42);
-    await sheet.values.insertValue( // Week of Audit 3
-        '=IFERROR(IF(OR(AT$rowIndex=0;AT$rowIndex="");" ";WEEKNUM(AT$rowIndex;1));"")',
+    await sheet.values.insertValue(
+        '=IFERROR(IF(OR(AT$rowIndex=0;AT$rowIndex="");"";WEEKNUM(AT$rowIndex;1));"0")',
         row: rowIndex, column: 47);
     debugPrint("Rumus berhasil diterapkan di Generative pada baris $rowIndex.");
   }
 
-  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber) async { // Mencari baris berdasarkan fieldNumber
-
-    final List<List<String>> rows = await sheet.values.allRows(); // Ambil semua baris
-    for (int i = 0; i < rows.length; i++) { // Iterasi setiap baris
-      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) { // Kolom ke-3 untuk fieldNumber
-        return i + 1; // Index baris di Google Sheets dimulai dari 1
+  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber) async {
+    final List<List<String>> rows = await sheet.values.allRows();
+    for (int i = 0; i < rows.length; i++) {
+      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) {
+        return i + 1;
       }
     }
-    return -1; // Tidak ditemukan
+    return -1;
   }
 
   Future<void> _showConfirmationDialog() async {
     final shouldSave = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Confirm Save'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Confirm Save', style: TextStyle(color: Colors.green.shade800)),
         content: Text('Are you sure you want to save the changes?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey.shade700)),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Save'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Save'),
           ),
         ],
       ),
@@ -419,7 +605,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
   }
 
   bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty); // Pastikan semua field terisi
+    return row.every((field) => field.isNotEmpty);
   }
 
   void _showSnackbar(String message) {
@@ -441,11 +627,10 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
     } else if (response == 'Failed to save data. Please try again.') {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => FailedScreen(), // Buat halaman FailedScreen untuk tampilan gagal
+          builder: (context) => FailedScreen(),
         ),
       );
     } else {
-      // Tampilkan pesan error atau tetap di halaman
       _showSnackbar('Unknown response: $response');
     }
   }
@@ -458,7 +643,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
         return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
-      // debugPrint("Error converting number to date: $e"); // Mengganti print dengan debugPrint
+      // Handle parsing error
     }
     return value;
   }
@@ -487,7 +672,7 @@ class SuccessScreen extends StatelessWidget {
           'Success',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.green,
+        backgroundColor: Colors.green.shade700,
       ),
       body: Center(
         child: Column(
@@ -502,26 +687,17 @@ class SuccessScreen extends StatelessWidget {
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () async {
-                // Tampilkan dialog loading
                 _showLoadingDialog(context);
-
-                // Simpan instance NavigatorState untuk digunakan setelah async gap
                 final navigator = Navigator.of(context);
-
-                // Simpan data ke Google Sheets
                 await _saveBackActivityToGoogleSheets(region);
-
-                // Tutup dialog loading
                 navigator.pop();
-
-                // Kembali ke layar sebelumnya
                 navigator.pop();
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.green, // Warna background tombol
-                foregroundColor: Colors.white, // Warna teks tombol
-                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                minimumSize: const Size(200, 60),
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
@@ -536,7 +712,6 @@ class SuccessScreen extends StatelessWidget {
     );
   }
 
-  // Fungsi untuk menampilkan dialog loading
   void _showLoadingDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -550,7 +725,7 @@ class SuccessScreen extends StatelessWidget {
               Lottie.asset('assets/loading.json', width: 150, height: 150),
               const SizedBox(height: 20),
               const Text(
-                "Loading...",
+                "LoadingNgrantos sekedap...",
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ],
@@ -605,7 +780,7 @@ class FailedScreen extends StatelessWidget {
           'Failed',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.red,
+        backgroundColor: Colors.red.shade700,
       ),
       body: Center(
         child: Column(
@@ -623,10 +798,10 @@ class FailedScreen extends StatelessWidget {
                 Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.red, // Warna background tombol
-                foregroundColor: Colors.white, // Warna teks tombol
-                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                minimumSize: const Size(200, 60),
+                backgroundColor: Colors.red. shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),

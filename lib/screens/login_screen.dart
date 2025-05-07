@@ -23,99 +23,98 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isUser = false;
   bool _isPsp = false;
   String _errorMessage = '';
-
-  String userEmail = 'Fetching...';
-  String userName = 'Fetching...';
+  bool _isLoading = false;
 
   @override
-  void initState() {
-    super.initState();
-    _fetchUserData();
-  }
-
-  Future<void> _fetchUserData() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    setState(() {
-      userEmail = prefs.getString('userEmail') ?? 'Unknown Email';
-      userName = prefs.getString('userName') ?? 'Pengguna';
-    });
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   void _login() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
       setState(() {
-        _errorMessage = "Email dan password tidak boleh kosong!";
+        _errorMessage = "Email and password cannot be empty!";
+        _isLoading = false;
+      });
+      return;
+    }
+
+    if (!_isAdmin && !_isUser && !_isPsp) {
+      setState(() {
+        _errorMessage = "Please select a role before login.";
+        _isLoading = false;
       });
       return;
     }
 
     final user = await _auth.signInWithEmailAndPassword(email, password);
     if (user != null) {
-      // Tentukan role berdasarkan input pengguna
       String? selectedRole;
       if (_isAdmin) selectedRole = 'admin';
       if (_isPsp) selectedRole = 'psp';
       if (_isUser) selectedRole = 'user';
 
-      if (selectedRole == null) {
-        setState(() {
-          _errorMessage = "Pilih salah satu role sebelum login.";
-        });
-        return;
-      }
-
-      await _redirectUserBasedOnRole(email, selectedRole);
+      await _redirectUserBasedOnRole(email, selectedRole!);
     } else {
       setState(() {
-        _errorMessage = "Login gagal! Cek email dan password.";
+        _errorMessage = "Login failed! Please check your credentials.";
+        _isLoading = false;
       });
     }
   }
 
   Future<void> _loginWithGoogle() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    if (!_isAdmin && !_isUser && !_isPsp) {
+      setState(() {
+        _errorMessage = "Please select a role before login.";
+        _isLoading = false;
+      });
+      return;
+    }
+
     final user = await _googleSignInService.signInWithGoogle(forceSignIn: true);
     if (user != null) {
       String? selectedRole;
+      if (_isAdmin) selectedRole = 'admin';
+      if (_isPsp) selectedRole = 'psp';
+      if (_isUser) selectedRole = 'user';
 
-      if (_isAdmin) {
-        selectedRole = 'admin';
-      } else if (_isPsp) {
-        selectedRole = 'psp';
-      } else if (_isUser) {
-        selectedRole = 'user';
-      }
-
-      if (selectedRole == null) {
-        setState(() {
-          _errorMessage = "Pilih role sebelum login.";
-        });
-        return;
-      }
-
-      await _auth.createUserInFirestoreIfNeeded(user.email, role: selectedRole);
+      await _auth.createUserInFirestoreIfNeeded(user.email, role: selectedRole!);
       await _redirectUserBasedOnRole(user.email, selectedRole);
 
-      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final prefs = await SharedPreferences.getInstance();
       await prefs.setString('userEmail', user.email);
       await prefs.setString('userName', user.email);
-
-      setState(() {
-        userEmail = user.email;
-        userName = user.email;
-      });
     } else {
       setState(() {
-        _errorMessage = "Google Sign-In gagal!";
+        _errorMessage = "Google Sign-In failed!";
+        _isLoading = false;
       });
     }
   }
 
   Future<void> _loginWithApple() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
     try {
-      // Meminta kredensial Apple ID
       final appleCredential = await SignInWithApple.getAppleIDCredential(
         scopes: [
           AppleIDAuthorizationScopes.email,
@@ -123,35 +122,27 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       );
 
-      // Mengambil email dan nama lengkap
-      final email = appleCredential.email ?? "Tidak diketahui";
-      final fullName =
-          appleCredential.givenName ?? "Pengguna"; // Nama pertama jika tersedia
+      final email = appleCredential.email ?? "unknown@apple.com";
+      final fullName = appleCredential.givenName ?? "Apple User";
 
       if (!mounted) return;
-      setState(() {
-        userEmail = email;
-        userName = fullName;
-      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Berhasil login sebagai $userName ($userEmail)"),
+          content: Text("Successfully logged in as $fullName ($email)"),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } catch (e) {
       setState(() {
-        _errorMessage = "Ups! Login gagal: Hape kamu bukan iPhone";
+        _errorMessage = "Apple Sign-In is only available on iOS devices";
       });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Ups! Login gagal: Hape kamu bukan iPhone"),
-        ),
-      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
-
 
   Future<void> _redirectUserBasedOnRole(String email, String selectedRole) async {
     try {
@@ -159,7 +150,6 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setBool('isLoggedIn', true);
       await prefs.setString('userEmail', email);
 
-      // Ambil data role dari Firestore
       final roleData = await FirebaseFirestore.instance.collection('roles').get();
       final adminEmails = roleData.docs
           .firstWhere((doc) => doc.id == 'adminEmails')
@@ -173,23 +163,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (selectedRole == 'admin' && adminEmails.contains(email)) {
         await prefs.setString('userRole', 'admin');
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/admin_dashboard');
-        }
+        if (mounted) Navigator.pushReplacementNamed(context, '/admin_dashboard');
       } else if (selectedRole == 'psp' && pspEmails.contains(email)) {
         await prefs.setString('userRole', 'psp');
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/psp_dashboard');
-        }
+        if (mounted) Navigator.pushReplacementNamed(context, '/psp_dashboard');
       } else if (selectedRole == 'user' && userEmails.contains(email)) {
         await prefs.setString('userRole', 'user');
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/home');
-        }
+        if (mounted) Navigator.pushReplacementNamed(context, '/home');
       } else {
         if (mounted) {
           setState(() {
-            _errorMessage = "Login gagal! Email tidak cocok dengan role yang dipilih.";
+            _errorMessage = "Login failed! Email doesn't match selected role.";
           });
         }
         _auth.signOut();
@@ -197,7 +181,13 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = "Terjadi kesalahan. Silakan coba lagi.";
+          _errorMessage = "An error occurred. Please try again.";
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
         });
       }
     }
@@ -207,11 +197,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = _emailController.text.trim();
 
     if (email.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = "Mohon masukkan email!";
-        });
-      }
+      setState(() {
+        _errorMessage = "Please enter your email!";
+      });
       return;
     }
 
@@ -219,7 +207,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email reset password terkirim')),
+        const SnackBar(
+          content: Text('Password reset email sent'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     }
   }
@@ -228,225 +219,428 @@ class _LoginScreenState extends State<LoginScreen> {
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('Reset Password'),
-          content: const Text('Masukkan email Anda untuk reset password.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('Batal'),
-            ),
-            TextButton(
-              onPressed: () {
-                _resetPassword();
-                Navigator.of(context).pop();
-              },
-              child: const Text('Kirim'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(  // Menggunakan Stack untuk menempatkan background di belakang
-        fit: StackFit.expand,
-        children: [
-          Image.asset(  // Gambar background tetap memenuhi layar
-            'assets/login_background.png',
-            fit: BoxFit.cover,
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-          Container(  // Lapisan transparan di atas background
-            color: Colors.white.withAlpha((0.5 * 255).toInt()),
-          ),
-          SingleChildScrollView(  // Konten dapat di-scroll
-            padding: const EdgeInsets.all(16.0),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const SizedBox(height: 130),
-                // Image.asset(  // Gambar logo
-                //   'assets/icon.png',
-                //   height: 100,
-                // ),
-                const SizedBox(height: 20),
-                const SizedBox(height: 20),
-                CheckboxListTile(
-                  title: Text(
-                    'Login sebagai Admin',
-                    style: TextStyle(
-                      color: Colors.black, // Warna hijau
-                      fontWeight: FontWeight.bold, // Teks tebal
-                    ),
+                Text(
+                  'Reset Password',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
                   ),
-                  value: _isAdmin,
-                  onChanged: (value) {
-                    setState(() {
-                      _isAdmin = value ?? false;
-                      if (_isAdmin) {
-                        _isUser = false;
-                        _isPsp = false;
-                      }
-                    });
-                  },
-                  activeColor: Colors.green, // Warna checkbox saat dicentang
-                  checkColor: Colors.white, // Warna centang di dalam checkbox
                 ),
-
-                CheckboxListTile(
-                  title: const Text('Login sebagai User HSP',
-                    style: TextStyle(
-                      color: Colors.black, // Warna hijau
-                      fontWeight: FontWeight.bold, // Teks tebal
-                    ),
-                  ),
-                  value: _isUser,
-                  onChanged: (value) {
-                    setState(() {
-                      _isUser = value ?? false;
-                      if (_isUser) {
-                        _isAdmin = false;
-                        _isPsp = false;
-                      }
-                    });
-                  },
-                  activeColor: Colors.green, // Warna checkbox saat dicentang
-                  checkColor: Colors.white, // Warna centang di dalam checkbox
-                ),
-                CheckboxListTile(
-                  title: const Text('Login sebagai User PSP',
-                    style: TextStyle(
-                      color: Colors.black, // Warna hijau
-                      fontWeight: FontWeight.bold, // Teks tebal
-                    ),
-                  ),
-                  value: _isPsp,
-                  onChanged: (value) {
-                    setState(() {
-                      _isPsp = value ?? false;
-                      if (_isPsp) {
-                        _isAdmin = false;
-                        _isUser = false;
-                      }
-                    });
-                  },
-                  activeColor: Colors.green, // Warna checkbox saat dicentang
-                  checkColor: Colors.white, // Warna centang di dalam checkbox
-                ),
+                const SizedBox(height: 16),
+                const Text('Enter your email to receive a password reset link.'),
                 const SizedBox(height: 20),
                 TextField(
                   controller: _emailController,
                   decoration: InputDecoration(
                     labelText: 'Email',
-                    labelStyle: TextStyle(
-                      color: Colors.green, // Warna teks label
-                      fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
-                    ),
-                    border: OutlineInputBorder(),
-                    focusedBorder: OutlineInputBorder(
-                      borderSide: BorderSide(
-                        color: Colors.green, // Warna garis ketika fokus
-                        width: 2.0, // Ketebalan garis ketika fokus
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(
-                        color: Colors.grey, // Warna garis ketika tidak fokus
-                        width: 1.0, // Ketebalan garis ketika tidak fokus
-                      ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
+                  keyboardType: TextInputType.emailAddress,
                 ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: _isPasswordHidden,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    labelStyle: TextStyle(
-                      color: Colors.green, // Warna teks label
-                      fontWeight: FontWeight.bold, // Membuat teks label menjadi bold
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
                     ),
-                    border: OutlineInputBorder(),
-                    focusedBorder: OutlineInputBorder(
-                      borderSide: BorderSide(
-                        color: Colors.green, // Warna garis ketika fokus
-                        width: 2.0, // Ketebalan garis ketika fokus
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(
-                        color: Colors.grey, // Warna garis ketika tidak fokus
-                        width: 1.0, // Ketebalan garis ketika tidak fokus
-                      ),
-                    ),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _isPasswordHidden ? Icons.visibility_off : Icons.visibility,
-                        color: Colors.green, // Warna ikon
-                      ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
                       onPressed: () {
-                        setState(() {
-                          _isPasswordHidden = !_isPasswordHidden;
-                        });
+                        _resetPassword();
+                        Navigator.pop(context);
                       },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[800],
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Send'),
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: _login,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 50),
-                  ),
-                  child: const Text('LOGIN'),
-                ),
-                const SizedBox(height: 20),
-                FloatingActionButton.extended(
-                  onPressed: _loginWithGoogle,
-                  icon: SvgPicture.asset(
-                    'assets/google_logo.svg',
-                    height: 24,
-                    width: 24,
-                  ),
-                  label: const Text('SIGN IN WITH GOOGLE'),
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
-                ),
-                const SizedBox(height: 20),
-                FloatingActionButton.extended(
-                  onPressed: _loginWithApple,
-                  icon: Icon(Icons.apple, color: Colors.white),
-                  label: const Text('SIGN IN WITH APPLE'),
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                ),
-                const SizedBox(height: 20),
-                TextButton(
-                  onPressed: _showResetPasswordDialog,
-                  child: const Text('Lupa Password?',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.bold, // Teks tebal
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                if (_errorMessage.isNotEmpty)
-                  Text(
-                    _errorMessage,
-                    style: const TextStyle(color: Colors.red),
-                  ),
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildRoleTile({
+    required String title,
+    required bool value,
+    required Function(bool?) onChanged,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(12),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ListTile(
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        leading: Checkbox(
+          value: value,
+          onChanged: onChanged,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+          ),
+          activeColor: Colors.green[800],
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoleSelector() {
+    return Column(
+      children: [
+        _buildRoleTile(
+          title: 'Admin',
+          value: _isAdmin,
+          onChanged: (value) {
+            setState(() {
+              _isAdmin = value ?? false;
+              if (_isAdmin) {
+                _isUser = false;
+                _isPsp = false;
+              }
+            });
+          },
+        ),
+        _buildRoleTile(
+          title: 'User HSP',
+          value: _isUser,
+          onChanged: (value) {
+            setState(() {
+              _isUser = value ?? false;
+              if (_isUser) {
+                _isAdmin = false;
+                _isPsp = false;
+              }
+            });
+          },
+        ),
+        _buildRoleTile(
+          title: 'User PSP',
+          value: _isPsp,
+          onChanged: (value) {
+            setState(() {
+              _isPsp = value ?? false;
+              if (_isPsp) {
+                _isAdmin = false;
+                _isUser = false;
+              }
+            });
+          },
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Background with gradient overlay
+          Container(
+            decoration: BoxDecoration(
+              image: DecorationImage(
+                image: const AssetImage('assets/login_background.png'),
+                fit: BoxFit.cover,
+                colorFilter: ColorFilter.mode(
+                  Colors.black.withAlpha(76),
+                  BlendMode.darken,
+                ),
+              ),
+            ),
+          ),
+
+          // Content
+          SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: screenHeight,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Logo and Welcome
+                    Column(
+                      children: [
+                        // Image.asset(
+                        //   'assets/icon.png',
+                        //   height: 80,
+                        // ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Sugêng Rawuh Lur...',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Monggo login riyen',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Login Form
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(25),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          // Role Selection
+                          _buildRoleSelector(),
+                          const SizedBox(height: 20),
+
+                          // Email Field
+                          TextField(
+                            controller: _emailController,
+                            decoration: InputDecoration(
+                              labelText: 'Email',
+                              prefixIcon: const Icon(Icons.email_outlined),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            keyboardType: TextInputType.emailAddress,
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Password Field
+                          TextField(
+                            controller: _passwordController,
+                            obscureText: _isPasswordHidden,
+                            decoration: InputDecoration(
+                              labelText: 'Password',
+                              prefixIcon: const Icon(Icons.lock_outlined),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _isPasswordHidden
+                                      ? Icons.visibility_off
+                                      : Icons.visibility,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _isPasswordHidden = !_isPasswordHidden;
+                                  });
+                                },
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+
+                          // Forgot Password
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: _showResetPasswordDialog,
+                              child: Text(
+                                'Passworde supe?',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.green[800],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          // Error Message
+                          if (_errorMessage.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Text(
+                                _errorMessage,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.red[700],
+                                ),
+                              ),
+                            ),
+
+                          // Login Button
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _login,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green[800],
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                                  : const Text(
+                                'LOGIN',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // Divider
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Divider(
+                                  color: Colors.grey[300],
+                                  thickness: 1,
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                child: Text(
+                                  'utowo',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Divider(
+                                  color: Colors.grey[300],
+                                  thickness: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // Social Login Buttons
+                          Column(
+                            children: [
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: _isLoading ? null : _loginWithGoogle,
+                                  icon: SvgPicture.asset(
+                                    'assets/google_logo.svg',
+                                    height: 20,
+                                    width: 20,
+                                  ),
+                                  label: const Text('Continue with Google',
+                                    style: TextStyle(
+                                        color: Colors.black
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                    side: const BorderSide(color: Colors.grey),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: _isLoading ? null : _loginWithApple,
+                                  icon: const Icon(Icons.apple, color: Colors.black),
+                                  label: const Text('Continue with Apple',
+                                    style: TextStyle(
+                                        color: Colors.black
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                    side: const BorderSide(color: Colors.grey),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Loading Overlay
+          if (_isLoading)
+            Container(
+              color: Colors.black.withAlpha(76),
+              child: const Center(
+                child: CircularProgressIndicator(color: Colors.green),
+              ),
+            ),
         ],
       ),
     );

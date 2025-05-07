@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // Import untuk fitur kalender
-import 'training_sheet_api.dart'; // Import TrainingSheetApi
+import 'package:intl/intl.dart';
+import 'training_sheet_api.dart';
 import 'success_screen.dart';
 import 'package:lottie/lottie.dart';
 import 'config_manager.dart';
@@ -16,11 +16,12 @@ class TrainingScreen extends StatefulWidget {
 
 class TrainingScreenState extends State<TrainingScreen> {
   late final TrainingSheetApi _trainingSheetApi;
-  final _spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA'; // Spreadsheet ID yang benar
+  final _spreadsheetId = '1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA';
 
   bool _isLoading = true;
+  final _formKey = GlobalKey<FormState>();
 
-  // Controllers untuk field input
+  // Controllers
   final TextEditingController _fieldInspectorController = TextEditingController();
   final TextEditingController _growerController = TextEditingController();
   final TextEditingController _subGrowerController = TextEditingController();
@@ -29,10 +30,9 @@ class TrainingScreenState extends State<TrainingScreen> {
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _manController = TextEditingController();
   final TextEditingController _hoursController = TextEditingController();
-  final TextEditingController _manHoursController = TextEditingController(); // Man * Hours (dihitung otomatis)
+  final TextEditingController _manHoursController = TextEditingController();
 
-  String? _selectedRegion; // Untuk dropdown Region
-
+  String? _selectedRegion;
   final List<String> _regionOptions = [
     'Region 1',
     'Region 2',
@@ -41,14 +41,14 @@ class TrainingScreenState extends State<TrainingScreen> {
     'Region 5',
     'Region 6',
     'NTB',
-  ]; // Pilihan untuk dropdown Region
+  ];
 
   @override
   void initState() {
     super.initState();
-    _trainingSheetApi = TrainingSheetApi(_spreadsheetId); // Inisialisasi hanya sekali
-    _loadConfig(); // Muat konfigurasi region
-    _loadSheetData(); // Muat data dari Google Sheets
+    _trainingSheetApi = TrainingSheetApi(_spreadsheetId);
+    _loadConfig();
+    _loadSheetData();
   }
 
   Future<void> _loadSheetData() async {
@@ -65,35 +65,32 @@ class TrainingScreenState extends State<TrainingScreen> {
   }
 
   Future<void> _loadConfig() async {
-    await ConfigManager.loadConfig(); // Muat konfigurasi dari config.json
+    await ConfigManager.loadConfig();
   }
 
   Future<void> _onRegionSelected(String? region) async {
     setState(() {
       _selectedRegion = region;
-      _isLoading = true; // Tampilkan loading saat perubahan region
+      _isLoading = true;
     });
 
-    // Ambil Spreadsheet ID berdasarkan region yang dipilih
     final String? spreadsheetId = ConfigManager.getSpreadsheetId(region!);
     if (spreadsheetId != null) {
-      // Perbarui Spreadsheet ID tanpa inisialisasi ulang
       await _trainingSheetApi.updateSpreadsheet(spreadsheetId);
     }
 
     setState(() {
-      _isLoading = false; // Selesai memuat
+      _isLoading = false;
     });
   }
 
-  // Fungsi untuk menghitung Man * Hours
   void _calculateManHours() {
     if (_manController.text.isNotEmpty && _hoursController.text.isNotEmpty) {
       double man = double.tryParse(_manController.text) ?? 0;
       double hours = double.tryParse(_hoursController.text) ?? 0;
       double manHours = man * hours;
       setState(() {
-        _manHoursController.text = manHours.toString(); // Hasil Man * Hours otomatis
+        _manHoursController.text = manHours.toString();
       });
     }
   }
@@ -113,167 +110,335 @@ class TrainingScreenState extends State<TrainingScreen> {
   }
 
   Future<void> _submitForm() async {
-    if (_selectedRegion == null ||
-        _fieldInspectorController.text.isEmpty ||
-        _growerController.text.isEmpty ||
-        _subGrowerController.text.isEmpty ||
-        _lokasiController.text.isEmpty ||
-        _tkdExistedController.text.isEmpty ||
-        _dateController.text.isEmpty ||
-        _manController.text.isEmpty ||
-        _hoursController.text.isEmpty ||
-        _manHoursController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all fields')),
-      );
-      return;
-    }
+    if (_formKey.currentState!.validate()) {
+      try {
+        String weekOfTrainingFormula = '=WEEKNUM(${_dateController.text})';
 
-    try {
-      // Buat rumus Week of Training untuk spreadsheet
-      String weekOfTrainingFormula = '=WEEKNUM(${_dateController.text})';
+        List<String> rowData = [
+          _selectedRegion!,
+          _fieldInspectorController.text,
+          _growerController.text,
+          _subGrowerController.text,
+          _lokasiController.text,
+          _tkdExistedController.text,
+          _dateController.text,
+          weekOfTrainingFormula,
+          _manController.text,
+          _hoursController.text,
+          _manHoursController.text,
+        ];
 
-      // Buat list data yang akan ditambahkan (tanpa nomor, nomor diisi otomatis)
-      List<String> rowData = [
-        _selectedRegion!,
-        _fieldInspectorController.text,
-        _growerController.text,
-        _subGrowerController.text,
-        _lokasiController.text,
-        _tkdExistedController.text,
-        _dateController.text,
-        weekOfTrainingFormula, // Week of Training otomatis dari rumus
-        _manController.text, // Man pada row 9
-        _hoursController.text, // Hours pada row 10
-        _manHoursController.text, // Hasil Man * Hours otomatis
-      ];
+        await _trainingSheetApi.addTrainingRow(rowData);
 
-      // Tambahkan data ke worksheet Training
-      await _trainingSheetApi.addTrainingRow(rowData);
+        if (!mounted) return;
 
-      if (!mounted) return;  // Pastikan widget masih ter-mount
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const SuccessScreen(),
+          ),
+        );
 
-      // Tampilkan notifikasi sukses
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const SuccessScreen(),
-        ),
-      );
-
-      // Reset form setelah submit
-      _selectedRegion = null;
-      _fieldInspectorController.clear();
-      _growerController.clear();
-      _subGrowerController.clear();
-      _lokasiController.clear();
-      _tkdExistedController.clear();
-      _dateController.clear();
-      _manController.clear();
-      _hoursController.clear();
-      _manHoursController.clear();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to add data: $e')),
-      );
+        // Reset form
+        _formKey.currentState?.reset();
+        _selectedRegion = null;
+        _manHoursController.clear();
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to add data: $e')),
+        );
+      }
     }
   }
 
-    @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: const Text(
-          'Training',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          'Training Form',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
         ),
-        backgroundColor: Colors.green,
+        centerTitle: true,
+        backgroundColor: Colors.green[700], // Changed to green
         iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 4,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            bottom: Radius.circular(15),
+          ),
+        ),
       ),
       body: _isLoading
-          ? Center(child: Lottie.asset('assets/loading.json'))
-          : Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ListView(
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Dropdown untuk Region
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: DropdownButtonFormField<String>(
-                value: _selectedRegion,
-                onChanged: (value) async {
-                  await _onRegionSelected(value); // Fungsi baru untuk menangani pemilihan region
-                },
-                items: _regionOptions.map((region) {
-                  return DropdownMenuItem<String>(
-                    value: region,
-                    child: Text(region),
-                  );
-                }).toList(),
-                decoration: const InputDecoration(
-                  labelText: 'Region',
-                  border: OutlineInputBorder(),
-                ),
+            Lottie.asset(
+              'assets/loading.json',
+              width: 150,
+              height: 150,
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Ngrantos sekedap...',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 16,
               ),
             ),
-            _buildTextField('Nama Field Inspector', _fieldInspectorController),
-            _buildTextField('Grower', _growerController),
-            _buildTextField('Sub Grower', _subGrowerController),
-            _buildTextField('Lokasi', _lokasiController),
-
-            // Field angka untuk TKD Existed
-            _buildNumericField('TKD Existed', _tkdExistedController),
-
-            // Fitur kalender untuk Date of Training
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: TextField(
-                controller: _dateController,
-                readOnly: true,
-                decoration: InputDecoration(
-                  labelText: 'Date of Training',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.calendar_today),
-                    onPressed: () {
-                      _selectDate(context);
-                    },
+          ],
+        ),
+      )
+          : SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              Card(
+                elevation: 3,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      _buildDropdownField(
+                        'Region',
+                        _selectedRegion,
+                        _regionOptions,
+                            (value) => _onRegionSelected(value),
+                        validator: (value) => value == null
+                            ? 'Please select a region'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        'Nama Field Inspector',
+                        _fieldInspectorController,
+                        Icons.person,
+                        validator: (value) => value!.isEmpty
+                            ? 'This field is required'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        'Grower',
+                        _growerController,
+                        Icons.people,
+                        validator: (value) => value!.isEmpty
+                            ? 'This field is required'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        'Sub Grower',
+                        _subGrowerController,
+                        Icons.people_outline,
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ),
 
-            // Field angka untuk Man (row 9)
-            _buildNumericField('Man', _manController, _calculateManHours),
+              const SizedBox(height: 20),
 
-            // Field angka untuk Hours (row 10)
-            _buildNumericField('Hours', _hoursController, _calculateManHours),
-
-            // Hasil Man * Hours (dihitung otomatis)
-            _buildDisabledTextField('Man x Hours', _manHoursController),
-
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _submitForm,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
+              Card(
+                elevation: 3,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      _buildTextField(
+                        'Lokasi',
+                        _lokasiController,
+                        Icons.location_on,
+                        validator: (value) => value!.isEmpty
+                            ? 'This field is required'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildNumericField(
+                        'TKD Existed',
+                        _tkdExistedController,
+                        Icons.numbers,
+                        validator: (value) => value!.isEmpty
+                            ? 'This field is required'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildDateField(context),
+                    ],
+                  ),
+                ),
               ),
-              child: const Text('Submit'),
-            ),
-          ],
+
+              const SizedBox(height: 20),
+
+              Card(
+                elevation: 3,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      _buildNumericField(
+                        'Man',
+                        _manController,
+                        Icons.man,
+                        onChanged: _calculateManHours,
+                        validator: (value) => value!.isEmpty
+                            ? 'This field is required'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildNumericField(
+                        'Hours',
+                        _hoursController,
+                        Icons.access_time,
+                        onChanged: _calculateManHours,
+                        validator: (value) => value!.isEmpty
+                            ? 'This field is required'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildDisabledTextField(
+                        'Man × Hours',
+                        _manHoursController,
+                        Icons.calculate,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () {
+                    if (_formKey.currentState!.validate()) {
+                      _submitForm();
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[700], // Changed to green
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    elevation: 3,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text(
+                    'SUBMIT FORM',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // Widget untuk input angka dengan callback
-  Widget _buildNumericField(String label, TextEditingController controller, [VoidCallback? onChanged]) {
-    return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-    child: TextField(
-    controller: controller,
-    keyboardType: TextInputType.number,
+  Widget _buildDropdownField(
+      String label,
+      String? value,
+      List<String> items,
+      Function(String?) onChanged, {
+        String? Function(String?)? validator,
+      }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      onChanged: onChanged,
+      items: items.map((item) {
+        return DropdownMenuItem<String>(
+          value: item,
+          child: Text(item),
+        );
+      }).toList(),
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+        prefixIcon: const Icon(Icons.map, color: Colors.green), // Changed to green
+      ),
+      style: TextStyle(
+        color: Colors.grey[800],
+        fontSize: 15,
+      ),
+      validator: validator,
+      borderRadius: BorderRadius.circular(8),
+      icon: const Icon(Icons.arrow_drop_down, size: 28),
+      isExpanded: true,
+      hint: Text(
+        'Select $label',
+        style: TextStyle(color: Colors.grey[500]),
+      ),
+    );
+  }
+
+  Widget _buildTextField(
+      String label,
+      TextEditingController controller,
+      IconData icon, {
+        String? Function(String?)? validator,
+      }) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+        prefixIcon: Icon(icon, color: Colors.green), // Changed to green
+      ),
+      style: TextStyle(
+        color: Colors.grey[800],
+        fontSize: 15,
+      ),
+      validator: validator,
+    );
+  }
+
+  Widget _buildNumericField(
+      String label,
+      TextEditingController controller,
+      IconData icon, {
+        VoidCallback? onChanged,
+        String? Function(String?)? validator,
+      }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: TextInputType.number,
       onChanged: (value) {
         if (onChanged != null) {
           onChanged();
@@ -281,39 +446,77 @@ class TrainingScreenState extends State<TrainingScreen> {
       },
       decoration: InputDecoration(
         labelText: label,
-        border: const OutlineInputBorder(),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+        prefixIcon: Icon(icon, color: Colors.teal),
       ),
-    ),
+      style: TextStyle(
+        color: Colors.grey[800],
+        fontSize: 15,
+      ),
+      validator: validator,
     );
   }
 
-  // Widget untuk field yang tidak bisa diubah (Man x Hours)
-  Widget _buildDisabledTextField(String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextField(
-        controller: controller,
-        readOnly: true,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
+  Widget _buildDateField(BuildContext context) {
+    return TextFormField(
+      controller: _dateController,
+      readOnly: true,
+      onTap: () => _selectDate(context),
+      decoration: InputDecoration(
+        labelText: 'Date of Training',
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+        prefixIcon: const Icon(Icons.calendar_today, color: Colors.green), // Changed to green
+        suffixIcon: IconButton(
+          icon: const Icon(Icons.date_range),
+          onPressed: () => _selectDate(context),
         ),
       ),
+      style: TextStyle(
+        color: Colors.grey[800],
+        fontSize: 15,
+      ),
+      validator: (value) =>
+      value!.isEmpty ? 'Please select a date' : null,
     );
   }
 
-  // Widget untuk input teks biasa
-  Widget _buildTextField(String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
+  Widget _buildDisabledTextField(
+      String label,
+      TextEditingController controller,
+      IconData icon,
+      ) {
+    return TextField(
+      controller: controller,
+      readOnly: true,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
         ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+        prefixIcon: Icon(icon, color: Colors.green), // Changed to green
+        filled: true,
+        fillColor: Colors.grey[100],
+      ),
+      style: TextStyle(
+        color: Colors.grey[800],
+        fontSize: 15,
       ),
     );
   }
 }
-

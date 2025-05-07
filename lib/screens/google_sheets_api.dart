@@ -16,7 +16,7 @@ class GoogleSheetsApi {
   /// Parsing nilai desimal dari teks ke angka (menerima format Indonesia)
   double parseDecimalFromIndonesia(String value) {
     // Ubah format Indonesia (titik untuk ribuan, koma untuk desimal) menjadi format internasional
-    final normalizedValue = value.replaceAll('.', '').replaceAll('.', ','); // Normalisasi angka Indonesia ke format internasional (koma) untuk desimal (titik untuk ribuan)
+    final normalizedValue = value.replaceAll('.', '').replaceAll(',', '.'); // Normalisasi angka Indonesia ke format internasional (koma) untuk desimal (titik untuk ribuan)
     final double? parsedValue = double.tryParse(normalizedValue);
     if (parsedValue == null) {
       throw Exception("Nilai '$value' bukan angka valid dalam format Indonesia.");
@@ -225,16 +225,22 @@ class GoogleSheetsApi {
 
   // Fungsi untuk memeriksa apakah nilai merupakan angka desimal
   bool _isDecimal(String value) {
-    return RegExp(r'^[0-9]+([.,][0-9]+)?\$').hasMatch(value); // Contoh: 123.45 atau 123,45
+    // Memperbaiki regex untuk mendukung format dengan titik dan koma
+    return RegExp(r'^\d{1,3}(\.\d{3})*(,\d+)?$').hasMatch(value) ||
+        RegExp(r'^\d+([.,]\d+)?$').hasMatch(value); // Menambahkan dukungan untuk format lain
   }
 
   // Fungsi untuk format angka desimal tanpa pembulatan
   String _formatDecimal(String value) {
-    if (value.contains('.')) {  // Jika mengandung titik (.)
-      value = value.replaceAll('.', ','); // Ubah titik (.) menjadi koma (,)
+    // Normalisasi untuk mengubah titik menjadi koma
+    if (value.contains(',')) {
+      value = value.replaceAll('.', '').replaceAll(',', '.'); // Ubah titik ribuan dan koma desimal
+    } else if (value.contains('.')) {
+      value = value.replaceAll(',', '').replaceAll(',', '.'); // Hanya ubah koma
     }
+
     double? number = double.tryParse(value);
-    if (number != null) { // Jika berhasil di-parse
+    if (number != null) {
       return number.toString(); // Kembalikan nilai tanpa pembulatan
     }
     return value; // Kembalikan nilai asli jika gagal
@@ -256,23 +262,23 @@ class GoogleSheetsApi {
 
   bool _isNumber(String value) {
     // Ubah titik (.) menjadi koma (,) untuk validasi
-    final normalizedValue = value.replaceAll('.', ','); // Normalisasi angka
+    final normalizedValue = value.replaceAll(',', '.'); // Normalisasi angka
 
     // Coba parse angka dengan format yang sudah diubah
-    return double.tryParse(normalizedValue.replaceAll(',', ',')) != null; // Coba parse sebagai double
+    return double.tryParse(normalizedValue.replaceAll(',', '.')) != null; // Coba parse sebagai double
   }
 
 
   String _normalizeNumber(String value) {
-    // Ubah titik (.) menjadi koma (,)
-    final normalizedValue = value.replaceAll('.', ','); // Normalisasi angka
+    // Ubah titik (.) menjadi koma (,) untuk normalisasi
+    final normalizedValue = value.replaceAll('.', '').replaceAll(',', '.'); // Normalisasi angka
 
     // Parse sebagai double
     final doubleValue = double.tryParse(normalizedValue);
 
     if (doubleValue != null) {
       // Format ulang angka (dapat mengembalikan dengan koma jika dibutuhkan)
-      return doubleValue.toStringAsFixed(2).replaceAll('.', ','); // Kembali ke format dengan koma
+      return doubleValue.toStringAsFixed(2).replaceAll(',', '.'); // Kembali ke format dengan koma
     }
 
     // Jika gagal, kembalikan nilai asli

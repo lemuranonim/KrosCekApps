@@ -3,21 +3,22 @@ import 'package:intl/intl.dart';
 import 'google_sheets_api.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:lottie/lottie.dart';
-import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
-import 'dart:async';  // Untuk menggunakan Timer
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'config_manager.dart';
 
 class VegetativeEditScreen extends StatefulWidget {
   final List<String> row;
   final String region;
-  final Function(List<String>) onSave; // Callback untuk mengirim data yang diperbarui
+  final Function(List<String>) onSave;
 
   const VegetativeEditScreen({
     super.key,
     required this.row,
     required this.region,
-    required this.onSave});
+    required this.onSave,
+  });
 
   @override
   VegetativeEditScreenState createState() => VegetativeEditScreenState();
@@ -30,13 +31,13 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   late TextEditingController _dateAuditController;
   late TextEditingController _actualPlantingDateController;
 
-  String userEmail = 'Fetching...'; // Variabel untuk email pengguna
-  String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
+  String userEmail = 'Fetching...';
+  String userName = 'Fetching...';
   late String spreadsheetId;
-  late GoogleSheetsApi gSheetsApi; // Tambahkan ini di dalam class VegetativeEditScreenState
+  late GoogleSheetsApi gSheetsApi;
 
-  String? selectedFI; // FI yang dipilih
-  List<String> fiList = []; // Daftar FI untuk dropdown
+  String? selectedFI;
+  List<String> fiList = [];
 
   String? selectedSplitField;
   String? selectedIsolationProblem;
@@ -61,6 +62,8 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   final List<String> poiAccuracyItems = ['Valid', 'Not Valid'];
   final List<String> flaggingItems = ['GF', 'RF'];
   final List<String> recommendationItems = ['Continue', 'Discard'];
+
+  bool isLoading = false;
 
   @override
   void initState() {
@@ -95,12 +98,10 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     selectedRecommendation = row[50];
   }
 
-  bool isLoading = false;  // Untuk mengatur status loading
-
   Future<void> _fetchSpreadsheetId() async {
     spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
     gSheetsApi = GoogleSheetsApi(spreadsheetId);
-    await gSheetsApi.init(); // Pastikan inisialisasi API
+    await gSheetsApi.init();
   }
 
   Future<void> _loadFIList(String region) async {
@@ -108,12 +109,12 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
 
     try {
       final gSheetsApi = GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
-      await gSheetsApi.init(); // Inisialisasi API
+      await gSheetsApi.init();
       final List<String> fetchedFI = await gSheetsApi.fetchFIByRegion('FI', region);
 
       setState(() {
-        fiList = fetchedFI; // Perbarui daftar FI
-        selectedFI = row[31]; // Tetapkan nilai awal dari data row[31]
+        fiList = fetchedFI;
+        selectedFI = row[31];
       });
     } catch (e) {
       debugPrint('Gagal mengambil data FI: $e');
@@ -124,16 +125,15 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
 
   void _initHive() async {
     await Hive.initFlutter();
-    await Hive.openBox('vegetativeData');  // Buat box Hive untuk menyimpan data vegetative
+    await Hive.openBox('vegetativeData');
   }
 
   Future<void> _saveToHive(List<String> rowData) async {
     var box = await Hive.openBox('vegetativeData');
-    final cacheKey = 'detailScreenData_${rowData[2]}'; // Menggunakan fieldNumber atau ID unik lainnya sebagai kunci
-    await box.put(cacheKey, rowData); // Simpan hanya rowData ke Hive
+    final cacheKey = 'detailScreenData_${rowData[2]}';
+    await box.put(cacheKey, rowData);
   }
 
-  // Fungsi untuk mengambil userName dan userEmail dari SharedPreferences
   Future<void> _loadUserCredentials() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -146,237 +146,337 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit Vegetative Field', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.green,
+        title: const Text(
+            'Edit Vegetative Field',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            )
+        ),
+        backgroundColor: Colors.green.shade700,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                // Tampilkan progress bar di atas form jika sedang loading
-                if (isLoading) const LinearProgressIndicator(),  // Tambahkan di sini
-
-                _buildFIDropdownField('QA FI', 31),
-                _buildTextFormField('Co Detasseling', 32),
-                _buildDatePickerField('Date of Audit', 33, _dateAuditController),
-                _buildDatePickerField('Actual Female Planting Date', 35, _actualPlantingDateController),
-                _buildText2FormField('Field Size by Audit (Ha)', 36),
-                _buildText2FormField('Male Split by Audit', 37),
-                _buildTextFormField('Sowing Ratio by Audit', 38),
-
-                const SizedBox(height: 10),
-
-                _buildDropdownFormField(
-                  label: 'Split Field by Audit',
-                  items: splitFieldItems,
-                  value: selectedSplitField,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedSplitField = value;
-                      row[39] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = No\nB = Yes',
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'Isolation Problem by Audit',
-                  items: isolationProblemItems,
-                  value: selectedIsolationProblem,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedIsolationProblem = value;
-                      row[40] = value ?? '';
-                    });
-                  },
-                  helpText: 'Y = Yes\nN = No',
-                ),
-
-                const SizedBox(height: 16),
-
-                if (selectedIsolationProblem == 'Y')
-                  Column(
-                    children: [
-                      _buildDropdownFormField(
-                        label: 'If "YES" Contaminant Type',
-                        items: contaminantTypeItems,
-                        value: selectedContaminantType,
-                        onChanged: (value) {
-                          setState(() {
-                            selectedContaminantType = value;
-                            row[41] = value ?? '';
-                          });
-                        },
-                        helpText: 'A = Seed Production\nB = Jagung Komersial',
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.green.shade700, Colors.green.shade100],
+            stops: const [0.0, 0.3],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: _formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isLoading)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 20),
+                      child: const LinearProgressIndicator(
+                        backgroundColor: Colors.white,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
                       ),
-                      const SizedBox(height: 16),
-                      _buildDropdownFormField(
-                        label: 'If "YES" Contaminant Distance',
-                        items: contaminantDistanceItems,
-                        value: selectedContaminantDistance,
-                        onChanged: (value) {
-                          setState(() {
-                            selectedContaminantDistance = value;
-                            row[42] = value ?? '';
-                          });
-                        },
-                          helpText: 'A = >300 m\nB = >200-<300 m\nC = >100 & <200 m\nD = <100 m\n'
+                    ),
+
+                  // Main Card Container
+                  Card(
+                    elevation: 8,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Field Information Section
+                          _buildSectionHeader('Field Information', Icons.info_outline),
+
+                          _buildInfoCard(
+                            title: 'Field Number',
+                            value: row[2],
+                            icon: Icons.numbers,
+                          ),
+
+                          _buildInfoCard(
+                            title: 'Region',
+                            value: widget.region,
+                            icon: Icons.location_on,
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // Audit Information Section
+                          _buildSectionHeader('Audit Information', Icons.assignment),
+
+                          _buildFIDropdownField('QA FI', 31),
+                          const SizedBox(height: 15),
+
+                          _buildTextFormField('Co Detasseling', 32, icon: Icons.people),
+                          const SizedBox(height: 15),
+
+                          _buildDatePickerField('Date of Audit', 33, _dateAuditController),
+                          const SizedBox(height: 15),
+
+                          _buildDatePickerField('Actual Female Planting Date', 35, _actualPlantingDateController),
+                          const SizedBox(height: 20),
+
+                          // Field Metrics Section
+                          _buildSectionHeader('Field Metrics', Icons.straighten),
+
+                          _buildText2FormField('Field Size by Audit (Ha)', 36, icon: Icons.crop_square),
+                          const SizedBox(height: 15),
+
+                          _buildText2FormField('Male Split by Audit', 37, icon: Icons.view_week),
+                          const SizedBox(height: 15),
+
+                          _buildTextFormField('Sowing Ratio by Audit', 38, icon: Icons.compare_arrows),
+                          const SizedBox(height: 20),
+
+                          // Field Conditions Section
+                          _buildSectionHeader('Field Conditions', Icons.landscape),
+
+                          _buildDropdownFormField(
+                            label: 'Split Field by Audit',
+                            items: splitFieldItems,
+                            value: selectedSplitField,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedSplitField = value;
+                                row[39] = value ?? '';
+                              });
+                            },
+                            helpText: 'A = No\nB = Yes',
+                            icon: Icons.call_split,
+                          ),
+                          const SizedBox(height: 15),
+
+                          _buildDropdownFormField(
+                            label: 'Isolation Problem by Audit',
+                            items: isolationProblemItems,
+                            value: selectedIsolationProblem,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedIsolationProblem = value;
+                                row[40] = value ?? '';
+                              });
+                            },
+                            helpText: 'Y = Yes\nN = No',
+                            icon: Icons.security,
+                          ),
+                          const SizedBox(height: 15),
+
+                          if (selectedIsolationProblem == 'Y')
+                            Column(
+                              children: [
+                                _buildDropdownFormField(
+                                  label: 'If "YES" Contaminant Type',
+                                  items: contaminantTypeItems,
+                                  value: selectedContaminantType,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedContaminantType = value;
+                                      row[41] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'A = Seed Production\nB = Jagung Komersial',
+                                  icon: Icons.category,
+                                ),
+                                const SizedBox(height: 15),
+
+                                _buildDropdownFormField(
+                                  label: 'If "YES" Contaminant Distance',
+                                  items: contaminantDistanceItems,
+                                  value: selectedContaminantDistance,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedContaminantDistance = value;
+                                      row[42] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'A = >300 m\nB = >200-<300 m\nC = >100 & <200 m\nD = <100 m',
+                                  icon: Icons.social_distance,
+                                ),
+                                const SizedBox(height: 15),
+                              ],
+                            ),
+                          const SizedBox(height: 20),
+
+                          // Crop Quality Section
+                          _buildSectionHeader('Crop Quality', Icons.eco),
+
+                          _buildDropdownFormField(
+                            label: 'Crop Uniformity',
+                            items: cropUniformityItems,
+                            value: selectedCropUniformity,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedCropUniformity = value;
+                                row[43] = value ?? '';
+                              });
+                            },
+                            helpText: 'A = Good\nB = Fair\nC = Poor',
+                            icon: Icons.grain,
+                          ),
+                          const SizedBox(height: 15),
+
+                          _buildDropdownFormField(
+                            label: 'Offtype in Male',
+                            items: offtypeItems,
+                            value: selectedOfftypeInMale,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedOfftypeInMale = value;
+                                row[44] = value ?? '';
+                              });
+                            },
+                            helpText: 'A = No\nB = Yes',
+                            icon: Icons.male,
+                          ),
+                          const SizedBox(height: 15),
+
+                          _buildDropdownFormField(
+                            label: 'Offtype in Female',
+                            items: offtypeItems,
+                            value: selectedOfftypeInFemale,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedOfftypeInFemale = value;
+                                row[45] = value ?? '';
+                              });
+                            },
+                            helpText: 'A = No\nB = Yes',
+                            icon: Icons.female,
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Field History Section
+                          _buildSectionHeader('Field History & Management', Icons.history),
+
+                          _buildDropdownFormField(
+                            label: 'Previous Crop by Audit',
+                            items: offtypeItems,
+                            value: selectedPreviousCrop,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedPreviousCrop = value;
+                                row[46] = value ?? '';
+                              });
+                            },
+                            helpText: 'A = Not Corn\nB = Corn After Corn',
+                            icon: Icons.history_edu,
+                          ),
+                          const SizedBox(height: 15),
+
+                          _buildDropdownFormField(
+                            label: 'FIR Applied',
+                            items: firAppliedItems,
+                            value: selectedFIRApplied,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedFIRApplied = value;
+                                row[47] = value ?? '';
+                              });
+                            },
+                            helpText: 'Y = Ada\nN = Tidak Ada',
+                            icon: Icons.check_circle_outline,
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Field Validation Section
+                          _buildSectionHeader('Field Validation', Icons.verified),
+
+                          _buildDropdownFormField(
+                            label: 'POI Accuracy',
+                            items: poiAccuracyItems,
+                            value: selectedPOIAccuracy,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedPOIAccuracy = value;
+                                row[48] = value ?? '';
+                              });
+                            },
+                            helpText: 'POI Accuracy (Valid/Not Valid)',
+                            icon: Icons.location_searching,
+                          ),
+                          const SizedBox(height: 15),
+
+                          _buildDropdownFormField(
+                            label: 'Flagging (GF/RF)',
+                            items: flaggingItems,
+                            value: selectedFlagging,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedFlagging = value;
+                                row[49] = value ?? '';
+                              });
+                            },
+                            helpText: 'Flagging (GF/RF)',
+                            icon: Icons.flag,
+                          ),
+                          const SizedBox(height: 15),
+
+                          _buildDropdownFormField(
+                            label: 'Recommendation',
+                            items: recommendationItems,
+                            value: selectedRecommendation,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedRecommendation = value;
+                                row[50] = value ?? '';
+                              });
+                            },
+                            helpText: 'Continue to Next Process/Discard',
+                            icon: Icons.recommend,
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Remarks Section
+                          _buildSectionHeader('Additional Information', Icons.note_add),
+
+                          _buildTextFormField('Remarks', 51, icon: Icons.comment, maxLines: 3),
+                          const SizedBox(height: 30),
+
+                          // Save Button
+                          Center(
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                if (_formKey.currentState!.validate()) {
+                                  _showLoadingDialogAndClose();
+                                  _showLoadingAndSaveInBackground();
+                                  _showConfirmationDialog;
+                                  _saveToGoogleSheets(row);
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                minimumSize: const Size(220, 60),
+                                backgroundColor: Colors.green.shade700,
+                                foregroundColor: Colors.white,
+                                elevation: 5,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                              ),
+                              icon: const Icon(Icons.save, size: 26, color: Colors.white),
+                              label: const Text(
+                                'Simpan',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'Crop Uniformity',
-                  items: cropUniformityItems,
-                  value: selectedCropUniformity,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedCropUniformity = value;
-                      row[43] = value ?? '';
-                    });
-                  },
-                    helpText: 'A = Good\nB = Fair\nC = Poor'
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'Offtype in Male',
-                  items: offtypeItems,
-                  value: selectedOfftypeInMale,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedOfftypeInMale = value;
-                      row[44] = value ?? '';
-                    });
-                  },
-                    helpText: 'A = No\nB = Yes'
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'Offtype in Female',
-                  items: offtypeItems,
-                  value: selectedOfftypeInFemale,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedOfftypeInFemale = value;
-                      row[45] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = No\nB = Yes',
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'Previous Crop by Audit',
-                  items: offtypeItems,
-                  value: selectedPreviousCrop,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedPreviousCrop = value;
-                      row[46] = value ?? '';
-                    });
-                  },
-                  helpText: 'A = Not Corn\nB = Corn After Corn',
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'FIR Applied',
-                  items: firAppliedItems,
-                  value: selectedFIRApplied,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedFIRApplied = value;
-                      row[47] = value ?? '';
-                    });
-                  },
-                  helpText: 'Y = Ada\nN = Tidak Ada',
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'POI Accuracy',
-                  items: poiAccuracyItems,
-                  value: selectedPOIAccuracy,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedPOIAccuracy = value;
-                      row[48] = value ?? '';
-                    });
-                  },
-                  helpText: 'POI Accuracy (Valid/Not Valid)',
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'Flagging (GF/RF)',
-                  items: flaggingItems,
-                  value: selectedFlagging,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedFlagging = value;
-                      row[49] = value ?? '';
-                    });
-                  },
-                  helpText: 'Flagging (GF/RF)',
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildDropdownFormField(
-                  label: 'Recommendation',
-                  items: recommendationItems,
-                  value: selectedRecommendation,
-                  onChanged: (value) {
-                    setState(() {
-                      selectedRecommendation = value;
-                      row[50] = value ?? '';
-                    });
-                  },
-                  helpText: 'Continue to Next Process/Discard',
-                ),
-
-                _buildTextFormField('Remarks', 51),
-
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      _showLoadingDialogAndClose();  // Tampilkan loading spinner
-                      _showLoadingAndSaveInBackground();
-                      _showConfirmationDialog;
-                      _saveToGoogleSheets(row); // Simpan data ke Google Sheets
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                    backgroundColor: Colors.green, // Warna background tombol
-                    foregroundColor: Colors.white, // Warna teks tombol
-                    shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
-                      borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                  child: const Text(
-                    'Simpan',
-                    style: TextStyle(fontSize: 20), // Ukuran teks lebih besar
-                  ),
-                ),
-              ],
+                  const SizedBox(height: 30),
+                ],
+              ),
             ),
           ),
         ),
@@ -384,14 +484,101 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     );
   }
 
-  Widget _buildTextFormField(String label, int index) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: Colors.green.shade800, size: 24),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.green.shade800,
+              ),
+            ),
+          ],
+        ),
+        const Divider(thickness: 2, color: Colors.green),
+        const SizedBox(height: 10),
+      ],
+    );
+  }
+
+  Widget _buildInfoCard({required String title, required String value, required IconData icon}) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.green.shade700),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextFormField(String label, int index, {IconData? icon, int maxLines = 1}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: TextFormField(
         initialValue: row[index],
+        maxLines: maxLines,
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
         ),
         onChanged: (value) {
           setState(() {
@@ -402,22 +589,46 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     );
   }
 
-  Widget _buildText2FormField(String label, int index) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+  Widget _buildText2FormField(String label, int index, {IconData? icon}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: TextFormField(
-        // Menambahkan tanda kutip tunggal di depan nilai saat ditampilkan
-        initialValue: row[index].isNotEmpty ? "'${row[index]}" : "'0", // Default nilai '0'
-        keyboardType: TextInputType.number, // Input hanya angka
+        initialValue: row[index].isNotEmpty ? "'${row[index]}" : "'0",
+        keyboardType: TextInputType.number,
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
         ),
         onChanged: (value) {
           setState(() {
-            // Memastikan nilai disimpan sebagai string dengan tanda kutip tunggal di depan
-            String cleanedValue = value.replaceAll("'", ""); // Menghapus tanda kutip sementara
-            row[index] = "'$cleanedValue"; // Tambahkan tanda kutip kembali untuk menyimpan sebagai teks
+            String cleanedValue = value.replaceAll("'", "");
+            row[index] = "'$cleanedValue";
           });
         },
       ),
@@ -425,14 +636,40 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   }
 
   Widget _buildFIDropdownField(String label, int index) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: DropdownButtonFormField<String>(
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(Icons.person, color: Colors.green.shade600),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
         ),
-        value: selectedFI, // FI yang dipilih
+        value: selectedFI,
         items: fiList.map((String fi) {
           return DropdownMenuItem<String>(
             value: fi,
@@ -441,23 +678,52 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
         }).toList(),
         onChanged: (value) {
           setState(() {
-            selectedFI = value; // Update nilai yang dipilih
-            row[index] = value ?? ''; // Simpan ke row[index]
+            selectedFI = value;
+            row[index] = value ?? '';
           });
         },
+        dropdownColor: Colors.white,
+        icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
       ),
     );
   }
 
   Widget _buildDatePickerField(String label, int index, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: TextFormField(
         controller: controller,
         readOnly: true,
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
+          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
         ),
         onTap: () async {
           DateTime? pickedDate = await showDatePicker(
@@ -465,13 +731,24 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
             initialDate: DateTime.now(),
             firstDate: DateTime(2000),
             lastDate: DateTime(2101),
+            builder: (context, child) {
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  colorScheme: ColorScheme.light(
+                    primary: Colors.green.shade700,
+                    onPrimary: Colors.white,
+                    onSurface: Colors.black,
+                  ),
+                ),
+                child: child!,
+              );
+            },
           );
 
           if (pickedDate != null) {
             String formattedDate = DateFormat('dd/MM/yyyy').format(pickedDate);
             setState(() {
-              controller.text = formattedDate;
-              row[index] = formattedDate; // Update date in row
+              controller.text = formattedDate; row[index] = formattedDate;
             });
           }
         },
@@ -479,7 +756,6 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     );
   }
 
-  // Fungsi untuk membangun dropdown
   Widget _buildDropdownFormField({
     required String label,
     required List<String> items,
@@ -487,8 +763,8 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     required Function(String?) onChanged,
     String? hint,
     String? helpText,
+    IconData? icon,
   }) {
-    // Jika nilai tidak ada di dalam daftar item, set nilai awal menjadi null
     if (!items.contains(value)) {
       value = null;
     }
@@ -496,28 +772,59 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DropdownButtonFormField<String>(
-          decoration: InputDecoration(
-            labelText: label,
-            border: const OutlineInputBorder(),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withAlpha(51),
+                spreadRadius: 1,
+                blurRadius: 3,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          value: value,
-          hint: Text(hint ?? 'Survey membuktikan!'),
-          onChanged: onChanged,
-          items: items.map<DropdownMenuItem<String>>((String item) {
-            return DropdownMenuItem<String>(
-              value: item,
-              child: Text(item),
-            );
-          }).toList(),
+          child: DropdownButtonFormField<String>(
+            decoration: InputDecoration(
+              labelText: label,
+              labelStyle: TextStyle(color: Colors.green.shade700),
+              prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            value: value,
+            hint: Text(hint ?? 'Select an option'),
+            onChanged: onChanged,
+            items: items.map<DropdownMenuItem<String>>((String item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(item),
+              );
+            }).toList(),
+            dropdownColor: Colors.white,
+            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          ),
         ),
         if (helpText != null) ...[
-          const SizedBox(height: 5), // Spacer between dropdown and helper text
+          const SizedBox(height: 5),
           Text(
             helpText,
             style: const TextStyle(
-              fontStyle: FontStyle.italic, // Mengatur gaya italic pada helpText
-              color: Colors.grey, // Warna teks
+              fontStyle: FontStyle.italic,
+              color: Colors.grey,
             ),
           ),
         ],
@@ -525,11 +832,9 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     );
   }
 
-  // Fungsi untuk menampilkan loading spinner hanya selama 5 detik
   void _showLoadingDialogAndClose() {
     bool dialogShown = false;
 
-    // Tampilkan dialog loading
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -543,7 +848,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
               Lottie.asset('assets/loading.json', width: 150, height: 150),
               const SizedBox(height: 20),
               const Text(
-                "Loading...",
+                "Ngrantos sekedap...",
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ],
@@ -552,15 +857,11 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
       },
     );
 
-    // Timer untuk menutup dialog loading setelah 5 detik
     Timer(const Duration(seconds: 5), () {
       if (dialogShown && mounted) {
-        // Tutup dialog jika masih aktif dan widget masih terpasang
         Navigator.of(context, rootNavigator: true).pop();
-
-        // Lakukan navigasi ke layar Success dalam microtask tanpa async gap
         Future.microtask(() {
-          if (mounted) { // Pastikan konteks masih valid
+          if (mounted) {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
                 builder: (context) => SuccessScreen(
@@ -578,14 +879,9 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   }
 
   void _showLoadingAndSaveInBackground() {
-    // Tampilkan loading spinner dan success setelah 5 detik
     _showLoadingDialogAndClose();
-
-    // Simpan data ke Hive
     _saveToHive(row);
-
-    // Jalankan proses penyimpanan di latar belakang
-    _saveToGoogleSheets(row);  // Panggil fungsi penyimpanan yang berjalan di background
+    _saveToGoogleSheets(row);
   }
 
   Future<void> _saveToGoogleSheets(List<String> rowData) async {
@@ -613,18 +909,15 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
       });
     }
 
-    if (mounted) {
-      _navigateBasedOnResponse(context, responseMessage);
-    }
+    if (mounted) _navigateBasedOnResponse(context, responseMessage);
   }
-
 
   Future<void> _restoreVegetativeFormulas(GoogleSheetsApi gSheetsApi, Worksheet sheet, int rowIndex) async {
     await sheet.values.insertValue( // Cek Result
         '=IF(OR(AH$rowIndex=0;AH$rowIndex="");"NOT Audited";"Audited")',
         row: rowIndex, column: 56);
     await sheet.values.insertValue( // Week of Reporting
-        '=IFERROR(IF(OR(AH$rowIndex=0;AH$rowIndex="");"";WEEKNUM(AH$rowIndex;1));"")',
+        '=IFERROR(IF(OR(AH$rowIndex=0;AH$rowIndex="");"";WEEKNUM(AH$rowIndex;1));"0")',
         row: rowIndex, column: 35);
     await sheet.values.insertValue( // Standing Crops
         '=I$rowIndex-U$rowIndex',
@@ -641,28 +934,17 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     await sheet.values.insertValue( // Week of Vegetative
         '=IF(OR(I$rowIndex=0;I$rowIndex="");"";WEEKNUM(AC$rowIndex;1))',
         row: rowIndex, column: 30);
-    // await sheet.values.insertValue( // Effective Area (Ha)
-    //     '=G$rowIndex-H$rowIndex',
-    //     row: rowIndex, column: 9);
-    // await sheet.values.insertValue( // Discard Area (Ha)
-    //     '=TEXT(H$rowIndex; "#,##0.00")',
-    //     row: rowIndex, column: 8);
-    // await sheet.values.insertValue( // Total Area Planted (Ha)
-    //     '=TEXT(G$rowIndex; "#,##0.00")',
-    //     row: rowIndex, column: 7);
-
     debugPrint("Rumus berhasil diterapkan di Vegetative pada baris $rowIndex.");
   }
 
-  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber) async { // Mencari baris berdasarkan fieldNumber
-
-    final List<List<String>> rows = await sheet.values.allRows(); // Ambil semua baris
-    for (int i = 0; i < rows.length; i++) { // Iterasi setiap baris
-      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) { // Kolom ke-3 untuk fieldNumber
-        return i + 1; // Index baris di Google Sheets dimulai dari 1
+  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber) async {
+    final List<List<String>> rows = await sheet.values.allRows();
+    for (int i = 0; i < rows.length; i++) {
+      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) {
+        return i + 1;
       }
     }
-    return -1; // Tidak ditemukan
+    return -1;
   }
 
   Future<void> _showConfirmationDialog() async {
@@ -700,7 +982,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   }
 
   bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty); // Pastikan semua field terisi
+    return row.every((field) => field.isNotEmpty);
   }
 
   void _showSnackbar(String message) {
@@ -722,24 +1004,23 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     } else if (response == 'Failed to save data. Please try again.') {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => FailedScreen(), // Buat halaman FailedScreen untuk tampilan gagal
+          builder: (context) => FailedScreen(),
         ),
       );
     } else {
-      // Tampilkan pesan error atau tetap di halaman
       _showSnackbar('Unknown response: $response');
     }
   }
 
   String _convertToDateIfNecessary(String value) {
     try {
-      final parsed = double.tryParse(value);
-      if (parsed != null) {
-        return DateFormat('dd/MM/yyyy')
-            .format(DateTime(1899, 12, 30).add(Duration(days: parsed.toInt())));
+      final parsedNumber = double.tryParse(value);
+      if (parsedNumber != null) {
+        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
+        return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
-      return value;
+      // Handle parsing error
     }
     return value;
   }
@@ -768,7 +1049,7 @@ class SuccessScreen extends StatelessWidget {
           'Success',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.green,
+        backgroundColor: Colors.green.shade700,
       ),
       body: Center(
         child: Column(
@@ -783,24 +1064,15 @@ class SuccessScreen extends StatelessWidget {
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () async {
-                // Tampilkan dialog loading
                 _showLoadingDialog(context);
-
-                // Simpan instance NavigatorState untuk digunakan setelah async gap
                 final navigator = Navigator.of(context);
-
-                // Simpan data ke Google Sheets
                 await _saveBackActivityToGoogleSheets(region);
-
-                // Tutup dialog loading
                 navigator.pop();
-
-                // Kembali ke layar sebelumnya
                 navigator.pop();
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.green, // Warna background tombol
+                backgroundColor: Colors.green.shade700, // Warna background tombol
                 foregroundColor: Colors.white, // Warna teks tombol
                 shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
                   borderRadius: BorderRadius.circular(30),
@@ -831,7 +1103,7 @@ class SuccessScreen extends StatelessWidget {
               Lottie.asset('assets/loading.json', width: 150, height: 150),
               const SizedBox(height: 20),
               const Text(
-                "Loading...",
+                "Ngrantos sekedap...",
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ],
@@ -886,7 +1158,7 @@ class FailedScreen extends StatelessWidget {
           'Failed',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.red,
+        backgroundColor: Colors.red.shade700,
       ),
       body: Center(
         child: Column(
@@ -905,7 +1177,7 @@ class FailedScreen extends StatelessWidget {
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.red, // Warna background tombol
+                backgroundColor: Colors.red.shade700, // Warna background tombol
                 foregroundColor: Colors.white, // Warna teks tombol
                 shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
                   borderRadius: BorderRadius.circular(30),

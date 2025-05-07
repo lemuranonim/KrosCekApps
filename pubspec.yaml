@@ -2,7 +2,7 @@ name: kroscek
 description: "Crop Inspection and Check Result"
 publish_to: 'none'
 
-version: 2.7.3+46
+version: 2.9.1+64
 
 environment:
   sdk: '>=3.5.4 <4.0.0'
@@ -61,6 +61,10 @@ dependencies:
   flutter_zoom_drawer: ^3.2.0
   smooth_page_indicator: ^1.2.0+3
   icons_launcher: ^3.0.0
+  dropdown_button2: ^2.3.9
+  flutter_staggered_animations: ^1.1.1
+  auto_size_text: ^3.0.0
+  responsive_framework: ^1.5.1
 #  firebase_crashlytics: ^4.2.0
 
 dev_dependencies:

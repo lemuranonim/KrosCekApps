@@ -6,7 +6,6 @@ import 'generative1_edit_screen.dart';
 import 'generative2_edit_screen.dart';
 import 'generative3_edit_screen.dart';
 import 'google_sheets_api.dart';
-import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:lottie/lottie.dart';
 import 'config_manager.dart';
@@ -129,12 +128,6 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
     }
   }
 
-  // Fungsi untuk memperbarui data ketika pengguna melakukan pull-to-refresh
-  Future<void> _refreshData() async {
-    await _fetchData();  // Ambil data terbaru dari Google Sheets
-    _saveDataToCache();  // Simpan data baru ke dalam cache
-  }
-
   Map<String, double?> _parseCoordinates(String coordinatesStr) {
     try {
       final List<String> parts = coordinatesStr.split(',');
@@ -175,29 +168,71 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
     }
   }
 
+  int _calculateDAP(List<String> row) {
+    try {
+      // Use _convertToDateIfNecessary to get the planting date
+      final plantingDateString = row[9]; // Access planting date directly from row
+      final plantingDate = _convertToDateIfNecessary(plantingDateString);
+
+      // Parse the converted date string
+      final parsedDate = DateFormat('dd/MM/yyyy').parse(plantingDate);
+      final today = DateTime.now(); // Keep today as DateTime for calculation
+
+      return today.difference(parsedDate).inDays; // Calculate the difference in days
+    } catch (e) {
+      return 0; // Return 0 if there's an error in parsing
+    }
+  }
+
+  String getFormattedToday() {
+    final today = DateTime.now();
+    return DateFormat('dd/MM/yyyy').format(today);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
+      appBar: AppBar(
         title: Text(
-        row != null ? row![2] : 'Loading...',
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-    ),
-    backgroundColor: Colors.green,
-    iconTheme: const IconThemeData(color: Colors.white),
-    ),
-    body: isLoading
-    ? Center(child: Lottie.asset('assets/loading.json'))
-        : LiquidPullToRefresh(
-    onRefresh: _refreshData,  // Menentukan fungsi untuk refresh
-      color: Colors.green,
-      backgroundColor: Colors.white,
-      showChildOpacityTransition: true,
-    child: SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(5.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          row != null ? row![2] : 'Loading...',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20, // Increased font size for better visibility
+          ),
+        ),
+        backgroundColor: Colors.green.shade700, // Darker green for a premium look
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 4, // Subtle elevation for depth
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            bottom: Radius.circular(20), // Rounded bottom corners
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            onPressed: () {
+              // Action for info button
+              _showInfoDialog(context);
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.sync_rounded),
+            onPressed: () async {
+              await _fetchData();
+              _saveDataToCache();
+            },
+          ),
+        ],
+      ),
+      body: isLoading
+          ? Center(child: Lottie.asset('assets/loading.json'))
+          : SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(5.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildInteractiveMap(),
               const SizedBox(height: 10),
@@ -210,6 +245,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                 _buildDetailRow('Hybrid', row![5]),
                 _buildDetailRow('Effective Area (Ha)', _convertToFixedDecimalIfNecessary(row![8])),
                 _buildDetailRow('Planting Date PDN', _convertToDateIfNecessary(row![9])),
+                _buildDetailRow('DAP', _calculateDAP(row!).toString()),
                 _buildDetail2Row('Flowering (Est + 57 DAP)', _convertToDateIfNecessary(row![27])),
                 _buildDetail2Row('FASE', row![26]),
                 _buildDetailRow('Desa', row![11]),
@@ -290,7 +326,6 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                             _buildDetailRow('Reason PLD', row![66]),
                             _buildDetailRow('Reason Tidak Teraudit', row![67]),
                           ]),
-
                         ],
                       ),
                     ),
@@ -301,147 +336,241 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
           ),
         ),
       ),
-    ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await _fetchData();
-          _saveDataToCache();
-        },
-        backgroundColor: Colors.green,
-        shape: const CircleBorder(),
-        child: const Icon(Icons.refresh_rounded, color: Colors.white),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
-      bottomNavigationBar: const BottomAppBar(
-        color: Colors.green,
-        shape: CircularNotchedRectangle(),
-        child: SizedBox(height: 60.0),
-      ),
+    );
+  }
+
+  void _showInfoDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text(
+              'Info Mase!',
+              style: TextStyle(
+                color: Colors.green,
+                fontWeight: FontWeight.bold,
+              ),
+          ),
+          content: const Text('Yen diperluake, pencet tombol refresh kanggo nganyari data paling anyar, supoyo data lawas ora katon soko cache.'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text(
+                'Tutup',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
   Widget _buildInteractiveMap() {
     return GestureDetector(
       onTap: _openMaps,
-      child: _mapImageUrl.isNotEmpty
-          ? Image.network(
-        _mapImageUrl,
-        fit: BoxFit.cover,
-        height: 250,
-        width: double.infinity,
-      )
-          : const SizedBox.shrink(),
-    );
-  }
-
-  Widget _buildCoordinatesText() {
-    return Text(
-      latitude != null && longitude != null
-          ? 'Koordinat: $latitude, $longitude'
-          : 'Koordinat tidak tersedia',
-      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-    );
-  }
-
-  Widget _buildDetailCard(String title, List<Widget> children) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(25),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
             ),
-            const SizedBox(height: 10),
-            Column(children: children),
           ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: _mapImageUrl.isNotEmpty
+              ? Image.network(
+            _mapImageUrl,
+            fit: BoxFit.cover,
+            height: 250,
+            width: double.infinity,
+          )
+              : Container(
+            height: 250,
+            color: Colors.grey.shade300,
+            child: const Center(
+              child: Text(
+                'Map not available',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 
-  // Widget _buildAuditSection(BuildContext context, String title, List<Widget> children) {
-  //   return Card(
-  //     elevation: 4,
-  //     color: Colors.green[50],
-  //     shape: RoundedRectangleBorder(
-  //       borderRadius: BorderRadius.circular(10),
-  //     ),
-  //     margin: const EdgeInsets.all(8), // Memberikan margin untuk jarak antar card
-  //     child: Padding(
-  //       padding: const EdgeInsets.all(14.0),
-  //       child: Column(
-  //         crossAxisAlignment: CrossAxisAlignment.center,
-  //         children: [
-  //           Text(
-  //             title,
-  //             textAlign: TextAlign.center,
-  //             style: const TextStyle(
-  //               color: Colors.green,
-  //               fontSize: 18,
-  //               fontWeight: FontWeight.bold,
-  //             ),
-  //           ),
-  //           const SizedBox(height: 20),
-  //
-  //           // Menampilkan daftar detail audit
-  //           ...children,
-  //
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
+  Widget _buildCoordinatesText() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withAlpha(25),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Text(
+        latitude != null && longitude != null
+            ? 'Koordinat: ${latitude!.toStringAsFixed(6)}, ${longitude!.toStringAsFixed(6)}'
+            : 'Koordinat tidak tersedia',
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: latitude != null && longitude != null ? Colors.green.shade800 : Colors.grey,
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _buildDetailCard(String title, List<Widget> children) {
+    return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.green.shade100, width: 1.0),
+      ),
+      margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Colors.white, Colors.green.shade50],
+            stops: const [0.7, 1.0],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.green.shade600, Colors.green.shade800],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.green.withAlpha(76),
+                      blurRadius: 6,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              const Divider(
+                color: Colors.green,
+                thickness: 0.8,
+                height: 20,
+              ),
+              const SizedBox(height: 8),
+              ...children.map((child) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: child,
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildAudit1Section(BuildContext context, String title, List<Widget> children) {
-    // Scroll controller untuk mengatur scroll bar
     final ScrollController scrollController = ScrollController();
 
-    return Stack( // Menggunakan Stack untuk menempatkan FAB di atas Card
+    return Stack(
       children: [
         Card(
-          elevation: 4,
-          color: Colors.green[50],
+          elevation: 8, // Increased elevation for more depth
+          color: Colors.white, // Clean white background
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(20), // More rounded corners
+            side: BorderSide(color: Colors.green.shade200, width: 1.5), // Subtle border
           ),
-          margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50), // Memberi ruang untuk FAB
+          margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50),
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(20.0), // More padding for spaciousness
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.green,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.green.shade400, Colors.green.shade700],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.green.withAlpha(76),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 20),
 
-                // Tambahkan ScrollBar
                 Expanded(
                   child: Scrollbar(
                     controller: scrollController,
                     thumbVisibility: true,
-                    thickness: 8,
+                    thickness: 6,
                     radius: const Radius.circular(10),
                     child: SingleChildScrollView(
                       controller: scrollController,
-                      child: Column(
-                        children: children,
+                      physics: const BouncingScrollPhysics(), // Smooth scrolling
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Column(
+                          children: children,
+                        ),
                       ),
                     ),
                   ),
@@ -451,18 +580,31 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
           ),
         ),
         Positioned(
-          bottom: 6, // Posisi FAB di bawah card
-          left: MediaQuery.of(context).size.width / 2 - 28, // FAB di tengah card
-          child: FloatingActionButton(
-            onPressed: () async {
-              await _navigateToGenerative1EditScreen(
-                  context); // Navigasi ke layar edit
-              await _fetchData();
-              _saveDataToCache();
-            },
-            backgroundColor: Colors.green,
-            shape: const CircleBorder(),
-            child: const Icon(Icons.edit, color: Colors.white),
+          bottom: 20,
+          right: 30, // Moved to right side for better UX
+          child: Container(
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.green.withAlpha(102),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: FloatingActionButton(
+              onPressed: () async {
+                await _navigateToGenerative1EditScreen(context);
+                await _fetchData();
+                _saveDataToCache();
+              },
+              backgroundColor: Colors.green.shade600,
+              elevation: 8,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.edit, color: Colors.white, size: 28),
+            ),
           ),
         ),
       ],
@@ -470,45 +612,67 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
   }
 
   Widget _buildAudit2Section(BuildContext context, String title, List<Widget> children) {
-    // Scroll controller untuk mengatur scroll bar
     final ScrollController scrollController = ScrollController();
 
-    return Stack( // Menggunakan Stack untuk menempatkan FAB di atas Card
+    return Stack(
       children: [
         Card(
-          elevation: 4,
-          color: Colors.green[50],
+          elevation: 8,
+          color: Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.green.shade200, width: 1.5),
           ),
-          margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50), // Memberi ruang untuk FAB
+          margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50),
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.green,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.green.shade400, Colors.green.shade700],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.green.withAlpha(76),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 20),
 
-                // Tambahkan ScrollBar
                 Expanded(
                   child: Scrollbar(
                     controller: scrollController,
                     thumbVisibility: true,
-                    thickness: 8,
+                    thickness: 6,
                     radius: const Radius.circular(10),
                     child: SingleChildScrollView(
                       controller: scrollController,
-                      child: Column(
-                        children: children,
+                      physics: const BouncingScrollPhysics(),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Column(
+                          children: children,
+                        ),
                       ),
                     ),
                   ),
@@ -518,18 +682,31 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
           ),
         ),
         Positioned(
-          bottom: 6, // Posisi FAB di bawah card
-          left: MediaQuery.of(context).size.width / 2 - 28, // FAB di tengah card
-          child: FloatingActionButton(
-            onPressed: () async {
-              await _navigateToGenerative2EditScreen(
-                  context); // Navigasi ke layar edit
-              await _fetchData();
-              _saveDataToCache();
-            },
-            backgroundColor: Colors.green,
-            shape: const CircleBorder(),
-            child: const Icon(Icons.edit, color: Colors.white),
+          bottom: 20,
+          right: 30,
+          child: Container(
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.green.withAlpha(102),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: FloatingActionButton(
+              onPressed: () async {
+                await _navigateToGenerative2EditScreen(context);
+                await _fetchData();
+                _saveDataToCache();
+              },
+              backgroundColor: Colors.green.shade600,
+              elevation: 8,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.edit, color: Colors.white, size: 28),
+            ),
           ),
         ),
       ],
@@ -537,45 +714,67 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
   }
 
   Widget _buildAudit3Section(BuildContext context, String title, List<Widget> children) {
-    // Scroll controller untuk mengatur scroll bar
     final ScrollController scrollController = ScrollController();
 
-    return Stack( // Menggunakan Stack untuk menempatkan FAB di atas Card
+    return Stack(
       children: [
         Card(
-          elevation: 4,
-          color: Colors.green[50],
+          elevation: 8,
+          color: Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.green.shade200, width: 1.5),
           ),
-          margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50), // Memberi ruang untuk FAB
+          margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50),
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.green,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.green.shade400, Colors.green.shade700],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.green.withAlpha(76),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 20),
 
-                // Tambahkan ScrollBar
                 Expanded(
                   child: Scrollbar(
                     controller: scrollController,
                     thumbVisibility: true,
-                    thickness: 8,
+                    thickness: 6,
                     radius: const Radius.circular(10),
                     child: SingleChildScrollView(
                       controller: scrollController,
-                      child: Column(
-                        children: children,
+                      physics: const BouncingScrollPhysics(),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Column(
+                          children: children,
+                        ),
                       ),
                     ),
                   ),
@@ -585,72 +784,104 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
           ),
         ),
         Positioned(
-          bottom: 6, // Posisi FAB di bawah card
-          left: MediaQuery.of(context).size.width / 2 - 28, // FAB di tengah card
-          child: FloatingActionButton(
-            onPressed: () async {
-              await _navigateToGenerative3EditScreen(
-                  context); // Navigasi ke layar edit
-              await _fetchData();
-              _saveDataToCache();
-            },
-            backgroundColor: Colors.green,
-            shape: const CircleBorder(),
-            child: const Icon(Icons.edit, color: Colors.white),
+          bottom: 20,
+          right: 30,
+          child: Container(
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.green.withAlpha(102),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: FloatingActionButton(
+              onPressed: () async {
+                await _navigateToGenerative3EditScreen(context);
+                await _fetchData();
+                _saveDataToCache();
+              },
+              backgroundColor: Colors.green.shade600,
+              elevation: 8,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.edit, color: Colors.white, size: 28),
+            ),
           ),
         ),
       ],
     );
   }
 
-  // Widget _buildAdditionalInfoCard(String title, List<Widget> children) {
-  //   return Card(
-  //     color: Colors.green[50],
-  //     elevation: 4,
-  //     shape: RoundedRectangleBorder(
-  //       borderRadius: BorderRadius.circular(10),
-  //     ),
-  //     child: Padding(
-  //       padding: const EdgeInsets.all(16.0),
-  //       child: Column(
-  //         crossAxisAlignment: CrossAxisAlignment.start,
-  //         children: [
-  //           Text(
-  //             title,
-  //             style: const TextStyle(
-  //                 fontSize: 18,
-  //                 fontWeight: FontWeight.bold,
-  //                 color: Colors.green),
-  //           ),
-  //           const SizedBox(height: 10),
-  //           Column(children: children),
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
-
   Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.all(12.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(13),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: Border.all(color: Colors.grey.shade200, width: 1),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             flex: 2,
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            child: Row(
+              children: [
+                Container(
+                  height: 18,
+                  width: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade600,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade800,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 16),
           Expanded(
             flex: 3,
-            child: Text(
-              value.isNotEmpty ? value : 'Kosong Lur...',
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
-              softWrap: true,
-              overflow: TextOverflow.visible,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Text(
+                value.isNotEmpty ? value : 'Kosong Lur...',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: value.isNotEmpty ? Colors.grey.shade700 : Colors.grey.shade400,
+                  fontWeight: FontWeight.w400,
+                  height: 1.3,
+                ),
+                softWrap: true,
+                overflow: TextOverflow.visible,
+              ),
             ),
           ),
         ],
@@ -659,26 +890,81 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
   }
 
   Widget _buildDetail2Row(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.all(12.0),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.green.shade50, Colors.white],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withAlpha(25),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+        border: Border.all(color: Colors.green.shade200, width: 1.5),
+      ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start, // Menyelaraskan konten agar vertikal
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded( // Menggunakan Expanded untuk mengatasi masalah overflow pada teks
+          Expanded(
             flex: 2,
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.arrow_right,
+                  color: Colors.green.shade700,
+                  size: 24,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green.shade800,
+                      letterSpacing: 0.3,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 10), // Menambahkan sedikit ruang antara label dan value
+          const SizedBox(width: 16),
           Expanded(
             flex: 3,
-            child: Text(
-              value.isNotEmpty ? value : 'Kosong Lur...',
-              style: const TextStyle(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.bold),
-              softWrap: true,  // Membungkus teks jika terlalu panjang
-              overflow: TextOverflow.visible, // Memastikan teks tidak terpotong
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green.withAlpha(25),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+                border: Border.all(color: Colors.green.shade300),
+              ),
+              child: Text(
+                value.isNotEmpty ? value : 'Kosong Lur...',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: value.isNotEmpty ? Colors.grey.shade800 : Colors.grey.shade400,
+                  fontWeight: FontWeight.bold,
+                  height: 1.3,
+                ),
+                softWrap: true,
+                overflow: TextOverflow.visible,
+              ),
             ),
           ),
         ],
