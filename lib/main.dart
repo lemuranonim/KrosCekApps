@@ -1,30 +1,25 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'firebase_options.dart';
-import 'screens/splash_screen.dart';
-import 'screens/home_screen.dart';
-import 'screens/login_screen.dart';
-import 'screens/register_screen.dart';
-import 'screens/admin_dashboard.dart';
-import 'screens/psp_screen.dart';
-import 'screens/config_manager.dart';
+
+import 'router.dart';
+import 'screens/services/config_manager.dart';
+import 'services/firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await ConfigManager.loadConfig(); // Muat konfigurasi JSON
 
+  // Inisialisasi locale data untuk Indonesia
+  await initializeDateFormatting('id_ID', null);
+
   // Inisialisasi Hive
   await Hive.initFlutter();
-
-  // // Register adapter untuk List<Map<String, dynamic>>
-  // if (!Hive.isAdapterRegistered(1)) {
-  //   Hive.registerAdapter(MapAdapter());
-  // }
 
   // Membuka atau membuat box yang dibutuhkan
   await Hive.openBox('vegetativeData');
@@ -42,43 +37,35 @@ void main() async {
   // Aktifkan Firebase App Check
   await FirebaseAppCheck.instance.activate();
 
-  // Inisialisasi aplikasi setelah mengecek status login
-  // bool showLoginScreen = await checkLoginStatus();
-
   runApp(const MyApp());
 }
 
-Future<bool> checkLoginStatus() async {
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-  String? userRole = prefs.getString('userRole');
-
-  if (isLoggedIn && userRole != null) {
-    return false; // Jangan tampilkan login screen
-  } else {
-    return true;
-  }
-}
+// Future<bool> checkLoginStatus() async {
+//   SharedPreferences prefs = await SharedPreferences.getInstance();
+//   bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+//   String? userRole = prefs.getString('userRole');
+//
+//   if (isLoggedIn && userRole != null) {
+//     return false; // Jangan tampilkan login screen
+//   } else {
+//     return true;
+//   }
+// }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'KroscekApp',
       theme: ThemeData(
         primarySwatch: Colors.green,
+        textTheme: GoogleFonts.interTextTheme(),
+        useMaterial3: true,
       ),
-      initialRoute: '/splash', // Selalu mulai dari splash screen
-      routes: {
-        '/splash': (context) => const SplashScreen(),
-        '/login': (context) => const LoginScreen(),
-        '/register': (context) => const RegisterScreen(),
-        '/home': (context) => const HomeScreen(),
-        '/admin_dashboard': (context) => const AdminDashboard(),
-        '/psp_dashboard': (context) => const PspScreen(),
-      },
+      routerConfig: router,
+      debugShowCheckedModeBanner: false,
     );
   }
 }

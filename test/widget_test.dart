@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mockito/mockito.dart';
 import 'package:kroscek/screens/splash_screen.dart';
 import 'package:kroscek/screens/login_screen.dart';
-import 'package:kroscek/screens/home_screen.dart';
+import 'package:kroscek/screens/hsp/home_screen.dart';
 
 // Mock class for SharedPreferences
 class MockSharedPreferences extends Mock implements SharedPreferences {}
