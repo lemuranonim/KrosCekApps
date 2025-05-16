@@ -1,0 +1,1194 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:gsheets/gsheets.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/intl.dart';
+import 'package:lottie/lottie.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/config_manager.dart';
+import '../../services/google_sheets_api.dart';
+
+class VegetativeEditScreen extends StatefulWidget {
+  final List<String> row;
+  final String region;
+  final Function(List<String>) onSave;
+
+  const VegetativeEditScreen({
+    super.key,
+    required this.row,
+    required this.region,
+    required this.onSave,
+  });
+
+  @override
+  VegetativeEditScreenState createState() => VegetativeEditScreenState();
+}
+
+class VegetativeEditScreenState extends State<VegetativeEditScreen> {
+  late List<String> row;
+  final _formKey = GlobalKey<FormState>();
+
+  late TextEditingController _dateAuditController;
+  late TextEditingController _actualPlantingDateController;
+
+  String userEmail = 'Fetching...';
+  String userName = 'Fetching...';
+  late String spreadsheetId;
+  late GoogleSheetsApi gSheetsApi;
+
+  String? selectedFI;
+  List<String> fiList = [];
+
+  String? selectedSplitField;
+  String? selectedIsolationProblem;
+  String? selectedContaminantType;
+  String? selectedContaminantDistance;
+  String? selectedCropUniformity;
+  String? selectedOfftypeInMale;
+  String? selectedOfftypeInFemale;
+  String? selectedPreviousCrop;
+  String? selectedFIRApplied;
+  String? selectedPOIAccuracy;
+  String? selectedFlagging;
+  String? selectedRecommendation;
+
+  final List<String> splitFieldItems = ['A', 'B'];
+  final List<String> isolationProblemItems = ['Y', 'N'];
+  final List<String> contaminantTypeItems = ['A', 'B'];
+  final List<String> contaminantDistanceItems = ['A', 'B', 'C', 'D'];
+  final List<String> cropUniformityItems = ['A', 'B', 'C'];
+  final List<String> offtypeItems = ['A', 'B'];
+  final List<String> firAppliedItems = ['Y', 'N'];
+  final List<String> poiAccuracyItems = ['Valid', 'Not Valid'];
+  final List<String> flaggingItems = ['GF', 'RF'];
+  final List<String> recommendationItems = ['Continue', 'Discard'];
+
+  bool isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _fetchSpreadsheetId();
+      await _loadFIList(widget.region);
+    });
+    _loadUserCredentials();
+    row = List<String>.from(widget.row);
+
+    _initHive();
+    _fetchSpreadsheetId();
+
+    _dateAuditController = TextEditingController(text: _convertToDateIfNecessary(row[33]));
+    _actualPlantingDateController = TextEditingController(text: _convertToDateIfNecessary(row[35]));
+
+    _loadFIList(widget.region);
+
+    // Initialize dropdown fields
+    selectedSplitField = row[39];
+    selectedIsolationProblem = row[40];
+    selectedContaminantType = row[41];
+    selectedContaminantDistance = row[42];
+    selectedCropUniformity = row[43];
+    selectedOfftypeInMale = row[44];
+    selectedOfftypeInFemale = row[45];
+    selectedPreviousCrop = row[46];
+    selectedFIRApplied = row[47];
+    selectedPOIAccuracy = row[48];
+    selectedFlagging = row[49];
+    selectedRecommendation = row[50];
+  }
+
+  Future<void> _fetchSpreadsheetId() async {
+    spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
+    gSheetsApi = GoogleSheetsApi(spreadsheetId);
+    await gSheetsApi.init();
+  }
+
+  Future<void> _loadFIList(String region) async {
+    setState(() => isLoading = true);
+
+    try {
+      final gSheetsApi = GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
+      await gSheetsApi.init();
+      final List<String> fetchedFI = await gSheetsApi.fetchFIByRegion('FI', region);
+
+      setState(() {
+        fiList = fetchedFI;
+        selectedFI = row[31];
+      });
+    } catch (e) {
+      debugPrint('Gagal mengambil data FI: $e');
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  void _initHive() async {
+    await Hive.initFlutter();
+    await Hive.openBox('vegetativeData');
+  }
+
+  Future<void> _saveToHive(List<String> rowData) async {
+    var box = await Hive.openBox('vegetativeData');
+    final cacheKey = 'detailScreenData_${rowData[2]}';
+    await box.put(cacheKey, rowData);
+  }
+
+  Future<void> _loadUserCredentials() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userEmail = prefs.getString('userEmail') ?? 'Unknown Email';
+      userName = prefs.getString('userName') ?? 'Pengguna';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+            'Edit Vegetative Field',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            )
+        ),
+        backgroundColor: Colors.green.shade700,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.green.shade700, Colors.green.shade100],
+            stops: const [0.0, 0.3],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: _formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isLoading)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 20),
+                      child: const LinearProgressIndicator(
+                        backgroundColor: Colors.white,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                      ),
+                    ),
+
+                  // Main Card Container
+                  Card(
+                    elevation: 8,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Field Information Section
+                          _buildSectionHeader('Field Information', Icons.info_outline),
+
+                          _buildInfoCard(
+                            title: 'Field Number',
+                            value: row[2],
+                            icon: Icons.numbers,
+                          ),
+
+                          _buildInfoCard(
+                            title: 'Region',
+                            value: widget.region,
+                            icon: Icons.location_on,
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // Audit Information Section
+                          _buildSectionHeader('Audit Information', Icons.assignment),
+                          _buildFIDropdownField('QA FI', 31),
+                          const SizedBox(height: 10),
+                          _buildTextFormField('Co Detasseling', 32, icon: Icons.people),
+                          const SizedBox(height: 10),
+                          _buildDatePickerField('Date of Audit', 33, _dateAuditController),
+                          const SizedBox(height: 10),
+                          _buildDatePickerField('Actual Female Planting Date', 35, _actualPlantingDateController),
+                          const SizedBox(height: 10),
+
+                          // Field Metrics Section
+                          _buildSectionHeader('Field Metrics', Icons.straighten),
+                          _buildText2FormField('Field Size by Audit (Ha)', 36, icon: Icons.crop_square),
+                          const SizedBox(height: 10),
+                          _buildText2FormField('Male Split by Audit', 37, icon: Icons.view_week),
+                          const SizedBox(height: 10),
+                          _buildTextFormField('Sowing Ratio by Audit', 38, icon: Icons.compare_arrows),
+                          const SizedBox(height: 10),
+
+                          // Field Conditions Section
+                          _buildSectionHeader('Field Conditions', Icons.landscape),
+                          _buildDropdownFormField(
+                            label: 'Split Field by Audit',
+                            items: splitFieldItems,
+                            value: selectedSplitField,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedSplitField = value;
+                                row[39] = value ?? '';
+                              });
+                            },
+                            helpText: 'A = No\nB = Yes',
+                            icon: Icons.call_split,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildDropdownFormField(
+                            label: 'Isolation Problem by Audit',
+                            items: isolationProblemItems,
+                            value: selectedIsolationProblem,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedIsolationProblem = value;
+                                row[40] = value ?? '';
+                              });
+                            },
+                            helpText: 'Y = Yes\nN = No',
+                            icon: Icons.security,
+                          ),
+                          const SizedBox(height: 10),
+                          if (selectedIsolationProblem == 'Y')
+                            Column(
+                              children: [
+                                _buildDropdownFormField(
+                                  label: 'If "YES" Contaminant Type',
+                                  items: contaminantTypeItems,
+                                  value: selectedContaminantType,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedContaminantType = value;
+                                      row[41] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'A = Seed Production\nB = Jagung Komersial',
+                                  icon: Icons.category,
+                                ),
+                                const SizedBox(height: 10),
+
+                                _buildDropdownFormField(
+                                  label: 'If "YES" Contaminant Distance',
+                                  items: contaminantDistanceItems,
+                                  value: selectedContaminantDistance,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedContaminantDistance = value;
+                                      row[42] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'A = >300 m\nB = >200-<300 m\nC = >100 & <200 m\nD = <100 m',
+                                  icon: Icons.social_distance,
+                                ),
+                                const SizedBox(height: 10),
+                              ],
+                            ),
+                          const SizedBox(height: 10),
+
+                          // Crop Quality Section
+                          _buildSectionHeader('Crop Quality', Icons.eco),
+                          _buildDropdownFormField(
+                            label: 'Crop Uniformity',
+                            items: cropUniformityItems,
+                            value: selectedCropUniformity,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedCropUniformity = value;
+                                row[43] = value ?? '';
+                              });
+                            },
+                            helpText: 'A = Good\nB = Fair\nC = Poor',
+                            icon: Icons.grain,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildDropdownFormField(
+                            label: 'Offtype in Male',
+                            items: offtypeItems,
+                            value: selectedOfftypeInMale,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedOfftypeInMale = value;
+                                row[44] = value ?? '';
+                              });
+                            },
+                            helpText: 'A = No\nB = Yes',
+                            icon: Icons.male,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildDropdownFormField(
+                            label: 'Offtype in Female',
+                            items: offtypeItems,
+                            value: selectedOfftypeInFemale,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedOfftypeInFemale = value;
+                                row[45] = value ?? '';
+                              });
+                            },
+                            helpText: 'A = No\nB = Yes',
+                            icon: Icons.female,
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Field History Section
+                          _buildSectionHeader('Field History & Management', Icons.history),
+                          _buildDropdownFormField(
+                            label: 'Previous Crop by Audit',
+                            items: offtypeItems,
+                            value: selectedPreviousCrop,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedPreviousCrop = value;
+                                row[46] = value ?? '';
+                              });
+                            },
+                            helpText: 'A = Not Corn\nB = Corn After Corn',
+                            icon: Icons.history_edu,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildDropdownFormField(
+                            label: 'FIR Applied',
+                            items: firAppliedItems,
+                            value: selectedFIRApplied,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedFIRApplied = value;
+                                row[47] = value ?? '';
+                              });
+                            },
+                            helpText: 'Y = Ada\nN = Tidak Ada',
+                            icon: Icons.check_circle_outline,
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Field Validation Section
+                          _buildSectionHeader('Field Validation', Icons.verified),
+                          _buildDropdownFormField(
+                            label: 'POI Accuracy',
+                            items: poiAccuracyItems,
+                            value: selectedPOIAccuracy,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedPOIAccuracy = value;
+                                row[48] = value ?? '';
+                              });
+                            },
+                            helpText: 'POI Accuracy (Valid/Not Valid)',
+                            icon: Icons.location_searching,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildDropdownFormField(
+                            label: 'Flagging (GF/RF)',
+                            items: flaggingItems,
+                            value: selectedFlagging,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedFlagging = value;
+                                row[49] = value ?? '';
+                              });
+                            },
+                            helpText: 'Flagging (GF/RF)',
+                            icon: Icons.flag,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildDropdownFormField(
+                            label: 'Recommendation',
+                            items: recommendationItems,
+                            value: selectedRecommendation,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedRecommendation = value;
+                                row[50] = value ?? '';
+                              });
+                            },
+                            helpText: 'Continue to Next Process/Discard',
+                            icon: Icons.recommend,
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Remarks Section
+                          _buildSectionHeader('Additional Information', Icons.note_add),
+                          _buildTextFormField('Remarks', 51, icon: Icons.comment, maxLines: 3),
+                          const SizedBox(height: 30),
+
+                          // Save Button
+                          Center(
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                if (_formKey.currentState!.validate()) {
+                                  _showLoadingDialogAndClose();
+                                  _showLoadingAndSaveInBackground();
+                                  _showConfirmationDialog;
+                                  _saveToGoogleSheets(row);
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                minimumSize: const Size(220, 60),
+                                backgroundColor: Colors.green.shade700,
+                                foregroundColor: Colors.white,
+                                elevation: 5,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                              ),
+                              icon: const Icon(Icons.save, size: 26, color: Colors.white),
+                              label: const Text(
+                                'Simpan',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: Colors.green.shade800, size: 24),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.green.shade800,
+              ),
+            ),
+          ],
+        ),
+        const Divider(thickness: 2, color: Colors.green),
+        const SizedBox(height: 10),
+      ],
+    );
+  }
+
+  Widget _buildInfoCard({required String title, required String value, required IconData icon}) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.green.shade700),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextFormField(String label, int index, {IconData? icon, int maxLines = 1}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextFormField(
+        initialValue: row[index],
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+        ),
+        onChanged: (value) {
+          setState(() {
+            row[index] = value;
+          });
+        },
+      ),
+    );
+  }
+
+  Widget _buildText2FormField(String label, int index, {IconData? icon}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextFormField(
+        initialValue: row[index].isNotEmpty ? "'${row[index]}" : "'0",
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+        ),
+        onChanged: (value) {
+          setState(() {
+            String cleanedValue = value.replaceAll("'", "");
+            row[index] = "'$cleanedValue";
+          });
+        },
+      ),
+    );
+  }
+
+  Widget _buildFIDropdownField(String label, int index) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: DropdownButtonFormField<String>(
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(Icons.person, color: Colors.green.shade600),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+        ),
+        value: selectedFI,
+        items: fiList.map((String fi) {
+          return DropdownMenuItem<String>(
+            value: fi,
+            child: SizedBox(
+              width: double.infinity, // Memastikan lebar penuh
+              child: Text(
+                fi,
+                overflow: TextOverflow.ellipsis, // Menghindari teks keluar
+                maxLines: 1, // Membatasi jumlah baris
+              ),
+            ),
+          );
+        }).toList(),
+        onChanged: (value) {
+          setState(() {
+            selectedFI = value;
+            row[index] = value ?? '';
+          });
+        },
+        dropdownColor: Colors.white,
+        icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+        isExpanded: true, // Memastikan dropdown mengisi ruang yang tersedia
+      ),
+    );
+  }
+
+  Widget _buildDatePickerField(String label, int index, TextEditingController controller) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextFormField(
+        controller: controller,
+        readOnly: true,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
+          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+        ),
+        onTap: () async {
+          DateTime? pickedDate = await showDatePicker(
+            context: context,
+            initialDate: DateTime.now(),
+            firstDate: DateTime(2000),
+            lastDate: DateTime(2101),
+            builder: (context, child) {
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  colorScheme: ColorScheme.light(
+                    primary: Colors.green.shade700,
+                    onPrimary: Colors.white,
+                    onSurface: Colors.black,
+                  ),
+                ),
+                child: child!,
+              );
+            },
+          );
+
+          if (pickedDate != null) {
+            String formattedDate = DateFormat('dd/MM/yyyy').format(pickedDate);
+            setState(() {
+              controller.text = formattedDate; row[index] = formattedDate;
+            });
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildDropdownFormField({
+    required String label,
+    required List<String> items,
+    required String? value,
+    required Function(String?) onChanged,
+    String? hint,
+    String? helpText,
+    IconData? icon,
+  }) {
+    if (!items.contains(value)) {
+      value = null;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withAlpha(51),
+                spreadRadius: 1,
+                blurRadius: 3,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: DropdownButtonFormField<String>(
+            decoration: InputDecoration(
+              labelText: label,
+              labelStyle: TextStyle(color: Colors.green.shade700),
+              prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            value: value,
+            hint: Text(hint ?? 'Select an option'),
+            onChanged: onChanged,
+            items: items.map<DropdownMenuItem<String>>((String item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(item),
+              );
+            }).toList(),
+            dropdownColor: Colors.white,
+            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          ),
+        ),
+        if (helpText != null) ...[
+          const SizedBox(height: 5),
+          Text(
+            helpText,
+            style: const TextStyle(
+              fontStyle: FontStyle.italic,
+              color: Colors.grey,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  void _showLoadingDialogAndClose() {
+    bool dialogShown = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        dialogShown = true;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Lottie.asset('assets/loading.json', width: 150, height: 150),
+              const SizedBox(height: 20),
+              const Text(
+                "Ngrantos sekedap...",
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    Timer(const Duration(seconds: 5), () {
+      if (dialogShown && mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        Future.microtask(() {
+          if (mounted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => SuccessScreen(
+                  row: row,
+                  userName: userName,
+                  userEmail: userEmail,
+                  region: widget.region,
+                ),
+              ),
+            );
+          }
+        });
+      }
+    });
+  }
+
+  void _showLoadingAndSaveInBackground() {
+    _showLoadingDialogAndClose();
+    _saveToHive(row);
+    _saveToGoogleSheets(row);
+  }
+
+  Future<void> _saveToGoogleSheets(List<String> rowData) async {
+    setState(() => isLoading = true);
+
+    String responseMessage;
+    try {
+      await gSheetsApi.updateRow('Vegetative', rowData, rowData[2]);
+      await _saveToHive(rowData);
+      responseMessage = 'Data successfully saved to Audit Database';
+
+      final Worksheet? sheet = gSheetsApi.spreadsheet.worksheetByTitle('Vegetative');
+      if (sheet != null) {
+        final rowIndex = await _findRowByFieldNumber(sheet, row[2]);
+        if (rowIndex != -1) {
+          await _restoreVegetativeFormulas(gSheetsApi, sheet, rowIndex);
+        }
+      }
+    } catch (e) {
+      await _logErrorToActivity('Gagal menyimpan data: ${e.toString()}');
+      responseMessage = 'Failed to save data. Please try again.';
+    } finally {
+      setState(() {
+        isLoading = false; // Sembunyikan loader
+      });
+    }
+
+    if (mounted) _navigateBasedOnResponse(context, responseMessage);
+  }
+
+  Future<void> _restoreVegetativeFormulas(GoogleSheetsApi gSheetsApi, Worksheet sheet, int rowIndex) async {
+    await sheet.values.insertValue( // Cek Result
+        '=IF(OR(AH$rowIndex=0;AH$rowIndex="");"NOT Audited";"Audited")',
+        row: rowIndex, column: 56);
+    await sheet.values.insertValue( // Week of Reporting
+        '=IFERROR(IF(OR(AH$rowIndex=0;AH$rowIndex="");"";WEEKNUM(AH$rowIndex;1));"0")',
+        row: rowIndex, column: 35);
+    await sheet.values.insertValue( // Standing Crops
+        '=I$rowIndex-U$rowIndex',
+        row: rowIndex, column: 25);
+    await sheet.values.insertValue( // Hyperlink Coordinate
+        '=IFERROR(IF(AND(LEFT(R$rowIndex;4)-0<6;LEFT(R$rowIndex;4)-0>-11);HYPERLINK("HTTP://MAPS.GOOGLE.COM/maps?q="&R$rowIndex;"LINK");"Not Found");"")',
+        row: rowIndex, column: 26);
+    await sheet.values.insertValue( // Fase
+        '=IF(I$rowIndex=0;"Discard";IF(Y$rowIndex=0;"Harvest";IF(TODAY()-J$rowIndex<46;"Vegetative";IF(AND(TODAY()-J$rowIndex>45;TODAY()-J$rowIndex<56);"Pre Flowering";IF(AND(TODAY()-J$rowIndex>55;TODAY()-J$rowIndex<66);"Flowering";IF(AND(TODAY()-J$rowIndex>65;TODAY()-J$rowIndex<81);"Close Out";IF(TODAY()-J$rowIndex>80;"Male Cutting";"")))))))',
+        row: rowIndex, column: 28);
+    await sheet.values.insertValue( // Veg Audit (Est + 30 DAP)
+        '=J$rowIndex+30',
+        row: rowIndex, column: 29);
+    await sheet.values.insertValue( // Week of Vegetative
+        '=IF(OR(I$rowIndex=0;I$rowIndex="");"";WEEKNUM(AC$rowIndex;1))',
+        row: rowIndex, column: 30);
+    debugPrint("Rumus berhasil diterapkan di Vegetative pada baris $rowIndex.");
+  }
+
+  Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber) async {
+    final List<List<String>> rows = await sheet.values.allRows();
+    for (int i = 0; i < rows.length; i++) {
+      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) {
+        return i + 1;
+      }
+    }
+    return -1;
+  }
+
+  Future<void> _showConfirmationDialog() async {
+    final shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Confirm Save'),
+        content: Text('Are you sure you want to save the changes?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (shouldSave == true) {
+      _validateAndSave();
+    }
+  }
+
+  void _validateAndSave() {
+    if (_formKey.currentState!.validate()) {
+      if (_isDataValid()) {
+        _showLoadingDialogAndClose();
+        _saveToGoogleSheets(row);
+      } else {
+        _showSnackbar('Please complete all required fields');
+      }
+    }
+  }
+
+  bool _isDataValid() {
+    return row.every((field) => field.isNotEmpty);
+  }
+
+  void _showSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _navigateBasedOnResponse(BuildContext context, String response) {
+    if (response == 'Data successfully saved to Audit Database') {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => SuccessScreen(
+            row: row,
+            userName: userName,
+            userEmail: userEmail,
+            region: widget.region,
+          ),
+        ),
+      );
+    } else if (response == 'Failed to save data. Please try again.') {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => FailedScreen(),
+        ),
+      );
+    } else {
+      _showSnackbar('Unknown response: $response');
+    }
+  }
+
+  String _convertToDateIfNecessary(String value) {
+    try {
+      final parsedNumber = double.tryParse(value);
+      if (parsedNumber != null) {
+        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
+        return DateFormat('dd/MM/yyyy').format(date);
+      }
+    } catch (e) {
+      // Handle parsing error
+    }
+    return value;
+  }
+}
+
+class SuccessScreen extends StatelessWidget {
+  final List<String> row;
+  final String userName;
+  final String userEmail;
+  final String region;
+
+  const SuccessScreen({
+    super.key,
+    required this.row,
+    required this.userName,
+    required this.userEmail,
+    required this.region,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text(
+          'Success',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.green.shade700,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green, size: 100),
+            const SizedBox(height: 20),
+            const Text(
+              'Data berhasil disimpan!',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () async {
+                _showLoadingDialog(context);
+                final navigator = Navigator.of(context);
+                await _saveBackActivityToGoogleSheets(region);
+                navigator.pop();
+                navigator.pop();
+              },
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
+                backgroundColor: Colors.green.shade700, // Warna background tombol
+                foregroundColor: Colors.white, // Warna teks tombol
+                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+              child: const Text(
+                  'Confirm!',
+                style: TextStyle(fontSize: 20),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Fungsi untuk menampilkan dialog loading
+  void _showLoadingDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Lottie.asset('assets/loading.json', width: 150, height: 150),
+              const SizedBox(height: 20),
+              const Text(
+                "Ngrantos sekedap...",
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _saveBackActivityToGoogleSheets(String region) async {
+    final String spreadsheetId = ConfigManager.getSpreadsheetId(region) ?? 'defaultSpreadsheetId';
+    final String worksheetTitle = 'Aktivitas';
+
+    final gSheetsApi = GoogleSheetsApi(spreadsheetId);
+    await gSheetsApi.init();
+
+    final String timestamp = DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now());
+    final String fieldNumber = row[2];
+    final String regions = row[18];
+    final String action = 'Update';
+    final String status = 'Success';
+
+    final List<String> rowData = [
+      userEmail,
+      userName,
+      status,
+      regions,
+      action,
+      'Vegetative',
+      fieldNumber,
+      timestamp,
+    ];
+
+    try {
+      await gSheetsApi.addRow(worksheetTitle, rowData);
+      debugPrint('Aktivitas berhasil dicatat di Database $worksheetTitle');
+    } catch (e) {
+      debugPrint('Gagal mencatat aktivitas di Database $worksheetTitle: $e');
+    }
+  }
+}
+
+class FailedScreen extends StatelessWidget {
+  const FailedScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text(
+          'Failed',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.red.shade700,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error, color: Colors.red, size: 100),
+            const SizedBox(height: 20),
+            const Text(
+              'Failed to save data. Please try again.',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
+                backgroundColor: Colors.red.shade700, // Warna background tombol
+                foregroundColor: Colors.white, // Warna teks tombol
+                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+              child: const Text(
+                'Back',
+                style: TextStyle(fontSize: 20),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _logErrorToActivity(String message) async {
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  List<String> logs = prefs.getStringList('activityLogs') ?? [];
+  logs.add('${DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now())}: $message');
+  await prefs.setStringList('activityLogs', logs);
+}

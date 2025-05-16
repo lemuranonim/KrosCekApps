@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:go_router/go_router.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -63,7 +64,7 @@ class SplashScreenState extends State<SplashScreen>
     try {
       final packageInfo = await PackageInfo.fromPlatform();
       if (mounted) {
-        setState(() => _version = 'updated v${packageInfo.version}');
+        setState(() => _version = 'Updated Version ${packageInfo.version}');
       }
     } catch (e) {
       if (mounted) setState(() => _version = 'Development Version');
@@ -77,16 +78,22 @@ class SplashScreenState extends State<SplashScreen>
 
     if (!mounted) return;
 
-    Navigator.pushReplacementNamed(
-      context,
-      isLoggedIn && userRole != null
-          ? userRole == 'admin'
-          ? '/admin_dashboard'
-          : userRole == 'psp'
-          ? '/psp_dashboard'
-          : '/home'
-          : '/login',
-    );
+    // Using GoRouter instead of Navigator
+    if (isLoggedIn && userRole != null) {
+      switch (userRole) {
+        case 'admin':
+          context.go('/admin');
+          break;
+        case 'psp':
+          context.go('/psp');
+          break;
+        default:
+          context.go('/home');
+          break;
+      }
+    } else {
+      context.go('/login');
+    }
   }
 
   @override

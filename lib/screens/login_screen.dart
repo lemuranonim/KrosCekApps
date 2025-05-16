@@ -1,10 +1,12 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import '../services/google_sign_in_service.dart';
-import '../services/auth_service.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+
+import '../services/auth_service.dart';
+import '../services/google_sign_in_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -24,6 +26,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isPsp = false;
   String _errorMessage = '';
   bool _isLoading = false;
+  bool _showEmailPasswordFields = false; // Flag to control visibility
 
   @override
   void dispose() {
@@ -163,13 +166,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (selectedRole == 'admin' && adminEmails.contains(email)) {
         await prefs.setString('userRole', 'admin');
-        if (mounted) Navigator.pushReplacementNamed(context, '/admin_dashboard');
+        if (mounted) context.go('/admin');
       } else if (selectedRole == 'psp' && pspEmails.contains(email)) {
         await prefs.setString('userRole', 'psp');
-        if (mounted) Navigator.pushReplacementNamed(context, '/psp_dashboard');
+        if (mounted) context.go('/psp');
       } else if (selectedRole == 'user' && userEmails.contains(email)) {
         await prefs.setString('userRole', 'user');
-        if (mounted) Navigator.pushReplacementNamed(context, '/home');
+        if (mounted) context.go('/home');
       } else {
         if (mounted) {
           setState(() {
@@ -252,14 +255,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     TextButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () => context.pop(context),
                       child: const Text('Cancel'),
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton(
                       onPressed: () {
                         _resetPassword();
-                        Navigator.pop(context);
+                        context.pop(context);
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green[800],
@@ -447,60 +450,122 @@ class _LoginScreenState extends State<LoginScreen> {
                           _buildRoleSelector(),
                           const SizedBox(height: 20),
 
-                          // Email Field
-                          TextField(
-                            controller: _emailController,
-                            decoration: InputDecoration(
-                              labelText: 'Email',
-                              prefixIcon: const Icon(Icons.email_outlined),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                          // Toggle button for email/password login
+                          TextButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _showEmailPasswordFields = !_showEmailPasswordFields;
+                              });
+                            },
+                            icon: Icon(
+                              _showEmailPasswordFields
+                                  ? Icons.keyboard_arrow_up
+                                  : Icons.keyboard_arrow_down,
+                              color: Colors.green[800],
                             ),
-                            keyboardType: TextInputType.emailAddress,
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Password Field
-                          TextField(
-                            controller: _passwordController,
-                            obscureText: _isPasswordHidden,
-                            decoration: InputDecoration(
-                              labelText: 'Password',
-                              prefixIcon: const Icon(Icons.lock_outlined),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _isPasswordHidden
-                                      ? Icons.visibility_off
-                                      : Icons.visibility,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _isPasswordHidden = !_isPasswordHidden;
-                                  });
-                                },
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
+                            label: Text(
+                              _showEmailPasswordFields
+                                  ? 'Hide Email Login'
+                                  : 'Show Email Login',
+                              style: TextStyle(
+                                color: Colors.green[800],
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
 
-                          // Forgot Password
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              onPressed: _showResetPasswordDialog,
-                              child: Text(
-                                'Passworde supe?',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: Colors.green[800],
+                          // Email/Password fields (conditionally visible)
+                          if (_showEmailPasswordFields) ...[
+                            const SizedBox(height: 16),
+
+                            // Email Field
+                            TextField(
+                              controller: _emailController,
+                              decoration: InputDecoration(
+                                labelText: 'Email',
+                                prefixIcon: const Icon(Icons.email_outlined),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
                               ),
+                              keyboardType: TextInputType.emailAddress,
                             ),
-                          ),
+                            const SizedBox(height: 16),
 
-                          const SizedBox(height: 8),
+                            // Password Field
+                            TextField(
+                              controller: _passwordController,
+                              obscureText: _isPasswordHidden,
+                              decoration: InputDecoration(
+                                labelText: 'Password',
+                                prefixIcon: const Icon(Icons.lock_outlined),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _isPasswordHidden
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _isPasswordHidden = !_isPasswordHidden;
+                                    });
+                                  },
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+
+                            // Forgot Password
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: _showResetPasswordDialog,
+                                child: Text(
+                                  'Passworde supe?',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.green[800],
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 8),
+
+                            // Login Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: _isLoading ? null : _login,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green[800],
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: _isLoading
+                                    ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                                    : const Text(
+                                  'LOGIN',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 24),
+                          ],
 
                           // Error Message
                           if (_errorMessage.isNotEmpty)
@@ -514,39 +579,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
 
-                          // Login Button
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _login,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green[800],
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                                  : const Text(
-                                'LOGIN',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 24),
-
                           // Divider
                           Row(
                             children: [
@@ -559,7 +591,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 12),
                                 child: Text(
-                                  'utowo',
+                                  _showEmailPasswordFields ? 'utowo' : 'Login dengan',
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     color: Colors.grey[600],
                                   ),
