@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:kroscek/screens/services/config_crud.dart';
+import 'package:kroscek/screens/admin/config_crud.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 // Admin
 import 'screens/admin/absensi_dashboard.dart';

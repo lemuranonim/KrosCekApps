@@ -1,12 +1,20 @@
+import 'dart:async';
+
+import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:go_router/go_router.dart';
-import 'package:sidebarx/sidebarx.dart';
-// import 'package:fl_chart/fl_chart.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
+import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
+import '../services/config_manager.dart';
+import 'dashboard_analytics_tab.dart';
+import 'dashboard_absensi_tab.dart';
+import 'dashboard_aktivitas_tab.dart';
+import 'data_service.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -15,78 +23,225 @@ class AdminDashboard extends StatefulWidget {
   AdminDashboardState createState() => AdminDashboardState();
 }
 
-class AdminDashboardState extends State<AdminDashboard> {
-  final _controller = SidebarXController(selectedIndex: 6, extended: true);
+class AdminDashboardState extends State<AdminDashboard> with SingleTickerProviderStateMixin {
   final _key = GlobalKey<ScaffoldState>();
-  String _appVersion = 'Production Final Version';
+  bool _isLoading = false;
+  final ZoomDrawerController _drawerController = ZoomDrawerController();
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  String _appVersion = 'Fetching...';
+  String userEmail = 'Fetching...';
+  String userName = 'Fetching...';
+  String? userPhotoUrl;
+  String _selectedRegion = '';
+  List<String> _availableRegions = [];
+
+  late TabController _tabController;
+  final DataService _dataService = DataService();
 
   @override
   void initState() {
     super.initState();
-    _loadSheetData();
-    _getAppVersion();
+    _tabController = TabController(length: 3, vsync: this);
+    _loadInitialData();
   }
 
-  Future<void> _getAppVersion() async {
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchAppVersion() async {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
       setState(() {
-        _appVersion = 'Updated Version ${packageInfo.version}';
+        _appVersion = packageInfo.version;
       });
     } catch (e) {
-      // If there's an error, keep the default version
+      setState(() {
+        _appVersion = 'Unknown';
+      });
     }
   }
 
-  Future<void> _loadSheetData({bool refresh = false}) async {
-    if (refresh) {
-      setState(() {});
-    }
-  }
+  Future<void> _loadInitialData() async {
+    setState(() {
+      _isLoading = true;
+    });
 
-  String formatTanggal(String serialTanggal) {
+    await Future.delayed(const Duration(milliseconds: 800));
+
     try {
-      final int daysSince1900 = int.parse(serialTanggal);
-      final DateTime date = DateTime(1900, 1, 1).add(Duration(days: daysSince1900 - 2));
-      return DateFormat('dd-MM-yyyy').format(date);
+      // Load configurations from Firestore first
+      await ConfigManager.loadConfig();
+
+      // Fetch user data and app version
+      await _fetchAppVersion();
+      await _fetchUserData();
+      await _fetchGoogleUserData();
+      await _loadUserEmail();
+
+      // Initialize data service with configurations
+      await _dataService.initialize();
+
+      // Load available regions from ConfigManager
+      _availableRegions = ConfigManager.getAllRegionNames();
+
+      // Set selected region
+      final prefs = await SharedPreferences.getInstance();
+      _selectedRegion = prefs.getString('selectedRegion') ?? '';
+
+      if (_selectedRegion.isEmpty && _availableRegions.isNotEmpty) {
+        _selectedRegion = _availableRegions.first;
+        await prefs.setString('selectedRegion', _selectedRegion);
+      }
+
+      // Update data service with selected region
+      if (_selectedRegion.isNotEmpty) {
+        await _dataService.setSelectedRegion(_selectedRegion);
+      }
     } catch (e) {
-      return serialTanggal;
+      debugPrint("Error loading initial data: $e");
+      _showErrorMessage("Gagal memuat data: ${e.toString()}");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
-  String formatWaktu(String serialWaktu) {
+  Future<void> _loadUserEmail() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userEmail = prefs.getString('userEmail') ?? 'Email tidak ditemukan';
+    });
+  }
+
+  Future<void> _fetchUserData() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userEmail = prefs.getString('userEmail') ?? 'Unknown Email';
+      userName = prefs.getString('userName') ?? 'Pengguna';
+    });
+  }
+
+  Future<void> _fetchGoogleUserData() async {
     try {
-      final double fractionalDay = double.parse(serialWaktu);
-      final int totalSeconds = (fractionalDay * 86400).round();
-      final int hours = totalSeconds ~/ 3600;
-      final int minutes = (totalSeconds % 3600) ~/ 60;
-      final int seconds = totalSeconds % 60;
-      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signInSilently();
+      if (googleUser != null) {
+        setState(() {
+          userName = googleUser.displayName ?? 'Pengguna';
+          userEmail = googleUser.email;
+          userPhotoUrl = googleUser.photoUrl;
+        });
+
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userName', googleUser.displayName ?? 'Pengguna');
+        await prefs.setString('userEmail', googleUser.email);
+        await prefs.setString('userPhotoUrl', googleUser.photoUrl ?? '');
+      }
+    } catch (error) {
+      debugPrint("Error mengambil data Google: $error");
+    }
+  }
+
+  Future<void> _logoutGoogle() async {
+    await _googleSignIn.signOut();
+  }
+
+  Future<void> _refreshData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Reload configurations from Firestore
+      await ConfigManager.loadConfig();
+
+      // Update data service with current region
+      if (_selectedRegion.isNotEmpty) {
+        await _dataService.setSelectedRegion(_selectedRegion);
+      }
+
+      // Refresh all data
+      await _dataService.refreshAllData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Data berhasil diperbarui'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
-      return serialWaktu;
+      debugPrint("Error refreshing data: $e");
+      _showErrorMessage("Gagal memperbarui data: ${e.toString()}");
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
-  String formatTimestamp(String serialTimestamp) {
-    try {
-      final double serial = double.parse(serialTimestamp);
-      final int daysSince1900 = serial.floor();
-      final double fractionalDay = serial - daysSince1900;
-      final DateTime date = DateTime(1900, 1, 1).add(Duration(days: daysSince1900 - 2));
-      final int totalSeconds = (fractionalDay * 86400).round();
-      final int hours = totalSeconds ~/ 3600;
-      final int minutes = (totalSeconds % 3600) ~/ 60;
-      final int seconds = totalSeconds % 60;
-      return DateFormat('dd/MM/yyyy HH:mm:ss').format(
-        DateTime(date.year, date.month, date.day, hours, minutes, seconds),
+  Future<void> _onRegionChanged(String? region) async {
+    if (region != null && region != _selectedRegion) {
+      setState(() {
+        _isLoading = true;
+        _selectedRegion = region;
+      });
+
+      try {
+        // Update data service with new region
+        await _dataService.setSelectedRegion(region);
+
+        // Save selected region to preferences
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString('selectedRegion', region);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Region diubah ke $region'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint("Error changing region: $e");
+        _showErrorMessage("Gagal mengubah region: ${e.toString()}");
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
+    }
+  }
+
+  void _showErrorMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
       );
-    } catch (e) {
-      return serialTimestamp;
-    }
   }
 
   void _handleBackInHomeScreen() {
-    // If not, show a confirmation dialog for logout
+    if (_drawerController.isOpen?.call() ?? false) {
+      _drawerController.close?.call();
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -112,17 +267,15 @@ class AdminDashboardState extends State<AdminDashboard> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Title
                 Text(
                   "Konfirmasi Medal",
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: Colors.green,
+                    color: Colors.green.shade700,
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Content
                 Text(
                   "Menopo panjenengan badhe medal saking aplikasi puniko?",
                   textAlign: TextAlign.center,
@@ -132,39 +285,44 @@ class AdminDashboardState extends State<AdminDashboard> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                // Action buttons
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     TextButton(
-                      onPressed: () => Navigator.of(context).pop(false),
+                      onPressed: () => context.pop(false),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 10),
+                      ),
                       child: Text(
                         "Batal",
                         style: TextStyle(
-                          color: Colors.green,
+                          color: Colors.green.shade700,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
                     ElevatedButton(
                       onPressed: () {
-                        Navigator.of(context).pop(true);
-                        // Exit the app
+                        context.pop(true);
                         SystemNavigator.pop();
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green, // Use backgroundColor instead of primary
+                        backgroundColor: Colors.green.shade700,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12.0),
                         ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 10),
+                        elevation: 2,
                       ),
-                      child: Text(
+                      child: const Text(
                         "Medal",
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
                         ),
-                      ), // Ensure child is the last parameter
+                      ),
                     ),
                   ],
                 ),
@@ -179,359 +337,119 @@ class AdminDashboardState extends State<AdminDashboard> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      // Callback saat pengguna menekan tombol back
-      canPop: false, // Mencegah pop langsung
+      canPop: false,
       // ignore: deprecated_member_use
       onPopInvoked: (didPop) {
-        // didPop akan false karena canPop: false
         if (!didPop) {
           _handleBackInHomeScreen();
         }
         return;
       },
-      child: Scaffold(
-        key: _key,
-        appBar: AppBar(
-          title: const Text('Admin Dashboard',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          iconTheme: const IconThemeData(color: Colors.white),
-          leading: IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () {
-              _key.currentState?.openDrawer();
-            },
-          ),
-          flexibleSpace: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Colors.green.shade800, Colors.green.shade600],
-              ),
-            ),
-          ),
-          actions: [],
+      child: ZoomDrawer(
+        controller: _drawerController,
+        style: DrawerStyle.defaultStyle,
+        menuScreen: MenuScreen(
+          userName: userName,
+          userEmail: userEmail,
+          userPhotoUrl: userPhotoUrl,
+          appVersion: _appVersion,
+          onAccountManagement: () => context.go('/accounts'),
+          onRegions: () => context.go('/regions'),
+          onAbsensi: () => context.go('/absensi'),
+          onAktivitas: () => context.go('/aktivitas'),
+          onCrud: () => context.go('/config'),
+          onFilter: () => _showRegionSelector(),
+          onLogout: () => _logout(context),
         ),
-        drawer: SidebarX(
-          controller: _controller,
-          theme: SidebarXTheme(
-            // Improved background
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(0),
-            ),
-            // Better text styling
-            textStyle: GoogleFonts.poppins(
-              color: Colors.black87,
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-            ),
-            selectedTextStyle: GoogleFonts.poppins(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
-            // Improved padding and spacing
-            itemTextPadding: const EdgeInsets.only(left: 16),
-            selectedItemTextPadding: const EdgeInsets.only(left: 16),
-            // Better item decoration
-            itemDecoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.transparent),
-            ),
-            selectedItemDecoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: Colors.green.shade600,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.green.withAlpha(51),
-                  blurRadius: 10,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            // Improved icon styling
-            iconTheme: const IconThemeData(
-              color: Colors.black54,
-              size: 22,
-            ),
-            selectedIconTheme: const IconThemeData(
-              color: Colors.white,
-              size: 22,
-            ),
-          ),
-          headerBuilder: (context, extended) {
-            return Container(
-              height: 120,
-              padding: const EdgeInsets.all(16.0),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircleAvatar(
-                    backgroundColor: Colors.green.shade100,
-                    radius: 30,
-                    child: Icon(
-                      Icons.admin_panel_settings,
-                      color: Colors.green.shade700,
-                      size: 30,
-                    ),
-                  ),
-                  if (extended) ...[  // Only show text when extended
-                    const SizedBox(height: 8),
-                    Text(
-                      'Admin Panel',
-                      style: GoogleFonts.manrope(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green.shade800,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            );
-          },
-          footerBuilder: (context, extended) {
-            return Container(
-              height: 50,
-              color: Colors.green.shade50,
-              child: Center(
-                child: Text(
-                  _appVersion,
-                  style: GoogleFonts.manrope(
-                    color: Colors.green.shade800,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-            );
-          },
-          extendedTheme: const SidebarXTheme(
-            width: 240,
-            margin: EdgeInsets.only(right: 10),
-          ),
-          items: [
-            SidebarXItem(
-              icon: Icons.dashboard_outlined,
-              label: 'Dashboard',
-              onTap: () {
-                context.go('/admin');
-                if (_key.currentState?.isDrawerOpen ?? false) {
-                  Navigator.pop(context);
-                }
-              },
-            ),
-            SidebarXItem(
-              icon: Icons.account_circle_outlined,
-              label: 'Accounts Management',
-              onTap: () {
-                context.go('/accounts');
-                if (_key.currentState?.isDrawerOpen ?? false) {
-                  Navigator.pop(context);
-                }
-              },
-            ),
-            SidebarXItem(
-              icon: Icons.map_outlined,
-              label: 'Regions Management',
-              onTap: () {
-                context.go('/regions');
-                if (_key.currentState?.isDrawerOpen ?? false) {
-                  Navigator.pop(context);
-                }
-              },
-            ),
-            SidebarXItem(
-              icon: Icons.checklist_outlined,
-              label: 'Absensi Dashboard',
-              onTap: () {
-                context.go('/absensi');
-                if (_key.currentState?.isDrawerOpen ?? false) {
-                  Navigator.pop(context);
-                }
-              },
-            ),
-            SidebarXItem(
-              icon: Icons.history_outlined,
-              label: 'Aktivitas Dashboard',
-              onTap: () {
-                context.go('/aktivitas');
-                if (_key.currentState?.isDrawerOpen ?? false) {
-                  Navigator.pop(context);
-                }
-              },
-            ),
-            SidebarXItem(
-              icon: Icons.settings_outlined,
-              label: 'Config Management',
-              onTap: () {
-                context.go('/config');
-                if (_key.currentState?.isDrawerOpen ?? false) {
-                  Navigator.pop(context);
-                }
-              },
-            ),
-            SidebarXItem(
-              icon: Icons.filter_list_outlined,
-              label: 'Filter Regions',
-              onTap: () {
-                context.go('/filter');
-                if (_key.currentState?.isDrawerOpen ?? false) {
-                  Navigator.pop(context);
-                }
-              },
-            ),
-            SidebarXItem(),
-            SidebarXItem(
-              icon: Icons.logout,
-              label: 'Logout',
-              onTap: () {
-                if (_key.currentState?.isDrawerOpen ?? false) {
-                  Navigator.pop(context);
-                }
-                _logout();
-              },
-            ),
-          ],
-        ),
-        body: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 20),
-                Text(
-                  'Sugêng Rawuh Poro SPV',
-                  style: GoogleFonts.poppins(
-                    fontSize: 23,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green.shade700,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
+        mainScreen: _buildMainScreen(context),
+        borderRadius: 24.0,
+        showShadow: true,
+        angle: -1.0,
+        slideWidth: MediaQuery.of(context).size.width * 0.95,
+        openCurve: Curves.fastOutSlowIn,
+        closeCurve: Curves.fastOutSlowIn,
+        menuBackgroundColor: Colors.green[100]!,
+      ),
+    );
+  }
 
-                // Under Maintenance Card
-                Card(
-                  elevation: 4,
+  void _showRegionSelector() {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.0),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "Pilih Region",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green.shade700,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.5,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: _availableRegions.map((region) {
+                      return ListTile(
+                        title: Text(region),
+                        leading: Icon(
+                          Icons.location_on,
+                          color: _selectedRegion == region ? Colors.green : Colors.grey,
+                        ),
+                        selected: _selectedRegion == region,
+                        selectedTileColor: Colors.green.shade50,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        onTap: () {
+                          _onRegionChanged(region);
+                          Navigator.pop(context);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade700,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(12.0),
                   ),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: LinearGradient(
-                        colors: [Colors.orange.shade100, Colors.orange.shade50],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.construction,
-                          size: 80,
-                          color: Colors.orange.shade800,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Under Maintenance',
-                          style: GoogleFonts.poppins(
-                            fontSize: 23,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange.shade800,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Dashboard sedang dalam proses pengembangan. Fitur-fitur baru akan segera tersedia.',
-                          style: GoogleFonts.manrope(
-                            fontSize: 16,
-                            color: Colors.grey.shade800,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 24),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.access_time, color: Colors.orange.shade700),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Estimasi selesai: 19 Mei 2025',
-                              style: GoogleFonts.manrope(
-                                fontWeight: FontWeight.w500,
-                                color: Colors.orange.shade700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 24, vertical: 10),
+                ),
+                child: const Text(
+                  "Tutup",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-
-                const SizedBox(height: 20),
-                // _buildRegionChart(),
-                const SizedBox(height: 20),
-                // _buildActivityChart(),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  // Widget _buildRegionChart() {
-  //   return SizedBox(
-  //     height: 300,
-  //     child: BarChart(
-  //       BarChartData(
-  //         titlesData: FlTitlesData(
-  //           leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true)),
-  //           bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true)),
-  //         ),
-  //         borderData: FlBorderData(show: true),
-  //         barGroups: regionData.entries.map((entry) {
-  //           return BarChartGroupData(
-  //             x: entry.key.hashCode,
-  //             barRods: [
-  //               BarChartRodData(
-  //                 toY: entry.value.toDouble(),
-  //                 color: Colors.green,
-  //               ),
-  //             ],
-  //           );
-  //         }).toList(),
-  //       ),
-  //     ),
-  //   );
-  // }
-  //
-  // Widget _buildActivityChart() {
-  //   return SizedBox(
-  //     height: 300,
-  //     child: PieChart(
-  //       PieChartData(
-  //         sections: activityData.entries.map((entry) {
-  //           return PieChartSectionData(
-  //             value: entry.value.toDouble(),
-  //             title: entry.key,
-  //             color: Colors.primaries[activityData.keys.toList().indexOf(entry.key) % Colors.primaries.length],
-  //           );
-  //         }).toList(),
-  //       ),
-  //     ),
-  //   );
-  // }
+  Future<void> _logout(BuildContext context) async {
+    final navigator = Navigator.of(context);
 
-  Future<void> _logout() async {
     bool? confirmLogout = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -550,8 +468,8 @@ class AdminDashboardState extends State<AdminDashboard> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(
                     "Batal",
                     style: TextStyle(
                       color: Colors.green,
@@ -561,7 +479,7 @@ class AdminDashboardState extends State<AdminDashboard> {
                 ),
                 ElevatedButton(
                   onPressed: () {
-                    Navigator.of(dialogContext).pop(true);
+                    Navigator.of(context).pop(true);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
@@ -569,7 +487,7 @@ class AdminDashboardState extends State<AdminDashboard> {
                       borderRadius: BorderRadius.circular(12.0),
                     ),
                   ),
-                  child: const Text(
+                  child: Text(
                     "Medal",
                     style: TextStyle(
                       color: Colors.white,
@@ -588,30 +506,510 @@ class AdminDashboardState extends State<AdminDashboard> {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.remove('isLoggedIn');
       await prefs.remove('userRole');
-      if (mounted) {
-        _showNotificationDialog('Logout Successful', 'You have successfully logged out.');
-        context.go('/login');
-      }
+      await _logoutGoogle();
+      _navigateToLoginScreen(navigator);
     }
   }
 
-  Future<void> _showNotificationDialog(String title, String content) async {
-    return showDialog<void>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(title),
-          content: Text(content),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('OK'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+  void _navigateToLoginScreen(NavigatorState navigator) {
+    context.go('/login');
+  }
+
+  Widget _buildMainScreen(BuildContext context) {
+    return Scaffold(
+      key: _key,
+      appBar: AppBar(
+        elevation: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Admin Dashboard',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+              ),
+            ),
+            if (_selectedRegion.isNotEmpty)
+              Text(
+                'Region: $_selectedRegion',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                ),
+              ),
+          ],
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.green.shade800, Colors.green.shade600],
+            ),
+          ),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.menu_rounded, color: Colors.white),
+          onPressed: () => _drawerController.toggle?.call(),
+        ),
+        actions: [
+          // Region selector dropdown
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: _showRegionSelector,
+            tooltip: 'Pilih Region',
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshData,
+            tooltip: 'Refresh Data',
+          ),
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () {
+              // Add notification logic here
+            },
+            tooltip: 'Notifikasi',
+          ),
+          const SizedBox(width: 8),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.white,
+          indicatorWeight: 3,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+          tabs: const [
+            Tab(
+              icon: Icon(Icons.dashboard_rounded),
+              text: "Analytics",
+            ),
+            Tab(
+              icon: Icon(Icons.assignment_turned_in_rounded),
+              text: "Absensi",
+            ),
+            Tab(
+              icon: Icon(Icons.trending_up_rounded),
+              text: "Aktivitas",
             ),
           ],
-        );
-      },
+        ),
+      ),
+      body: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.green.shade50, Colors.white],
+              ),
+            ),
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                DashboardAnalyticsTab(dataService: _dataService, isLoading: _isLoading),
+                DashboardAbsensiTab(dataService: _dataService),
+                DashboardAktivitasTab(dataService: _dataService),
+              ],
+            ),
+          ),
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.3),
+              child: Center(
+                child: Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Memuat data...',
+                          style: TextStyle(
+                            color: Colors.green.shade800,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12.0),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(12),
+              blurRadius: 10,
+              spreadRadius: 0,
+              offset: const Offset(0, -1),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'KC Dashboard v$_appVersion',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.manrope(
+                color: Colors.green.shade800,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            if (_dataService.getSpreadsheetId() != null) ...[
+              const SizedBox(width: 8),
+              Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Connected to Sheets',
+                style: GoogleFonts.manrope(
+                  color: Colors.green.shade600,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class MenuScreen extends StatelessWidget {
+  final String userName;
+  final String userEmail;
+  final String? userPhotoUrl;
+  final String appVersion;
+  final VoidCallback onLogout;
+  final VoidCallback onAccountManagement;
+  final VoidCallback onRegions;
+  final VoidCallback onAbsensi;
+  final VoidCallback onAktivitas;
+  final VoidCallback onCrud;
+  final VoidCallback onFilter;
+
+  const MenuScreen({
+    super.key,
+    required this.userName,
+    required this.userEmail,
+    this.userPhotoUrl,
+    required this.appVersion,
+    required this.onLogout,
+    required this.onAccountManagement,
+    required this.onRegions,
+    required this.onAbsensi,
+    required this.onAktivitas,
+    required this.onCrud,
+    required this.onFilter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final buttonStyle = ElevatedButton.styleFrom(
+      backgroundColor: Colors.white,
+      foregroundColor: Colors.green,
+      padding: const EdgeInsets.symmetric(
+        vertical: 12,
+        horizontal: 24,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(30),
+      ),
+      minimumSize: const Size(double.infinity, 48), // Consistent button height
+    );
+
+    return Container(
+      width: MediaQuery.of(context).size.width,
+      height: screenHeight,
+      decoration: BoxDecoration(
+        color: Colors.green,
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(30.0),
+          bottomRight: Radius.circular(30.0),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(51),
+            blurRadius: 10,
+            offset: const Offset(2, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Header dan user info
+          Padding(
+            padding: EdgeInsets.only(
+              top: screenHeight * 0.1,
+              left: 16,
+              right: 16,
+              bottom: 24,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                CircleAvatar(
+                  radius: screenHeight * 0.07,
+                  backgroundColor: Colors.white,
+                  backgroundImage: userPhotoUrl != null && userPhotoUrl!.isNotEmpty
+                      ? NetworkImage(userPhotoUrl!)
+                      : const AssetImage('assets/logo.png') as ImageProvider,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  userName,
+                  style: const TextStyle(
+                    fontSize: 21,
+                    fontFamily: 'Poppins',
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.none,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  userEmail,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'Poppins',
+                    color: Colors.white60,
+                    decoration: TextDecoration.none,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+
+          // Pemisah
+          Container(
+            width: 200,
+            height: 1,
+            color: Colors.white.withAlpha(76),
+          ),
+
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              child: Column(
+                children: [
+                  // akun manajemen
+                  ElevatedButton.icon(
+                    onPressed: onAccountManagement,
+                    icon: const Icon(
+                      Icons.account_circle_outlined,
+                      size: 20,
+                      color: Colors.green,
+                    ),
+                    label: const Text(
+                      'Akun Manajemen',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: buttonStyle,
+                  ),
+                  const SizedBox(height: 10),
+                  // daftar region
+                  ElevatedButton.icon(
+                    onPressed: onRegions,
+                    icon: const Icon(
+                      Icons.map_outlined,
+                      size: 20,
+                      color: Colors.green,
+                    ),
+                    label: const Text(
+                      'Daftar Region',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: buttonStyle,
+                  ),
+                  const SizedBox(height: 10),
+                  // absensi dashboard
+                  ElevatedButton.icon(
+                    onPressed: onAbsensi,
+                    icon: const Icon(
+                      Icons.check_circle_outline,
+                      size: 20,
+                      color: Colors.green,
+                    ),
+                    label: const Text(
+                      'Absensi Dashboard',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: buttonStyle,
+                  ),
+                  const SizedBox(height: 10),
+                  // aktivitas dashboard
+                  ElevatedButton.icon(
+                    onPressed: onAktivitas,
+                    icon: const Icon(
+                      Icons.list_alt_outlined,
+                      size: 20,
+                      color: Colors.green,
+                    ),
+                    label: const Text(
+                      'Aktivitas Dashboard',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: buttonStyle,
+                  ),
+                  const SizedBox(height: 10),
+                  // pengaturan
+                  ElevatedButton.icon(
+                    onPressed: onCrud,
+                    icon: const Icon(
+                      Icons.settings,
+                      size: 20,
+                      color: Colors.green,
+                    ),
+                    label: const Text(
+                      'Pengaturan',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: buttonStyle,
+                  ),
+                  const SizedBox(height: 10),
+                  // filter region
+                  ElevatedButton.icon(
+                    onPressed: onFilter,
+                    icon: const Icon(
+                      Icons.filter_list,
+                      size: 20,
+                      color: Colors.green,
+                    ),
+                    label: const Text(
+                      'Filter Region',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: buttonStyle,
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    onPressed: onLogout,
+                    icon: const Icon(
+                      Icons.logout_rounded,
+                      size: 20,
+                      color: Colors.green,
+                    ),
+                    label: const Text(
+                      'Logout',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: buttonStyle,
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 30,
+                    child: AnimatedTextKit(
+                      animatedTexts: [
+                        TypewriterAnimatedText(
+                          'Updated Version $appVersion',
+                          textStyle: const TextStyle(
+                            color: Colors.white60,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.none,
+                          ),
+                          speed: Duration(milliseconds: 200),
+                        ),
+                      ],
+                      repeatForever: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Footer
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.green.shade800,
+              borderRadius: const BorderRadius.only(
+                bottomRight: Radius.circular(30.0),
+              ),
+            ),
+            child: Column(
+              children: [
+                const SizedBox(height: 5),
+                Text(
+                  '© ${DateTime.now().year} Tim Cengoh, Ahli Huru-Hara',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'Poppins',
+                    decoration: TextDecoration.none,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const Text(
+                  'All Rights Reserved',
+                  style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: 9,
+                    fontFamily: 'Poppins',
+                    decoration: TextDecoration.none,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

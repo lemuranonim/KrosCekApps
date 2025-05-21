@@ -3,13 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
 import 'package:lottie/lottie.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 
 import '../../services/config_manager.dart';
 import '../../services/google_sheets_api.dart';
 import 'vegetative_detail_screen.dart';
 import 'vegetative_filter_options.dart';
 import 'vegetative_listview_builder.dart';
+import 'vegetative_map_view.dart';
+import 'vegetative_activity_analysis_screen.dart';
 
 class VegetativeScreen extends StatefulWidget {
   final String spreadsheetId;
@@ -51,6 +54,7 @@ class VegetativeScreenState extends State<VegetativeScreen> {
   final int _rowsPerPage = 100;
   Timer? _debounce;
   double _progress = 0.0; // Variabel untuk menyimpan progres
+  bool _showFilterChipsContainer = false;
 
   List<String> _selectedWeeks = []; // Variabel untuk menyimpan minggu yang dipilih
   List<String> _weekOfVegetativeList = []; // Daftar unik untuk "Week of Vegetative"
@@ -62,6 +66,10 @@ class VegetativeScreenState extends State<VegetativeScreen> {
   List<String> _selectedFIs = [];
 
   double _totalEffectiveArea = 0.0; // Variabel untuk menyimpan total Effective Area (Ha)
+
+  final Map<String, int> _activityCounts = {};
+  final Map<String, List<DateTime>> _activityTimestamps = {};
+  bool _showMapView = false;
 
   bool _showAuditedOnly = false;
   bool _showNotAuditedOnly = false;
@@ -82,39 +90,152 @@ class VegetativeScreenState extends State<VegetativeScreen> {
     super.dispose();
   }
 
+  Future<void> _loadActivityData() async {
+    try {
+      await _googleSheetsApi.init();
+      final activityData = await _googleSheetsApi.getSpreadsheetData('Aktivitas');
+
+      // Clear existing counts and timestamps
+      _activityCounts.clear();
+      _activityTimestamps.clear();
+
+      // Count activities for each field number, but only for Vegetative sheet
+      for (var row in activityData) {
+        if (row.length > 7) { // Ensure we have enough columns
+          final sheetName = row.length > 5 ? row[5] : ''; // Sheet name is in column F (index 5)
+
+          // Only process rows related to the Vegetative sheet
+          if (sheetName.toLowerCase() == 'vegetative') {
+            final fieldNumber = row[6]; // Field Number is in column G (index 6)
+            if (fieldNumber.isNotEmpty) {
+              // Update activity count
+              _activityCounts[fieldNumber] = (_activityCounts[fieldNumber] ?? 0) + 1;
+
+              // Extract timestamp from column H (index 7)
+              final timestampStr = row[7];
+              DateTime? timestamp;
+
+              if (timestampStr.isNotEmpty) {
+                // Try to parse the timestamp
+                try {
+                  // First try to parse as Excel numeric date
+                  final excelDateValue = double.tryParse(timestampStr);
+                  if (excelDateValue != null) {
+                    // Convert Excel date to DateTime
+                    final baseDate = DateTime(1899, 12, 30);
+                    final days = excelDateValue.floor();
+                    final millisInDay = (excelDateValue - days) * 24 * 60 * 60 * 1000;
+                    timestamp = baseDate.add(Duration(days: days, milliseconds: millisInDay.round()));
+                  } else {
+                    // Try standard date formats
+                    try {
+                      // Try dd/MM/yyyy HH:mm:ss format
+                      timestamp = DateFormat("dd/MM/yyyy HH:mm:ss").parse(timestampStr);
+                    } catch (e) {
+                      // Try standard DateTime.parse
+                      try {
+                        timestamp = DateTime.parse(timestampStr);
+                      } catch (e) {
+                        // Try dd/MM/yyyy format
+                        try {
+                          final parts = timestampStr.split(' ')[0].split('/');
+                          if (parts.length == 3) {
+                            final month = int.tryParse(parts[0]) ?? 1;
+                            final day = int.tryParse(parts[1]) ?? 1;
+                            final year = int.tryParse(parts[2]) ?? DateTime.now().year;
+
+                            // Try to parse time if available
+                            int hour = 0, minute = 0, second = 0;
+                            if (timestampStr.contains(' ') && timestampStr.split(' ').length > 1) {
+                              final timeParts = timestampStr.split(' ')[1].split(':');
+                              if (timeParts.length >= 2) {
+                                hour = int.tryParse(timeParts[0]) ?? 0;
+                                minute = int.tryParse(timeParts[1]) ?? 0;
+                                if (timeParts.length > 2) {
+                                  second = int.tryParse(timeParts[2]) ?? 0;
+                                }
+                              }
+                            }
+
+                            timestamp = DateTime(year, month, day, hour, minute, second);
+                          }
+                        } catch (e) {
+                          // Try MM/dd/yyyy format
+                        }
+                      }
+                    }
+                  }
+                } catch (e) {
+                  // Handle parsing error
+                }
+              }
+
+              // If we successfully parsed a timestamp, add it to the map
+              if (timestamp != null) {
+                _activityTimestamps[fieldNumber] ??= [];
+                _activityTimestamps[fieldNumber]!.add(timestamp);
+              }
+            } else {
+              // Handle empty field number
+            }
+          }
+        }
+      }
+
+      // Sort timestamps for each field (newest first)
+      for (var fieldNumber in _activityTimestamps.keys) {
+        _activityTimestamps[fieldNumber]!.sort((a, b) => b.compareTo(a));
+      }
+      setState(() {
+        // Update state to trigger rebuild with new activity data
+      });
+    } catch (e) {
+      // Error handling
+    }
+  }
+
+  void _toggleViewMode() {
+    setState(() {
+      _showMapView = !_showMapView;
+    });
+  }
+
   Future<void> _loadSheetData({bool refresh = false}) async {
     if (refresh) {
       _currentPage = 1;
       _sheetData.clear();
-      _totalEffectiveArea = 0.0; // Reset total Effective Area saat refresh
+      _totalEffectiveArea = 0.0;
     }
 
     setState(() {
       _isLoading = true;
       _errorMessage = null;
-      _progress = 0.0; // Reset progres saat mulai mengambil data
+      _progress = 0.0;
     });
 
     try {
       await _googleSheetsApi.init();
-      final totalDataCount = 12000; // Estimasi jumlah total data (bisa dinamis)
+      final totalDataCount = 12000;
       final data = await _googleSheetsApi.getSpreadsheetDataWithPagination(
           _worksheetTitle, (_currentPage - 1) * _rowsPerPage + 1, _rowsPerPage);
+
+      // Load activity data
+      await _loadActivityData();
 
       setState(() {
         _sheetData.addAll(data);
         _filteredData = List.from(_sheetData);
         _isLoading = false;
-        _extractUniqueFA(); // Ekstrak nama-nama FA dari data
-        _extractUniqueFIs(); // Ekstrak nama-nama FI dari data
-        _extractUniqueSeasons(); // Ekstrak unique seasons
-        _extractUniqueWeeks(); // Ekstrak unique weeks
+        _extractUniqueFA();
+        _extractUniqueFIs();
+        _extractUniqueSeasons();
+        _extractUniqueWeeks();
         _filterData();
         _currentPage++;
-        _progress = (_sheetData.length / totalDataCount).clamp(0.0, 1.0); // Perbarui progres
+        _progress = (_sheetData.length / totalDataCount).clamp(0.0, 1.0);
 
         _totalEffectiveArea = _filteredData.fold(0.0, (sum, row) {
-          final effectiveAreaStr = getValue(row, 8, '0').replaceAll(',', '.'); // Handle decimal separators
+          final effectiveAreaStr = getValue(row, 8, '0').replaceAll(',', '.');
           final effectiveArea = double.tryParse(effectiveAreaStr) ?? 0.0;
           return sum + effectiveArea;
         });
@@ -432,28 +553,31 @@ class VegetativeScreenState extends State<VegetativeScreen> {
           title: !_isSearching
               ? Row(
             children: [
-              const Icon(Icons.eco_rounded, size: 24),
+              const Icon(Icons.eco_rounded, size: 22, color: Colors.white),
               const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Vegetative Data',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Vegetative',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
-                  ),
-                  Text(
-                    selectedRegion ?? 'Unknown Region',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w400,
+                    Text(
+                      selectedRegion ?? 'Unknown Region',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           )
@@ -462,24 +586,16 @@ class VegetativeScreenState extends State<VegetativeScreen> {
             autofocus: true,
             style: const TextStyle(color: Colors.white),
             cursorColor: Colors.white,
-            decoration: InputDecoration(
-              hintText: 'Search field number, farmer, grower...',
-              hintStyle: const TextStyle(color: Colors.white70),
+            decoration: const InputDecoration(
+              hintText: 'Search field, farmer, grower...',
+              hintStyle: TextStyle(color: Colors.white70),
               border: InputBorder.none,
-              prefixIcon: const Icon(Icons.search, color: Colors.white),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.clear, color: Colors.white70),
-                onPressed: () {
-                  setState(() {
-                    _searchQuery = '';
-                    _filterData();
-                  });
-                },
-              ),
+              prefixIcon: Icon(Icons.search, color: Colors.white),
+              contentPadding: EdgeInsets.symmetric(vertical: 15),
             ),
           ),
-          iconTheme: const IconThemeData(color: Colors.white),
           actions: [
+            // Search button
             !_isSearching
                 ? IconButton(
               icon: const Icon(Icons.search, color: Colors.white),
@@ -491,7 +607,7 @@ class VegetativeScreenState extends State<VegetativeScreen> {
               },
             )
                 : IconButton(
-              icon: const Icon(Icons.cancel, color: Colors.white),
+              icon: const Icon(Icons.clear, color: Colors.white),
               tooltip: 'Cancel Search',
               onPressed: () {
                 setState(() {
@@ -501,40 +617,32 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                 });
               },
             ),
+
+            // Filter button with indicator
             IconButton(
-              icon: Stack(
-                children: [
-                  const Icon(Icons.filter_list_rounded, color: Colors.white),
-                  if (_selectedSeason != null || _selectedWeeks.isNotEmpty || _selectedFA.isNotEmpty || _selectedFIs.isNotEmpty)
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 12,
-                          minHeight: 12,
-                        ),
-                        child: Text(
-                          '!',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
+              icon: Badge(
+                isLabelVisible: _selectedSeason != null ||
+                    _selectedWeeks.isNotEmpty ||
+                    _selectedFA.isNotEmpty ||
+                    _selectedFIs.isNotEmpty,
+                backgroundColor: Colors.red,
+                child: const Icon(Icons.filter_list_rounded, color: Colors.white),
               ),
               tooltip: 'Filter Options',
               onPressed: _showFilterOptions,
             ),
+
+            // View toggle button
+            IconButton(
+              icon: Icon(
+                _showMapView ? Icons.view_list : Icons.map,
+                color: Colors.white,
+              ),
+              tooltip: _showMapView ? 'Show List View' : 'Show Map View',
+              onPressed: _toggleViewMode,
+            ),
+
+            // In VegetativeScreen class, add to the PopupMenuButton options:
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, color: Colors.white),
               tooltip: 'More options',
@@ -543,29 +651,16 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                   _loadSheetData(refresh: true);
                 } else if (value == 'help') {
                   // Show help dialog
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text(
-                        'Bantuan!',
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                        ),
+                } else if (value == 'analysis') {
+                  // Navigate to analysis screen
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => VegetativeActivityAnalysisScreen(
+                        activityCounts: _activityCounts,
+                        activityTimestamps: _activityTimestamps,
+                        vegetativeData: _filteredData,
+                        selectedRegion: selectedRegion,
                       ),
-                      content: const Text('Koco iki nampilake data Vegetative. Sampeyan biso nggoleki, nyaring, lan ndeleng rincian kanthi nutul item sing pengin dideleng.'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text(
-                            'OK',
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
                   );
                 }
@@ -582,6 +677,16 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                   ),
                 ),
                 const PopupMenuItem(
+                  value: 'analysis',
+                  child: Row(
+                    children: [
+                      Icon(Icons.analytics, color: Colors.green),
+                      SizedBox(width: 8),
+                      Text('Analysis Aktivitas'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
                   value: 'help',
                   child: Row(
                     children: [
@@ -592,7 +697,7 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                   ),
                 ),
               ],
-            ),
+            )
           ],
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(80.0),
@@ -607,11 +712,12 @@ class VegetativeScreenState extends State<VegetativeScreen> {
               ),
               child: Column(
                 children: [
+                  // Progress indicator
                   _isLoading
                       ? LinearProgressIndicator(
                     value: _progress,
                     backgroundColor: Colors.green.shade300.withAlpha(76),
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
                   )
                       : const SizedBox(height: 4),
                   Padding(
@@ -619,6 +725,7 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
+                        // Data count
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
@@ -630,7 +737,7 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                               const Icon(Icons.format_list_numbered, color: Colors.white, size: 16),
                               const SizedBox(width: 4),
                               Text(
-                                '${_filteredData.length} Data',
+                                '${_filteredData.length} Lahan',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w500,
@@ -640,6 +747,8 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                             ],
                           ),
                         ),
+
+                        // Effective area
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
@@ -651,7 +760,7 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                               const Icon(Icons.crop, color: Colors.white, size: 16),
                               const SizedBox(width: 4),
                               Text(
-                                'Σ Effective Area:${_totalEffectiveArea.toStringAsFixed(1)} Ha',
+                                'Σ Area: ${_totalEffectiveArea.toStringAsFixed(1)} Ha',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w500,
@@ -671,7 +780,7 @@ class VegetativeScreenState extends State<VegetativeScreen> {
         ),
         body: Column(
           children: [
-            // Replace the current Filter Chips Container with this premium version
+            // Filter Chips Container
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -687,167 +796,209 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                   ),
                 ],
               ),
+              width: double.infinity,
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 8.0, left: 4.0),
-                    child: Text(
-                      'Filter Audit Status',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.5,
+                  Container(
+                    width: double.infinity, // Make button take full width
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [Colors.green.shade700, Colors.green.shade500],
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _showFilterChipsContainer = !_showFilterChipsContainer;
+                        });
+                      },
+                      icon: Icon(
+                        _showFilterChipsContainer
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                        color: Colors.white,
+                      ),
+                      label: Text(
+                        _showFilterChipsContainer
+                            ? 'Hide Filter Audit Status'
+                            : 'Show Filter Audit Status',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        softWrap: false,
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        backgroundColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
                   ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: _showAuditedOnly
-                                ? [
-                              BoxShadow(
-                                color: Colors.black.withAlpha(38),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-                              )
-                            ]
-                                : null,
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
+                  if (_showFilterChipsContainer) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(12),
-                              onTap: () {
-                                setState(() {
-                                  _showAuditedOnly = !_showAuditedOnly;
-                                  if (_showAuditedOnly) _showNotAuditedOnly = false;
-                                  _filterData();
-                                });
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  gradient: _showAuditedOnly
-                                      ? LinearGradient(
-                                    colors: [Colors.green.shade400, Colors.green.shade500],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  )
-                                      : null,
-                                  color: _showAuditedOnly ? null : Colors.white,
-                                  border: Border.all(
-                                    color: _showAuditedOnly ? Colors.transparent : Colors.green.shade200,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.check_circle_outline,
-                                      color: _showAuditedOnly ? Colors.white : Colors.green.shade700,
-                                      size: 18,
+                              boxShadow: _showAuditedOnly
+                                  ? [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(38),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                )
+                              ]
+                                  : null,
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  setState(() {
+                                    _showAuditedOnly = !_showAuditedOnly;
+                                    if (_showAuditedOnly) _showNotAuditedOnly = false;
+                                    _filterData();
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    gradient: _showAuditedOnly
+                                        ? LinearGradient(
+                                      colors: [Colors.green.shade400, Colors.green.shade500],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    )
+                                        : null,
+                                    color: _showAuditedOnly ? null : Colors.white,
+                                    border: Border.all(
+                                      color: _showAuditedOnly ? Colors.transparent : Colors.green.shade200,
+                                      width: 1.5,
                                     ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Sampun',
-                                      style: TextStyle(
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.check_circle_outline,
                                         color: _showAuditedOnly ? Colors.white : Colors.green.shade700,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
+                                        size: 18,
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: _showNotAuditedOnly
-                                ? [
-                              BoxShadow(
-                                color: Colors.black.withAlpha(38),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-                              )
-                            ]
-                                : null,
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () {
-                                setState(() {
-                                  _showNotAuditedOnly = !_showNotAuditedOnly;
-                                  if (_showNotAuditedOnly) _showAuditedOnly = false;
-                                  _filterData();
-                                });
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  gradient: _showNotAuditedOnly
-                                      ? LinearGradient(
-                                    colors: [Colors.red.shade400, Colors.red.shade600],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  )
-                                      : null,
-                                  color: _showNotAuditedOnly ? null : Colors.white,
-                                  border: Border.all(
-                                    color: _showNotAuditedOnly ? Colors.transparent : Colors.red.shade200,
-                                    width: 1.5,
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Sampun',
+                                        style: TextStyle(
+                                          color: _showAuditedOnly ? Colors.white : Colors.green.shade700,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.pending_outlined,
-                                      color: _showNotAuditedOnly ? Colors.white : Colors.red.shade600,
-                                      size: 18,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: _showNotAuditedOnly
+                                  ? [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(38),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                )
+                              ]
+                                  : null,
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  setState(() {
+                                    _showNotAuditedOnly = !_showNotAuditedOnly;
+                                    if (_showNotAuditedOnly) _showAuditedOnly = false;
+                                    _filterData();
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    gradient: _showNotAuditedOnly
+                                        ? LinearGradient(
+                                      colors: [Colors.red.shade400, Colors.red.shade600],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    )
+                                        : null,
+                                    color: _showNotAuditedOnly ? null : Colors.white,
+                                    border: Border.all(
+                                      color: _showNotAuditedOnly ? Colors.transparent : Colors.red.shade200,
+                                      width: 1.5,
                                     ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Dereng',
-                                      style: TextStyle(
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.pending_outlined,
                                         color: _showNotAuditedOnly ? Colors.white : Colors.red.shade600,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
+                                        size: 18,
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Dereng',
+                                        style: TextStyle(
+                                          color: _showNotAuditedOnly ? Colors.white : Colors.red.shade600,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
             // Main Content
             Expanded(
-              child: LiquidPullToRefresh(
+              child: _showMapView
+                  ? VegetativeMapView(
+                filteredData: _filteredData,
+                selectedRegion: selectedRegion,
+                activityCounts: _activityCounts,
+              )
+                  : LiquidPullToRefresh(
                   onRefresh: () async {
                     // Reset filters and load data
                     setState(() {
@@ -961,6 +1112,7 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                       : VegetativeListViewBuilder(
                     filteredData: _filteredData,
                     selectedRegion: selectedRegion,
+                    activityCounts: _activityCounts,
                     onItemTap: (fieldNumber) {
                       Navigator.of(context).push(
                         MaterialPageRoute(

@@ -181,12 +181,22 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
                           value: widget.region,
                           icon: Icons.location_on,
                         ),
-
                         const SizedBox(height: 20),
+                        _buildRequiredFieldsNotice(),
 
                         // Audit Information Section
                         _buildSectionHeader('Audit Information'),
-                        _buildFIDropdownField('QA FI', 29),
+                        _buildFIDropdownField(
+                          'QA FI',
+                          selectedFI,
+                          fiList,
+                              (value) {
+                            setState(() {
+                              selectedFI = value;
+                              row[29] = value ?? '';
+                            });
+                          },
+                        ),
                         const SizedBox(height: 10),
                         _buildDatePickerField('Date of Audit (dd/MM)', 30, _dateAuditController),
                         const SizedBox(height: 10),
@@ -290,14 +300,16 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
                         const SizedBox(height: 30),
 
                         // Save Button
+                        // Update the save button in the build method
                         Center(
                           child: ElevatedButton.icon(
                             onPressed: () {
                               if (_formKey.currentState!.validate()) {
-                                _showLoadingDialogAndClose();
-                                _showLoadingAndSaveInBackground();
-                                _showConfirmationDialog;
-                                _saveToGoogleSheets(row);
+                                if (_isDataValid()) {
+                                  _showConfirmationDialog();
+                                } else {
+                                  _showErrorSnackBar('Please complete all required fields');
+                                }
                               }
                             },
                             style: ElevatedButton.styleFrom(
@@ -383,7 +395,40 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
     );
   }
 
-  Widget _buildTextFormField(String label, int index, {IconData? icon, int maxLines = 1}) {
+  Widget _buildRequiredFieldsNotice() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, color: Colors.amber.shade800),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Fields marked with * are required and must be filled',
+              style: TextStyle(
+                color: Colors.amber.shade800,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextFormField(
+      String label,
+      int index, {
+        IconData? icon,
+        String? Function(String?)? validator,
+        int maxLines = 1,
+      }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -398,10 +443,10 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
         ],
       ),
       child: TextFormField(
-        initialValue: row[index].isNotEmpty ? "'${row[index]}" : "'0",
+        initialValue: row[index].isNotEmpty ? row[index].replaceAll("'", "") : "",
         maxLines: maxLines,
         decoration: InputDecoration(
-          labelText: label,
+          labelText: "$label *", // Add asterisk to indicate required field
           labelStyle: TextStyle(color: Colors.green.shade700),
           prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
           border: OutlineInputBorder(
@@ -419,6 +464,12 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
           filled: true,
           fillColor: Colors.white,
         ),
+        validator: validator ?? (value) {
+          if (value == null || value.isEmpty) {
+            return 'This field is required';
+          }
+          return null;
+        },
         onChanged: (value) {
           setState(() {
             String cleanedValue = value.replaceAll("'", "");
@@ -429,7 +480,12 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
     );
   }
 
-  Widget _buildFIDropdownField(String label, int index) {
+  Widget _buildFIDropdownField(
+      String label,
+      String? value,
+      List<String> items,
+      Function(String?) onChanged,
+      ) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -445,7 +501,7 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
       ),
       child: DropdownButtonFormField<String>(
         decoration: InputDecoration(
-          labelText: label,
+          labelText: "$label *", // Add asterisk to indicate required field
           labelStyle: TextStyle(color: Colors.green.shade700),
           prefixIcon: Icon(Icons.person, color: Colors.green.shade600),
           border: OutlineInputBorder(
@@ -463,29 +519,31 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
           filled: true,
           fillColor: Colors.white,
         ),
-        value: selectedFI,
-        items: fiList.map((String fi) {
+        value: value,
+        hint: const Text('Select Field Inspector'),
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return 'Field Inspector is required';
+          }
+          return null;
+        },
+        onChanged: onChanged,
+        items: items.map<DropdownMenuItem<String>>((String item) {
           return DropdownMenuItem<String>(
-            value: fi,
+            value: item,
             child: SizedBox(
-              width: double.infinity, // Memastikan lebar penuh
+              width: MediaQuery.of(context).size.width * 0.7, // Adjust width as needed
               child: Text(
-                fi,
-                overflow: TextOverflow.ellipsis, // Menghindari teks keluar
-                maxLines: 1, // Membatasi jumlah baris
+                item,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ),
           );
         }).toList(),
-        onChanged: (value) {
-          setState(() {
-            selectedFI = value;
-            row[index] = value ?? '';
-          });
-        },
         dropdownColor: Colors.white,
         icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
-        isExpanded: true, // Memastikan dropdown mengisi ruang yang tersedia
+        isExpanded: true, // Make dropdown take full width
       ),
     );
   }
@@ -508,7 +566,7 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
         controller: controller,
         readOnly: true,
         decoration: InputDecoration(
-          labelText: label,
+          labelText: "$label *", // Add asterisk to indicate required field
           labelStyle: TextStyle(color: Colors.green.shade700),
           prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
           suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
@@ -527,6 +585,12 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
           filled: true,
           fillColor: Colors.white,
         ),
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return 'Please select a date';
+          }
+          return null;
+        },
         onTap: () async {
           DateTime? pickedDate = await showDatePicker(
             context: context,
@@ -590,7 +654,7 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
           ),
           child: DropdownButtonFormField<String>(
             decoration: InputDecoration(
-              labelText: label,
+              labelText: "$label *", // Add asterisk to indicate required field
               labelStyle: TextStyle(color: Colors.green.shade700),
               prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
               border: OutlineInputBorder(
@@ -610,6 +674,12 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
             ),
             value: value,
             hint: Text(hint ?? 'Select an option'),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please select an option';
+              }
+              return null;
+            },
             onChanged: onChanged,
             items: items.map<DropdownMenuItem<String>>((String item) {
               return DropdownMenuItem<String>(
@@ -685,12 +755,6 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
     });
   }
 
-  void _showLoadingAndSaveInBackground() {
-    _showLoadingDialogAndClose();
-    _saveToHive(row);
-    _saveToGoogleSheets(row);
-  }
-
   Future<void> _saveToGoogleSheets(List<String> rowData) async {
     setState(() {
       isLoading = true;
@@ -755,16 +819,9 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
     await sheet.values.insertValue(
         '=IF(OR(I$rowIndex=0;I$rowIndex="");"";WEEKNUM(AC$rowIndex;1))',
         row: rowIndex, column: 28);
-    await sheet.values.insertValue(
-        '=G$rowIndex-H$rowIndex',
-        row: rowIndex, column: 9 );
-    await sheet.values.insertValue(
-        '=TEXT(H$rowIndex; "#,##0.00")',
-        row: rowIndex, column: 8);
-    await sheet.values.insertValue(
-        '=TEXT(G$rowIndex; "#,##0.00")',
-        row: rowIndex, column: 7);
-
+    await sheet.values.insertValue( // Total Area Planted
+        '=SUBSTITUTE(G$rowIndex; "."; ",")-SUBSTITUTE(H$rowIndex; "."; ",")',
+        row: rowIndex, column: 9);
     debugPrint("Rumus berhasil diterapkan di Harvest pada baris $rowIndex.");
   }
 
@@ -781,43 +838,66 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
   Future<void> _showConfirmationDialog() async {
     final shouldSave = await showDialog<bool>(
       context: context,
+      barrierDismissible: false, // Prevent dismissing by tapping outside
       builder: (context) => AlertDialog(
-        title: Text('Confirm Save'),
-        content: Text('Are you sure you want to save the changes?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.save_outlined, color: Colors.green.shade700),
+            const SizedBox(width: 10),
+            const Text('Confirm Save'),
+          ],
+        ),
+        content: const Text('Are you sure you want to save the changes? All required fields must be filled correctly.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey.shade700)),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Save'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Save'),
           ),
         ],
       ),
     );
-    if (shouldSave == true) {
-      _validateAndSave();
-    }
-  }
 
-  void _validateAndSave() {
-    if (_formKey.currentState!.validate()) {
-      if (_isDataValid()) {
-        _showLoadingDialogAndClose();
-        _saveToGoogleSheets(row);
-      } else {
-        _showSnackbar('Please complete all required fields');
-      }
+    if (shouldSave == true) {
+      _showLoadingDialogAndClose();
+      _saveToGoogleSheets(row);
     }
   }
 
   bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty);
+    // Check specific required fields for harvest form
+    return selectedFI != null &&
+        _dateAuditController.text.isNotEmpty &&
+        selectedEarConditionObservation != null &&
+        row[33].isNotEmpty && // Moisture Content
+        selectedCropHealth != null &&
+        row[35].isNotEmpty && // Remarks
+        selectedRecommendation != null &&
+        row[37].isNotEmpty && // Date of Downgrade Flagging
+        selectedReasonToDowngradeFlagging != null &&
+        selectedDowngradeFlaggingRecommendation != null;
   }
 
-  void _showSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade800,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   void _navigateBasedOnResponse(BuildContext context, String response) {
@@ -839,7 +919,7 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
         ),
       );
     } else {
-      _showSnackbar('Unknown response: $response');
+      _showErrorSnackBar('Unknown response: $response');
     }
   }
 

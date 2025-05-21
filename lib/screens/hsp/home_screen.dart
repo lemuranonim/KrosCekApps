@@ -12,7 +12,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:weather_icons/weather_icons.dart';
 
 import '../services/config_manager.dart';
-import '../login_screen.dart';
 import 'absen_log_screen.dart';
 import 'activity_screen.dart';
 import 'detaselling_screen.dart';
@@ -23,6 +22,7 @@ import 'pre_harvest/pre_harvest_screen.dart';
 import 'training_screen.dart';
 import 'vegetative/vegetative_screen.dart';
 import 'weather_widget.dart';
+import 'package:go_router/go_router.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -563,9 +563,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   void _navigateToLoginScreen(NavigatorState navigator) {
-    navigator.pushReplacement(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-    );
+    context.go('/login');
   }
 
   void _navigateTo(BuildContext context, Widget screen) {

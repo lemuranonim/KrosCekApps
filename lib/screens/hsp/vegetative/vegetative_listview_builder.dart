@@ -6,12 +6,14 @@ class VegetativeListViewBuilder extends StatelessWidget {
   final List<List<String>> filteredData;
   final String? selectedRegion;
   final Function(String) onItemTap;
+  final Map<String, int> activityCounts;
 
   const VegetativeListViewBuilder({
     super.key,
     required this.filteredData,
     this.selectedRegion,
     required this.onItemTap,
+    this.activityCounts = const {},
   });
 
   String getValue(List<String> row, int index, String defaultValue) {
@@ -142,6 +144,9 @@ class VegetativeListViewBuilder extends StatelessWidget {
         final fa = getValue(row, 16, "Unknown");
         final fi = getValue(row, 31, "Unknown");
         final weekOfVegetative = getValue(row, 29, "Unknown");
+
+        // Get activity count for this field number
+        final activityCount = activityCounts[fieldNumber] ?? 0;
 
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -521,68 +526,134 @@ class VegetativeListViewBuilder extends StatelessWidget {
 
                       const SizedBox(height: 8),
 
-                      // View Details Button
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: isAudited
-                                  ? [Colors.green.shade400, Colors.green.shade600]
-                                  : [Colors.orange.shade400, Colors.orange.shade600],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: isAudited
-                                    ? Colors.green.withAlpha(60)
-                                    : Colors.orange.withAlpha(60),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
+                      // Bottom row with Activity Count and View Details Button
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // Enhanced Activity Count Badge with last visit info
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: activityCount == 0
+                                    ? [Colors.red.shade50, Colors.red.shade100]
+                                    : (activityCount < 2
+                                    ? [Colors.orange.shade50, Colors.orange.shade100]
+                                    : [Colors.green.shade50, Colors.green.shade100]),
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
-                            ],
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
                               borderRadius: BorderRadius.circular(12),
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) => VegetativeDetailScreen(
-                                      fieldNumber: fieldNumber,
-                                      region: selectedRegion ?? 'Unknown Region',
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                child: Row(
+                              boxShadow: [
+                                BoxShadow(
+                                  color: activityCount == 0
+                                      ? Colors.red.withAlpha(25)
+                                      : (activityCount < 2 ? Colors.orange.withAlpha(25) : Colors.green.withAlpha(25)),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                              border: Border.all(
+                                color: activityCount == 0
+                                    ? Colors.red.shade200
+                                    : (activityCount < 2 ? Colors.orange.shade200 : Colors.green.shade200),
+                                width: 1.0,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Text(
-                                      'View Details',
+                                    Icon(
+                                      activityCount == 0
+                                          ? Icons.history_toggle_off
+                                          : (activityCount < 2 ? Icons.history : Icons.history_edu),
+                                      color: activityCount == 0
+                                          ? Colors.red.shade700
+                                          : (activityCount < 2 ? Colors.orange.shade700 : Colors.green.shade700),
+                                      size: 16,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      activityCount == 0
+                                          ? 'Not Visited'
+                                          : (activityCount == 1
+                                          ? 'Visited 1 kali'
+                                          : 'Visited $activityCount kali'),
                                       style: TextStyle(
-                                        color: Colors.white,
+                                        color: activityCount == 0
+                                            ? Colors.red.shade700
+                                            : (activityCount < 2 ? Colors.orange.shade700 : Colors.green.shade700),
                                         fontWeight: FontWeight.bold,
                                         fontSize: 12,
                                       ),
                                     ),
-                                    const SizedBox(width: 4),
-                                    const Icon(
-                                      Icons.arrow_forward_ios,
-                                      color: Colors.white,
-                                      size: 12,
-                                    ),
                                   ],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // View Details Button
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: isAudited
+                                    ? [Colors.green.shade400, Colors.green.shade600]
+                                    : [Colors.red.shade400, Colors.red.shade600],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: isAudited
+                                      ? Colors.green.withAlpha(60)
+                                      : Colors.red.withAlpha(60),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => VegetativeDetailScreen(
+                                        fieldNumber: fieldNumber,
+                                        region: selectedRegion ?? 'Unknown Region',
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.visibility, size: 16, color: Colors.white),
+                                      const SizedBox(width: 4),
+                                      const Text(
+                                        'View Details',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
                     ],
                   ),

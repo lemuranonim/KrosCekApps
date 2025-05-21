@@ -19,7 +19,8 @@ class Generative3EditScreen extends StatefulWidget {
     super.key,
     required this.row,
     required this.region,
-    required this.onSave});
+    required this.onSave,
+  });
 
   @override
   Generative3EditScreenState createState() => Generative3EditScreenState();
@@ -55,6 +56,8 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
   String? selectedRecommendation;
   String? selectedReasonPLD;
   String? selectedReasonTidakTeraudit;
+  late TextEditingController _remarksController;
+  late TextEditingController _recommendationPLDController;
 
   final List<String> femaleShed2Items = ['A', 'B', 'C', 'D'];
   final List<String> sheddingMale2Items = ['A', 'B'];
@@ -88,6 +91,10 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
 
     _dateAudit3Controller = TextEditingController(text: _convertToDateIfNecessary(row[45]));
     _dateClosedController = TextEditingController(text: _convertToDateIfNecessary(row[61]));
+
+    // Initialize controllers for text fields
+    _remarksController = TextEditingController(text: row[64]);
+    _recommendationPLDController = TextEditingController(text: row[65]);
 
     selectedFemaleShed2 = row[47];
     selectedSheddingMale2 = row[48];
@@ -195,8 +202,8 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
                           value: widget.region,
                           icon: Icons.location_on,
                         ),
-
                         const SizedBox(height: 20),
+                        _buildRequiredFieldsNotice(),
 
                         // Audit Information Section
                         _buildSectionHeader('Audit 3 Information'),
@@ -460,12 +467,16 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
                           icon: Icons.recommend,
                         ),
                         const SizedBox(height: 10),
-                        _buildTextFormField('Remarks', 64, icon: Icons.comment, maxLines: 2),
+                        _buildTextFormField('Remarks', 64,
+                            icon: Icons.comment,
+                            maxLines: 2,
+                            controller: _remarksController),
                         const SizedBox(height: 10),
                         _buildTextFormField('Recommendation PLD (Ha)', 65,
                             icon: Icons.area_chart,
                             keyboardType: TextInputType.number,
-                            prefix: "'"),
+                            prefix: "'",
+                            controller: _recommendationPLDController),
                         const SizedBox(height: 10),
                         _buildDropdownFormField(
                           label: 'Reason PLD',
@@ -501,10 +512,11 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
                           child: ElevatedButton.icon(
                             onPressed: () {
                               if (_formKey.currentState!.validate()) {
-                                _showLoadingDialogAndClose();
-                                _showLoadingAndSaveInBackground();
-                                _showConfirmationDialog();
-                                _saveToGoogleSheets(row);
+                                if (_isDataValid()) {
+                                  _showConfirmationDialog();
+                                } else {
+                                  _showErrorSnackBar('Please complete all required fields');
+                                }
                               }
                             },
                             style: ElevatedButton.styleFrom(
@@ -590,19 +602,42 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
     );
   }
 
-  Widget _buildTextFormField(String label, int index, {
-    IconData? icon,
-    int maxLines = 1,
-    TextInputType? keyboardType,
-    String? prefix,
-  }) {
-    String initialValue = row[index];
-    if (prefix != null && initialValue.isNotEmpty && !initialValue.startsWith(prefix)) {
-      initialValue = '$prefix$initialValue';
-    } else if (prefix != null && initialValue.isEmpty) {
-      initialValue = prefix;
-    }
+  Widget _buildRequiredFieldsNotice() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, color: Colors.amber.shade800),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Fields marked with * are required and must be filled',
+              style: TextStyle(
+                color: Colors.amber.shade800,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
+  Widget _buildTextFormField(
+      String label,
+      int index, {
+        TextInputType keyboardType = TextInputType.text,
+        IconData? icon,
+        int maxLines = 1,
+        String? prefix,
+        required TextEditingController controller,
+      }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -617,46 +652,45 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
         ],
       ),
       child: TextFormField(
-        initialValue: initialValue,
-        maxLines: maxLines,
+        controller: controller,
         keyboardType: keyboardType,
+        maxLines: maxLines,
         decoration: InputDecoration(
-          labelText: label,
+          labelText: "$label *", // Add asterisk to indicate required field
           labelStyle: TextStyle(color: Colors.green.shade700),
           prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+          prefixText: prefix,
           border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.green.shade200),
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.green.shade200),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.green.shade700, width: 2),
-        ),
-        filled: true,
-        fillColor: Colors.white,
-      ),
-      onChanged: (value) {
-        setState(() {
-          if (prefix != null) {
-            // Remove prefix for storage if it exists
-            if (value.startsWith(prefix)) {
-              value = value.substring(prefix.length);
-            }
-            // Add prefix back for storage
-            row[index] = '$prefix$value';
-          } else {
-            row[index] = value;
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return 'This field is required';
           }
-        });
-      },
-    ),
+          return null;
+        },
+        onChanged: (value) {
+          setState(() {
+            row[index] = value;
+          });
+        },
+      ),
     );
   }
 
+// buildDatePickerField
   Widget _buildDatePickerField(String label, int index, TextEditingController controller) {
     return Container(
       decoration: BoxDecoration(
@@ -675,7 +709,7 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
         controller: controller,
         readOnly: true,
         decoration: InputDecoration(
-          labelText: label,
+          labelText: "$label *", // Add asterisk to indicate required field
           labelStyle: TextStyle(color: Colors.green.shade700),
           prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
           suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
@@ -694,6 +728,12 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
           filled: true,
           fillColor: Colors.white,
         ),
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return 'Please select a date';
+          }
+          return null;
+        },
         onTap: () async {
           DateTime? pickedDate = await showDatePicker(
             context: context,
@@ -757,7 +797,7 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
           ),
           child: DropdownButtonFormField<String>(
             decoration: InputDecoration(
-              labelText: label,
+              labelText: "$label *", // Add asterisk to indicate required field
               labelStyle: TextStyle(color: Colors.green.shade700),
               prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
               border: OutlineInputBorder(
@@ -776,7 +816,13 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
               fillColor: Colors.white,
             ),
             value: value,
-            hint: Text(hint ?? 'Select an option '),
+            hint: Text(hint ?? 'Select an option'),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please select an option';
+              }
+              return null;
+            },
             onChanged: onChanged,
             items: items.map<DropdownMenuItem<String>>((String item) {
               return DropdownMenuItem<String>(
@@ -852,12 +898,6 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
     });
   }
 
-  void _showLoadingAndSaveInBackground() {
-    _showLoadingDialogAndClose();
-    _saveToHive(row);
-    _saveToGoogleSheets(row);
-  }
-
   Future<void> _saveToGoogleSheets(List<String> rowData) async {
     setState(() {
       isLoading = true;
@@ -895,7 +935,7 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
 
   Future<void> _restoreGenerativeFormulas(GoogleSheetsApi gSheetsApi, Worksheet sheet, int rowIndex) async {
     await sheet.values.insertValue(
-        '=IF(OR(BK$rowIndex=0;BK$rowIndex="");"Not Audited";"Audited")',
+        '=IF(OR(AT$rowIndex=0;AT$rowIndex="");"Not Audited";"Audited")',
         row: rowIndex, column: 72);
     await sheet.values.insertValue(
         '=IF(OR(AG$rowIndex>0;AO$rowIndex>0);"Audited";"Not Audited")',
@@ -909,27 +949,52 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
     await sheet.values.insertValue(
         '=IFERROR(IF(OR(AT$rowIndex=0;AT$rowIndex="");"";WEEKNUM(AT$rowIndex;1));"0")',
         row: rowIndex, column: 47);
-    debugPrint("Formulas successfully applied in Generative at row $rowIndex.");
+    await sheet.values.insertValue( // Standing Corp
+        '=I$rowIndex-U$rowIndex',
+        row: rowIndex, column: 24);
+    await sheet.values.insertValue( // Hyperlink Coordinate
+        '=IFERROR(IF(AND(LEFT(R$rowIndex;4)-0<6;LEFT(R$rowIndex;4)-0>-11);HYPERLINK("HTTP://MAPS.GOOGLE.COM/maps?q="&R$rowIndex;"LINK");"Not Found");"")',
+        row: rowIndex, column: 25);
+    await sheet.values.insertValue( // FASE
+        '=IF(I$rowIndex=0;"Discard";IF(X$rowIndex=0;"Harvest";IF(TODAY()-W$rowIndex<46;"Vegetative";IF(AND(TODAY()-W$rowIndex>45;TODAY()-W$rowIndex<56);"Pre Flowering";IF(AND(TODAY()-W$rowIndex>55;TODAY()-W$rowIndex<66);"Flowering";IF(AND(TODAY()-W$rowIndex>65;TODAY()-W$rowIndex<80);"Close Out";IF(TODAY()-W$rowIndex>79;"Male Cutting";"")))))))',
+        row: rowIndex, column: 27);
+    await sheet.values.insertValue( // Week of Flowering Rev
+        '=WEEKNUM(AB$rowIndex)',
+        row: rowIndex, column: 29);
+    await sheet.values.insertValue( // Week of Flowering PDN
+        '=WEEKNUM(IF(F$rowIndex="ac01";J$rowIndex+60;J$rowIndex+57))',
+        row: rowIndex, column: 30);
+    await sheet.values.insertValue( // Effective Area Planted
+        '=SUBSTITUTE(G$rowIndex; "."; ",")-SUBSTITUTE(H$rowIndex; "."; ",")',
+        row: rowIndex, column: 9);
+    debugPrint("Rumus berhasil diterapkan di Generative pada baris $rowIndex.");
   }
 
   Future<int> _findRowByFieldNumber(Worksheet sheet, String fieldNumber)
   async {
-  final List<List<String>> rows = await sheet.values.allRows();
-  for (int i = 0; i < rows.length; i++) {
-  if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) {
-  return i + 1;
+    final List<List<String>> rows = await sheet.values.allRows();
+    for (int i = 0; i < rows.length; i++) {
+      if (rows[i].isNotEmpty && rows[i][2] == fieldNumber) {
+        return i + 1;
+      }
+    }
+    return -1;
   }
-  }
-  return -1;
-}
 
   Future<void> _showConfirmationDialog() async {
     final shouldSave = await showDialog<bool>(
       context: context,
+      barrierDismissible: false, // Prevent dismissing by tapping outside
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Confirm Save', style: TextStyle(color: Colors.green.shade800)),
-        content: Text('Are you sure you want to save the changes?'),
+        title: Row(
+          children: [
+            Icon(Icons.save_outlined, color: Colors.green.shade700),
+            const SizedBox(width: 10),
+            const Text('Confirm Save'),
+          ],
+        ),
+        content: const Text('Are you sure you want to save the changes? All required fields must be filled correctly.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -946,65 +1011,91 @@ class Generative3EditScreenState extends State<Generative3EditScreen> {
         ],
       ),
     );
-    if (shouldSave == true) {
-      _validateAndSave();
-    }
-  }
 
-void _validateAndSave() {
-  if (_formKey.currentState!.validate()) {
-    if (_isDataValid()) {
+    if (shouldSave == true) {
       _showLoadingDialogAndClose();
       _saveToGoogleSheets(row);
-    } else {
-      _showSnackbar('Please complete all required fields');
     }
   }
-}
 
-bool _isDataValid() {
-  return row.every((field) => field.isNotEmpty);
-}
+  bool _isDataValid() {
+    // Check specific required fields for generative form
+    return _dateAudit3Controller.text.isNotEmpty &&
+        selectedFemaleShed2 != null &&
+        selectedSheddingMale2 != null &&
+        selectedSheddingFemale2 != null &&
+        selectedStandingCropMale != null &&
+        selectedStandingCropFemale != null &&
+        selectedLSV != null &&
+        selectedDetasselingObservation != null &&
+        selectedAffectedFields != null &&
+        selectedNickCover != null &&
+        selectedCropUniformity != null &&
+        selectedIsolation != null &&
+        (selectedIsolation != 'Y' || (selectedIsolationType != null && selectedIsolationDistance != null)) &&
+        selectedQPIR != null &&
+        _dateClosedController.text.isNotEmpty &&
+        selectedFlagging != null &&
+        selectedRecommendation != null &&
+        row[64].isNotEmpty && // Remarks
+        row[65].isNotEmpty && // Recommendation PLD
+        selectedReasonPLD != null &&
+        selectedReasonTidakTeraudit != null;
+  }
 
-void _showSnackbar(String message) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-}
-
-void _navigateBasedOnResponse(BuildContext context, String response) {
-  if (response == 'Data successfully saved to Audit Database') {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => SuccessScreen(
-          row: row,
-          userName: userName,
-          userEmail: userEmail,
-          region: widget.region,
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade800,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
         ),
+        duration: const Duration(seconds: 3),
       ),
     );
-  } else if (response == 'Failed to save data. Please try again.') {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => FailedScreen(),
-      ),
-    );
-  } else {
-    _showSnackbar('Unknown response: $response');
   }
-}
 
-String _convertToDateIfNecessary(String value) {
-  try {
-    final parsedNumber = double.tryParse(value);
-    if (parsedNumber != null) {
-      final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
-      return DateFormat('dd/MM/yyyy').format(date);
-    }
-  } catch (e) {
-    // Handle parsing error
+  void _showSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
-  return value;
-}
+
+  void _navigateBasedOnResponse(BuildContext context, String response) {
+    if (response == 'Data successfully saved to Audit Database') {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => SuccessScreen(
+            row: row,
+            userName: userName,
+            userEmail: userEmail,
+            region: widget.region,
+          ),
+        ),
+      );
+    } else if (response == 'Failed to save data. Please try again.') {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => FailedScreen(),
+        ),
+      );
+    } else {
+      _showSnackbar('Unknown response: $response');
+    }
+  }
+
+  String _convertToDateIfNecessary(String value) {
+    try {
+      final parsedNumber = double.tryParse(value);
+      if (parsedNumber != null) {
+        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
+        return DateFormat('dd/MM/yyyy').format(date);
+      }
+    } catch (e) {
+      // Handle parsing error
+    }
+    return value;
+  }
 }
 
 class SuccessScreen extends StatelessWidget {

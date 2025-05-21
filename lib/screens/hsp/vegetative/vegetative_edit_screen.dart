@@ -32,6 +32,11 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
 
   late TextEditingController _dateAuditController;
   late TextEditingController _actualPlantingDateController;
+  late TextEditingController _coDetasselingController;
+  late TextEditingController _fieldSizeController;
+  late TextEditingController _maleSplitController;
+  late TextEditingController _sowingRatioController;
+  late TextEditingController _remarksController;
 
   String userEmail = 'Fetching...';
   String userName = 'Fetching...';
@@ -82,6 +87,11 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
 
     _dateAuditController = TextEditingController(text: _convertToDateIfNecessary(row[33]));
     _actualPlantingDateController = TextEditingController(text: _convertToDateIfNecessary(row[35]));
+    _coDetasselingController = TextEditingController(text: row[32]);
+    _fieldSizeController = TextEditingController(text: row[36].replaceAll("'", ""));
+    _maleSplitController = TextEditingController(text: row[37].replaceAll("'", ""));
+    _sowingRatioController = TextEditingController(text: row[38]);
+    _remarksController = TextEditingController(text: row[51]);
 
     _loadFIList(widget.region);
 
@@ -213,53 +223,124 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
                           ),
 
                           const SizedBox(height: 20),
+                          _buildRequiredFieldsNotice(),
 
                           // Audit Information Section
                           _buildSectionHeader('Audit Information', Icons.assignment),
-                          _buildFIDropdownField('QA FI', 31),
+                          _buildFIDropdownField(
+                            'QA FI',
+                            selectedFI,
+                            fiList,
+                                (value) {
+                              setState(() {
+                                selectedFI = value;
+                                row[31] = value ?? '';
+                              });
+                            },
+                          ),
                           const SizedBox(height: 10),
-                          _buildTextFormField('Co Detasseling', 32, icon: Icons.people),
+                          _buildTextField(
+                            'Co Detasseling',
+                            _coDetasselingController,
+                            Icons.people,
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Harus diisi' : null,
+                            onChanged: (value) {
+                              setState(() {
+                                row[32] = value;
+                              });
+                            },
+                          ),
                           const SizedBox(height: 10),
-                          _buildDatePickerField('Date of Audit', 33, _dateAuditController),
+                          _buildDateField(
+                            'Date of Audit',
+                            _dateAuditController,
+                                (date) {
+                              setState(() {
+                                row[33] = date;
+                              });
+                            },
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select a date' : null,
+                          ),
                           const SizedBox(height: 10),
-                          _buildDatePickerField('Actual Female Planting Date', 35, _actualPlantingDateController),
+                          _buildDateField(
+                            'Actual Female Planting Date',
+                            _actualPlantingDateController,
+                                (date) {
+                              setState(() {
+                                row[35] = date;
+                              });
+                            },
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select a date' : null,
+                          ),
                           const SizedBox(height: 10),
 
                           // Field Metrics Section
                           _buildSectionHeader('Field Metrics', Icons.straighten),
-                          _buildText2FormField('Field Size by Audit (Ha)', 36, icon: Icons.crop_square),
+                          _buildNumericField(
+                            'Field Size by Audit (Ha)',
+                            _fieldSizeController,
+                            Icons.crop_square,
+                            validator: (value) => value == null || value.toString().isEmpty ? 'This field is required' : null,
+                            onChanged: (value) {
+                              setState(() {
+                                row[36] = "'$value";
+                              });
+                            },
+                          ),
                           const SizedBox(height: 10),
-                          _buildText2FormField('Male Split by Audit', 37, icon: Icons.view_week),
+                          _buildNumericField(
+                            'Male Split by Audit',
+                            _maleSplitController,
+                            Icons.view_week,
+                            validator: (value) => value == null || value.toString().isEmpty ? 'This field is required' : null,
+                            onChanged: (value) {
+                              setState(() {
+                                row[37] = "'$value";
+                              });
+                            },
+                          ),
                           const SizedBox(height: 10),
-                          _buildTextFormField('Sowing Ratio by Audit', 38, icon: Icons.compare_arrows),
+                          _buildTextField(
+                            'Sowing Ratio by Audit',
+                            _sowingRatioController,
+                            Icons.compare_arrows,
+                            validator: (value) => value == null || value.toString().isEmpty ? 'This field is required' : null,
+                            onChanged: (value) {
+                              setState(() {
+                                row[38] = value;
+                              });
+                            },
+                          ),
                           const SizedBox(height: 10),
 
                           // Field Conditions Section
                           _buildSectionHeader('Field Conditions', Icons.landscape),
-                          _buildDropdownFormField(
-                            label: 'Split Field by Audit',
-                            items: splitFieldItems,
-                            value: selectedSplitField,
-                            onChanged: (value) {
+                          _buildDropdownField(
+                            'Split Field by Audit',
+                            selectedSplitField,
+                            splitFieldItems,
+                                (value) {
                               setState(() {
                                 selectedSplitField = value;
                                 row[39] = value ?? '';
                               });
                             },
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select an option' : null,
                             helpText: 'A = No\nB = Yes',
                             icon: Icons.call_split,
                           ),
                           const SizedBox(height: 10),
-                          _buildDropdownFormField(
-                            label: 'Isolation Problem by Audit',
-                            items: isolationProblemItems,
-                            value: selectedIsolationProblem,
-                            onChanged: (value) {
+                          _buildDropdownField(
+                            'Isolation Problem by Audit',
+                            selectedIsolationProblem,
+                            isolationProblemItems,
+                                (value) {
                               setState(() {
                                 selectedIsolationProblem = value;
                                 row[40] = value ?? '';
                               });
                             },
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select an option' : null,
                             helpText: 'Y = Yes\nN = No',
                             icon: Icons.security,
                           ),
@@ -267,31 +348,33 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
                           if (selectedIsolationProblem == 'Y')
                             Column(
                               children: [
-                                _buildDropdownFormField(
-                                  label: 'If "YES" Contaminant Type',
-                                  items: contaminantTypeItems,
-                                  value: selectedContaminantType,
-                                  onChanged: (value) {
+                                _buildDropdownField(
+                                  'If "YES" Contaminant Type',
+                                  selectedContaminantType,
+                                  contaminantTypeItems,
+                                      (value) {
                                     setState(() {
                                       selectedContaminantType = value;
                                       row[41] = value ?? '';
                                     });
                                   },
+                                  validator: (value) => value == null || value.toString().isEmpty ? 'Please select an option' : null,
                                   helpText: 'A = Seed Production\nB = Jagung Komersial',
                                   icon: Icons.category,
                                 ),
                                 const SizedBox(height: 10),
 
-                                _buildDropdownFormField(
-                                  label: 'If "YES" Contaminant Distance',
-                                  items: contaminantDistanceItems,
-                                  value: selectedContaminantDistance,
-                                  onChanged: (value) {
+                                _buildDropdownField(
+                                  'If "YES" Contaminant Distance',
+                                  selectedContaminantDistance,
+                                  contaminantDistanceItems,
+                                      (value) {
                                     setState(() {
                                       selectedContaminantDistance = value;
                                       row[42] = value ?? '';
                                     });
                                   },
+                                  validator: (value) => value == null || value.toString().isEmpty ? 'Please select an option' : null,
                                   helpText: 'A = >300 m\nB = >200-<300 m\nC = >100 & <200 m\nD = <100 m',
                                   icon: Icons.social_distance,
                                 ),
@@ -302,44 +385,47 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
 
                           // Crop Quality Section
                           _buildSectionHeader('Crop Quality', Icons.eco),
-                          _buildDropdownFormField(
-                            label: 'Crop Uniformity',
-                            items: cropUniformityItems,
-                            value: selectedCropUniformity,
-                            onChanged: (value) {
+                          _buildDropdownField(
+                            'Crop Uniformity',
+                            selectedCropUniformity,
+                            cropUniformityItems,
+                                (value) {
                               setState(() {
                                 selectedCropUniformity = value;
                                 row[43] = value ?? '';
                               });
                             },
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select an option' : null,
                             helpText: 'A = Good\nB = Fair\nC = Poor',
                             icon: Icons.grain,
                           ),
                           const SizedBox(height: 10),
-                          _buildDropdownFormField(
-                            label: 'Offtype in Male',
-                            items: offtypeItems,
-                            value: selectedOfftypeInMale,
-                            onChanged: (value) {
+                          _buildDropdownField(
+                            'Offtype in Male',
+                            selectedOfftypeInMale,
+                            offtypeItems,
+                                (value) {
                               setState(() {
                                 selectedOfftypeInMale = value;
                                 row[44] = value ?? '';
                               });
                             },
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select an option' : null,
                             helpText: 'A = No\nB = Yes',
                             icon: Icons.male,
                           ),
                           const SizedBox(height: 10),
-                          _buildDropdownFormField(
-                            label: 'Offtype in Female',
-                            items: offtypeItems,
-                            value: selectedOfftypeInFemale,
-                            onChanged: (value) {
+                          _buildDropdownField(
+                            'Offtype in Female',
+                            selectedOfftypeInFemale,
+                            offtypeItems,
+                                (value) {
                               setState(() {
                                 selectedOfftypeInFemale = value;
                                 row[45] = value ?? '';
                               });
                             },
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select an option' : null,
                             helpText: 'A = No\nB = Yes',
                             icon: Icons.female,
                           ),
@@ -347,30 +433,32 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
 
                           // Field History Section
                           _buildSectionHeader('Field History & Management', Icons.history),
-                          _buildDropdownFormField(
-                            label: 'Previous Crop by Audit',
-                            items: offtypeItems,
-                            value: selectedPreviousCrop,
-                            onChanged: (value) {
+                          _buildDropdownField(
+                            'Previous Crop by Audit',
+                            selectedPreviousCrop,
+                            offtypeItems,
+                                (value) {
                               setState(() {
                                 selectedPreviousCrop = value;
                                 row[46] = value ?? '';
                               });
                             },
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select an option' : null,
                             helpText: 'A = Not Corn\nB = Corn After Corn',
                             icon: Icons.history_edu,
                           ),
                           const SizedBox(height: 10),
-                          _buildDropdownFormField(
-                            label: 'FIR Applied',
-                            items: firAppliedItems,
-                            value: selectedFIRApplied,
-                            onChanged: (value) {
+                          _buildDropdownField(
+                            'FIR Applied',
+                            selectedFIRApplied,
+                            firAppliedItems,
+                                (value) {
                               setState(() {
                                 selectedFIRApplied = value;
                                 row[47] = value ?? '';
                               });
                             },
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select an option' : null,
                             helpText: 'Y = Ada\nN = Tidak Ada',
                             icon: Icons.check_circle_outline,
                           ),
@@ -378,44 +466,47 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
 
                           // Field Validation Section
                           _buildSectionHeader('Field Validation', Icons.verified),
-                          _buildDropdownFormField(
-                            label: 'POI Accuracy',
-                            items: poiAccuracyItems,
-                            value: selectedPOIAccuracy,
-                            onChanged: (value) {
+                          _buildDropdownField(
+                            'POI Accuracy',
+                            selectedPOIAccuracy,
+                            poiAccuracyItems,
+                                (value) {
                               setState(() {
                                 selectedPOIAccuracy = value;
                                 row[48] = value ?? '';
                               });
                             },
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select an option' : null,
                             helpText: 'POI Accuracy (Valid/Not Valid)',
                             icon: Icons.location_searching,
                           ),
                           const SizedBox(height: 10),
-                          _buildDropdownFormField(
-                            label: 'Flagging (GF/RF)',
-                            items: flaggingItems,
-                            value: selectedFlagging,
-                            onChanged: (value) {
+                          _buildDropdownField(
+                            'Flagging (GF/RF)',
+                            selectedFlagging,
+                            flaggingItems,
+                                (value) {
                               setState(() {
                                 selectedFlagging = value;
                                 row[49] = value ?? '';
                               });
                             },
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select an option' : null,
                             helpText: 'Flagging (GF/RF)',
                             icon: Icons.flag,
                           ),
                           const SizedBox(height: 10),
-                          _buildDropdownFormField(
-                            label: 'Recommendation',
-                            items: recommendationItems,
-                            value: selectedRecommendation,
-                            onChanged: (value) {
+                          _buildDropdownField(
+                            'Recommendation',
+                            selectedRecommendation,
+                            recommendationItems,
+                                (value) {
                               setState(() {
                                 selectedRecommendation = value;
                                 row[50] = value ?? '';
                               });
                             },
+                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select an option' : null,
                             helpText: 'Continue to Next Process/Discard',
                             icon: Icons.recommend,
                           ),
@@ -423,7 +514,17 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
 
                           // Remarks Section
                           _buildSectionHeader('Additional Information', Icons.note_add),
-                          _buildTextFormField('Remarks', 51, icon: Icons.comment, maxLines: 3),
+                          _buildTextField(
+                            'Remarks',
+                            _remarksController,
+                            Icons.comment,
+                            maxLines: 3,
+                            onChanged: (value) {
+                              setState(() {
+                                row[51] = value;
+                              });
+                            },
+                          ),
                           const SizedBox(height: 30),
 
                           // Save Button
@@ -431,10 +532,19 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
                             child: ElevatedButton.icon(
                               onPressed: () {
                                 if (_formKey.currentState!.validate()) {
-                                  _showLoadingDialogAndClose();
-                                  _showLoadingAndSaveInBackground();
-                                  _showConfirmationDialog;
-                                  _saveToGoogleSheets(row);
+                                  _showConfirmationDialog(context);
+                                } else {
+                                  // Show error message if validation fails
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: const Text('Please fill all required fields'),
+                                      backgroundColor: Colors.red.shade700,
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                  );
                                 }
                               },
                               style: ElevatedButton.styleFrom(
@@ -464,6 +574,362 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildRequiredFieldsNotice() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, color: Colors.amber.shade800),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Fields marked with * are required and must be filled',
+              style: TextStyle(
+                color: Colors.amber.shade800,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Implement the new form field builders that include validation
+  Widget _buildTextField(
+      String label,
+      TextEditingController controller,
+      IconData icon, {
+        String? Function(String?)? validator,
+        void Function(String)? onChanged,
+        int maxLines = 1,
+      }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextFormField(
+        controller: controller,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          labelText: "$label *", // Add asterisk to indicate required field
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(icon, color: Colors.green.shade600),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+        ),
+        validator: validator ?? (value) {
+          if (value == null || value.isEmpty) {
+            return 'This field is required';
+          }
+          return null;
+        },
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _buildNumericField(
+      String label,
+      TextEditingController controller,
+      IconData icon, {
+        String? Function(String?)? validator,
+        void Function(String)? onChanged,
+      }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(
+          labelText: "$label *", // Add asterisk to indicate required field
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(icon, color: Colors.green.shade600),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+        ),
+        validator: validator ?? (value) {
+          if (value == null || value.isEmpty) {
+            return 'This field is required';
+          }
+          return null;
+        },
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _buildDateField(
+      String label,
+      TextEditingController controller,
+      void Function(String) onDateSelected, {
+        String? Function(String?)? validator,
+      }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextFormField(
+        controller: controller,
+        readOnly: true,
+        decoration: InputDecoration(
+          labelText: "$label *", // Add asterisk to indicate required field
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
+          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+        ),
+        validator: validator ?? (value) {
+          if (value == null || value.isEmpty) {
+            return 'Please select a date';
+          }
+          return null;
+        },
+        onTap: () async {
+          DateTime? pickedDate = await showDatePicker(
+            context: context,
+            initialDate: DateTime.now(),
+            firstDate: DateTime(2000),
+            lastDate: DateTime(2101),
+            builder: (context, child) {
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  colorScheme: ColorScheme.light(
+                    primary: Colors.green.shade700,
+                    onPrimary: Colors.white,
+                    onSurface: Colors.black,
+                  ),
+                ),
+                child: child!,
+              );
+            },
+          );
+
+          if (pickedDate != null) {
+            String formattedDate = DateFormat('dd/MM/yyyy').format(pickedDate);
+            setState(() {
+              controller.text = formattedDate;
+              onDateSelected(formattedDate);
+            });
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildFIDropdownField(String label, String? value, List<String> items, Function(String?) onChanged) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(51),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: DropdownButtonFormField<String>(
+        decoration: InputDecoration(
+          labelText: "$label *", // Add asterisk to indicate required field
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(Icons.person, color: Colors.green.shade600),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+        ),
+        value: value,
+        hint: const Text('Select Field Inspector'),
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return 'Field Inspector is required';
+          }
+          return null;
+        },
+        onChanged: onChanged,
+        items: items.map<DropdownMenuItem<String>>((String item) {
+          return DropdownMenuItem<String>(
+            value: item,
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width * 0.7, // Adjust width as needed
+              child: Text(
+                item,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+          );
+        }).toList(),
+        dropdownColor: Colors.white,
+        icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+        isExpanded: true, // Make dropdown take full width
+      ),
+    );
+  }
+
+  Widget _buildDropdownField(
+      String label,
+      String? value,
+      List<String> items,
+      Function(String?) onChanged, {
+        String? Function(String?)? validator,
+        String? helpText,
+        IconData? icon,
+      }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withAlpha(51),
+                spreadRadius: 1,
+                blurRadius: 3,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: DropdownButtonFormField<String>(
+            decoration: InputDecoration(
+              labelText: "$label *", // Add asterisk to indicate required field
+              labelStyle: TextStyle(color: Colors.green.shade700),
+              prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade200),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            value: value,
+            hint: Text('Select an option'),
+            onChanged: onChanged,
+            validator: validator ?? (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please select an option';
+              }
+              return null;
+            },
+            items: items.map<DropdownMenuItem<String>>((String item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(item),
+              );
+            }).toList(),
+            dropdownColor: Colors.white,
+            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          ),
+        ),
+        if (helpText != null) ...[
+          const SizedBox(height: 5),
+          Text(
+            helpText,
+            style: const TextStyle(
+              fontStyle: FontStyle.italic,
+              color: Colors.grey,
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -527,299 +993,45 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     );
   }
 
-  Widget _buildTextFormField(String label, int index, {IconData? icon, int maxLines = 1}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withAlpha(51),
-            spreadRadius: 1,
-            blurRadius: 3,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: TextFormField(
-        initialValue: row[index],
-        maxLines: maxLines,
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
-          ),
-          filled: true,
-          fillColor: Colors.white,
-        ),
-        onChanged: (value) {
-          setState(() {
-            row[index] = value;
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _buildText2FormField(String label, int index, {IconData? icon}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withAlpha(51),
-            spreadRadius: 1,
-            blurRadius: 3,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: TextFormField(
-        initialValue: row[index].isNotEmpty ? "'${row[index]}" : "'0",
-        keyboardType: TextInputType.number,
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
-          ),
-          filled: true,
-          fillColor: Colors.white,
-        ),
-        onChanged: (value) {
-          setState(() {
-            String cleanedValue = value.replaceAll("'", "");
-            row[index] = "'$cleanedValue";
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _buildFIDropdownField(String label, int index) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withAlpha(51),
-            spreadRadius: 1,
-            blurRadius: 3,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: DropdownButtonFormField<String>(
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: Icon(Icons.person, color: Colors.green.shade600),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
-          ),
-          filled: true,
-          fillColor: Colors.white,
-        ),
-        value: selectedFI,
-        items: fiList.map((String fi) {
-          return DropdownMenuItem<String>(
-            value: fi,
-            child: SizedBox(
-              width: double.infinity, // Memastikan lebar penuh
-              child: Text(
-                fi,
-                overflow: TextOverflow.ellipsis, // Menghindari teks keluar
-                maxLines: 1, // Membatasi jumlah baris
-              ),
-            ),
-          );
-        }).toList(),
-        onChanged: (value) {
-          setState(() {
-            selectedFI = value;
-            row[index] = value ?? '';
-          });
-        },
-        dropdownColor: Colors.white,
-        icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
-        isExpanded: true, // Memastikan dropdown mengisi ruang yang tersedia
-      ),
-    );
-  }
-
-  Widget _buildDatePickerField(String label, int index, TextEditingController controller) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withAlpha(51),
-            spreadRadius: 1,
-            blurRadius: 3,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: TextFormField(
-        controller: controller,
-        readOnly: true,
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
-          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
-          ),
-          filled: true,
-          fillColor: Colors.white,
-        ),
-        onTap: () async {
-          DateTime? pickedDate = await showDatePicker(
-            context: context,
-            initialDate: DateTime.now(),
-            firstDate: DateTime(2000),
-            lastDate: DateTime(2101),
-            builder: (context, child) {
-              return Theme(
-                data: Theme.of(context).copyWith(
-                  colorScheme: ColorScheme.light(
-                    primary: Colors.green.shade700,
-                    onPrimary: Colors.white,
-                    onSurface: Colors.black,
-                  ),
-                ),
-                child: child!,
-              );
-            },
-          );
-
-          if (pickedDate != null) {
-            String formattedDate = DateFormat('dd/MM/yyyy').format(pickedDate);
-            setState(() {
-              controller.text = formattedDate; row[index] = formattedDate;
-            });
-          }
-        },
-      ),
-    );
-  }
-
-  Widget _buildDropdownFormField({
-    required String label,
-    required List<String> items,
-    required String? value,
-    required Function(String?) onChanged,
-    String? hint,
-    String? helpText,
-    IconData? icon,
-  }) {
-    if (!items.contains(value)) {
-      value = null;
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withAlpha(51),
-                spreadRadius: 1,
-                blurRadius: 3,
-                offset: const Offset(0, 2),
-              ),
+  void _showConfirmationDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.save_outlined, color: Colors.green.shade700),
+              const SizedBox(width: 10),
+              const Text('Confirm Save'),
             ],
           ),
-          child: DropdownButtonFormField<String>(
-            decoration: InputDecoration(
-              labelText: label,
-              labelStyle: TextStyle(color: Colors.green.shade700),
-              prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade200),
+          content: const Text('Are you sure you want to save the changes? All required fields must be filled correctly.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: Colors.grey.shade700),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade200),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
             ),
-            value: value,
-            hint: Text(hint ?? 'Select an option'),
-            onChanged: onChanged,
-            items: items.map<DropdownMenuItem<String>>((String item) {
-              return DropdownMenuItem<String>(
-                value: item,
-                child: Text(item),
-              );
-            }).toList(),
-            dropdownColor: Colors.white,
-            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
-          ),
-        ),
-        if (helpText != null) ...[
-          const SizedBox(height: 5),
-          Text(
-            helpText,
-            style: const TextStyle(
-              fontStyle: FontStyle.italic,
-              color: Colors.grey,
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _showLoadingDialogAndClose();
+                _saveToGoogleSheets(row);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Save'),
             ),
+          ],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
           ),
-        ],
-      ],
+        );
+      },
     );
   }
 
@@ -869,12 +1081,6 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     });
   }
 
-  void _showLoadingAndSaveInBackground() {
-    _showLoadingDialogAndClose();
-    _saveToHive(row);
-    _saveToGoogleSheets(row);
-  }
-
   Future<void> _saveToGoogleSheets(List<String> rowData) async {
     setState(() => isLoading = true);
 
@@ -896,7 +1102,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
       responseMessage = 'Failed to save data. Please try again.';
     } finally {
       setState(() {
-        isLoading = false; // Sembunyikan loader
+        isLoading = false;
       });
     }
 
@@ -925,6 +1131,9 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     await sheet.values.insertValue( // Week of Vegetative
         '=IF(OR(I$rowIndex=0;I$rowIndex="");"";WEEKNUM(AC$rowIndex;1))',
         row: rowIndex, column: 30);
+    await sheet.values.insertValue( // Total Area Planted
+        '=SUBSTITUTE(G$rowIndex; "."; ",")-SUBSTITUTE(H$rowIndex; "."; ",")',
+        row: rowIndex, column: 9);
     debugPrint("Rumus berhasil diterapkan di Vegetative pada baris $rowIndex.");
   }
 
@@ -936,48 +1145,6 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
       }
     }
     return -1;
-  }
-
-  Future<void> _showConfirmationDialog() async {
-    final shouldSave = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Confirm Save'),
-        content: Text('Are you sure you want to save the changes?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (shouldSave == true) {
-      _validateAndSave();
-    }
-  }
-
-  void _validateAndSave() {
-    if (_formKey.currentState!.validate()) {
-      if (_isDataValid()) {
-        _showLoadingDialogAndClose();
-        _saveToGoogleSheets(row);
-      } else {
-        _showSnackbar('Please complete all required fields');
-      }
-    }
-  }
-
-  bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty);
-  }
-
-  void _showSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _navigateBasedOnResponse(BuildContext context, String response) {
@@ -999,7 +1166,9 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
         ),
       );
     } else {
-      _showSnackbar('Unknown response: $response');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unknown response: $response')),
+      );
     }
   }
 

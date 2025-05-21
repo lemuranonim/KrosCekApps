@@ -221,12 +221,12 @@ class WeatherService {
     try {
       final url = 'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum&forecast_days=8&timezone=auto';
 
-      debugPrint("Fetching forecast from: $url");
+      // debugPrint("Fetching forecast from: $url");
 
       final response = await client.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
-        debugPrint("Forecast API response received");
+        // debugPrint("Forecast API response received");
         final data = json.decode(response.body);
         final forecastData = processForecastData(data);
         await saveForecastToCache(forecastData);
@@ -246,7 +246,7 @@ class WeatherService {
 
   ForecastData processForecastData(Map<String, dynamic> data) {
     try {
-      debugPrint("Processing forecast data: ${json.encode(data)}");
+      // debugPrint("Processing forecast data: ${json.encode(data)}");
 
       final dailyDates = List<String>.from(data['daily']['time']);
       final dailyMaxTemps = List<double>.from(data['daily']['temperature_2m_max']);
@@ -315,9 +315,9 @@ class WeatherService {
       }
 
       // Debug log
-      debugPrint("Processed forecast data: ${dailyForecasts.length} days");
+      // debugPrint("Processed forecast data: ${dailyForecasts.length} days");
       dailyForecasts.forEach((key, value) {
-        debugPrint("$key: ${value.condition}, ${value.tempRange}, ${value.rainAmount}");
+        // debugPrint("$key: ${value.condition}, ${value.tempRange}, ${value.rainAmount}");
       });
 
       return ForecastData(

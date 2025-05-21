@@ -149,6 +149,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
                         ),
 
                         const SizedBox(height: 20),
+                        _buildRequiredFieldsNotice(),
 
                         // Audit Information Section
                         _buildSectionHeader('Audit 2 Information'),
@@ -203,15 +204,16 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
                         ),
                         const SizedBox(height: 30),
 
-                        // Save Button
+                        // Update the save button in the build method
                         Center(
                           child: ElevatedButton.icon(
                             onPressed: () {
                               if (_formKey.currentState!.validate()) {
-                                _showLoadingDialogAndClose();
-                                _showLoadingAndSaveInBackground();
-                                _showConfirmationDialog;
-                                _saveToGoogleSheets(row);
+                                if (_isDataValid()) {
+                                  _showConfirmationDialog();
+                                } else {
+                                  _showErrorSnackBar('Please complete all required fields');
+                                }
                               }
                             },
                             style: ElevatedButton.styleFrom(
@@ -223,7 +225,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
                                 borderRadius: BorderRadius.circular(30),
                               ),
                             ),
-                            icon: const Icon(Icons.save, size: 24, color: Colors.white),
+                            icon: const Icon(Icons.save, size: 26, color: Colors.white),
                             label: const Text(
                               'Simpan',
                               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -297,6 +299,33 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
     );
   }
 
+  Widget _buildRequiredFieldsNotice() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, color: Colors.amber.shade800),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Fields marked with * are required and must be filled',
+              style: TextStyle(
+                color: Colors.amber.shade800,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDatePickerField(String label, int index, TextEditingController controller) {
     return Container(
       decoration: BoxDecoration(
@@ -315,7 +344,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
         controller: controller,
         readOnly: true,
         decoration: InputDecoration(
-          labelText: label,
+          labelText: "$label *", // Add asterisk to indicate required field
           labelStyle: TextStyle(color: Colors.green.shade700),
           prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
           suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
@@ -334,6 +363,12 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
           filled: true,
           fillColor: Colors.white,
         ),
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return 'Please select a date';
+          }
+          return null;
+        },
         onTap: () async {
           DateTime? pickedDate = await showDatePicker(
             context: context,
@@ -397,7 +432,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
           ),
           child: DropdownButtonFormField<String>(
             decoration: InputDecoration(
-              labelText: label,
+              labelText: "$label *", // Add asterisk to indicate required field
               labelStyle: TextStyle(color: Colors.green.shade700),
               prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
               border: OutlineInputBorder(
@@ -417,6 +452,12 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
             ),
             value: value,
             hint: Text(hint ?? 'Select an option'),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please select an option';
+              }
+              return null;
+            },
             onChanged: onChanged,
             items: items.map<DropdownMenuItem<String>>((String item) {
               return DropdownMenuItem<String>(
@@ -492,12 +533,6 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
     });
   }
 
-  void _showLoadingAndSaveInBackground() {
-    _showLoadingDialogAndClose();
-    _saveToHive(row);
-    _saveToGoogleSheets(row);
-  }
-
   Future<void> _saveToGoogleSheets(List<String> rowData) async {
     setState(() {
       isLoading = true;
@@ -549,6 +584,24 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
     await sheet.values.insertValue(
         '=IFERROR(IF(OR(AT$rowIndex=0;AT$rowIndex="");"";WEEKNUM(AT$rowIndex;1));"0")',
         row: rowIndex, column: 47);
+    await sheet.values.insertValue( // Standing Corp
+        '=I$rowIndex-U$rowIndex',
+        row: rowIndex, column: 24);
+    await sheet.values.insertValue( // Hyperlink Coordinate
+        '=IFERROR(IF(AND(LEFT(R$rowIndex;4)-0<6;LEFT(R$rowIndex;4)-0>-11);HYPERLINK("HTTP://MAPS.GOOGLE.COM/maps?q="&R$rowIndex;"LINK");"Not Found");"")',
+        row: rowIndex, column: 25);
+    await sheet.values.insertValue( // FASE
+        '=IF(I$rowIndex=0;"Discard";IF(X$rowIndex=0;"Harvest";IF(TODAY()-W$rowIndex<46;"Vegetative";IF(AND(TODAY()-W$rowIndex>45;TODAY()-W$rowIndex<56);"Pre Flowering";IF(AND(TODAY()-W$rowIndex>55;TODAY()-W$rowIndex<66);"Flowering";IF(AND(TODAY()-W$rowIndex>65;TODAY()-W$rowIndex<80);"Close Out";IF(TODAY()-W$rowIndex>79;"Male Cutting";"")))))))',
+        row: rowIndex, column: 27);
+    await sheet.values.insertValue( // Week of Flowering Rev
+        '=WEEKNUM(AB$rowIndex)',
+        row: rowIndex, column: 29);
+    await sheet.values.insertValue( // Week of Flowering PDN
+        '=WEEKNUM(IF(F$rowIndex="ac01";J$rowIndex+60;J$rowIndex+57))',
+        row: rowIndex, column: 30);
+    await sheet.values.insertValue( // Effective Area Planted
+        '=SUBSTITUTE(G$rowIndex; "."; ",")-SUBSTITUTE(H$rowIndex; "."; ",")',
+        row: rowIndex, column: 9);
     debugPrint("Rumus berhasil diterapkan di Generative pada baris $rowIndex.");
   }
 
@@ -565,10 +618,17 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
   Future<void> _showConfirmationDialog() async {
     final shouldSave = await showDialog<bool>(
       context: context,
+      barrierDismissible: false, // Prevent dismissing by tapping outside
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Confirm Save', style: TextStyle(color: Colors.green.shade800)),
-        content: Text('Are you sure you want to save the changes?'),
+        title: Row(
+          children: [
+            Icon(Icons.save_outlined, color: Colors.green.shade700),
+            const SizedBox(width: 10),
+            const Text('Confirm Save'),
+          ],
+        ),
+        content: const Text('Are you sure you want to save the changes? All required fields must be filled correctly.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -585,28 +645,36 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
         ],
       ),
     );
-    if (shouldSave == true) {
-      _validateAndSave();
-    }
-  }
 
-  void _validateAndSave() {
-    if (_formKey.currentState!.validate()) {
-      if (_isDataValid()) {
-        _showLoadingDialogAndClose();
-        _saveToGoogleSheets(row);
-      } else {
-        _showSnackbar('Please complete all required fields');
-      }
+    if (shouldSave == true) {
+      _showLoadingDialogAndClose();
+      _saveToGoogleSheets(row);
     }
   }
 
   bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty);
+    // Check specific required fields for generative form
+    return _dateAudit2Controller.text.isNotEmpty &&
+        selectedFemaleShed1 != null &&
+        row[42].isNotEmpty && // Female Shedding Remarks
+        selectedSheddingMale1 != null &&
+        row[43].isNotEmpty && // Male Shedding Remarks
+        selectedSheddingFemale1 != null &&
+        row[44].isNotEmpty; // Female Shedding Remarks
   }
 
-  void _showSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade800,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   void _navigateBasedOnResponse(BuildContext context, String response) {
@@ -628,7 +696,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
         ),
       );
     } else {
-      _showSnackbar('Unknown response: $response');
+      _showErrorSnackBar('Unknown response: $response');
     }
   }
 

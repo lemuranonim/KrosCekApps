@@ -6,12 +6,14 @@ class HarvestListviewBuilder extends StatelessWidget {
   final List<List<String>> filteredData;
   final String? selectedRegion;
   final Function(String) onItemTap;
+  final Map<String, int> activityCounts;
 
   const HarvestListviewBuilder({
     super.key,
     required this.filteredData,
     this.selectedRegion,
     required this.onItemTap,
+    this.activityCounts = const {},
   });
 
   String getValue(List<String> row, int index, String defaultValue) {
@@ -142,6 +144,9 @@ class HarvestListviewBuilder extends StatelessWidget {
         final fa = getValue(row, 16, "Unknown");
         final fi = getValue(row, 29, "Unknown");
         final weekOfHarvest = getValue(row, 27, "Unknown");
+
+        // Get activity count for this field number
+        final activityCount = activityCounts[fieldNumber] ?? 0;
 
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -520,68 +525,107 @@ class HarvestListviewBuilder extends StatelessWidget {
 
                       const SizedBox(height: 8),
 
-                      // View Details Button
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: isAudited
-                                  ? [Colors.green.shade400, Colors.green.shade600]
-                                  : [Colors.orange.shade400, Colors.orange.shade600],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: isAudited
-                                    ? Colors.green.withAlpha(60)
-                                    : Colors.orange.withAlpha(60),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
+                      // Bottom row with Activity Count and View Details Button
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // Activity Count Badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: activityCount == 0
+                                  ? Colors.red.shade50
+                                  : (activityCount < 2 ? Colors.orange.shade50 : Colors.green.shade50),
                               borderRadius: BorderRadius.circular(12),
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) => HarvestDetailScreen(
-                                      fieldNumber: fieldNumber,
-                                      region: selectedRegion ?? 'Unknown Region',
-                                    ),
+                              border: Border.all(
+                                color: activityCount == 0
+                                    ? Colors.red.shade200
+                                    : (activityCount < 2 ? Colors.orange.shade200 : Colors.green.shade200),
+                                width: 1.0,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.history,
+                                  color: activityCount == 0
+                                      ? Colors.red.shade700
+                                      : (activityCount < 2 ? Colors.orange.shade700 : Colors.green.shade700),
+                                  size: 14,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Visited: $activityCount kali',
+                                  style: TextStyle(
+                                    color: activityCount == 0
+                                        ? Colors.red.shade700
+                                        : (activityCount < 2 ? Colors.orange.shade700 : Colors.green.shade700),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
                                   ),
-                                );
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text(
-                                      'View Details',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // View Details Button
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: isAudited
+                                    ? [Colors.green.shade400, Colors.green.shade600]
+                                    : [Colors.red.shade400, Colors.red.shade600],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: isAudited
+                                      ? Colors.green.withAlpha(60)
+                                      : Colors.red.withAlpha(60),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => HarvestDetailScreen(
+                                        fieldNumber: fieldNumber,
+                                        region: selectedRegion ?? 'Unknown Region',
                                       ),
                                     ),
-                                    const SizedBox(width: 4),
-                                    const Icon(
-                                      Icons.arrow_forward_ios,
-                                      color: Colors.white,
-                                      size: 12,
-                                    ),
-                                  ],
+                                  );
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.visibility, size: 16, color: Colors.white),
+                                      const SizedBox(width: 4),
+                                      const Text(
+                                        'View Details',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
                     ],
                   ),

@@ -6,7 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/config_manager.dart';
 import '../../services/google_sheets_api.dart';
-import 'preharvest_edit_screen.dart';
+import 'pre_harvest_edit_screen.dart';
 
 class PreHarvestDetailScreen extends StatefulWidget {
   final String fieldNumber;

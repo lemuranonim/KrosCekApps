@@ -2,7 +2,7 @@ name: kroscek
 description: "Crop Inspection and Check Result"
 publish_to: 'none'
 
-version: 2.13.0+75
+version: 2.14.2+76
 
 environment:
   sdk: '>=3.5.4 <4.0.0'
@@ -10,68 +10,108 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  # Core UI
   cupertino_icons: ^1.0.6
-  flutter_launcher_icons: ^0.14.1
-  package_info_plus: ^8.0.0
-  convex_bottom_bar: ^3.0.0
-  http: ^1.2.2
-  flutter_secure_storage: ^9.2.2
-  provider: ^6.0.1
-  firebase_core: ^3.8.1
-  firebase_auth: ^5.3.4
-  cloud_firestore: ^5.5.1
-  google_sign_in: ^6.2.2
+  google_fonts: ^6.2.1
   flutter_svg: ^2.0.10+1
-  geolocator: ^13.0.2
-  image_picker: ^1.1.2
-  permission_handler: ^11.3.1
+  auto_size_text: ^3.0.0
+  responsive_framework: ^1.5.1
+  shimmer: ^3.0.0
+  lottie: ^3.1.2
+
+  # State Management
+  provider: ^6.0.1
+  get: ^4.6.6
+
+  # Navigation and Routing
+  go_router: ^15.1.2
+
+  # Authentication
+  firebase_auth: ^5.3.4
+  google_sign_in: ^6.2.2
+  sign_in_with_apple: ^6.1.4
+
+  # Firebase Services
+  firebase_core: ^3.8.1
+  cloud_firestore: ^5.5.1
   firebase_storage: ^12.3.7
-  excel: ^4.0.3
-  path_provider: ^2.0.11
   firebase_app_check: ^0.3.1+7
+  # firebase_crashlytics: ^4.2.0
+
+  # Network and API
+  http: ^1.2.2
   googleapis: ^11.4.0
   googleapis_auth: ^1.6.0
-  url_launcher_android: ^6.3.9
-  url_launcher: ^6.3.0
-  flutter_custom_tabs: ^2.1.0
-  webview_flutter: ^4.8.0
   gsheets: ^0.5.0
-  shimmer: ^3.0.0
-  liquid_pull_to_refresh: ^3.0.1
-  lottie: ^3.1.2
-  intl: ^0.20.1
+  connectivity_plus: ^6.1.1
+
+  # Local Storage
+  flutter_secure_storage: ^9.2.2
   shared_preferences: ^2.3.2
-  animated_text_kit: ^4.2.2
-  dropdown_search: ^6.0.1
-  mockito: ^5.4.4
-  syncfusion_flutter_datagrid: ^28.1.33
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+  # Location and Maps
+  geolocator: ^13.0.2
   google_maps_flutter: ^2.9.0
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
-  hive: ^2.2.3
-  hive_flutter: ^1.1.0
-  fl_chart: ^0.70.0
-  sign_in_with_apple: ^6.1.4
-  get: ^4.6.6
-  connectivity_plus: ^6.1.1
-  circular_menu: ^4.0.0
+  geocoding: ^3.0.0
+
+  # File and Media
+  image_picker: ^1.1.2
+  path_provider: ^2.0.11
+  excel: ^4.0.3
+
+  # Permissions
+  permission_handler: ^11.3.1
+
+  # Navigation Bars and Menus
+  convex_bottom_bar: ^3.0.0
   animated_bottom_navigation_bar: ^1.3.3
   spincircle_bottom_bar: ^2.0.0
+  circular_menu: ^4.0.0
+  sidebarx: ^0.17.1
+
+  # Drawers
   awesome_drawer_bar: ^1.2.1
   flutter_zoom_drawer: ^3.2.0
-  smooth_page_indicator: ^1.2.0+3
-  icons_launcher: ^3.0.0
+
+  # Forms and Input
+  dropdown_search: ^6.0.1
   dropdown_button2: ^2.3.9
+
+  # Charts and Tables
+  fl_chart: ^0.70.0
+  syncfusion_flutter_datagrid: ^28.1.33
+
+  # UI Animations and Effects
+  liquid_pull_to_refresh: ^3.0.1
+  animated_text_kit: ^4.2.2
   flutter_staggered_animations: ^1.1.1
-  auto_size_text: ^3.0.0
-  responsive_framework: ^1.5.1
-  weather_icons: ^3.0.0
-  geocoding: ^3.0.0
-  go_router: ^15.1.2
-  google_fonts: ^6.2.1
-  sidebarx: ^0.17.1
+  smooth_page_indicator: ^1.2.0+3
   flip_card: ^0.7.0
-#  firebase_crashlytics: ^4.2.0
+
+  # Date and Formatting
+  intl: ^0.20.1
+
+  # Web and URL Handling
+  url_launcher: ^6.3.0
+  url_launcher_android: ^6.3.9
+  flutter_custom_tabs: ^2.1.0
+  webview_flutter: ^4.8.0
+
+  # App Info and Icons
+  package_info_plus: ^8.0.0
+  flutter_launcher_icons: ^0.14.1
+  icons_launcher: ^3.0.0
+
+  # Miscellaneous
+  weather_icons: ^3.0.0
+  flutter_map_marker_cluster: ^1.4.0
+  syncfusion_flutter_charts: ^28.2.12
+  syncfusion_flutter_datepicker: ^28.2.12
 
 dev_dependencies:
   flutter_test:
@@ -79,6 +119,7 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   hive_generator: ^2.0.1
   build_runner: ^2.4.13
+  mockito: ^5.4.4
 
 flutter:
   uses-material-design: true
@@ -104,7 +145,6 @@ flutter_icons:
   image_path: "assets/icon.png"
   adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/icon.png"
-
 
 icons_launcher:
   image_path: 'assets/icon.png'

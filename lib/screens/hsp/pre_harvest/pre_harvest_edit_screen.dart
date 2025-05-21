@@ -19,7 +19,8 @@ class PreHarvestEditScreen extends StatefulWidget {
     super.key,
     required this.row,
     required this.region,
-    required this.onSave});
+    required this.onSave,
+  });
 
   @override
   PreHarvestEditScreenState createState() => PreHarvestEditScreenState();
@@ -175,8 +176,8 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
                           value: widget.region,
                           icon: Icons.location_on,
                         ),
-
                         const SizedBox(height: 20),
+                        _buildRequiredFieldsNotice(),
 
                         // Audit Information Section
                         _buildSectionHeader('Audit Information'),
@@ -344,6 +345,33 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
     );
   }
 
+  Widget _buildRequiredFieldsNotice() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, color: Colors.amber.shade800),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Fields marked with * are required and must be filled',
+              style: TextStyle(
+                color: Colors.amber.shade800,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTextFormField(String label, int index, {IconData? icon, int maxLines = 1}) {
     return Container(
       decoration: BoxDecoration(
@@ -362,7 +390,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
         initialValue: row[index],
         maxLines: maxLines,
         decoration: InputDecoration(
-          labelText: label,
+          labelText: "$label *", // Add asterisk to indicate required field
           labelStyle: TextStyle(color: Colors.green.shade700),
           prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
           border: OutlineInputBorder(
@@ -380,6 +408,12 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
           filled: true,
           fillColor: Colors.white,
         ),
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return 'This field is required';
+          }
+          return null;
+        },
         onChanged: (value) {
           setState(() {
             row[index] = value;
@@ -405,7 +439,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
       ),
       child: DropdownButtonFormField<String>(
         decoration: InputDecoration(
-          labelText: label,
+          labelText: "$label *", // Add asterisk to indicate required field
           labelStyle: TextStyle(color: Colors.green.shade700),
           prefixIcon: Icon(Icons.person, color: Colors.green.shade600),
           border: OutlineInputBorder(
@@ -424,15 +458,21 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
           fillColor: Colors.white,
         ),
         value: selectedFI,
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return 'Please select a Field Inspector';
+          }
+          return null;
+        },
         items: fiList.map((String fi) {
           return DropdownMenuItem<String>(
             value: fi,
             child: SizedBox(
-              width: double.infinity, // Memastikan lebar penuh
+              width: double.infinity,
               child: Text(
                 fi,
-                overflow: TextOverflow.ellipsis, // Menghindari teks keluar
-                maxLines: 1, // Membatasi jumlah baris
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ),
           );
@@ -445,7 +485,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
         },
         dropdownColor: Colors.white,
         icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
-        isExpanded: true, // Memastikan dropdown mengisi ruang yang tersedia
+        isExpanded: true,
       ),
     );
   }
@@ -468,7 +508,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
         controller: controller,
         readOnly: true,
         decoration: InputDecoration(
-          labelText: label,
+          labelText: "$label *", // Add asterisk to indicate required field
           labelStyle: TextStyle(color: Colors.green.shade700),
           prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
           suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
@@ -487,6 +527,12 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
           filled: true,
           fillColor: Colors.white,
         ),
+        validator: (value) {
+          if (value == null || value == 0 || value.isEmpty) {
+            return 'Please select a date';
+          }
+          return null;
+        },
         onTap: () async {
           DateTime? pickedDate = await showDatePicker(
             context: context,
@@ -550,7 +596,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
           ),
           child: DropdownButtonFormField<String>(
             decoration: InputDecoration(
-              labelText: label,
+              labelText: "$label *", // Add asterisk to indicate required field
               labelStyle: TextStyle(color: Colors.green.shade700),
               prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
               border: OutlineInputBorder(
@@ -570,6 +616,12 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
             ),
             value: value,
             hint: Text(hint ?? 'Select an option'),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please select an option';
+              }
+              return null;
+            },
             onChanged: onChanged,
             items: items.map<DropdownMenuItem<String>>((String item) {
               return DropdownMenuItem<String>(
@@ -715,16 +767,9 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
     await sheet.values.insertValue(
         '=IF(OR(I$rowIndex=0;I$rowIndex="");"";WEEKNUM(AC$rowIndex;1))',
         row: rowIndex, column: 28);
-    await sheet.values.insertValue(
-        '=G$rowIndex-H$rowIndex',
+    await sheet.values.insertValue( // Total Area Planted
+        '=SUBSTITUTE(G$rowIndex; "."; ",")-SUBSTITUTE(H$rowIndex; "."; ",")',
         row: rowIndex, column: 9);
-    await sheet.values.insertValue(
-        '=TEXT(H$rowIndex; "#,##0.00")',
-        row: rowIndex, column: 8);
-    await sheet.values.insertValue(
-        '=TEXT(G$rowIndex; "#,##0.00")',
-        row: rowIndex, column: 7);
-
     debugPrint("Rumus berhasil diterapkan di Pre Harvest pada baris $rowIndex.");
   }
 
@@ -741,10 +786,11 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
   Future<void> _showConfirmationDialog() async {
     final shouldSave = await showDialog<bool>(
       context: context,
+      barrierDismissible: false, // Prevent dismissing by tapping outside
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text('Confirm Save', style: TextStyle(color: Colors.green.shade800)),
-        content: Text('Are you sure you want to save the changes?'),
+        content: const Text('Are you sure you want to save the changes? All fields must be filled correctly.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -761,27 +807,11 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
         ],
       ),
     );
+
     if (shouldSave == true) {
-      _validateAndSave();
+      _showLoadingDialogAndClose();
+      _saveToGoogleSheets(row);
     }
-  }
-
-  void _validateAndSave() {
-    if (_formKey.currentState!.validate()) {
-      if (_isDataValid()) {
-        _showLoadingDialogAndClose();
-        _saveToGoogleSheets(row);
-      } else { _showSnackbar('Please complete all required fields');
-      }
-    }
-  }
-
-  bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty);
-  }
-
-  void _showSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _navigateBasedOnResponse(BuildContext context, String response) {
@@ -819,6 +849,8 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
     }
     return value;
   }
+
+  void _showSnackbar(String s) {}
 }
 
 class SuccessScreen extends StatelessWidget {
