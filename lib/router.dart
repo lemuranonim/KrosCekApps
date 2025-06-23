@@ -9,14 +9,18 @@ import 'screens/admin/admin_dashboard.dart';
 import 'screens/admin/aktivitas_dashboard.dart';
 import 'screens/admin/filter_regions.dart';
 import 'screens/admin/regions_dashboard.dart';
+// QA
+import 'screens/qa/home_screen.dart';
 // HSP
-import 'screens/hsp/home_screen.dart';
+import 'screens/hsp/hsp_screen.dart';
 // Login
 import 'screens/login_screen.dart';
 // PSP
 import 'screens/psp/psp_screen.dart';
 // Splash
 import 'screens/splash_screen.dart';
+// Audit Graph
+import 'screens/admin/audit_graph_page.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -45,6 +49,10 @@ final router = GoRouter(
       builder: (context, state) => const PspScreen(),
     ),
     GoRoute(
+      path: '/hsp',
+      builder: (context, state) => const HspScreen(), // Assuming HSP uses the same HomeScreen
+    ),
+    GoRoute(
       path: '/accounts',
       builder: (context, state) => const AccountManagement(),
     ),
@@ -67,6 +75,10 @@ final router = GoRouter(
     GoRoute(
       path: '/filter',
       builder: (context, state) => const FilterRegionsScreen(),
+    ),
+    GoRoute(
+      path: '/audit_graph',
+      builder: (context, state) => const AuditGraphPage(),
     ),
   ],
   redirect: (context, state) async {

@@ -173,7 +173,7 @@ class _DashboardAktivitasTabState extends State<DashboardAktivitasTab> with Auto
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
+        color: Colors.white.withAlpha(38),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -181,7 +181,7 @@ class _DashboardAktivitasTabState extends State<DashboardAktivitasTab> with Auto
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withAlpha(51),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
@@ -199,13 +199,13 @@ class _DashboardAktivitasTabState extends State<DashboardAktivitasTab> with Auto
                   title,
                   style: GoogleFonts.poppins(
                     fontSize: 12,
-                    color: Colors.white.withOpacity(0.8),
+                    color: Colors.white.withAlpha(204),
                   ),
                 ),
                 _isLoading && value == '...'
                     ? Shimmer.fromColors(
-                  baseColor: Colors.white.withOpacity(0.5),
-                  highlightColor: Colors.white.withOpacity(0.8),
+                  baseColor: Colors.white.withAlpha(127),
+                  highlightColor: Colors.white.withAlpha(204),
                   child: Container(
                     height: 18,
                     width: 40,
@@ -240,7 +240,7 @@ class _DashboardAktivitasTabState extends State<DashboardAktivitasTab> with Auto
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withAlpha(12),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -446,13 +446,13 @@ class _DashboardAktivitasTabState extends State<DashboardAktivitasTab> with Auto
     borderRadius: BorderRadius.circular(12),
     boxShadow: [
     BoxShadow(
-    color: color.withOpacity(0.1),
+    color: color.withAlpha(25),
       blurRadius: 10,
       offset: const Offset(0, 4),
     ),
     ],
       border: Border.all(
-        color: color.withOpacity(0.1),
+        color: color.withAlpha(25),
         width: 1,
       ),
     ),
@@ -462,7 +462,7 @@ class _DashboardAktivitasTabState extends State<DashboardAktivitasTab> with Auto
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withAlpha(25),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
@@ -501,7 +501,7 @@ class _DashboardAktivitasTabState extends State<DashboardAktivitasTab> with Auto
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withAlpha(12),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -715,7 +715,7 @@ class _DashboardAktivitasTabState extends State<DashboardAktivitasTab> with Auto
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withAlpha(12),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -798,7 +798,7 @@ class _DashboardAktivitasTabState extends State<DashboardAktivitasTab> with Auto
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: _getStatusColor(data.status).withOpacity(0.1),
+                            color: _getStatusColor(data.status).withAlpha(25),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(

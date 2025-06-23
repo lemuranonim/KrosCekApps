@@ -7,7 +7,7 @@ buildscript {
 
     dependencies {
         classpath 'com.android.tools.build:gradle:8.7.3'
-        classpath 'com.google.gms:google-services:4.3.15'
+        classpath 'com.google.gms:google-services:4.4.2'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.20"
     }
 }
@@ -29,4 +29,24 @@ subprojects {
 
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
+}
+
+// Tambahkan kode ini di bagian paling bawah file
+subprojects {
+    project.configurations.all {
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'org.mockito' &&
+                    details.requested.name == 'mockito-core' &&
+                    details.requested.version.startsWith('1.')) {
+                details.useVersion '3.12.4' // Atau versi Mockito 3.x atau 4.x yang lebih baru
+            }
+        }
+    }
+
+    // Kode ini untuk memastikan semua sub-project menggunakan JCenter jika diperlukan (meski sudah deprecated)
+    // dan juga mengatasi masalah umum lainnya.
+    project.repositories {
+        google()
+        mavenCentral()
+    }
 }

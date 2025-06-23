@@ -14,7 +14,7 @@ class Audit5EditScreen extends StatefulWidget {
   final List<String> row;
   final String region;
   final Function(List<String>)
-      onSave; // Callback untuk mengirim data yang diperbarui
+  onSave; // Callback untuk mengirim data yang diperbarui
 
   const Audit5EditScreen({
     super.key,
@@ -42,7 +42,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
   List<String> fiList = []; // Daftar FI untuk dropdown
 
   String? selectedLSV;
-  String? selectedCorpHealth;
+  String? selectedCropHealth;
   String? selectedCropUniformity;
   String? selectedIsolationAudit5;
   String? selectedIsolationType;
@@ -51,8 +51,8 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
   String? selectedFlagging;
 
   final List<String> lsvItems = ['YES', 'NO'];
-  final List<String> corpHealthItems = ['A', 'B', 'C'];
-  final List<String> cropUniformityItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
   final List<String> isolationAudit5Items = ['A', 'B'];
   final List<String> isolationTypeItems = ['A', 'B'];
   final List<String> isolationDistanceItems = ['A', 'B'];
@@ -78,15 +78,15 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
     gSheetsApi = GoogleSheetsApi(spreadsheetId);
     gSheetsApi.init();
 
-    // Initialize dropdown fields
-    selectedLSV = row[36];
-    selectedCorpHealth = row[37];
-    selectedCropUniformity = row[38];
-    selectedIsolationAudit5 = row[39];
-    selectedIsolationType = row[40];
-    selectedIsolationDistance = row[41];
-    selectedNickingObservation = row[42];
-    selectedFlagging = row[43];
+    // Initialize dropdown fields, set to null if empty
+    selectedLSV = row[36].isNotEmpty ? row[36] : null;
+    selectedCropHealth = row[37].isNotEmpty ? row[37] : null;
+    selectedCropUniformity = row[38].isNotEmpty ? row[38] : null;
+    selectedIsolationAudit5 = row[39].isNotEmpty ? row[39] : null;
+    selectedIsolationType = row[40].isNotEmpty ? row[40] : null;
+    selectedIsolationDistance = row[41].isNotEmpty ? row[41] : null;
+    selectedNickingObservation = row[42].isNotEmpty ? row[42] : null;
+    selectedFlagging = row[43].isNotEmpty ? row[43] : null;
   }
 
   Future<void> _fetchSpreadsheetId() async {
@@ -101,14 +101,15 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
 
     try {
       final gSheetsApi =
-          GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
+      GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
       await gSheetsApi.init(); // Inisialisasi API
       final List<String> fetchedFI =
-          await gSheetsApi.fetchFIByRegion('FI', region);
+      await gSheetsApi.fetchFIByRegion('FI', region);
 
       setState(() {
         fiList = fetchedFI; // Perbarui daftar FI
-        selectedFI = row[31]; // Tetapkan nilai awal dari data row[31]
+        // Tetapkan nilai awal, null jika kosong
+        selectedFI = row[31].isNotEmpty ? row[31] : null;
       });
     } catch (e) {
       debugPrint('Gagal mengambil data FI: $e');
@@ -131,7 +132,6 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
     await box.put(cacheKey, rowData); // Simpan hanya rowData ke Hive
   }
 
-  // Fungsi untuk mengambil userName dan userEmail dari SharedPreferences
   Future<void> _loadUserCredentials() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -183,25 +183,21 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                           const LinearProgressIndicator(
                             backgroundColor: Colors.redAccent,
                             valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
+                            AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         const SizedBox(height: 10),
-                        // Field Information Section
                         _buildSectionHeader(
                             'Field Information', Icons.info_outline),
-
                         _buildInfoCard(
                           title: 'Field Number',
                           value: row[2],
                           icon: Icons.numbers,
                         ),
-
                         _buildInfoCard(
                           title: 'Region',
                           value: widget.region,
                           icon: Icons.location_on,
                         ),
-
                         const SizedBox(height: 20),
                         _buildSectionHeader(
                             'Audit Information', Icons.assignment),
@@ -225,7 +221,6 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                         _buildTextFormField('Volunteer Seed', 35,
                             icon: Icons.auto_awesome_rounded),
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'LSV',
                           items: lsvItems,
@@ -238,27 +233,31 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                           },
                           helpText: 'YES/NO',
                           icon: Icons.coronavirus_rounded,
+                          validator: (value) =>
+                          (value == null || value.isEmpty)
+                              ? 'LSV wajib dipilih'
+                              : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
-                          label: 'Corp Health',
-                          items: corpHealthItems,
-                          value: selectedCorpHealth,
+                          label: 'Crop Health',
+                          items: cropHealthItems,
+                          value: selectedCropHealth,
                           onChanged: (value) {
                             setState(() {
-                              selectedCorpHealth = value;
+                              selectedCropHealth = value;
                               row[37] = value ?? '';
                             });
                           },
                           helpText:
-                              'A = GF (Good)\nB = GF (Fair)\nC = YF (Poor)',
+                          'A = GF (Good)\nB = GF (Fair)\nC = YF (Poor)',
                           icon: Icons.health_and_safety_rounded,
+                          validator: (value) =>
+                          (value == null || value.isEmpty)
+                              ? 'Crop Health wajib dipilih'
+                              : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Crop Uniformity',
                           items: cropUniformityItems,
@@ -269,13 +268,14 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                               row[38] = value ?? '';
                             });
                           },
-                          helpText:
-                              'A = GF (Good)\nB = GF (Fair)\nC = YF (Poor)',
+                          helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                           icon: Icons.grid_on_rounded,
+                          validator: (value) =>
+                          (value == null || value.isEmpty)
+                              ? 'Crop Uniformity wajib dipilih'
+                              : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Isolation Audit 5',
                           items: isolationAudit5Items,
@@ -288,10 +288,12 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                           },
                           helpText: 'A = Yes\nB = No',
                           icon: Icons.no_adult_content_rounded,
+                          validator: (value) =>
+                          (value == null || value.isEmpty)
+                              ? 'Isolation Audit 5 wajib dipilih'
+                              : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Isolation Type',
                           items: isolationTypeItems,
@@ -304,10 +306,12 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                           },
                           helpText: 'A = Other seed production\nB = Commercial',
                           icon: Icons.fence_rounded,
+                          validator: (value) =>
+                          (value == null || value.isEmpty)
+                              ? 'Isolation Type wajib dipilih'
+                              : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Isolation Distance',
                           items: isolationDistanceItems,
@@ -320,10 +324,12 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                           },
                           helpText: 'A = >400\nB = <400',
                           icon: Icons.social_distance_rounded,
+                          validator: (value) =>
+                          (value == null || value.isEmpty)
+                              ? 'Isolation Distance wajib dipilih'
+                              : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Nicking Observation',
                           items: nickingObservationItems,
@@ -336,10 +342,12 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                           },
                           helpText: 'YES/NO',
                           icon: Icons.schedule_rounded,
+                          validator: (value) =>
+                          (value == null || value.isEmpty)
+                              ? 'Nicking Observation wajib dipilih'
+                              : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Flagging',
                           items: flaggingItems,
@@ -352,17 +360,17 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                           },
                           helpText: 'Flagging (GF/OF/RF)',
                           icon: Icons.flag_rounded,
+                          validator: (value) =>
+                          (value == null || value.isEmpty)
+                              ? 'Flagging wajib dipilih'
+                              : null,
                         ),
-
                         const SizedBox(height: 30),
                         Center(
                           child: ElevatedButton.icon(
                             onPressed: () {
                               if (_formKey.currentState!.validate()) {
-                                _showLoadingDialogAndClose();
                                 _showLoadingAndSaveInBackground();
-                                _showConfirmationDialog;
-                                _saveToGoogleSheets(row);
                               }
                             },
                             style: ElevatedButton.styleFrom(
@@ -417,7 +425,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
           labelText: label,
           labelStyle: TextStyle(color: Colors.redAccent.shade700),
           prefixIcon:
-              icon != null ? Icon(icon, color: Colors.red.shade600) : null,
+          icon != null ? Icon(icon, color: Colors.red.shade600) : null,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(color: Colors.redAccent.shade200),
@@ -437,6 +445,12 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
           setState(() {
             row[index] = value;
           });
+        },
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return '$label wajib diisi';
+          }
+          return null;
         },
       ),
     );
@@ -479,7 +493,6 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
             Icon(icon, color: Colors.redAccent.shade700),
             const SizedBox(width: 10),
             Expanded(
-              // Menambahkan Expanded untuk menghindari overflow
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -489,8 +502,8 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                       fontSize: 14,
                       color: Colors.grey.shade700,
                     ),
-                    overflow: TextOverflow.ellipsis, // Menghindari teks keluar
-                    maxLines: 1, // Membatasi jumlah baris
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                   Text(
                     value,
@@ -498,8 +511,8 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
-                    overflow: TextOverflow.ellipsis, // Menghindari teks keluar
-                    maxLines: 1, // Membatasi jumlah baris
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ],
               ),
@@ -549,11 +562,11 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
           return DropdownMenuItem<String>(
             value: fi,
             child: SizedBox(
-              width: double.infinity, // Memastikan lebar penuh
+              width: double.infinity,
               child: Text(
                 fi,
-                overflow: TextOverflow.ellipsis, // Menghindari teks keluar
-                maxLines: 1, // Membatasi jumlah baris
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ),
           );
@@ -566,7 +579,13 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
         },
         dropdownColor: Colors.white,
         icon: Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
-        isExpanded: true, // Memastikan dropdown mengisi ruang yang tersedia
+        isExpanded: true,
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return '$label wajib dipilih';
+          }
+          return null;
+        },
       ),
     );
   }
@@ -594,7 +613,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
           labelStyle: TextStyle(color: Colors.redAccent.shade700),
           prefixIcon: Icon(Icons.calendar_today, color: Colors.red.shade600),
           suffixIcon:
-              Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
+          Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(color: Colors.redAccent.shade200),
@@ -629,7 +648,6 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
               );
             },
           );
-
           if (pickedDate != null) {
             String formattedDate = DateFormat('dd/MM/yyyy').format(pickedDate);
             setState(() {
@@ -637,6 +655,12 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
               row[index] = formattedDate;
             });
           }
+        },
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return '$label wajib dipilih';
+          }
+          return null;
         },
       ),
     );
@@ -650,8 +674,9 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
     String? hint,
     String? helpText,
     IconData? icon,
+    String? Function(String?)? validator,
   }) {
-    if (!items.contains(value)) {
+    if (value != null && !items.contains(value)) {
       value = null;
     }
 
@@ -676,7 +701,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
               labelText: label,
               labelStyle: TextStyle(color: Colors.redAccent.shade700),
               prefixIcon:
-                  icon != null ? Icon(icon, color: Colors.red.shade600) : null,
+              icon != null ? Icon(icon, color: Colors.red.shade600) : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: Colors.redAccent.shade200),
@@ -688,7 +713,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide:
-                    BorderSide(color: Colors.redAccent.shade700, width: 2),
+                BorderSide(color: Colors.redAccent.shade700, width: 2),
               ),
               filled: true,
               fillColor: Colors.white,
@@ -704,6 +729,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
             }).toList(),
             dropdownColor: Colors.white,
             icon: Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
+            validator: validator,
           ),
         ),
         if (helpText != null) ...[
@@ -782,7 +808,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
       responseMessage = 'Data successfully saved to Audit Database';
 
       final Worksheet? sheet =
-          gSheetsApi.spreadsheet.worksheetByTitle('Generative');
+      gSheetsApi.spreadsheet.worksheetByTitle('Generative');
       if (sheet != null) {
         final rowIndex = await _findRowByFieldNumber(sheet, row[2]);
         if (rowIndex != -1) {
@@ -804,12 +830,10 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
   Future<void> _restoreGenerativeFormulas(
       GoogleSheetsApi gSheetsApi, Worksheet sheet, int rowIndex) async {
     await sheet.values.insertValue(
-        // Cek Audit 5
         '=IF(OR(AE$rowIndex=0;AE$rowIndex="");"NOT Audited";"Audited")',
         row: rowIndex,
         column: 75);
     await sheet.values.insertValue(
-        // Cek Audit 6
         '=IF(OR(AU$rowIndex=0;AU$rowIndex="");"NOT Audited";"Audited")',
         row: rowIndex,
         column: 77);
@@ -824,45 +848,6 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
       }
     }
     return -1;
-  }
-
-  Future<void> _showConfirmationDialog() async {
-    final shouldSave = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Confirm Save'),
-        content: Text('Are you sure you want to save the changes?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (shouldSave == true) {
-      _validateAndSave();
-    }
-  }
-
-  void _validateAndSave() {
-    if (_formKey.currentState!.validate()) {
-      if (_isDataValid()) {
-        _showLoadingDialogAndClose();
-        _saveToGoogleSheets(row);
-      } else {
-        _showSnackbar('Please complete all required fields');
-      }
-    }
-  }
-
-  bool _isDataValid() {
-    return row
-        .every((field) => field.isNotEmpty); // Pastikan semua field terisi
   }
 
   void _showSnackbar(String message) {
@@ -885,7 +870,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
     } else if (response == 'Failed to save data. Please try again.') {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => PspFailedScreen(),
+          builder: (context) => const PspFailedScreen(),
         ),
       );
     } else {
@@ -898,7 +883,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
       final parsedNumber = double.tryParse(value);
       if (parsedNumber != null) {
         final date =
-            DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
+        DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
         return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
@@ -954,13 +939,9 @@ class PspSuccessScreen extends StatelessWidget {
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60),
-                // Mengatur ukuran tombol (lebar x tinggi)
                 backgroundColor: Colors.redAccent,
-                // Warna background tombol
                 foregroundColor: Colors.white,
-                // Warna teks tombol
                 shape: RoundedRectangleBorder(
-                  // Membuat sudut tombol melengkung
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
@@ -975,7 +956,6 @@ class PspSuccessScreen extends StatelessWidget {
     );
   }
 
-  // Fungsi untuk menampilkan dialog loading
   void _showLoadingDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -1008,7 +988,7 @@ class PspSuccessScreen extends StatelessWidget {
     await gSheetsApi.init();
 
     final String timestamp =
-        DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now());
+    DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now());
     final String fieldNumber = row[2];
     final String action = 'Update';
     final String status = 'Success';
@@ -1064,13 +1044,9 @@ class PspFailedScreen extends StatelessWidget {
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60),
-                // Mengatur ukuran tombol (lebar x tinggi)
                 backgroundColor: Colors.red.shade700,
-                // Warna background tombol
                 foregroundColor: Colors.white,
-                // Warna teks tombol
                 shape: RoundedRectangleBorder(
-                  // Membuat sudut tombol melengkung
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),

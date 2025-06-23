@@ -1,11 +1,11 @@
-import 'dart:async';  // Untuk menggunakan Timer
+import 'dart:async'; // Untuk menggunakan Timer
 
 import 'package:flutter/material.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
-import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
+import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences untuk userName
 
 import '../../services/config_manager.dart';
 import '../../services/google_sheets_api.dart';
@@ -35,7 +35,7 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
   late TextEditingController _revTglTanamController;
 
   String userEmail = 'Fetching...'; // Variabel untuk email pengguna
-  String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
+  String userName = 'Fetching...'; // Variabel untuk menyimpan nama pengguna
   late String spreadsheetId;
 
   String? selectedFI; // FI yang dipilih
@@ -45,15 +45,15 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
   String? selectedIsolationAudit1;
   String? selectedIsolationType;
   String? selectedIsolationDistance;
-  String? selectedCorpHealth;
+  String? selectedCropHealth;
   String? selectedCropUniformity;
 
   final List<String> previousCropActualItems = ['A', 'B', 'C'];
   final List<String> isolationAudit1Items = ['Y', 'N'];
   final List<String> isolationTypeItems = ['A', 'B'];
   final List<String> isolationDistanceItems = ['A', 'B'];
-  final List<String> corpHealthItems = ['A', 'B', 'C'];
-  final List<String> cropUniformityItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
 
   bool isLoading = false;
 
@@ -75,12 +75,12 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
     gSheetsApi.init();
 
     // Initialize dropdown fields
-    selectedPreviousCropActual = row[34];
-    selectedIsolationAudit1 = row[35];
-    selectedIsolationType = row[36];
-    selectedIsolationDistance = row[37];
-    selectedCorpHealth = row[40];
-    selectedCropUniformity = row[41];
+    selectedPreviousCropActual = row[34].isNotEmpty ? row[34] : null;
+    selectedIsolationAudit1 = row[35].isNotEmpty ? row[35] : null;
+    selectedIsolationType = row[36].isNotEmpty ? row[36] : null;
+    selectedIsolationDistance = row[37].isNotEmpty ? row[37] : null;
+    selectedCropHealth = row[40].isNotEmpty ? row[40] : null;
+    selectedCropUniformity = row[41].isNotEmpty ? row[41] : null;
   }
 
   Future<void> _fetchSpreadsheetId() async {
@@ -99,7 +99,7 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
 
       setState(() {
         fiList = fetchedFI; // Perbarui daftar FI
-        selectedFI = row[31]; // Tetapkan nilai awal dari data row[31]
+        selectedFI = row[31].isNotEmpty ? row[31] : null; // Tetapkan nilai awal, null jika kosong
       });
     } catch (e) {
       debugPrint('Gagal mengambil data FI: $e');
@@ -112,7 +112,7 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
 
   void _initHive() async {
     await Hive.initFlutter();
-    await Hive.openBox('pspVegetativeData');  // Buat box Hive untuk menyimpan data vegetative
+    await Hive.openBox('pspVegetativeData'); // Buat box Hive untuk menyimpan data vegetative
   }
 
   Future<void> _saveToHive(List<String> rowData) async {
@@ -224,6 +224,7 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
                             },
                             helpText: 'A = Previous Crop not Corn\nB = Corn after corn with different trait\nC = Corn after Corn same trait',
                             icon: Icons.crop_rotate_rounded,
+                            validator: (value) => (value == null || value.isEmpty) ? 'Previous Crop wajib dipilih' : null,
                           ),
                           const SizedBox(height: 10),
                           _buildSectionHeader('Isolation', Icons.straighten_rounded),
@@ -235,40 +236,55 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
                               setState(() {
                                 selectedIsolationAudit1 = value;
                                 row[35] = value ?? '';
+                                // Jika N, hapus nilai isian terkait
+                                if (value == 'N') {
+                                  selectedIsolationType = null;
+                                  row[36] = '';
+                                  selectedIsolationDistance = null;
+                                  row[37] = '';
+                                }
                               });
                             },
                             helpText: 'Y = Yes\nN = No',
                             icon: Icons.content_paste_search_rounded,
+                            validator: (value) => (value == null || value.isEmpty) ? 'Isolation Audit 1 wajib dipilih' : null,
                           ),
                           const SizedBox(height: 10),
-                          _buildDropdownFormField(
-                            label: 'Isolation Type',
-                            items: isolationTypeItems,
-                            value: selectedIsolationType,
-                            onChanged: (value) {
-                              setState(() {
-                                selectedIsolationType = value;
-                                row[36] = value ?? '';
-                              });
-                            },
-                            helpText: 'A = Other seed production\nB = Commercial',
-                            icon: Icons.type_specimen_rounded,
-                          ),
-                          const SizedBox(height: 10),
-                          _buildDropdownFormField(
-                            label: 'Isolation Distance',
-                            items: isolationDistanceItems,
-                            value: selectedIsolationDistance,
-                            onChanged: (value) {
-                              setState(() {
-                                selectedIsolationDistance = value;
-                                row[37] = value ?? '';
-                              });
-                            },
-                            helpText: 'A = > 400\nB = <400',
-                            icon: Icons.straighten_rounded,
-                          ),
-
+                          if (selectedIsolationAudit1 == 'Y')
+                            Column(
+                              children: [
+                                _buildDropdownFormField(
+                                  label: 'Isolation Type',
+                                  items: isolationTypeItems,
+                                  value: selectedIsolationType,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedIsolationType = value;
+                                      row[36] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'A = Other seed production\nB = Commercial',
+                                  icon: Icons.type_specimen_rounded,
+                                  validator: (value) => (selectedIsolationAudit1 == 'Y' && (value == null || value.isEmpty)) ? 'Isolation Type wajib dipilih' : null,
+                                ),
+                                const SizedBox(height: 10),
+                                _buildDropdownFormField(
+                                  label: 'Isolation Distance',
+                                  items: isolationDistanceItems,
+                                  value: selectedIsolationDistance,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedIsolationDistance = value;
+                                      row[37] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'A = > 400\nB = <400',
+                                  icon: Icons.straighten_rounded,
+                                  validator: (value) => (selectedIsolationAudit1 == 'Y' && (value == null || value.isEmpty)) ? 'Isolation Distance wajib dipilih' : null,
+                                ),
+                                const SizedBox(height: 10),
+                              ],
+                            ),
                           const SizedBox(height: 10),
                           _buildSectionHeader('Offtype & Volunteer', Icons.warning_rounded),
                           _buildText2FormField('Audit 1 Offtype', 38),
@@ -279,17 +295,18 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
                           _buildSectionHeader('Crop Quality', Icons.health_and_safety_rounded),
                           const SizedBox(height: 10),
                           _buildDropdownFormField(
-                            label: 'Corp Health',
-                            items: corpHealthItems,
-                            value: selectedCorpHealth,
+                            label: 'Crop Health',
+                            items: cropHealthItems,
+                            value: selectedCropHealth,
                             onChanged: (value) {
                               setState(() {
-                                selectedCorpHealth = value;
+                                selectedCropHealth = value;
                                 row[40] = value ?? '';
                               });
                             },
                             helpText: 'A/B/C',
                             icon: Icons.monitor_heart_rounded,
+                            validator: (value) => (value == null || value.isEmpty) ? 'Crop Health wajib dipilih' : null,
                           ),
 
                           const SizedBox(height: 10),
@@ -304,19 +321,19 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
                                 row[41] = value ?? '';
                               });
                             },
-                            helpText: 'A/B/C',
+                            helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                             icon: Icons.grain,
+                            validator: (value) => (value == null || value.isEmpty) ? 'Crop Uniformity wajib dipilih' : null,
                           ),
 
                           const SizedBox(height: 30),
                           Center(
                             child: ElevatedButton.icon(
                               onPressed: () {
+                                // Memvalidasi form sebelum menyimpan
                                 if (_formKey.currentState!.validate()) {
-                                  _showLoadingDialogAndClose();
+                                  // Jika form valid, lanjutkan proses penyimpanan
                                   _showLoadingAndSaveInBackground();
-                                  _showConfirmationDialog;
-                                  _saveToGoogleSheets(row);
                                 }
                               },
                               style: ElevatedButton.styleFrom(
@@ -389,6 +406,13 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
             row[index] = value;
           });
         },
+        // VALIDATOR ditambahkan di sini
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return '$label wajib diisi';
+          }
+          return null;
+        },
       ),
     );
   }
@@ -434,6 +458,13 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
             String cleanedValue = value.replaceAll("'", "");
             row[index] = "'$cleanedValue";
           });
+        },
+        // VALIDATOR ditambahkan di sini
+        validator: (value) {
+          if (value == null || value.isEmpty || value == "'") {
+            return '$label wajib diisi';
+          }
+          return null;
         },
       ),
     );
@@ -562,6 +593,13 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
         dropdownColor: Colors.white,
         icon: Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
         isExpanded: true, // Memastikan dropdown mengisi ruang yang tersedia
+        // VALIDATOR ditambahkan di sini
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return '$label wajib dipilih';
+          }
+          return null;
+        },
       ),
     );
   }
@@ -630,6 +668,13 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
             });
           }
         },
+        // VALIDATOR ditambahkan di sini
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return '$label wajib dipilih';
+          }
+          return null;
+        },
       ),
     );
   }
@@ -642,8 +687,10 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
     String? hint,
     String? helpText,
     IconData? icon,
+    // Menambahkan parameter validator
+    String? Function(String?)? validator,
   }) {
-    if (!items.contains(value)) {
+    if (value != null && !items.contains(value)) {
       value = null;
     }
 
@@ -694,6 +741,8 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
             }).toList(),
             dropdownColor: Colors.white,
             icon: Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
+            // Menggunakan validator yang dilewatkan
+            validator: validator,
           ),
         ),
         if (helpText != null) ...[
@@ -803,18 +852,6 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
     await sheet.values.insertValue( // Cek Audit 4
         '=IF(OR(BK$rowIndex=0;BK$rowIndex="");"NOT Audited";"Audited")',
         row: rowIndex, column: 90);
-    await sheet.values.insertValue( // Week of Audit 1
-        '=IFERROR(IF(OR(AE$rowIndex=0;AE$rowIndex="");"";WEEKNUM(AE$rowIndex;1));"")',
-        row: rowIndex, column: 30);
-    await sheet.values.insertValue( // Week of Audit 2
-        '=IFERROR(IF(OR(AS$rowIndex=0;AS$rowIndex="");"";WEEKNUM(AS$rowIndex;1));"")',
-        row: rowIndex, column: 46);
-    await sheet.values.insertValue( // Week of Audit 3
-        '=IFERROR(IF(OR(BB$rowIndex=0;BB$rowIndex="");"";WEEKNUM(BB$rowIndex;1));"")',
-        row: rowIndex, column: 55);
-    await sheet.values.insertValue( // Week of Audit 4
-        '=IFERROR(IF(OR(BK$rowIndex=0;BK$rowIndex="");"";WEEKNUM(BK$rowIndex;1));"")',
-        row: rowIndex, column: 64);
     debugPrint("Rumus berhasil diterapkan di Vegetative pada baris $rowIndex.");
   }
 
@@ -826,44 +863,6 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
       }
     }
     return -1;
-  }
-
-  Future<void> _showConfirmationDialog() async {
-    final shouldSave = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Confirm Save'),
-        content: Text('Are you sure you want to save the changes?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (shouldSave == true) {
-      _validateAndSave();
-    }
-  }
-
-  void _validateAndSave() {
-    if (_formKey.currentState!.validate()) {
-      if (_isDataValid()) {
-        _showLoadingDialogAndClose();
-        _saveToGoogleSheets(row);
-      } else {
-        _showSnackbar('Please complete all required fields');
-      }
-    }
-  }
-
-  bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty);
   }
 
   void _showSnackbar(String message) {

@@ -10,16 +10,18 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:lottie/lottie.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:weather_icons/weather_icons.dart';
 
 import '../services/config_manager.dart';
-import 'generative/psp_generative_screen.dart';
 import 'psp_absen_log_screen.dart';
 import 'psp_activity_screen.dart';
+import 'generative/psp_generative_screen.dart';
+import 'psp_detailed_map_screen.dart';
 import 'psp_detaselling_screen.dart';
 import 'psp_issue_screen.dart';
 import 'psp_training_screen.dart';
-import 'vegetative/psp_vegetative_screen.dart';
 import 'psp_weather_widget.dart';
+import 'vegetative/psp_vegetative_screen.dart';
 
 class PspScreen extends StatefulWidget {
   const PspScreen({super.key});
@@ -182,7 +184,9 @@ class PspScreenState extends State<PspScreen>
   void _updateGreeting() {
     final hour = DateTime.now().hour;
     setState(() {
-      if (hour < 10) {
+      if (hour < 4) {
+        _greeting = 'Sugêng Ndalu!';
+      } else if (hour < 10) {
         _greeting = 'Sugêng Enjing!';
       } else if (hour < 15) {
         _greeting = 'Sugêng Siang!';
@@ -268,6 +272,13 @@ class PspScreenState extends State<PspScreen>
         _saveSeasonListToPreferences();
       }
     });
+    getPSPFilterStream().listen((regions) {
+      if (mounted) {
+        setState(() {
+          fieldSPVList = regions;
+        });
+      }
+    });
   }
 
   // Stream untuk mendapatkan data QA SPV secara real-time
@@ -296,8 +307,8 @@ class PspScreenState extends State<PspScreen>
     }
 
     String? documentId = regionDocumentIds[selectedRegion];
-    if (documentId == null) return Stream.value([]);
 
+    if (documentId == null) return Stream.value([]);
     return FirebaseFirestore.instance
         .collection('regions')
         .doc(documentId)
@@ -311,6 +322,23 @@ class PspScreenState extends State<PspScreen>
           data['qa_spv'][selectedQASPV] != null &&
           data['qa_spv'][selectedQASPV]['districts'] != null) {
         return List<String>.from(data['qa_spv'][selectedQASPV]['districts']);
+      }
+      return [];
+    });
+  }
+
+  // Stream untuk mendapatkan data PSP filter secara real-time
+  Stream<List<String>> getPSPFilterStream() {
+    return FirebaseFirestore.instance
+        .collection('config')
+        .doc('filter')
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists) return [];
+      Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
+
+      if (data.containsKey('psp') && data['psp'] is List) {
+        return List<String>.from(data['psp']);
       }
       return [];
     });
@@ -400,20 +428,40 @@ class PspScreenState extends State<PspScreen>
     // Simulasikan loading dengan delay
     await Future.delayed(const Duration(milliseconds: 800));
 
-    // Lakukan inisialisasi data
-    _setupRealTimeListeners();
-    ConfigManager.loadConfig();
-    await _fetchAppVersion();
-    await _fetchUserData();
-    await _fetchGoogleUserData();
-    await _loadUserEmail();
-    await _loadSeasonPreference();
+    try {
+      // Load regions from Firestore
+      final configSnapshot = await FirebaseFirestore.instance
+          .collection('config')
+          .doc('filter')
+          .get();
+      if (configSnapshot.exists) {
+        final data = configSnapshot.data();
+        if (data != null && data.containsKey('psp')) {
+          setState(() {
+            fieldSPVList = List<String>.from(data['psp']);
+          });
+        }
+      }
 
-    // Setelah selesai, matikan loading
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
+      // Load config from ConfigManager
+      await ConfigManager.loadConfig();
+
+      // Setup other data
+      _setupRealTimeListeners();
+      await _fetchAppVersion();
+      await _fetchUserData();
+      await _fetchGoogleUserData();
+      await _loadUserEmail();
+      await _loadSeasonPreference();
+    } catch (e) {
+      debugPrint("Error loading initial data: $e");
+    } finally {
+      // Setelah selesai, matikan loading
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -595,12 +643,37 @@ class PspScreenState extends State<PspScreen>
               ),
               const SizedBox(height: 16),
 
+              _buildPremiumMenuItem(
+                context,
+                icon: Icons.map, // Contoh ikon
+                title: 'Workload Map',
+                subtitle: 'Peta workload area dengan filter lanjutan',
+                onTap: () {
+                  Navigator.pop(context); // Tutup bottom sheet
+                  if (selectedSpreadsheetId == null ||
+                      selectedFieldSPV == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Pilih Region dulu boloo!')),
+                    );
+                    return;
+                  }
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (context) => PspDetailedMapScreen(
+                        spreadsheetId: selectedSpreadsheetId!,
+                        initialWorksheetTitle: 'Generative',
+                        // Worksheet default
+                        initialRegion: selectedFieldSPV,
+                        initialDistrict: selectedFA,
+                        initialSeason: selectedSeason,
+                      )));
+                },
+              ),
               // Menu Items
               _buildPremiumMenuItem(
                 context,
                 icon: Icons.engineering_rounded,
                 title: 'Training',
-                subtitle: 'Training materials & resources',
+                subtitle: 'Materi & sumber daya pelatihan',
                 onTap: () {
                   Navigator.pop(context);
                   _navigateTo(
@@ -618,13 +691,13 @@ class PspScreenState extends State<PspScreen>
                 context,
                 icon: Icons.list_alt_rounded,
                 title: 'Absen Log',
-                subtitle: 'Attendance records',
+                subtitle: 'Catatan kehadiran',
                 onTap: () {
                   if (selectedFieldSPV == null) {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Please select your region first!'),
+                        content: Text('Pilih Region dulu boloo!'),
                         duration: Duration(seconds: 2),
                       ),
                     );
@@ -639,7 +712,7 @@ class PspScreenState extends State<PspScreen>
                 context,
                 icon: Icons.warning_amber_rounded,
                 title: 'Issue',
-                subtitle: 'Report and track issues',
+                subtitle: 'Laporkan dan lacak masalah',
                 onTap: () {
                   Navigator.pop(context);
                   if (selectedFA != null) {
@@ -655,7 +728,7 @@ class PspScreenState extends State<PspScreen>
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Please select a district first!'),
+                        content: Text('Pilih Region, QA SPV & District dulu boloo!'),
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
@@ -1076,21 +1149,21 @@ class PspScreenState extends State<PspScreen>
                                   ),
                                 ],
                               ),
-                              child: Icon(
+                              child: BoxedIcon(
                                 _greeting == 'Sugêng Enjing!'
-                                    ? Icons.wb_sunny_rounded
+                                    ? WeatherIcons.sunrise
                                     : _greeting == 'Sugêng Siang!'
-                                        ? Icons.brightness_7_rounded
-                                        : _greeting == 'Sugêng Sontên!'
-                                            ? Icons.light_mode_rounded
-                                            : Icons.nightlight_round,
+                                    ? WeatherIcons.day_sunny
+                                    : _greeting == 'Sugêng Sontên!'
+                                    ? WeatherIcons.sunset
+                                    : WeatherIcons.night_clear,
                                 color: _greeting == 'Sugêng Enjing!'
-                                    ? Colors.yellow.shade400
+                                    ? Colors.yellow.shade600
                                     : _greeting == 'Sugêng Siang!'
-                                        ? Colors.amber.shade500
-                                        : _greeting == 'Sugêng Sontên!'
-                                            ? Colors.amber.shade900
-                                            : Colors.blue.shade300,
+                                    ? Colors.amber.shade600
+                                    : _greeting == 'Sugêng Sontên!'
+                                    ? Colors.amber.shade900
+                                    : Colors.blue.shade300,
                                 size: 28,
                               ),
                             ),
@@ -1139,87 +1212,98 @@ class PspScreenState extends State<PspScreen>
                   PspWeatherWidget(greeting: _greeting),
                   const SizedBox(height: 16),
                   // Dropdown untuk memilih Region
-                  DropdownButtonFormField<String>(
-                    value: selectedFieldSPV,
-                    hint: const Text("Pilih Regionmu!",
-                        style: TextStyle(color: Colors.grey)),
-                    items: fieldSPVList.map((spv) {
-                      return DropdownMenuItem<String>(
-                        value: spv,
-                        child: Text(spv,
-                            style: const TextStyle(color: Colors.black87)),
-                      );
-                    }).toList(),
-                    onChanged: (value) async {
-                      final scaffoldMessenger = ScaffoldMessenger.of(context);
-                      SharedPreferences prefs =
+                  StreamBuilder<List<String>>(
+                    stream: getPSPFilterStream(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Text('Error: ${snapshot.error}');
+                      }
+
+                      final regions = snapshot.data ?? [];
+
+                      return DropdownButtonFormField<String>(
+                        value: selectedFieldSPV,
+                        hint: const Text("Pilih Regionmu!",
+                            style: TextStyle(color: Colors.grey)),
+                        items: regions.map((region) {
+                          return DropdownMenuItem<String>(
+                            value: region,
+                            child: Text(region,
+                                style: const TextStyle(color: Colors.black87)),
+                          );
+                        }).toList(),
+                        onChanged: (value) async {
+                          final scaffoldMessenger =
+                          ScaffoldMessenger.of(context);
+                          SharedPreferences prefs =
                           await SharedPreferences.getInstance();
 
-                      if (value != null) {
-                        final spreadsheetId =
+                          if (value != null) {
+                            final spreadsheetId =
                             ConfigManager.getSpreadsheetId(value);
-                        await prefs.setString('selectedRegion', value);
+                            await prefs.setString('selectedRegion', value);
 
-                        setState(() {
-                          selectedFieldSPV = value;
-                          selectedSpreadsheetId = spreadsheetId;
-                          selectedQA = null;
-                          selectedFA = null;
-                          selectedSeason = null;
-                          faList.clear();
-                        });
+                            setState(() {
+                              selectedFieldSPV = value;
+                              selectedSpreadsheetId = spreadsheetId;
+                              selectedQA = null;
+                              selectedFA = null;
+                              selectedSeason = null;
+                              faList.clear();
+                            });
 
-                        if (spreadsheetId == null) {
-                          scaffoldMessenger.showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                  'Spreadsheet ID tidak ditemukan untuk region yang dipilih'),
-                            ),
-                          );
-                        }
-                      }
+                            if (spreadsheetId == null) {
+                              scaffoldMessenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      'Spreadsheet ID tidak ditemukan untuk region yang dipilih'),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 16.0,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        dropdownColor: Colors.white,
+                        icon: const Icon(Icons.arrow_drop_down,
+                            color: Colors.red),
+                        iconSize: 28,
+                        decoration: InputDecoration(
+                          labelText: 'Field Region',
+                          labelStyle: const TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: const BorderSide(
+                                color: Colors.red, width: 2.0),
+                            borderRadius: BorderRadius.circular(12.0),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: const BorderSide(
+                                color: Colors.red, width: 2.5),
+                            borderRadius: BorderRadius.circular(12.0),
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12.0),
+                            borderSide: const BorderSide(
+                                color: Colors.red, width: 2.0),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 16, horizontal: 20),
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        elevation: 2,
+                      );
                     },
-                    style: const TextStyle(
-                      color: Colors.black87,
-                      fontSize: 16.0,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    dropdownColor: Colors.white,
-                    icon: const Icon(Icons.arrow_drop_down,
-                        color: Colors.redAccent),
-                    iconSize: 28,
-                    decoration: InputDecoration(
-                      labelText: 'Field Region',
-                      labelStyle: const TextStyle(
-                        color: Colors.redAccent,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: const BorderSide(
-                            color: Colors.redAccent, width: 2.0),
-                        borderRadius: BorderRadius.circular(12.0),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: const BorderSide(
-                            color: Colors.redAccent, width: 2.5),
-                        borderRadius: BorderRadius.circular(12.0),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12.0),
-                        borderSide: const BorderSide(
-                            color: Colors.redAccent, width: 2.0),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                          vertical: 16, horizontal: 20),
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    elevation: 2,
                   ),
                   const SizedBox(height: 8),
-
                   // StreamBuilder untuk QA SPV
                   if (selectedFieldSPV != null) ...[
                     StreamBuilder<List<String>>(
@@ -1377,7 +1461,6 @@ class PspScreenState extends State<PspScreen>
                         boxShadow: [
                           BoxShadow(
                             color: Colors.redAccent.withAlpha(25),
-                            // ~10% opacity
                             spreadRadius: 3,
                             blurRadius: 10,
                             offset: const Offset(0, 4),

@@ -1,11 +1,11 @@
-import 'dart:async';  // Untuk menggunakan Timer
+import 'dart:async'; // Untuk menggunakan Timer
 
 import 'package:flutter/material.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
-import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
+import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences untuk userName
 
 import '../../services/config_manager.dart';
 import '../../services/google_sheets_api.dart';
@@ -34,14 +34,14 @@ class Audit2EditScreenState extends State<Audit2EditScreen> {
   late TextEditingController _dateAuditController;
 
   String userEmail = 'Fetching...'; // Variabel untuk email pengguna
-  String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
+  String userName = 'Fetching...'; // Variabel untuk menyimpan nama pengguna
   late String spreadsheetId;
 
-  String? selectedCorpHealth;
+  String? selectedCropHealth;
   String? selectedCropUniformity;
 
-  final List<String> corpHealthItems = ['A', 'B', 'C'];
-  final List<String> cropUniformityItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
 
   bool isLoading = false;
 
@@ -59,9 +59,9 @@ class Audit2EditScreenState extends State<Audit2EditScreen> {
     gSheetsApi = GoogleSheetsApi(spreadsheetId);
     gSheetsApi.init();
 
-    // Initialize dropdown fields
-    selectedCorpHealth = row[49];
-    selectedCropUniformity = row[50];
+    // Initialize dropdown fields, set to null if empty
+    selectedCropHealth = row[49].isNotEmpty ? row[49] : null;
+    selectedCropUniformity = row[50].isNotEmpty ? row[50] : null;
   }
 
   Future<void> _fetchSpreadsheetId() async {
@@ -70,7 +70,7 @@ class Audit2EditScreenState extends State<Audit2EditScreen> {
 
   void _initHive() async {
     await Hive.initFlutter();
-    await Hive.openBox('pspVegetativeData');  // Buat box Hive untuk menyimpan data vegetative
+    await Hive.openBox('pspVegetativeData'); // Buat box Hive untuk menyimpan data vegetative
   }
 
   Future<void> _saveToHive(List<String> rowData) async {
@@ -169,17 +169,18 @@ class Audit2EditScreenState extends State<Audit2EditScreen> {
                         const SizedBox(height: 10),
                         _buildSectionHeader('Crop Management', Icons.agriculture),
                         _buildDropdownFormField(
-                          label: 'Corp Health',
-                          items: corpHealthItems,
-                          value: selectedCorpHealth,
+                          label: 'Crop Health',
+                          items: cropHealthItems,
+                          value: selectedCropHealth,
                           onChanged: (value) {
                             setState(() {
-                              selectedCorpHealth = value;
+                              selectedCropHealth = value;
                               row[49] = value ?? '';
                             });
                           },
                           helpText: 'A/B/C',
                           icon: Icons.health_and_safety,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Crop Health wajib dipilih' : null,
                         ),
 
                         const SizedBox(height: 10),
@@ -193,19 +194,19 @@ class Audit2EditScreenState extends State<Audit2EditScreen> {
                               row[50] = value ?? '';
                             });
                           },
-                          helpText: 'A/B/C',
+                          helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                           icon: Icons.grass,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Crop Uniformity wajib dipilih' : null,
                         ),
 
                         const SizedBox(height: 30),
                         Center(
                           child: ElevatedButton.icon(
                             onPressed: () {
+                              // Memvalidasi form sebelum menyimpan
                               if (_formKey.currentState!.validate()) {
-                                _showLoadingDialogAndClose();
+                                // Jika form valid, lanjutkan proses penyimpanan
                                 _showLoadingAndSaveInBackground();
-                                _showConfirmationDialog;
-                                _saveToGoogleSheets(row);
                               }
                             },
                             style: ElevatedButton.styleFrom(
@@ -276,6 +277,13 @@ class Audit2EditScreenState extends State<Audit2EditScreen> {
           setState(() {
             row[index] = value;
           });
+        },
+        // VALIDATOR ditambahkan di sini
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return '$label wajib diisi';
+          }
+          return null;
         },
       ),
     );
@@ -411,6 +419,13 @@ class Audit2EditScreenState extends State<Audit2EditScreen> {
             });
           }
         },
+        // VALIDATOR ditambahkan di sini
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return '$label wajib dipilih';
+          }
+          return null;
+        },
       ),
     );
   }
@@ -423,8 +438,10 @@ class Audit2EditScreenState extends State<Audit2EditScreen> {
     String? hint,
     String? helpText,
     IconData? icon,
+    // Menambahkan parameter validator
+    String? Function(String?)? validator,
   }) {
-    if (!items.contains(value)) {
+    if (value != null && !items.contains(value)) {
       value = null;
     }
 
@@ -475,6 +492,8 @@ class Audit2EditScreenState extends State<Audit2EditScreen> {
             }).toList(),
             dropdownColor: Colors.white,
             icon: Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
+            // Menggunakan validator yang dilewatkan
+            validator: validator,
           ),
         ),
         if (helpText != null) ...[
@@ -609,44 +628,6 @@ class Audit2EditScreenState extends State<Audit2EditScreen> {
     return -1;
   }
 
-  Future<void> _showConfirmationDialog() async {
-    final shouldSave = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Confirm Save'),
-        content: Text('Are you sure you want to save the changes?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (shouldSave == true) {
-      _validateAndSave();
-    }
-  }
-
-  void _validateAndSave() {
-    if (_formKey.currentState!.validate()) {
-      if (_isDataValid()) {
-        _showLoadingDialogAndClose();
-        _saveToGoogleSheets(row);
-      } else {
-        _showSnackbar('Please complete all required fields');
-      }
-    }
-  }
-
-  bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty);
-  }
-
   void _showSnackbar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
@@ -666,7 +647,7 @@ class Audit2EditScreenState extends State<Audit2EditScreen> {
     } else if (response == 'Failed to save data. Please try again.') {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => PspFailedScreen(),
+          builder: (context) => const PspFailedScreen(),
         ),
       );
     } else {
@@ -688,6 +669,7 @@ class Audit2EditScreenState extends State<Audit2EditScreen> {
   }
 }
 
+// ... (Kelas PspSuccessScreen, PspFailedScreen, dan _logErrorToActivity tetap sama)
 class PspSuccessScreen extends StatelessWidget {
   final List<String> row;
   final String userName;
@@ -751,7 +733,6 @@ class PspSuccessScreen extends StatelessWidget {
     );
   }
 
-  // Fungsi untuk menampilkan dialog loading
   void _showLoadingDialog(BuildContext context) {
     showDialog(
       context: context,

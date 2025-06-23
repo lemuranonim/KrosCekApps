@@ -1,4 +1,4 @@
-import 'dart:async'; // Import untuk debounce
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
@@ -10,6 +10,9 @@ import '../../services/google_sheets_api.dart';
 import 'psp_generative_detail_screen.dart';
 import 'psp_generative_filter_options.dart';
 import 'psp_generative_listview_builder.dart';
+import 'psp_generative_map_view.dart';
+import 'psp_generative_activity_analysis_screen.dart';
+import 'package:intl/intl.dart';
 
 class PspGenerativeScreen extends StatefulWidget {
   final String spreadsheetId;
@@ -52,20 +55,20 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
   final int _rowsPerPage = 100;
   Timer? _debounce;
   double _progress = 0.0; // Variabel untuk menyimpan progres
+  bool _showFilterChipsContainer = false;
 
   List<String> _selectedWeeks = [];
   List<String> _weekOfPspGenerativeList = [];
-
   List<String> _faNames = []; // Daftar nama FA unik
   List<String> _selectedFA = []; // Daftar nama FA yang dipilih
-
   List<String> _fiNames = [];
   List<String> _selectedFIs = [];
-
-  double _totalEffectiveArea =
-      0.0; // Variabel untuk menyimpan total Effective Area (Ha)
+  double _totalEffectiveArea = 0.0; // Variabel untuk menyimpan total Effective Area (Ha)
 
   final List<String> _selectedStatuses = [];
+  final Map<String, int> _activityCounts = {};
+  final Map<String, List<DateTime>> _activityTimestamps = {};
+  bool _showMapView = false;
 
   String getPspGenerativeStatus(String cekBW, String cekBY) {
     // Check if both columns are "audited"
@@ -99,6 +102,116 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
     super.dispose();
   }
 
+  Future<void> _loadActivityData() async {
+    try {
+      await _googleSheetsApi.init();
+      final activityData = await _googleSheetsApi.getSpreadsheetData('Aktivitas');
+
+      // Clear existing counts and timestamps
+      _activityCounts.clear();
+      _activityTimestamps.clear();
+
+      // Count activities for each field number, but only for Generative sheet
+      for (var row in activityData) {
+        if (row.length > 7) { // Ensure we have enough columns
+          final sheetName = row.length > 5 ? row[5] : ''; // Sheet name is in column F (index 5)
+
+          // Only process rows related to the Generative sheet
+          if (sheetName.toLowerCase().contains('generative')) {
+            final fieldNumber = row[6]; // Field Number is in column G (index 6)
+            if (fieldNumber.isNotEmpty) {
+              // Update activity count
+              _activityCounts[fieldNumber] = (_activityCounts[fieldNumber] ?? 0) + 1;
+
+              // Extract timestamp from column H (index 7)
+              final timestampStr = row[7];
+              DateTime? timestamp;
+
+              if (timestampStr.isNotEmpty) {
+                // Try to parse the timestamp
+                try {
+                  // First try to parse as Excel numeric date
+                  final excelDateValue = double.tryParse(timestampStr);
+                  if (excelDateValue != null) {
+                    // Convert Excel date to DateTime
+                    final baseDate = DateTime(1899, 12, 30);
+                    final days = excelDateValue.floor();
+                    final millisInDay = (excelDateValue - days) * 24 * 60 * 60 * 1000;
+                    timestamp = baseDate.add(Duration(days: days, milliseconds: millisInDay.round()));
+                  } else {
+                    // Try standard date formats
+                    try {
+                      // Try dd/MM/yyyy HH:mm:ss format
+                      timestamp = DateFormat("dd/MM/yyyy HH:mm:ss").parse(timestampStr);
+                    } catch (e) {
+                      // Try standard DateTime.parse
+                      try {
+                        timestamp = DateTime.parse(timestampStr);
+                      } catch (e) {
+                        // Try dd/MM/yyyy format
+                        try {
+                          final parts = timestampStr.split(' ')[0].split('/');
+                          if (parts.length == 3) {
+                            final month = int.tryParse(parts[0]) ?? 1;
+                            final day = int.tryParse(parts[1]) ?? 1;
+                            final year = int.tryParse(parts[2]) ?? DateTime.now().year;
+
+                            // Try to parse time if available
+                            int hour = 0, minute = 0, second = 0;
+                            if (timestampStr.contains(' ') && timestampStr.split(' ').length > 1) {
+                              final timeParts = timestampStr.split(' ')[1].split(':');
+                              if (timeParts.length >= 2) {
+                                hour = int.tryParse(timeParts[0]) ?? 0;
+                                minute = int.tryParse(timeParts[1]) ?? 0;
+                                if (timeParts.length > 2) {
+                                  second = int.tryParse(timeParts[2]) ?? 0;
+                                }
+                              }
+                            }
+
+                            timestamp = DateTime(year, month, day, hour, minute, second);
+                          }
+                        } catch (e) {
+                          // Try MM/dd/yyyy format
+                        }
+                      }
+                    }
+                  }
+                } catch (e) {
+                  // Handle parsing error
+                }
+              }
+
+              // If we successfully parsed a timestamp, add it to the map
+              if (timestamp != null) {
+                _activityTimestamps[fieldNumber] ??= [];
+                _activityTimestamps[fieldNumber]!.add(timestamp);
+              }
+            } else {
+              // Handle empty field number
+            }
+          }
+        }
+      }
+
+      // Sort timestamps for each field (newest first)
+      for (var fieldNumber in _activityTimestamps.keys) {
+        _activityTimestamps[fieldNumber]!.sort((a, b) => b.compareTo(a));
+      }
+      setState(() {
+        // Update state to trigger rebuild with new activity data
+      });
+    } catch (e) {
+      // Error handling
+    }
+  }
+
+  void _toggleViewMode() {
+    setState(() {
+      _showMapView = !_showMapView;
+    });
+  }
+
   Future<void> _loadSheetData({bool refresh = false}) async {
     if (refresh) {
       _currentPage = 1;
@@ -117,6 +230,9 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
       final totalDataCount = 12000; // Estimasi jumlah total data (bisa dinamis)
       final data = await _googleSheetsApi.getSpreadsheetDataWithPagination(
           _worksheetTitle, (_currentPage - 1) * _rowsPerPage + 1, _rowsPerPage);
+
+      // Load activity data
+      await _loadActivityData();
 
       setState(() {
         _sheetData.addAll(data);
@@ -451,76 +567,70 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
           ),
           title: !_isSearching
               ? Row(
+            children: [
+              const Icon(Icons.eco_rounded, size: 22, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.eco_rounded, size: 24),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Generative Data',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
-                        ),
-                        Text(
-                          selectedRegion ?? 'Unknown Region',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                      ],
+                    const Text(
+                      'Generative',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    Text(
+                      selectedRegion ?? 'Unknown Region',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
-                )
-              : TextField(
-                  onChanged: _onSearchChanged,
-                  autofocus: true,
-                  style: const TextStyle(color: Colors.white),
-                  cursorColor: Colors.white,
-                  decoration: InputDecoration(
-                    hintText: 'Search field number, farmer, grower...',
-                    hintStyle: const TextStyle(color: Colors.white70),
-                    border: InputBorder.none,
-                    prefixIcon: const Icon(Icons.search, color: Colors.white),
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.clear, color: Colors.white70),
-                      onPressed: () {
-                        setState(() {
-                          _searchQuery = '';
-                          _filterData();
-                        });
-                      },
-                    ),
-                  ),
                 ),
-          iconTheme: const IconThemeData(color: Colors.white),
+              ),
+            ],
+          )
+              : TextField(
+            onChanged: _onSearchChanged,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white),
+            cursorColor: Colors.white,
+            decoration: const InputDecoration(
+              hintText: 'Search field, farmer, grower...',
+              hintStyle: TextStyle(color: Colors.white70),
+              border: InputBorder.none,
+              prefixIcon: Icon(Icons.search, color: Colors.white),
+              contentPadding: EdgeInsets.symmetric(vertical: 15),
+            ),
+          ),
           actions: [
             !_isSearching
                 ? IconButton(
-                    icon: const Icon(Icons.search, color: Colors.white),
-                    tooltip: 'Search',
-                    onPressed: () {
-                      setState(() {
-                        _isSearching = true;
-                      });
-                    },
-                  )
+              icon: const Icon(Icons.search, color: Colors.white),
+              tooltip: 'Search',
+              onPressed: () {
+                setState(() {
+                  _isSearching = true;
+                });
+              },
+            )
                 : IconButton(
-                    icon: const Icon(Icons.cancel, color: Colors.white),
-                    tooltip: 'Cancel Search',
-                    onPressed: () {
-                      setState(() {
-                        _isSearching = false;
-                        _searchQuery = '';
-                        _filterData();
-                      });
-                    },
-                  ),
+              icon: const Icon(Icons.cancel, color: Colors.white),
+              tooltip: 'Cancel Search',
+              onPressed: () {
+                setState(() {
+                  _isSearching = false;
+                  _searchQuery = '';
+                  _filterData();
+                });
+              },
+            ),
             IconButton(
               icon: Stack(
                 children: [
@@ -558,6 +668,16 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
               tooltip: 'Filter Options',
               onPressed: _showFilterOptions,
             ),
+
+            IconButton(
+              icon: Icon(
+                _showMapView ? Icons.view_list : Icons.map,
+                color: Colors.white,
+              ),
+              tooltip: _showMapView ? 'Show List View' : 'Show Map View',
+              onPressed: _toggleViewMode,
+            ),
+
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, color: Colors.white),
               tooltip: 'More options',
@@ -566,30 +686,16 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                   _loadSheetData(refresh: true);
                 } else if (value == 'help') {
                   // Show help dialog
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text(
-                        'Bantuan!',
-                        style: TextStyle(
-                          color: Colors.redAccent,
-                          fontWeight: FontWeight.bold,
-                        ),
+                } else if (value == 'analysis') {
+                  // Navigate to analysis screen
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => PspGenerativeActivityAnalysisScreen(
+                        activityCounts: _activityCounts,
+                        activityTimestamps: _activityTimestamps,
+                        pspGenerativeData: _filteredData,
+                        selectedRegion: selectedRegion,
                       ),
-                      content: const Text(
-                          'Koco iki nampilake data PSP Generative. Sampeyan biso nggoleki, nyaring, lan ndeleng rincian kanthi nutul item sing pengin dideleng.'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text(
-                            'OK',
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
                   );
                 }
@@ -599,9 +705,19 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                   value: 'refresh',
                   child: Row(
                     children: [
-                      Icon(Icons.refresh, color: Colors.redAccent),
+                      Icon(Icons.refresh, color: Colors.green),
                       SizedBox(width: 8),
                       Text('Refresh Data'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'analysis',
+                  child: Row(
+                    children: [
+                      Icon(Icons.analytics, color: Colors.green),
+                      SizedBox(width: 8),
+                      Text('Analysis Aktivitas'),
                     ],
                   ),
                 ),
@@ -609,14 +725,14 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                   value: 'help',
                   child: Row(
                     children: [
-                      Icon(Icons.help_outline, color: Colors.redAccent),
+                      Icon(Icons.help_outline, color: Colors.green),
                       SizedBox(width: 8),
                       Text('Bantuan'),
                     ],
                   ),
                 ),
               ],
-            ),
+            )
           ],
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(80.0),
@@ -633,11 +749,11 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                 children: [
                   _isLoading
                       ? LinearProgressIndicator(
-                          value: _progress,
-                          backgroundColor: Colors.red.shade300.withAlpha(76),
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        )
+                    value: _progress,
+                    backgroundColor: Colors.red.shade300.withAlpha(76),
+                    valueColor:
+                    AlwaysStoppedAnimation<Color>(Colors.white),
+                  )
                       : const SizedBox(height: 4),
                   Padding(
                     padding: const EdgeInsets.symmetric(
@@ -717,306 +833,297 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                   ),
                 ],
               ),
+              width: double.infinity, // Ensure container takes full width
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 8.0, left: 4.0),
-                    child: Text(
-                      'Filter Audit Status',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.5,
+                  Container(
+                    width: double.infinity, // Make button take full width
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [Colors.red.shade700, Colors.red.shade500],
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _showFilterChipsContainer = !_showFilterChipsContainer;
+                        });
+                      },
+                      icon: Icon(
+                        _showFilterChipsContainer
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                        color: Colors.white,
+                      ),
+                      label: Text(
+                        _showFilterChipsContainer
+                            ? 'Hide Filter Audit Status'
+                            : 'Show Filter Audit Status',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        softWrap: false,
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        backgroundColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
                   ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: _selectedStatuses.contains("Sampun")
-                                ? [
-                                    BoxShadow(
-                                      color: Colors.black.withAlpha(38),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
+                  if (_showFilterChipsContainer) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: _selectedStatuses.contains("Sampun")
+                                  ? [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(38),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                )
+                              ]
+                                  : null,
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  setState(() {
+                                    if (_selectedStatuses.contains("Sampun")) {
+                                      _selectedStatuses.remove("Sampun");
+                                    } else {
+                                      _selectedStatuses.add("Sampun");
+                                    }
+                                    _filterData();
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    gradient: _selectedStatuses.contains("Sampun")
+                                        ? LinearGradient(
+                                      colors: [Colors.green.shade400, Colors.green.shade500 ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
                                     )
-                                  ]
-                                : null,
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () {
-                                setState(() {
-                                  if (_selectedStatuses.contains("Sampun")) {
-                                    _selectedStatuses.remove("Sampun");
-                                  } else {
-                                    _selectedStatuses.add("Sampun");
-                                  }
-                                  _filterData();
-                                });
-                              },
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  gradient: _selectedStatuses.contains("Sampun")
-                                      ? LinearGradient(
-                                          colors: [
-                                            Colors.green.shade400,
-                                            Colors.green.shade500
-                                          ],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        )
-                                      : null,
-                                  color: _selectedStatuses.contains("Sampun")
-                                      ? null
-                                      : Colors.white,
-                                  border: Border.all(
-                                    color: _selectedStatuses.contains("Sampun")
-                                        ? Colors.transparent
-                                        : Colors.green.shade200,
-                                    width: 1.5,
+                                        : null,
+                                    color: _selectedStatuses.contains("Sampun") ? null : Colors.white,
+                                    border: Border.all(
+                                      color: _selectedStatuses.contains("Sampun") ? Colors.transparent : Colors.green.shade200,
+                                      width: 1.5,
+                                    ),
                                   ),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.check_circle_outline,
-                                      color:
-                                          _selectedStatuses.contains("Sampun")
-                                              ? Colors.white
-                                              : Colors.green.shade700,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Text(
-                                        'Sampun',
-                                        style: TextStyle(
-                                          color: _selectedStatuses
-                                                  .contains("Sampun")
-                                              ? Colors.white
-                                              : Colors.green.shade700,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.check_circle_outline,
+                                        color: _selectedStatuses.contains("Sampun") ? Colors.white : Colors.green.shade700,
+                                        size: 18,
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          'Sampun',
+                                          style: TextStyle(
+                                            color: _selectedStatuses.contains("Sampun") ? Colors.white : Colors.green.shade700,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow:
-                                _selectedStatuses.contains("Dereng Jangkep")
-                                    ? [
-                                        BoxShadow(
-                                          color: Colors.black.withAlpha(38),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 3),
-                                        )
-                                      ]
-                                    : null,
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(12),
-                              onTap: () {
-                                setState(() {
-                                  if (_selectedStatuses
-                                      .contains("Dereng Jangkep")) {
-                                    _selectedStatuses.remove("Dereng Jangkep");
-                                  } else {
-                                    _selectedStatuses.add("Dereng Jangkep");
-                                  }
-                                  _filterData();
-                                });
-                              },
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  gradient: _selectedStatuses
-                                          .contains("Dereng Jangkep")
-                                      ? LinearGradient(
-                                          colors: [
-                                            Colors.orange.shade400,
-                                            Colors.orange.shade500
-                                          ],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        )
-                                      : null,
-                                  color: _selectedStatuses
-                                          .contains("Dereng Jangkep")
-                                      ? null
-                                      : Colors.white,
-                                  border: Border.all(
-                                    color: _selectedStatuses
-                                            .contains("Dereng Jangkep")
-                                        ? Colors.transparent
-                                        : Colors.orange.shade200,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.hourglass_empty,
-                                      color: _selectedStatuses
-                                              .contains("Dereng Jangkep")
-                                          ? Colors.white
-                                          : Colors.orange.shade700,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Text(
-                                        'Dereng Jangkep',
-                                        style: TextStyle(
-                                          color: _selectedStatuses
-                                                  .contains("Dereng Jangkep")
-                                              ? Colors.white
-                                              : Colors.orange.shade700,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              boxShadow: _selectedStatuses.contains("Dereng Jangkep")
+                                  ? [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(38),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                )
+                              ]
+                                  : null,
                             ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: _selectedStatuses.contains("Dereng Blas")
-                                ? [
-                                    BoxShadow(
-                                      color: Colors.black.withAlpha(38),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  setState(() {
+                                    if (_selectedStatuses.contains("Dereng Jangkep")) {
+                                      _selectedStatuses.remove("Dereng Jangkep");
+                                    } else {
+                                      _selectedStatuses.add("Dereng Jangkep");
+                                    }
+                                    _filterData();
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    gradient: _selectedStatuses.contains("Dereng Jangkep")
+                                        ? LinearGradient(
+                                      colors: [Colors.orange.shade400, Colors.orange.shade500],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
                                     )
-                                  ]
-                                : null,
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () {
-                                setState(() {
-                                  if (_selectedStatuses
-                                      .contains("Dereng Blas")) {
-                                    _selectedStatuses.remove("Dereng Blas");
-                                  } else {
-                                    _selectedStatuses.add("Dereng Blas");
-                                  }
-                                  _filterData();
-                                });
-                              },
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  gradient:
-                                      _selectedStatuses.contains("Dereng Blas")
-                                          ? LinearGradient(
-                                              colors: [
-                                                Colors.red.shade400,
-                                                Colors.red.shade500
-                                              ],
-                                              begin: Alignment.topLeft,
-                                              end: Alignment.bottomRight,
-                                            )
-                                          : null,
-                                  color:
-                                      _selectedStatuses.contains("Dereng Blas")
-                                          ? null
-                                          : Colors.white,
-                                  border: Border.all(
-                                    color: _selectedStatuses
-                                            .contains("Dereng Blas")
-                                        ? Colors.transparent
-                                        : Colors.red.shade200,
-                                    width: 1.5,
+                                        : null,
+                                    color: _selectedStatuses.contains("Dereng Jangkep") ? null : Colors.white,
+                                    border: Border.all(
+                                      color: _selectedStatuses.contains("Dereng Jangkep") ? Colors.transparent : Colors.orange.shade200,
+                                      width: 1.5,
+                                    ),
                                   ),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.cancel,
-                                      color: _selectedStatuses
-                                              .contains("Dereng Blas")
-                                          ? Colors.white
-                                          : Colors.red.shade600,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Text(
-                                        'Dereng Blas',
-                                        style: TextStyle(
-                                          color: _selectedStatuses
-                                                  .contains("Dereng Blas")
-                                              ? Colors.white
-                                              : Colors.red.shade600,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.hourglass_empty,
+                                        color: _selectedStatuses.contains("Dereng Jangkep") ? Colors.white : Colors.orange.shade700,
+                                        size: 18,
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          'Dereng Jangkep',
+                                          style: TextStyle(
+                                            color: _selectedStatuses.contains("Dereng Jangkep") ? Colors.white : Colors.orange.shade700,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: _selectedStatuses.contains("Dereng Blas")
+                                  ? [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(38),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                )
+                              ]
+                                  : null,
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  setState(() {
+                                    if (_selectedStatuses.contains("Dereng Blas")) {
+                                      _selectedStatuses.remove("Dereng Blas");
+                                    } else {
+                                      _selectedStatuses.add("Dereng Blas");
+                                    }
+                                    _filterData();
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    gradient: _selectedStatuses.contains("Dereng Blas")
+                                        ? LinearGradient(
+                                      colors: [Colors.red.shade400, Colors.red.shade500],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    )
+                                        : null,
+                                    color: _selectedStatuses.contains("Dereng Blas") ? null : Colors.white,
+                                    border: Border.all(
+                                      color: _selectedStatuses.contains("Dereng Blas") ? Colors.transparent : Colors.red.shade200,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.cancel,
+                                        color: _selectedStatuses.contains("Dereng Blas") ? Colors.white : Colors.red.shade600,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          'Dereng Blas',
+                                          style: TextStyle(
+                                            color: _selectedStatuses.contains("Dereng Blas") ? Colors.white : Colors.red.shade600,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
             Expanded(
-              child: LiquidPullToRefresh(
+              child: _showMapView
+                  ? PspGenerativeMapView(
+                filteredData: _filteredData,
+                selectedRegion: selectedRegion,
+                activityCounts: _activityCounts,
+              )
+                  : LiquidPullToRefresh(
                   onRefresh: () async {
                     // Reset filters and load data
                     setState(() {
@@ -1037,116 +1144,116 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                   child: _isLoading
                       ? Center(child: Lottie.asset('assets/loading.json'))
                       : _errorMessage != null
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.error_outline,
-                                      size: 60, color: Colors.red.shade300),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    _errorMessage!,
-                                    style:
-                                        TextStyle(color: Colors.red.shade700),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 24),
-                                  ElevatedButton.icon(
-                                    onPressed: () {
-                                      setState(() {
-                                        _loadSheetData;
-                                        _selectedSeason = null;
-                                        _selectedWeeks = [];
-                                        _selectedFA.clear();
-                                        _selectedFIs.clear();
-                                        _searchQuery = '';
-                                        _selectedStatuses.clear();
-                                        _filterData();
-                                      });
-                                    },
-                                    icon: const Icon(Icons.refresh),
-                                    label: const Text('Try Again'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.redAccent,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 24, vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                      ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error_outline,
+                            size: 60, color: Colors.red.shade300),
+                        const SizedBox(height: 16),
+                        Text(
+                          _errorMessage!,
+                          style:
+                          TextStyle(color: Colors.red.shade700),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _loadSheetData(refresh: true);
+                              _selectedSeason = null;
+                              _selectedWeeks = [];
+                              _selectedFA.clear();
+                              _selectedFIs.clear();
+                              _searchQuery = '';
+                              _selectedStatuses.clear();
+                              _filterData();
+                            });
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Try Again'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                      : _filteredData.isEmpty
+                      ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Lottie.asset('assets/empty.json',
+                            height: 180),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Ora ono data sing kasedhiya',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Cobo ganti saringan utowo kritéria telusuran',
+                          style: TextStyle(color: Colors.grey),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _selectedSeason = null;
+                              _selectedWeeks = [];
+                              _selectedFA.clear();
+                              _selectedFIs.clear();
+                              _searchQuery = '';
+                              _selectedStatuses.clear();
+                              _filterData();
+                            });
+                          },
+                          icon: const Icon(Icons.refresh,
+                              color: Colors.white),
+                          label: const Text('Reset Filters'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                              BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                      : PspGenerativeListViewBuilder(
+                    filteredData: _filteredData,
+                    selectedRegion: selectedRegion,
+                    onItemTap: (fieldNumber) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              PspGenerativeDetailScreen(
+                                fieldNumber: fieldNumber,
+                                region: selectedRegion ??
+                                    'Unknown Region',
                               ),
-                            )
-                          : _filteredData.isEmpty
-                              ? Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Lottie.asset('assets/empty.json',
-                                          height: 180),
-                                      const SizedBox(height: 16),
-                                      const Text(
-                                        'Ora ono data sing kasedhiya',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      const Text(
-                                        'Cobo ganti saringan utowo kritéria telusuran',
-                                        style: TextStyle(color: Colors.grey),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                      const SizedBox(height: 24),
-                                      ElevatedButton.icon(
-                                        onPressed: () {
-                                          setState(() {
-                                            _selectedSeason = null;
-                                            _selectedWeeks = [];
-                                            _selectedFA.clear();
-                                            _selectedFIs.clear();
-                                            _searchQuery = '';
-                                            _selectedStatuses.clear();
-                                            _filterData();
-                                          });
-                                        },
-                                        icon: const Icon(Icons.refresh,
-                                            color: Colors.white),
-                                        label: const Text('Reset Filters'),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.redAccent,
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 24, vertical: 12),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              : PspGenerativeListViewBuilder(
-                                  filteredData: _filteredData,
-                                  selectedRegion: selectedRegion,
-                                  onItemTap: (fieldNumber) {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            PspGenerativeDetailScreen(
-                                          fieldNumber: fieldNumber,
-                                          region: selectedRegion ??
-                                              'Unknown Region',
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                )),
+                        ),
+                      );
+                    },
+                  )),
             ),
           ],
         ),

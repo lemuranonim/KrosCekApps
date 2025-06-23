@@ -1,11 +1,11 @@
-import 'dart:async';  // Untuk menggunakan Timer
+import 'dart:async'; // Untuk menggunakan Timer
 
 import 'package:flutter/material.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
-import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
+import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences untuk userName
 
 import '../../services/config_manager.dart';
 import '../../services/google_sheets_api.dart';
@@ -34,11 +34,11 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
   late TextEditingController _dateAuditController;
 
   String userEmail = 'Fetching...'; // Variabel untuk email pengguna
-  String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
+  String userName = 'Fetching...'; // Variabel untuk menyimpan nama pengguna
   late String spreadsheetId;
 
   String? selectedLSV;
-  String? selectedCorpHealth;
+  String? selectedCropHealth;
   String? selectedCropUniformity;
   String? selectedIsolationAudit6;
   String? selectedIsolationType;
@@ -48,8 +48,8 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
   String? selectedRecommendation;
 
   final List<String> lsvItems = ['YES', 'NO'];
-  final List<String> corpHealthItems = ['A', 'B', 'C'];
-  final List<String> cropUniformityItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
   final List<String> isolationAudit6Items = ['A', 'B'];
   final List<String> isolationTypeItems = ['A', 'B'];
   final List<String> isolationDistanceItems = ['A', 'B'];
@@ -73,16 +73,16 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
     gSheetsApi = GoogleSheetsApi(spreadsheetId);
     gSheetsApi.init();
 
-    // Initialize dropdown fields
-    selectedLSV = row[52];
-    selectedCorpHealth = row[53];
-    selectedCropUniformity = row[54];
-    selectedIsolationAudit6 = row[55];
-    selectedIsolationType = row[56];
-    selectedIsolationDistance = row[57];
-    selectedNickingObservation = row[58];
-    selectedFlagging = row[59];
-    selectedRecommendation = row[60];
+    // Initialize dropdown fields, set to null if empty
+    selectedLSV = row[52].isNotEmpty ? row[52] : null;
+    selectedCropHealth = row[53].isNotEmpty ? row[53] : null;
+    selectedCropUniformity = row[54].isNotEmpty ? row[54] : null;
+    selectedIsolationAudit6 = row[55].isNotEmpty ? row[55] : null;
+    selectedIsolationType = row[56].isNotEmpty ? row[56] : null;
+    selectedIsolationDistance = row[57].isNotEmpty ? row[57] : null;
+    selectedNickingObservation = row[58].isNotEmpty ? row[58] : null;
+    selectedFlagging = row[59].isNotEmpty ? row[59] : null;
+    selectedRecommendation = row[60].isNotEmpty ? row[60] : null;
   }
 
   Future<void> _fetchSpreadsheetId() async {
@@ -100,7 +100,6 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
     await box.put(cacheKey, rowData); // Simpan hanya rowData ke Hive
   }
 
-  // Fungsi untuk mengambil userName dan userEmail dari SharedPreferences
   Future<void> _loadUserCredentials() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -157,27 +156,22 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
                           ),
                         const SizedBox(height: 10),
 
-                        // Field Information Section
                         _buildSectionHeader('Field Information', Icons.info_outline),
-
                         _buildInfoCard(
                           title: 'Field Number',
                           value: row[2],
                           icon: Icons.numbers,
                         ),
-
                         _buildInfoCard(
                           title: 'Region',
                           value: widget.region,
                           icon: Icons.location_on,
                         ),
-
                         _buildInfoCard(
                           title: 'FI',
                           value: row[26],
                           icon: Icons.person,
                         ),
-
                         const SizedBox(height: 20),
                         _buildSectionHeader('Audit Information', Icons.assignment),
                         _buildDatePickerField('Date of Audit 6', 46, _dateAuditController),
@@ -203,26 +197,24 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
                           },
                           helpText: 'YES/NO',
                           icon: Icons.coronavirus_rounded,
+                          validator: (value) => (value == null || value.isEmpty) ? 'LSV wajib dipilih' : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
-                          label: 'Corp Health',
-                          items: corpHealthItems,
-                          value: selectedCorpHealth,
+                          label: 'Crop Health',
+                          items: cropHealthItems,
+                          value: selectedCropHealth,
                           onChanged: (value) {
                             setState(() {
-                              selectedCorpHealth = value;
+                              selectedCropHealth = value;
                               row[53] = value ?? '';
                             });
                           },
                           helpText: 'A = GF (Good)\nB = GF (Fair)\nC = YF (Poor)',
                           icon: Icons.health_and_safety_rounded,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Crop Health wajib dipilih' : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Crop Uniformity',
                           items: cropUniformityItems,
@@ -233,12 +225,11 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
                               row[54] = value ?? '';
                             });
                           },
-                          helpText: 'A = GF (Good)\nB = GF (Fair)\nC = YF (Poor)',
+                          helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                           icon: Icons.grid_on_rounded,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Crop Uniformity wajib dipilih' : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Isolation Audit 6',
                           items: isolationAudit6Items,
@@ -251,10 +242,9 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
                           },
                           helpText: 'A = Yes\nB = No',
                           icon: Icons.no_adult_content_rounded,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Isolation Audit 6 wajib dipilih' : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Isolation Type',
                           items: isolationTypeItems,
@@ -267,10 +257,9 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
                           },
                           helpText: 'A = Other seed production\nB = Commercial',
                           icon: Icons.fence_rounded,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Isolation Type wajib dipilih' : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Isolation Distance',
                           items: isolationDistanceItems,
@@ -283,10 +272,9 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
                           },
                           helpText: 'A = >400\nB = <400',
                           icon: Icons.social_distance_rounded,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Isolation Distance wajib dipilih' : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Nicking Observation',
                           items: nickingObservationItems,
@@ -299,10 +287,9 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
                           },
                           helpText: 'YES/NO',
                           icon: Icons.schedule_rounded,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Nicking Observation wajib dipilih' : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Flagging',
                           items: flaggingItems,
@@ -315,10 +302,9 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
                           },
                           helpText: 'Flagging (GF/OF/RF)',
                           icon: Icons.flag_rounded,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Flagging wajib dipilih' : null,
                         ),
-
                         const SizedBox(height: 10),
-
                         _buildDropdownFormField(
                           label: 'Recommendation',
                           items: recommendationItems,
@@ -331,21 +317,19 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
                           },
                           helpText: 'Continue to Next Process/Discard',
                           icon: Icons.recommend,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Recommendation wajib dipilih' : null,
                         ),
                         const SizedBox(height: 10),
                         _buildTextFormField('Recommendation PLD', 61, icon: Icons.recommend),
                         const SizedBox(height: 10),
-                        _buildTextFormField('Remarks', 62, icon: Icons.comment),
+                        _buildTextFormField('Remarks', 62, icon: Icons.comment, isRequired: false),
 
                         const SizedBox(height: 30),
                         Center(
                           child: ElevatedButton.icon(
                             onPressed: () {
                               if (_formKey.currentState!.validate()) {
-                                _showLoadingDialogAndClose();
                                 _showLoadingAndSaveInBackground();
-                                _showConfirmationDialog;
-                                _saveToGoogleSheets(row);
                               }
                             },
                             style: ElevatedButton.styleFrom(
@@ -376,7 +360,7 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
     );
   }
 
-  Widget _buildTextFormField(String label, int index, {IconData? icon, int maxLines = 1}) {
+  Widget _buildTextFormField(String label, int index, {IconData? icon, int maxLines = 1, bool isRequired = true}) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -417,6 +401,12 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
             row[index] = value;
           });
         },
+        validator: (value) {
+          if (isRequired && (value == null || value.isEmpty)) {
+            return '$label wajib diisi';
+          }
+          return null;
+        },
       ),
     );
   }
@@ -456,7 +446,7 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
           children: [
             Icon(icon, color: Colors.redAccent.shade700),
             const SizedBox(width: 10),
-            Expanded( // Menambahkan Expanded untuk menghindari overflow
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -466,8 +456,8 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
                       fontSize: 14,
                       color: Colors.grey.shade700,
                     ),
-                    overflow: TextOverflow.ellipsis, // Menghindari teks keluar
-                    maxLines: 1, // Membatasi jumlah baris
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                   Text(
                     value,
@@ -475,8 +465,8 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
-                    overflow: TextOverflow.ellipsis, // Menghindari teks keluar
-                    maxLines: 1, // Membatasi jumlah baris
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ],
               ),
@@ -543,7 +533,6 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
               );
             },
           );
-
           if (pickedDate != null) {
             String formattedDate = DateFormat('dd/MM/yyyy').format(pickedDate);
             setState(() {
@@ -551,11 +540,16 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
             });
           }
         },
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return '$label wajib dipilih';
+          }
+          return null;
+        },
       ),
     );
   }
 
-  // Fungsi untuk membangun dropdown
   Widget _buildDropdownFormField({
     required String label,
     required List<String> items,
@@ -564,8 +558,9 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
     String? hint,
     String? helpText,
     IconData? icon,
+    String? Function(String?)? validator,
   }) {
-    if (!items.contains(value)) {
+    if (value != null && !items.contains(value)) {
       value = null;
     }
 
@@ -616,6 +611,7 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
             }).toList(),
             dropdownColor: Colors.white,
             icon: Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
+            validator: validator,
           ),
         ),
         if (helpText != null) ...[
@@ -732,44 +728,6 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
     return -1;
   }
 
-  Future<void> _showConfirmationDialog() async {
-    final shouldSave = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Confirm Save'),
-        content: Text('Are you sure you want to save the changes?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (shouldSave == true) {
-      _validateAndSave();
-    }
-  }
-
-  void _validateAndSave() {
-    if (_formKey.currentState!.validate()) {
-      if (_isDataValid()) {
-        _showLoadingDialogAndClose();
-        _saveToGoogleSheets(row);
-      } else {
-        _showSnackbar('Please complete all required fields');
-      }
-    }
-  }
-
-  bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty); // Pastikan semua field terisi
-  }
-
   void _showSnackbar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
@@ -789,7 +747,7 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
     } else if (response == 'Failed to save data. Please try again.') {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => PspFailedScreen(),
+          builder: (context) => const PspFailedScreen(),
         ),
       );
     } else {
@@ -856,10 +814,10 @@ class PspSuccessScreen extends StatelessWidget {
                 navigator.pop();
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.redAccent, // Warna background tombol
-                foregroundColor: Colors.white, // Warna teks tombol
-                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                minimumSize: const Size(200, 60),
+                backgroundColor: Colors.redAccent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
@@ -874,7 +832,6 @@ class PspSuccessScreen extends StatelessWidget {
     );
   }
 
-  // Fungsi untuk menampilkan dialog loading
   void _showLoadingDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -960,10 +917,10 @@ class PspFailedScreen extends StatelessWidget {
                 Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.red.shade700, // Warna background tombol
-                foregroundColor: Colors.white, // Warna teks tombol
-                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                minimumSize: const Size(200, 60),
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),

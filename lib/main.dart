@@ -1,10 +1,11 @@
-import 'package:firebase_app_check/firebase_app_check.dart';
+// import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_downloader/flutter_downloader.dart';
 
 import 'router.dart';
 import 'screens/services/config_manager.dart';
@@ -12,45 +13,57 @@ import 'services/firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await FlutterDownloader.initialize();
 
-  await ConfigManager.loadConfig(); // Muat konfigurasi JSON
+    await ConfigManager.loadConfig(); // Muat konfigurasi JSON
 
-  // Inisialisasi locale data untuk Indonesia
-  await initializeDateFormatting('id_ID', null);
+    // Inisialisasi locale data untuk Indonesia
+    await initializeDateFormatting('id_ID', null);
 
-  // Inisialisasi Hive
-  await Hive.initFlutter();
+    // Inisialisasi Hive
+    await Hive.initFlutter();
 
-  // Membuka atau membuat box yang dibutuhkan
-  await Hive.openBox('vegetativeData');
-  await Hive.openBox('generativeData');
-  await Hive.openBox('preHarvestData');
-  await Hive.openBox('harvestData');
-  await Hive.openBox('pspVegetativeData');
-  await Hive.openBox('pspGenerativeData');
+    // Membuka atau membuat box yang dibutuhkan
+    await Hive.openBox('vegetativeData');
+    await Hive.openBox('generativeData');
+    await Hive.openBox('preHarvestData');
+    await Hive.openBox('harvestData');
+    await Hive.openBox('pspVegetativeData');
+    await Hive.openBox('pspGenerativeData');
 
-  // Inisialisasi Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,  // Ganti 'firebaseOptions' dengan 'DefaultFirebaseOptions.currentPlatform'
-  );
-
-  // Aktifkan Firebase App Check
-  await FirebaseAppCheck.instance.activate();
-
-  runApp(const MyApp());
+    // Inisialisasi Firebase
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    // Handle the error if needed
+    debugPrint("Firebase initialization error: $e");
+  }
+  runApp(MyApp());
 }
 
-// Future<bool> checkLoginStatus() async {
-//   SharedPreferences prefs = await SharedPreferences.getInstance();
-//   bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-//   String? userRole = prefs.getString('userRole');
-//
-//   if (isLoggedIn && userRole != null) {
-//     return false; // Jangan tampilkan login screen
-//   } else {
-//     return true;
-//   }
-// }
+
+class ErrorApp extends StatelessWidget {
+  final String errorMessage;
+  const ErrorApp({super.key, required this.errorMessage});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text('Gagal memulai aplikasi. \n\nError: $errorMessage'),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});

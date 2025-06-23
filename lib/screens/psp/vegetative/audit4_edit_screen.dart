@@ -1,11 +1,11 @@
-import 'dart:async';  // Untuk menggunakan Timer
+import 'dart:async'; // Untuk menggunakan Timer
 
 import 'package:flutter/material.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
-import 'package:shared_preferences/shared_preferences.dart';  // Import SharedPreferences untuk userName
+import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences untuk userName
 
 import '../../services/config_manager.dart';
 import '../../services/google_sheets_api.dart';
@@ -34,10 +34,10 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
   late TextEditingController _dateAuditController;
 
   String userEmail = 'Fetching...'; // Variabel untuk email pengguna
-  String userName = 'Fetching...';  // Variabel untuk menyimpan nama pengguna
+  String userName = 'Fetching...'; // Variabel untuk menyimpan nama pengguna
   late String spreadsheetId;
 
-  String? selectedCorpHealth;
+  String? selectedCropHealth;
   String? selectedCropUniformity;
   String? selectedIsolationAudit4;
   String? selectedIsolationType;
@@ -45,8 +45,8 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
   String? selectedFlagging;
   String? selectedRecommendation;
 
-  final List<String> corpHealthItems = ['A', 'B', 'C'];
-  final List<String> cropUniformityItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
   final List<String> isolationAudit4Items = ['A', 'B'];
   final List<String> isolationTypeItems = ['A', 'B'];
   final List<String> isolationDistanceItems = ['A', 'B'];
@@ -69,14 +69,14 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
     gSheetsApi = GoogleSheetsApi(spreadsheetId);
     gSheetsApi.init();
 
-    // Initialize dropdown fields
-    selectedCorpHealth = row[67];
-    selectedCropUniformity = row[68];
-    selectedIsolationAudit4 = row[69];
-    selectedIsolationType = row[70];
-    selectedIsolationDistance = row[71];
-    selectedFlagging = row[72];
-    selectedRecommendation = row[73];
+    // Initialize dropdown fields, set to null if empty
+    selectedCropHealth = row[67].isNotEmpty ? row[67] : null;
+    selectedCropUniformity = row[68].isNotEmpty ? row[68] : null;
+    selectedIsolationAudit4 = row[69].isNotEmpty ? row[69] : null;
+    selectedIsolationType = row[70].isNotEmpty ? row[70] : null;
+    selectedIsolationDistance = row[71].isNotEmpty ? row[71] : null;
+    selectedFlagging = row[72].isNotEmpty ? row[72] : null;
+    selectedRecommendation = row[73].isNotEmpty ? row[73] : null;
   }
 
   Future<void> _fetchSpreadsheetId() async {
@@ -85,7 +85,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
 
   void _initHive() async {
     await Hive.initFlutter();
-    await Hive.openBox('pspVegetativeData');  // Buat box Hive untuk menyimpan data vegetative
+    await Hive.openBox('pspVegetativeData'); // Buat box Hive untuk menyimpan data vegetative
   }
 
   Future<void> _saveToHive(List<String> rowData) async {
@@ -184,17 +184,18 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
                         const SizedBox(height: 10),
                         _buildSectionHeader('Crop Management', Icons.agriculture),
                         _buildDropdownFormField(
-                          label: 'Corp Health',
-                          items: corpHealthItems,
-                          value: selectedCorpHealth,
+                          label: 'Crop Health',
+                          items: cropHealthItems,
+                          value: selectedCropHealth,
                           onChanged: (value) {
                             setState(() {
-                              selectedCorpHealth = value;
+                              selectedCropHealth = value;
                               row[67] = value ?? '';
                             });
                           },
                           helpText: 'A = GF (Good)\nB = GF (Fair)\nC = OF (Poor)',
                           icon: Icons.health_and_safety,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Crop Health wajib dipilih' : null,
                         ),
 
                         const SizedBox(height: 10),
@@ -208,8 +209,9 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
                               row[68] = value ?? '';
                             });
                           },
-                          helpText: 'A = GF (Good)\nB = GF (Fair)\nC = YF (Poor)',
+                          helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                           icon: Icons.grass,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Crop Uniformity wajib dipilih' : null,
                         ),
 
                         const SizedBox(height: 10),
@@ -226,6 +228,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
                           },
                           helpText: 'A = Yes\nB = No',
                           icon: Icons.content_paste_search_rounded,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Isolation Audit 4 wajib dipilih' : null,
                         ),
                         const SizedBox(height: 10),
                         _buildDropdownFormField(
@@ -240,6 +243,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
                           },
                           helpText: 'A = Other seed production\nB = Commercial',
                           icon: Icons.type_specimen_rounded,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Isolation Type wajib dipilih' : null,
                         ),
                         const SizedBox(height: 10),
                         _buildDropdownFormField(
@@ -254,6 +258,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
                           },
                           helpText: 'A = >400\nB = <400',
                           icon: Icons.straighten_rounded,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Isolation Distance wajib dipilih' : null,
                         ),
 
                         const SizedBox(height: 10),
@@ -270,6 +275,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
                           },
                           helpText: 'Flagging (GF/OF/RF)',
                           icon: Icons.flag,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Flagging wajib dipilih' : null,
                         ),
 
                         const SizedBox(height: 10),
@@ -286,21 +292,22 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
                           },
                           helpText: 'Continue to Next Process/Discard',
                           icon: Icons.recommend,
+                          validator: (value) => (value == null || value.isEmpty) ? 'Recommendation wajib dipilih' : null,
                         ),
                         const SizedBox(height: 10),
                         _buildText2FormField('Recommendation PLD (Ha)', 74, icon: Icons.recommend),
                         const SizedBox(height: 10),
-                        _buildTextFormField('Remarks', 75, icon: Icons.comment, maxLines: 3),
+                        // Kolom Remarks dibuat opsional (tidak ada validator)
+                        _buildTextFormField('Remarks', 75, icon: Icons.comment, maxLines: 3, isRequired: false),
 
                         const SizedBox(height: 30),
                         Center(
                           child: ElevatedButton.icon(
                             onPressed: () {
+                              // Memvalidasi form sebelum menyimpan
                               if (_formKey.currentState!.validate()) {
-                                _showLoadingDialogAndClose();
+                                // Jika form valid, lanjutkan proses penyimpanan
                                 _showLoadingAndSaveInBackground();
-                                _showConfirmationDialog;
-                                _saveToGoogleSheets(row);
                               }
                             },
                             style: ElevatedButton.styleFrom(
@@ -331,7 +338,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
     );
   }
 
-  Widget _buildTextFormField(String label, int index, {IconData? icon, int maxLines = 1}) {
+  Widget _buildTextFormField(String label, int index, {IconData? icon, int maxLines = 1, bool isRequired = true}) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -371,6 +378,12 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
           setState(() {
             row[index] = value;
           });
+        },
+        validator: (value) {
+          if (isRequired && (value == null || value.isEmpty)) {
+            return '$label wajib diisi';
+          }
+          return null;
         },
       ),
     );
@@ -417,6 +430,12 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
             String cleanedValue = value.replaceAll("'", "");
             row[index] = "'$cleanedValue";
           });
+        },
+        validator: (value) {
+          if (value == null || value.isEmpty || value == "'") {
+            return '$label wajib diisi';
+          }
+          return null;
         },
       ),
     );
@@ -552,11 +571,16 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
             });
           }
         },
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return '$label wajib dipilih';
+          }
+          return null;
+        },
       ),
     );
   }
 
-  // Fungsi untuk membangun dropdown
   Widget _buildDropdownFormField({
     required String label,
     required List<String> items,
@@ -565,8 +589,9 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
     String? hint,
     String? helpText,
     IconData? icon,
+    String? Function(String?)? validator,
   }) {
-    if (!items.contains(value)) {
+    if (value != null && !items.contains(value)) {
       value = null;
     }
 
@@ -617,6 +642,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
             }).toList(),
             dropdownColor: Colors.white,
             icon: Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
+            validator: validator,
           ),
         ),
         if (helpText != null) ...[
@@ -751,44 +777,6 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
     return -1;
   }
 
-  Future<void> _showConfirmationDialog() async {
-    final shouldSave = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Confirm Save'),
-        content: Text('Are you sure you want to save the changes?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (shouldSave == true) {
-      _validateAndSave();
-    }
-  }
-
-  void _validateAndSave() {
-    if (_formKey.currentState!.validate()) {
-      if (_isDataValid()) {
-        _showLoadingDialogAndClose();
-        _saveToGoogleSheets(row);
-      } else {
-        _showSnackbar('Please complete all required fields');
-      }
-    }
-  }
-
-  bool _isDataValid() {
-    return row.every((field) => field.isNotEmpty);
-  }
-
   void _showSnackbar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
@@ -808,7 +796,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
     } else if (response == 'Failed to save data. Please try again.') {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => PspFailedScreen(),
+          builder: (context) => const PspFailedScreen(),
         ),
       );
     } else {
@@ -830,6 +818,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
   }
 }
 
+// ... (Kelas PspSuccessScreen, PspFailedScreen, dan _logErrorToActivity tetap sama)
 class PspSuccessScreen extends StatelessWidget {
   final List<String> row;
   final String userName;
@@ -875,10 +864,10 @@ class PspSuccessScreen extends StatelessWidget {
                 navigator.pop();
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.redAccent, // Warna background tombol
-                foregroundColor: Colors.white, // Warna teks tombol
-                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                minimumSize: const Size(200, 60),
+                backgroundColor: Colors.redAccent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
@@ -893,7 +882,6 @@ class PspSuccessScreen extends StatelessWidget {
     );
   }
 
-  // Fungsi untuk menampilkan dialog loading
   void _showLoadingDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -979,10 +967,10 @@ class PspFailedScreen extends StatelessWidget {
                 Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 60), // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.red.shade700, // Warna background tombol
-                foregroundColor: Colors.white, // Warna teks tombol
-                shape: RoundedRectangleBorder( // Membuat sudut tombol melengkung
+                minimumSize: const Size(200, 60),
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),

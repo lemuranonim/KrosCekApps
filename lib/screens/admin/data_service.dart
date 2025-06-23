@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/config_manager.dart';
 import '../services/google_sheets_api.dart';
+import 'vegetative_audit_data.dart';
 
 class DataService {
   // Cache mechanism
@@ -483,6 +484,50 @@ class DataService {
       _cache.clear();
       _cacheTimestamps.clear();
     }
+  }
+
+  Future<List<VegetativeAuditData>> getVegetativeAuditData() async {
+    List<VegetativeAuditData> allAuditData = [];
+
+    // Ambil semua konfigurasi region dari ConfigManager
+    // ConfigManager.regions adalah Map<String, String>
+    final Map<String, String> regionConfigs = ConfigManager.regions;
+
+    // Loop melalui setiap region (key = nama region, value = spreadsheetId)
+    for (var entry in regionConfigs.entries) {
+      final String regionName = entry.key;
+      final String spreadsheetId = entry.value;
+
+      try {
+        // 1. Buat instance GoogleSheetsApi untuk spreadsheetId saat ini
+        final api = GoogleSheetsApi(spreadsheetId);
+        await api.init(); // Inisialisasi koneksi
+
+        // 2. Ambil semua data dari worksheet 'Generative'
+        // getSpreadsheetData akan mengembalikan List<List<String>>
+        final rows = await api.getSpreadsheetData('Generative');
+
+        // 3. Lewati baris header (baris pertama) dan proses sisanya
+        if (rows.length > 1) {
+          final dataRows = rows.sublist(1); // Ambil semua baris kecuali header
+
+          for (var row in dataRows) {
+            // Filter baris yang tidak relevan (misal, tidak punya data week)
+            if (row.length > 10 && row[10].isNotEmpty && int.tryParse(row[10]) != null) {
+              final auditData = VegetativeAuditData.fromGSheetRow(row);
+              allAuditData.add(auditData);
+            }
+          }
+        }
+      } catch (e) {
+        // Jika terjadi error pada satu region, cetak pesan dan lanjut ke region berikutnya
+        debugPrint("Gagal memuat data untuk region '$regionName': $e");
+        continue;
+      }
+    }
+
+    debugPrint("Total data audit vegetatif yang berhasil dimuat: ${allAuditData.length} baris.");
+    return allAuditData;
   }
 }
 

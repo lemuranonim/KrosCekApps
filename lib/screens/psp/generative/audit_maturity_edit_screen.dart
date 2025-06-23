@@ -39,10 +39,10 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
   late String spreadsheetId;
 
   String? selectedEarConditionObservation;
-  String? selectedCorpHealth;
+  String? selectedCropHealth;
 
   final List<String> earConditionObservationItems = ['2', '3', '4'];
-  final List<String> corpHealthItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['A', 'B', 'C'];
 
   bool isLoading = false;
 
@@ -63,7 +63,7 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
 
     // Initialize dropdown fields
     selectedEarConditionObservation = row[68];
-    selectedCorpHealth = row[69];
+    selectedCropHealth = row[69];
   }
 
   Future<void> _fetchSpreadsheetId() async {
@@ -179,12 +179,12 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
                         ),
                         const SizedBox(height: 10),
                         _buildDropdownFormField(
-                          label: 'Corp Health',
-                          items: corpHealthItems,
-                          value: selectedCorpHealth,
+                          label: 'Crop Health',
+                          items: cropHealthItems,
+                          value: selectedCropHealth,
                           onChanged: (value) {
                             setState(() {
-                              selectedCorpHealth = value;
+                              selectedCropHealth = value;
                               row[69] = value ?? '';
                             });
                           },

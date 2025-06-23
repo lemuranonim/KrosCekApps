@@ -175,7 +175,7 @@ class GoogleSheetsApi {
     }).toList();
 
     // Perbarui data di baris yang ditentukan
-    await sheet.values.insertRow(rowIndex, rowData, fromColumn: 1);
+    await sheet.values.insertRow(rowIndex, formattedRowData, fromColumn: 1);
 
     log("Baris diperbarui pada worksheet $worksheetTitle: $formattedRowData");
   }
@@ -208,6 +208,23 @@ class GoogleSheetsApi {
       // Perbarui baris dalam batch
       await sheet.values.insertRow(rowIndex, rowData); // Perbarui baris
       log("Baris diperbarui pada rowIndex $rowIndex: $formattedRowData");
+    }
+  }
+
+  Future<void> updateSpecificCells(String worksheetTitle, int rowIndex, Map<int, String> updates) async {
+    final Worksheet? sheet = spreadsheet.worksheetByTitle(worksheetTitle);
+    if (sheet == null) {
+      throw Exception('Worksheet tidak ditemukan: $worksheetTitle');
+    }
+
+    // Lakukan pembaruan untuk setiap sel dalam map
+    for (var entry in updates.entries) {
+      final int columnIndex = entry.key;
+      final String value = entry.value;
+
+      // insertValue menggunakan indeks berbasis 1 untuk baris dan kolom
+      await sheet.values.insertValue(value, column: columnIndex, row: rowIndex);
+      log("Sel di [baris:$rowIndex, kolom:$columnIndex] diperbarui dengan nilai: $value");
     }
   }
 

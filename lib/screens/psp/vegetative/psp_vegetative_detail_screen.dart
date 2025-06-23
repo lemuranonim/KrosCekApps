@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
-import 'package:lottie/lottie.dart';
+import 'package:lottie/lottie.dart' hide Marker;
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:url_launcher/url_launcher.dart'; // Tambahkan ini untuk menggunakan url_launcher
+
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' as latlng;
 
 import '../../services/config_manager.dart';
 import '../../services/google_sheets_api.dart';
@@ -30,8 +33,6 @@ class PspVegetativeDetailScreen extends StatefulWidget {
 class PspVegetativeDetailScreenState extends State<PspVegetativeDetailScreen> {
   List<String>? row;
   bool isLoading = true;
-
-  String _mapImageUrl = ''; // URL untuk Google Static Maps
   double? latitude;
   double? longitude;
 
@@ -86,7 +87,6 @@ class PspVegetativeDetailScreenState extends State<PspVegetativeDetailScreen> {
       'row': row,
       'latitude': latitude,
       'longitude': longitude,
-      'mapImageUrl': _mapImageUrl,
     });
   }
 
@@ -95,7 +95,6 @@ class PspVegetativeDetailScreenState extends State<PspVegetativeDetailScreen> {
       row = List<String>.from(cachedData['row']);
       latitude = cachedData['latitude'];
       longitude = cachedData['longitude'];
-      _mapImageUrl = cachedData['mapImageUrl'];
     });
   }
 
@@ -119,7 +118,6 @@ class PspVegetativeDetailScreenState extends State<PspVegetativeDetailScreen> {
 
       latitude = coordinates['lat'] ?? defaultLat;
       longitude = coordinates['lng'] ?? defaultLng;
-      _mapImageUrl = _buildStaticMapUrl(latitude, longitude);
 
       setState(() {
         row = fetchedRow;
@@ -128,7 +126,6 @@ class PspVegetativeDetailScreenState extends State<PspVegetativeDetailScreen> {
     } catch (e) {
       latitude = defaultLat;
       longitude = defaultLng;
-      _mapImageUrl = _buildStaticMapUrl(latitude, longitude);
       setState(() => isLoading = false);
     }
   }
@@ -142,20 +139,6 @@ class PspVegetativeDetailScreenState extends State<PspVegetativeDetailScreen> {
     } catch (e) {
       return {'lat': null, 'lng': null}; // Nilai null jika parsing gagal
     }
-  }
-
-  String _buildStaticMapUrl(double? latitude, double? longitude) {
-    const String apiKey =
-        'AIzaSyDNZoDIH3DjLrz77c-ihr0HLhYrgPtfKKc'; // Ganti dengan API Key Anda
-    const String baseUrl = 'https://maps.googleapis.com/maps/api/staticmap';
-    const int zoomLevel = 15;
-    const String mapSize = '600x400';
-
-    final double lat = latitude ?? defaultLat; // Default ke yang diberikan
-    final double lng = longitude ?? defaultLng; // Default ke yang diberikan
-
-    return '$baseUrl?center=$lat,$lng&zoom=$zoomLevel&size=$mapSize'
-        '&markers=color:red%7C$lat,$lng&key=$apiKey';
   }
 
   Future<void> _openMaps() async {
@@ -452,42 +435,46 @@ class PspVegetativeDetailScreenState extends State<PspVegetativeDetailScreen> {
   }
 
   Widget _buildInteractiveMap() {
-    return GestureDetector(
-      onTap: _openMaps,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(25),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
+    // Gunakan latitude dan longitude yang sudah ada, dengan default jika null
+    final mapCenterLat = latitude ?? defaultLat;
+    final mapCenterLng = longitude ?? defaultLng;
+
+    return SizedBox(
+      height: 250,
+      width: double.infinity,
+      child: FlutterMap(
+        options: MapOptions(
+          initialCenter: latlng.LatLng(mapCenterLat, mapCenterLng), // Gunakan latlng.LatLng dari package
+          initialZoom: 15.0, // Sesuaikan level zoom awal sesuai kebutuhan
+          onTap: (tapPosition, point) {
+            _openMaps();
+          },
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: _mapImageUrl.isNotEmpty
-              ? Image.network(
-                  _mapImageUrl,
-                  fit: BoxFit.cover,
-                  height: 250,
-                  width: double.infinity,
-                )
-              : Container(
-                  height: 250,
-                  color: Colors.grey.shade300,
-                  child: const Center(
-                    child: Text(
-                      'Map not available',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey,
-                      ),
+        children: [
+          TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.vegetative.kroscek',
+          ),
+          // Tambahkan Marker untuk menunjukkan lokasi
+          if (latitude != null && longitude != null) // Hanya tampilkan marker jika koordinat valid
+            MarkerLayer(
+              markers: [
+                Marker(
+                  width: 80.0,
+                  height: 80.0,
+                  point: latlng.LatLng(latitude!, longitude!), // Koordinat marker
+                  child: Tooltip( // Tambahkan Tooltip jika ingin
+                    message: 'Lokasi: ${latitude!.toStringAsFixed(5)}, ${longitude!.toStringAsFixed(5)}',
+                    child: Icon(
+                      Icons.location_pin,
+                      color: Colors.red.shade700,
+                      size: 40.0,
                     ),
                   ),
                 ),
-        ),
+              ],
+            ),
+        ],
       ),
     );
   }

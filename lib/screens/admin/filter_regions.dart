@@ -50,8 +50,8 @@ class _FilterRegionsScreenState extends State<FilterRegionsScreen> {
 
       if (snapshot.exists) {
         Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
-        if (data.containsKey('hsp')) {
-          List<String> regions = List<String>.from(data['hsp']);
+        if (data.containsKey('qa')) {
+          List<String> regions = List<String>.from(data['qa']);
           setState(() {
             _availableRegions = regions;
           });
@@ -118,7 +118,7 @@ class _FilterRegionsScreenState extends State<FilterRegionsScreen> {
       await FirebaseFirestore.instance
           .collection('config')
           .doc('filter')
-          .update({'hsp': updatedRegions});
+          .update({'qa': updatedRegions});
 
       setState(() {
         _availableRegions = updatedRegions;
@@ -156,7 +156,7 @@ class _FilterRegionsScreenState extends State<FilterRegionsScreen> {
       await FirebaseFirestore.instance
           .collection('config')
           .doc('filter')
-          .update({'hsp': updatedRegions});
+          .update({'qa': updatedRegions});
 
       // Update selected regions if the edited region was selected
       if (_selectedRegions.contains(oldName)) {
@@ -184,7 +184,7 @@ class _FilterRegionsScreenState extends State<FilterRegionsScreen> {
       await FirebaseFirestore.instance
           .collection('config')
           .doc('filter')
-          .update({'hsp': updatedRegions});
+          .update({'qa': updatedRegions});
 
       // Remove from selected regions if selected
       if (_selectedRegions.contains(regionName)) {

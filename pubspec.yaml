@@ -2,7 +2,7 @@ name: kroscek
 description: "Crop Inspection and Check Result"
 publish_to: 'none'
 
-version: 2.14.2+76
+version: 2.17.0+94
 
 environment:
   sdk: '>=3.5.4 <4.0.0'
@@ -30,7 +30,7 @@ dependencies:
   # Authentication
   firebase_auth: ^5.3.4
   google_sign_in: ^6.2.2
-  sign_in_with_apple: ^6.1.4
+  sign_in_with_apple: ^7.0.1
 
   # Firebase Services
   firebase_core: ^3.8.1
@@ -53,11 +53,11 @@ dependencies:
   hive_flutter: ^1.1.0
 
   # Location and Maps
-  geolocator: ^13.0.2
+  geolocator: ^14.0.1
   google_maps_flutter: ^2.9.0
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
-  geocoding: ^3.0.0
+  geocoding: ^4.0.0
 
   # File and Media
   image_picker: ^1.1.2
@@ -65,7 +65,7 @@ dependencies:
   excel: ^4.0.3
 
   # Permissions
-  permission_handler: ^11.3.1
+  permission_handler: ^12.0.0+1
 
   # Navigation Bars and Menus
   convex_bottom_bar: ^3.0.0
@@ -83,8 +83,8 @@ dependencies:
   dropdown_button2: ^2.3.9
 
   # Charts and Tables
-  fl_chart: ^0.70.0
-  syncfusion_flutter_datagrid: ^28.1.33
+  fl_chart: ^1.0.0
+  syncfusion_flutter_datagrid: ^29.2.7+1
 
   # UI Animations and Effects
   liquid_pull_to_refresh: ^3.0.1
@@ -110,8 +110,22 @@ dependencies:
   # Miscellaneous
   weather_icons: ^3.0.0
   flutter_map_marker_cluster: ^1.4.0
-  syncfusion_flutter_charts: ^28.2.12
-  syncfusion_flutter_datepicker: ^28.2.12
+  syncfusion_flutter_charts: ^29.2.7
+  syncfusion_flutter_datepicker: ^29.2.7
+  csv: ^6.0.0
+  share_plus: ^11.0.0
+  syncfusion_flutter_maps: ^29.2.7+1
+  geo: ^0.3.0
+  collection: ^1.19.1
+  flutter_map_toolkit: ^0.0.3
+  data_table_2: ^2.6.0
+  dio: ^5.8.0+1
+  open_file: ^3.5.10
+  media_store_plus: ^0.1.3
+  android_path_provider: ^0.3.1
+  device_info_plus: ^11.4.0
+  flutter_downloader: ^1.12.0
+  android_intent_plus: ^5.3.0
 
 dev_dependencies:
   flutter_test:
@@ -138,6 +152,8 @@ flutter:
     - assets/config.json
     - assets/maintenance.png
     - assets/icon/icon.png
+    - assets/gadm41_IDN_3.json
+    - assets/gadm41_IDN_4.json
 
 flutter_icons:
   android: true

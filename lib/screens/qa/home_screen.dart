@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:lottie/lottie.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -14,6 +15,8 @@ import 'package:weather_icons/weather_icons.dart';
 import '../services/config_manager.dart';
 import 'absen_log_screen.dart';
 import 'activity_screen.dart';
+import 'dashboard_visit_screen.dart';
+import 'detailed_map_screen.dart';
 import 'detaselling_screen.dart';
 import 'generative/generative_screen.dart';
 import 'harvest/harvest_screen.dart';
@@ -22,7 +25,6 @@ import 'pre_harvest/pre_harvest_screen.dart';
 import 'training_screen.dart';
 import 'vegetative/vegetative_screen.dart';
 import 'weather_widget.dart';
-import 'package:go_router/go_router.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -31,7 +33,8 @@ class HomeScreen extends StatefulWidget {
   HomeScreenState createState() => HomeScreenState();
 }
 
-class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+class HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   bool _isLoading = true;
   int _selectedIndex = 0;
   String _appVersion = 'Fetching...';
@@ -177,13 +180,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                         SystemNavigator.pop();
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green, // Use backgroundColor instead of primary
+                        backgroundColor: Colors.green,
+                        // Use backgroundColor instead of primary
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12.0),
                         ),
                       ),
                       child: Text(
-                          "Medal",
+                        "Medal",
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -220,38 +224,60 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   void _updateTime() {
     final now = DateTime.now();
     setState(() {
-      _currentTime = '${_getDayName(now.weekday)}, ${now.day} ${_getMonthName(now.month)} ${now.year}';
+      _currentTime =
+      '${_getDayName(now.weekday)}, ${now.day} ${_getMonthName(now.month)} ${now.year}';
     });
   }
 
   String _getDayName(int day) {
     switch (day) {
-      case 1: return 'Senin';
-      case 2: return 'Selasa';
-      case 3: return 'Rabu';
-      case 4: return 'Kamis';
-      case 5: return 'Jumat';
-      case 6: return 'Sabtu';
-      case 7: return 'Minggu';
-      default: return '';
+      case 1:
+        return 'Senin';
+      case 2:
+        return 'Selasa';
+      case 3:
+        return 'Rabu';
+      case 4:
+        return 'Kamis';
+      case 5:
+        return 'Jumat';
+      case 6:
+        return 'Sabtu';
+      case 7:
+        return 'Minggu';
+      default:
+        return '';
     }
   }
 
   String _getMonthName(int month) {
     switch (month) {
-      case 1: return 'Januari';
-      case 2: return 'Februari';
-      case 3: return 'Maret';
-      case 4: return 'April';
-      case 5: return 'Mei';
-      case 6: return 'Juni';
-      case 7: return 'Juli';
-      case 8: return 'Agustus';
-      case 9: return 'September';
-      case 10: return 'Oktober';
-      case 11: return 'November';
-      case 12: return 'Desember';
-      default: return '';
+      case 1:
+        return 'Januari';
+      case 2:
+        return 'Februari';
+      case 3:
+        return 'Maret';
+      case 4:
+        return 'April';
+      case 5:
+        return 'Mei';
+      case 6:
+        return 'Juni';
+      case 7:
+        return 'Juli';
+      case 8:
+        return 'Agustus';
+      case 9:
+        return 'September';
+      case 10:
+        return 'Oktober';
+      case 11:
+        return 'November';
+      case 12:
+        return 'Desember';
+      default:
+        return '';
     }
   }
 
@@ -297,7 +323,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   // Stream untuk mendapatkan data Districts secara real-time
-  Stream<List<String>> getDistrictsStream(String? selectedRegion, String? selectedQASPV) {
+  Stream<List<String>> getDistrictsStream(
+      String? selectedRegion, String? selectedQASPV) {
     if (selectedRegion == null || selectedQASPV == null) {
       return Stream.value([]);
     }
@@ -333,8 +360,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       if (!snapshot.exists) return [];
       Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
 
-      if (data.containsKey('hsp') && data['hsp'] is List) {
-        return List<String>.from(data['hsp']);
+      if (data.containsKey('qa') && data['qa'] is List) {
+        return List<String>.from(data['qa']);
       }
       return [];
     });
@@ -349,7 +376,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
   Future<void> _fetchGoogleUserData() async {
     try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signInSilently();
+      final GoogleSignInAccount? googleUser =
+      await _googleSignIn.signInSilently();
       if (googleUser != null) {
         setState(() {
           userName = googleUser.displayName ?? 'Pengguna';
@@ -421,12 +449,15 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     try {
       // Load regions from Firestore
-      final configSnapshot = await FirebaseFirestore.instance.collection('config').doc('filter').get();
+      final configSnapshot = await FirebaseFirestore.instance
+          .collection('config')
+          .doc('filter')
+          .get();
       if (configSnapshot.exists) {
         final data = configSnapshot.data();
-        if (data != null && data.containsKey('hsp')) {
+        if (data != null && data.containsKey('qa')) {
           setState(() {
-            fieldSPVList = List<String>.from(data['hsp']);
+            fieldSPVList = List<String>.from(data['qa']);
           });
         }
       }
@@ -491,7 +522,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       // Show a snackbar to inform the user
       scaffoldMessenger.showSnackBar(
         const SnackBar(
-          content: Text('Mulai dari Nol ya Kak...', textAlign: TextAlign.center),
+          content:
+          Text('Mulai dari Nol ya Kak...', textAlign: TextAlign.center),
           duration: Duration(seconds: 4),
         ),
       );
@@ -513,7 +545,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
               color: Colors.green,
             ),
           ),
-          content: const Text("Menopo panjenengan yakin badhe medal gantos akun?"),
+          content:
+          const Text("Menopo panjenengan yakin badhe medal gantos akun?"),
           actions: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -533,7 +566,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                     Navigator.of(context).pop(true);
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green, // Use backgroundColor instead of primary
+                    backgroundColor: Colors.green,
+                    // Use backgroundColor instead of primary
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12.0),
                     ),
@@ -575,7 +609,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           const end = Offset.zero;
           const curve = Curves.easeInOutQuart;
 
-          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          var tween =
+          Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
           var offsetAnimation = animation.drive(tween);
 
           return SlideTransition(position: offsetAnimation, child: child);
@@ -627,12 +662,64 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
               ),
               const SizedBox(height: 16),
 
+              _buildPremiumMenuItem(
+                // Atau _buildMenuItem jika Anda punya versi standar
+                context,
+                icon: Icons.map, // Contoh ikon
+                title: 'Workload Map',
+                subtitle: 'Peta workload area dengan filter lanjutan',
+                onTap: () {
+                  Navigator.pop(context); // Tutup bottom sheet
+                  if (selectedSpreadsheetId == null ||
+                      selectedFieldSPV == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Pilih Region dulu boloo!')),
+                    );
+                    return;
+                  }
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (context) => DetailedMapScreen(
+                        spreadsheetId: selectedSpreadsheetId!,
+                        initialWorksheetTitle: 'Generative',
+                        // Worksheet default
+                        initialRegion: selectedFieldSPV,
+                        initialDistrict: selectedFA,
+                        initialSeason: selectedSeason,
+                      )));
+                },
+              ),
+
+              _buildPremiumMenuItem(
+                context,
+                icon: Icons.dashboard_customize_outlined, // Contoh ikon
+                title: 'Dashboard Visit',
+                subtitle: 'Ringkasan visit dan crop uniformity',
+                onTap: () {
+                  Navigator.pop(context); // Tutup bottom sheet
+                  if (selectedSpreadsheetId == null ||
+                      selectedFieldSPV == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Pilih Region dulu boloo!')),
+                    );
+                    return;
+                  }
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (context) => DashboardVisitScreen(
+                      // Kirim parameter yang dibutuhkan, contoh:
+                      selectedRegion: selectedFieldSPV!,
+                      // selectedFieldSPV adalah state untuk Region
+                      spreadsheetId: selectedSpreadsheetId!,
+                    ),
+                  ));
+                },
+              ),
+
               // Menu Items
               _buildPremiumMenuItem(
                 context,
                 icon: Icons.engineering_rounded,
                 title: 'Training',
-                subtitle: 'Training materials & resources',
+                subtitle: 'Materi & sumber daya pelatihan',
                 onTap: () {
                   Navigator.pop(context);
                   _navigateTo(
@@ -650,13 +737,13 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                 context,
                 icon: Icons.list_alt_rounded,
                 title: 'Absen Log',
-                subtitle: 'Attendance records',
+                subtitle: 'Catatan kehadiran',
                 onTap: () {
                   if (selectedFieldSPV == null) {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Please select your region first!'),
+                        content: Text('Pilih Region dulu boloo!'),
                         duration: Duration(seconds: 2),
                       ),
                     );
@@ -671,7 +758,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                 context,
                 icon: Icons.warning_amber_rounded,
                 title: 'Issue',
-                subtitle: 'Report and track issues',
+                subtitle: 'Laporkan dan lacak masalah',
                 onTap: () {
                   Navigator.pop(context);
                   if (selectedFA != null) {
@@ -687,7 +774,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Please select a district first!'),
+                        content:
+                        Text('Pilih Region, QA SPV & District dulu boloo!'),
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
@@ -710,7 +798,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  child: const Text('Close', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text('Close',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -799,7 +888,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         Scaffold(
           appBar: AppBar(
             title: _selectedIndex == 0
-                ? const Text('HSP Dashboard',
+                ? const Text('Dashboard',
                 style: TextStyle(
                     color: Colors.white, fontWeight: FontWeight.bold))
                 : const Text('Aktivitas',
@@ -869,7 +958,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
               ),
             ),
           ),
-          floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+          floatingActionButtonLocation:
+          FloatingActionButtonLocation.centerDocked,
           bottomNavigationBar: Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -909,7 +999,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                       IconButton(
                         icon: Icon(
                           Icons.home_rounded,
-                          color: _selectedIndex == 0 ? Colors.white : Colors.white70,
+                          color: _selectedIndex == 0
+                              ? Colors.white
+                              : Colors.white70,
                           size: 35.0,
                         ),
                         onPressed: () => setState(() => _selectedIndex = 0),
@@ -920,7 +1012,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                       IconButton(
                         icon: Icon(
                           Icons.restore_rounded,
-                          color: _selectedIndex == 1 ? Colors.white : Colors.white70,
+                          color: _selectedIndex == 1
+                              ? Colors.white
+                              : Colors.white70,
                           size: 35.0,
                         ),
                         onPressed: () => setState(() => _selectedIndex = 1),
@@ -978,7 +1072,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
               fontWeight: FontWeight.bold,
             ),
           ),
-          content: const Text('Yen diperluake, pencet tombol refresh kanggo nganyari data region dadi kosong koyo awal.'),
+          content: const Text(
+              'Yen diperluake, pencet tombol refresh kanggo nganyari data region dadi kosong koyo awal.'),
           actions: [
             TextButton(
               onPressed: () {
@@ -1068,7 +1163,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                                           color: Colors.green.shade800,
                                         ),
                                         textAlign: TextAlign.left,
-                                        speed: const Duration(milliseconds: 500),
+                                        speed:
+                                        const Duration(milliseconds: 500),
                                       ),
                                     ],
                                     totalRepeatCount: 1,
@@ -1122,7 +1218,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                         ),
                         const SizedBox(height: 16),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(30),
@@ -1173,19 +1270,24 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
                       return DropdownButtonFormField<String>(
                         value: selectedFieldSPV,
-                        hint: const Text("Pilih Regionmu!", style: TextStyle(color: Colors.grey)),
+                        hint: const Text("Pilih Regionmu!",
+                            style: TextStyle(color: Colors.grey)),
                         items: regions.map((region) {
                           return DropdownMenuItem<String>(
                             value: region,
-                            child: Text(region, style: const TextStyle(color: Colors.black87)),
+                            child: Text(region,
+                                style: const TextStyle(color: Colors.black87)),
                           );
                         }).toList(),
                         onChanged: (value) async {
-                          final scaffoldMessenger = ScaffoldMessenger.of(context);
-                          SharedPreferences prefs = await SharedPreferences.getInstance();
+                          final scaffoldMessenger =
+                          ScaffoldMessenger.of(context);
+                          SharedPreferences prefs =
+                          await SharedPreferences.getInstance();
 
                           if (value != null) {
-                            final spreadsheetId = ConfigManager.getSpreadsheetId(value);
+                            final spreadsheetId =
+                            ConfigManager.getSpreadsheetId(value);
                             await prefs.setString('selectedRegion', value);
 
                             setState(() {
@@ -1200,7 +1302,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                             if (spreadsheetId == null) {
                               scaffoldMessenger.showSnackBar(
                                 const SnackBar(
-                                  content: Text('Spreadsheet ID tidak ditemukan untuk region yang dipilih'),
+                                  content: Text(
+                                      'Spreadsheet ID tidak ditemukan untuk region yang dipilih'),
                                 ),
                               );
                             }
@@ -1212,7 +1315,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                           fontWeight: FontWeight.w500,
                         ),
                         dropdownColor: Colors.white,
-                        icon: const Icon(Icons.arrow_drop_down, color: Colors.green),
+                        icon: const Icon(Icons.arrow_drop_down,
+                            color: Colors.green),
                         iconSize: 28,
                         decoration: InputDecoration(
                           labelText: 'Field Region',
@@ -1224,18 +1328,22 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                           filled: true,
                           fillColor: Colors.white,
                           enabledBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(color: Colors.green, width: 2.0),
+                            borderSide: const BorderSide(
+                                color: Colors.green, width: 2.0),
                             borderRadius: BorderRadius.circular(12.0),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(color: Colors.green, width: 2.5),
+                            borderSide: const BorderSide(
+                                color: Colors.green, width: 2.5),
                             borderRadius: BorderRadius.circular(12.0),
                           ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12.0),
-                            borderSide: const BorderSide(color: Colors.green, width: 2.0),
+                            borderSide: const BorderSide(
+                                color: Colors.green, width: 2.0),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 16, horizontal: 20),
                         ),
                         borderRadius: BorderRadius.circular(12),
                         elevation: 2,
@@ -1257,11 +1365,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
                         return DropdownButtonFormField<String>(
                           value: selectedQA,
-                          hint: const Text("Pilih QA SPV!", style: TextStyle(color: Colors.grey)),
+                          hint: const Text("Pilih QA SPV!",
+                              style: TextStyle(color: Colors.grey)),
                           items: qaSPVList.map((qa) {
                             return DropdownMenuItem<String>(
                               value: qa,
-                              child: Text(qa, style: const TextStyle(color: Colors.black87)),
+                              child: Text(qa,
+                                  style:
+                                  const TextStyle(color: Colors.black87)),
                             );
                           }).toList(),
                           onChanged: (value) async {
@@ -1276,7 +1387,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                             fontWeight: FontWeight.w500,
                           ),
                           dropdownColor: Colors.white,
-                          icon: const Icon(Icons.arrow_drop_down, color: Colors.green),
+                          icon: const Icon(Icons.arrow_drop_down,
+                              color: Colors.green),
                           iconSize: 28,
                           decoration: InputDecoration(
                             labelText: 'QA SPV',
@@ -1288,18 +1400,22 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                             filled: true,
                             fillColor: Colors.white,
                             enabledBorder: OutlineInputBorder(
-                              borderSide: const BorderSide(color: Colors.green, width: 2.0),
+                              borderSide: const BorderSide(
+                                  color: Colors.green, width: 2.0),
                               borderRadius: BorderRadius.circular(12.0),
                             ),
                             focusedBorder: OutlineInputBorder(
-                              borderSide: const BorderSide(color: Colors.green, width: 2.5),
+                              borderSide: const BorderSide(
+                                  color: Colors.green, width: 2.5),
                               borderRadius: BorderRadius.circular(12.0),
                             ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12.0),
-                              borderSide: const BorderSide(color: Colors.green, width: 2.0),
+                              borderSide: const BorderSide(
+                                  color: Colors.green, width: 2.0),
                             ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                            contentPadding: const EdgeInsets.symmetric(
+                                vertical: 16, horizontal: 20),
                           ),
                           borderRadius: BorderRadius.circular(12),
                           elevation: 2,
@@ -1322,11 +1438,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
                         return DropdownButtonFormField<String>(
                           value: selectedFA,
-                          hint: const Text("Pilih District!", style: TextStyle(color: Colors.grey)),
+                          hint: const Text("Pilih District!",
+                              style: TextStyle(color: Colors.grey)),
                           items: districts.map((district) {
                             return DropdownMenuItem<String>(
                               value: district,
-                              child: Text(district, style: const TextStyle(color: Colors.black87)),
+                              child: Text(district,
+                                  style:
+                                  const TextStyle(color: Colors.black87)),
                             );
                           }).toList(),
                           onChanged: (value) {
@@ -1341,7 +1460,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                             fontWeight: FontWeight.w500,
                           ),
                           dropdownColor: Colors.white,
-                          icon: const Icon(Icons.arrow_drop_down, color: Colors.green),
+                          icon: const Icon(Icons.arrow_drop_down,
+                              color: Colors.green),
                           iconSize: 28,
                           decoration: InputDecoration(
                             labelText: 'District',
@@ -1353,18 +1473,22 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                             filled: true,
                             fillColor: Colors.white,
                             enabledBorder: OutlineInputBorder(
-                              borderSide: const BorderSide(color: Colors.green, width: 2.0),
+                              borderSide: const BorderSide(
+                                  color: Colors.green, width: 2.0),
                               borderRadius: BorderRadius.circular(12.0),
                             ),
                             focusedBorder: OutlineInputBorder(
-                              borderSide: const BorderSide(color: Colors.green, width: 2.5),
+                              borderSide: const BorderSide(
+                                  color: Colors.green, width: 2.5),
                               borderRadius: BorderRadius.circular(12.0),
                             ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12.0),
-                              borderSide: const BorderSide(color: Colors.green, width: 2.0),
+                              borderSide: const BorderSide(
+                                  color: Colors.green, width: 2.0),
                             ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                            contentPadding: const EdgeInsets.symmetric(
+                                vertical: 16, horizontal: 20),
                           ),
                           borderRadius: BorderRadius.circular(12),
                           elevation: 2,
@@ -1391,7 +1515,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                           ),
                         ],
                         border: Border.all(
-                          color: Colors.green.withAlpha(76), // ~30% opacity (255 * 0.3 ≈ 76)
+                          color: Colors.green.withAlpha(76),
+                          // ~30% opacity (255 * 0.3 ≈ 76)
                           width: 1.5,
                         ),
                         gradient: LinearGradient(
@@ -1399,7 +1524,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                           end: Alignment.bottomRight,
                           colors: [
                             Colors.white,
-                            Color.alphaBlend(Colors.green.withAlpha(12), Colors.white), // ~5% opacity
+                            Color.alphaBlend(
+                                Colors.green.withAlpha(12), Colors.white),
+                            // ~5% opacity
                           ],
                         ),
                       ),
@@ -1420,7 +1547,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                               endIndent: 10,
                             ),
                           ],
-
                           if (selectedFA != null) ...[
                             _buildResultItem(
                               icon: Icons.location_on_rounded,
@@ -1468,7 +1594,10 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
               onTap: () {
                 if (selectedFieldSPV == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Pilih Region dulu sebelum cek Estimasi TKD!', textAlign: TextAlign.center)),
+                    const SnackBar(
+                        content: Text(
+                            'Pilih Region dulu sebelum cek Estimasi TKD!',
+                            textAlign: TextAlign.center)),
                   );
                   return;
                 }
@@ -1544,7 +1673,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
               child: Row(
                 children: [
                   Icon(
-                    Icons.auto_graph_rounded,  // You can change this to any icon you prefer
+                    Icons.auto_graph_rounded,
+                    // You can change this to any icon you prefer
                     color: Colors.green[700],
                     size: 28,
                   ),
@@ -1642,7 +1772,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   // Helper Widget untuk Item Hasil
-  Widget _buildResultItem({required IconData icon, required String label, required String value}) {
+  Widget _buildResultItem(
+      {required IconData icon, required String label, required String value}) {
     return Row(
       children: [
         Container(
@@ -1697,19 +1828,25 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       onTap: () {
         if (spreadsheetId == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Harap pilih Region terlebih dahulu', textAlign: TextAlign.center)),
+            const SnackBar(
+                content: Text('Harap pilih Region terlebih dahulu',
+                    textAlign: TextAlign.center)),
           );
           return;
         }
         if (selectedQA == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('QA SPV belum dipilih gaes!', textAlign: TextAlign.center)),
+            const SnackBar(
+                content: Text('QA SPV belum dipilih gaes!',
+                    textAlign: TextAlign.center)),
           );
           return;
         }
         if (selectedDistrict == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Hayo, Districtnya belum dipilih!', textAlign: TextAlign.center)),
+            const SnackBar(
+                content: Text('Hayo, Districtnya belum dipilih!',
+                    textAlign: TextAlign.center)),
           );
           return;
         }
@@ -1787,7 +1924,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Image.asset(imagePath, height: 60, width: 60, fit: BoxFit.contain),
+                Image.asset(imagePath,
+                    height: 60, width: 60, fit: BoxFit.contain),
                 const SizedBox(height: 8),
                 Text(
                   label,
@@ -1823,19 +1961,25 @@ Widget buildPremiumCategoryItem(
     onTap: () {
       if (spreadsheetId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Harap pilih Region terlebih dahulu', textAlign: TextAlign.center)),
+          const SnackBar(
+              content: Text('Harap pilih Region terlebih dahulu',
+                  textAlign: TextAlign.center)),
         );
         return;
       }
       if (selectedQA == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('QA SPV belum dipilih gaes!', textAlign: TextAlign.center)),
+          const SnackBar(
+              content: Text('QA SPV belum dipilih gaes!',
+                  textAlign: TextAlign.center)),
         );
         return;
       }
       if (selectedDistrict == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Hayo, Districtnya belum dipilih!', textAlign: TextAlign.center)),
+          const SnackBar(
+              content: Text('Hayo, Districtnya belum dipilih!',
+                  textAlign: TextAlign.center)),
         );
         return;
       }
@@ -2020,9 +2164,11 @@ class MenuScreen extends StatelessWidget {
                     CircleAvatar(
                       radius: screenHeight * 0.07,
                       backgroundColor: Colors.white,
-                      backgroundImage: userPhotoUrl != null && userPhotoUrl!.isNotEmpty
+                      backgroundImage:
+                      userPhotoUrl != null && userPhotoUrl!.isNotEmpty
                           ? NetworkImage(userPhotoUrl!)
-                          : const AssetImage('assets/logo.png') as ImageProvider,
+                          : const AssetImage('assets/logo.png')
+                      as ImageProvider,
                     ),
                     const SizedBox(height: 16),
 
@@ -2062,8 +2208,13 @@ class MenuScreen extends StatelessWidget {
                     // Tombol Logout
                     ElevatedButton.icon(
                       onPressed: onLogout,
-                      icon: const Icon(Icons.logout_rounded, size: 20, color: Colors.green,),
-                      label: const Text('Logout',
+                      icon: const Icon(
+                        Icons.logout_rounded,
+                        size: 20,
+                        color: Colors.green,
+                      ),
+                      label: const Text(
+                        'Logout',
                         style: TextStyle(
                           color: Colors.green,
                           fontWeight: FontWeight.bold,

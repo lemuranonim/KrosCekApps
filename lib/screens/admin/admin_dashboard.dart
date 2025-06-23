@@ -359,6 +359,7 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
           onAktivitas: () => context.go('/aktivitas'),
           onCrud: () => context.go('/config'),
           onFilter: () => _showRegionSelector(),
+          onAuditGraph: () => context.go('/audit_graph'),
           onLogout: () => _logout(context),
         ),
         mainScreen: _buildMainScreen(context),
@@ -446,6 +447,8 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
       ),
     );
   }
+
+
 
   Future<void> _logout(BuildContext context) async {
     final navigator = Navigator.of(context);
@@ -556,6 +559,7 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
           onPressed: () => _drawerController.toggle?.call(),
         ),
         actions: [
+
           // Region selector dropdown
           IconButton(
             icon: const Icon(Icons.filter_list),
@@ -620,7 +624,7 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
           ),
           if (_isLoading)
             Container(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withAlpha(76),
               child: Center(
                 child: Card(
                   elevation: 8,
@@ -715,6 +719,7 @@ class MenuScreen extends StatelessWidget {
   final VoidCallback onAktivitas;
   final VoidCallback onCrud;
   final VoidCallback onFilter;
+  final VoidCallback onAuditGraph;
 
   const MenuScreen({
     super.key,
@@ -729,6 +734,7 @@ class MenuScreen extends StatelessWidget {
     required this.onAktivitas,
     required this.onCrud,
     required this.onFilter,
+    required this.onAuditGraph,
   });
 
   @override
@@ -905,6 +911,24 @@ class MenuScreen extends StatelessWidget {
                     ),
                     label: const Text(
                       'Pengaturan',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: buttonStyle,
+                  ),
+                  const SizedBox(height: 10),
+                  // audit graph
+                  ElevatedButton.icon(
+                    onPressed: onAuditGraph, // <-- PANGGIL CALLBACK
+                    icon: const Icon(
+                      Icons.pivot_table_chart_outlined, // Icon yang cocok
+                      size: 20,
+                      color: Colors.green,
+                    ),
+                    label: const Text(
+                      'Audit Graph',
                       style: TextStyle(
                         color: Colors.green,
                         fontWeight: FontWeight.bold,
