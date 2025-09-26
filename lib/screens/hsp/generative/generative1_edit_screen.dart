@@ -40,8 +40,8 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
   String userName = 'Fetching...';
   late String spreadsheetId;
 
-  String? selectedFI;
-  List<String> fiList = [];
+  String? selectedFA;
+  List<String> faList = [];
 
   String? selectedDetaselingPlan;
   String? selectedTenagaKerjaDT;
@@ -73,6 +73,10 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _fetchSpreadsheetId();
+      await _loadFAList(widget.region);
+    });
     _loadUserCredentials();
     row = List<String>.from(widget.row);
 
@@ -81,7 +85,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
 
     _dateAudit1Controller = TextEditingController(text: _convertToDateIfNecessary(row[32]));
 
-    _loadFIList(widget.region);
+    _loadFAList(widget.region);
 
     gSheetsApi = GoogleSheetsApi(spreadsheetId);
     gSheetsApi.init();
@@ -156,28 +160,26 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
 
   Future<void> _fetchSpreadsheetId() async {
     spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
+    gSheetsApi = GoogleSheetsApi(spreadsheetId);
+    await gSheetsApi.init();
   }
 
-  Future<void> _loadFIList(String region) async {
-    setState(() {
-      isLoading = true;
-    });
+  Future<void> _loadFAList(String region) async {
+    setState(() => isLoading = true);
 
     try {
       final gSheetsApi = GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
       await gSheetsApi.init();
-      final List<String> fetchedFI = await gSheetsApi.fetchFIByRegion('FI', region);
+      final List<String> fetchedFA = await gSheetsApi.fetchFIByRegion('FA', region);
 
       setState(() {
-        fiList = fetchedFI;
-        selectedFI = row[31];
+        faList = fetchedFA;
+        selectedFA = row[14];
       });
     } catch (e) {
       debugPrint('Gagal mengambil data FI: $e');
     } finally {
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
     }
   }
 
@@ -212,7 +214,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
               fontSize: 20,
             )
         ),
-        backgroundColor: Colors.green.shade700,
+        backgroundColor: Colors.amber.shade700,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -221,7 +223,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.green.shade700, Colors.green.shade100],
+            colors: [Colors.amber.shade700, Colors.amber.shade100],
             stops: const [0.0, 0.3],
           ),
         ),
@@ -243,7 +245,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
                       children: [
                         if (isLoading)
                           const LinearProgressIndicator(
-                            backgroundColor: Colors.green,
+                            backgroundColor: Colors.amber,
                             valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
 
@@ -274,15 +276,21 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
 
                         // Audit Information Section
                         _buildSectionHeader('Audit Information', Icons.assignment),
-                        _buildFIDropdownField(
-                          'QA FI',
-                          selectedFI,
-                          fiList,
+                        _buildFADropdownField(
+                          'FA',
+                          selectedFA,
+                          faList,
                               (value) {
                             setState(() {
-                              selectedFI = value;
-                              row[31] = value ?? '';
+                              selectedFA = value;
+                              row[14] = value ?? '';
                             });
+                          },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'This field is required';
+                            }
+                            return null;
                           },
                         ),
                         const SizedBox(height: 10),
@@ -404,7 +412,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
                             },
                             style: ElevatedButton.styleFrom(
                               minimumSize: const Size(220, 60),
-                              backgroundColor: Colors.green.shade700,
+                              backgroundColor: Colors.amber.shade700,
                               foregroundColor: Colors.white,
                               elevation: 5,
                               shape: RoundedRectangleBorder(
@@ -440,7 +448,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
             Text(
               'Coordinates (Lat, Long)',
               style: TextStyle(
-                color: Colors.green.shade800,
+                color: Colors.amber.shade800,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -457,10 +465,10 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
             fontStyle: _isLocationTagged ? FontStyle.normal : FontStyle.italic,
           ),
           decoration: InputDecoration(
-            prefixIcon: Icon(Icons.gps_fixed, color: _isLocationTagged ? Colors.green.shade600 : Colors.red),
+            prefixIcon: Icon(Icons.gps_fixed, color: _isLocationTagged ? Colors.amber.shade600 : Colors.red),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.green.shade200),
+              borderSide: BorderSide(color: Colors.amber.shade200),
             ),
             filled: true,
             fillColor: Colors.grey[200],
@@ -471,7 +479,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
           child: _isGettingLocation
           // MODIFIKASI: Mengubah warna indikator loading
               ? CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade700),
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.amber.shade700),
           )
               : ElevatedButton.icon(
             onPressed: _getCurrentLocation,
@@ -479,7 +487,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
             label: const Text('Tag Current Location'),
             style: ElevatedButton.styleFrom(
               // MODIFIKASI: Mengubah warna tombol agar sesuai tema
-              backgroundColor: Colors.green.shade700,
+              backgroundColor: Colors.amber.shade700,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
@@ -498,19 +506,19 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
       children: [
         Row(
           children: [
-            Icon(icon, color: Colors.green.shade800, size: 24),
+            Icon(icon, color: Colors.amber.shade800, size: 24),
             const SizedBox(width: 8),
             Text(
               title,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Colors.green.shade800,
+                color: Colors.amber.shade800,
               ),
             ),
           ],
         ),
-        const Divider(thickness: 2, color: Colors.green),
+        const Divider(thickness: 2, color: Colors.amber),
         const SizedBox(height: 10),
       ],
     );
@@ -525,7 +533,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
         padding: const EdgeInsets.all(12.0),
         child: Row(
           children: [
-            Icon(icon, color: Colors.green.shade700),
+            Icon(icon, color: Colors.amber.shade700),
             const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -579,8 +587,14 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
     );
   }
 
-  Widget _buildFIDropdownField(String label, String? value, List<String> items, Function(String?) onChanged, {bool defaultRequired = true}) {
-    bool required = areAllAuditFieldsGloballyRequired || defaultRequired; // defaultRequired adalah true jika field selalu wajib kecuali kondisi global berlaku
+  Widget _buildFADropdownField(
+      String label,
+      String? value,
+      List<String> items,
+      Function(String?) onChanged, {
+        String? Function(String?)? validator, // Add validator parameter
+      }) {
+    bool isRequired = selectedRecommendation == 'Continue' || selectedRecommendation == 'Discard';
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -596,29 +610,29 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
       ),
       child: DropdownButtonFormField<String>(
         decoration: InputDecoration(
-          labelText: required ? "$label *" : label, // Add asterisk to indicate required field
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: Icon(Icons.person, color: Colors.green.shade600),
+          labelText: isRequired ? "$label *" : label, // Add asterisk to indicate required field
+          labelStyle: TextStyle(color: Colors.amber.shade700),
+          prefixIcon: Icon(Icons.person, color: Colors.amber.shade600),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+            borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
         ),
         value: value,
         hint: const Text('Select Field Inspector'),
-        validator: (val) {
-          if (required && (val == null || val.isEmpty)) {
-          return '$label is required';
+        validator: (value) {
+          if (isRequired && (value == null || value.isEmpty)) {
+            return 'Field Inspector is required';
           }
           return null;
         },
@@ -637,7 +651,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
           );
         }).toList(),
         dropdownColor: Colors.white,
-        icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+        icon: Icon(Icons.arrow_drop_down, color: Colors.amber.shade700),
         isExpanded: true, // Make dropdown take full width
       ),
     );
@@ -663,20 +677,20 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
         readOnly: true,
         decoration: InputDecoration(
           labelText: required ? "$label *" : label, // Add asterisk to indicate required field
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
-          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          labelStyle: TextStyle(color: Colors.amber.shade700),
+          prefixIcon: Icon(Icons.calendar_today, color: Colors.amber.shade600),
+          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.amber.shade700),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+            borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -697,7 +711,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
               return Theme(
                 data: Theme.of(context).copyWith(
                   colorScheme: ColorScheme.light(
-                    primary: Colors.green.shade700,
+                    primary: Colors.amber.shade700,
                     onPrimary: Colors.white,
                     onSurface: Colors.black,
                   ),
@@ -752,19 +766,19 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
           child: DropdownButtonFormField<String>(
             decoration: InputDecoration(
               labelText: required ? "$label *" : label, // Add asterisk only if required
-              labelStyle: TextStyle(color: Colors.green.shade700),
-              prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+              labelStyle: TextStyle(color: Colors.amber.shade700),
+              prefixIcon: icon != null ? Icon(icon, color: Colors.amber.shade600) : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade200),
+                borderSide: BorderSide(color: Colors.amber.shade200),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade200),
+                borderSide: BorderSide(color: Colors.amber.shade200),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+                borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
               ),
               filled: true,
               fillColor: Colors.white,
@@ -785,7 +799,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
               );
             }).toList(),
             dropdownColor: Colors.white,
-            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+            icon: Icon(Icons.arrow_drop_down, color: Colors.amber.shade700),
           ),
         ),
         if (helpText != null) ...[
@@ -877,7 +891,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
       // Indeks kolom di gsheets dimulai dari 1 (A=1, B=2, dst.)
       final Map<int, String> updates = {
         18: _locationController.text, // Kolom R: Koordinat
-        32: selectedFI ?? '', // Kolom AF: QA FI
+        15: selectedFA ?? '', // Kolom AF: QA FA
         33: _dateAudit1Controller.text, // Kolom AG: Date of Audit 1
         36: selectedDetaselingPlan ?? '', // Kolom AJ: Detaseling Plan
         37: selectedTenagaKerjaDT ?? '', // Kolom AK: Ketersediaan Tenaga kerja DT
@@ -947,7 +961,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(Icons.save_outlined, color: Colors.green.shade700),
+            Icon(Icons.save_outlined, color: Colors.amber.shade700),
             const SizedBox(width: 10),
             const Text('Confirm Save'),
           ],
@@ -961,7 +975,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade700,
+              backgroundColor: Colors.amber.shade700,
               foregroundColor: Colors.white,
             ),
             child: const Text('Save'),
@@ -980,7 +994,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
 
     if (areAllAuditFieldsGloballyRequired) {
       // Semua field di Generative1EditScreen menjadi wajib
-      return selectedFI != null && selectedFI!.isNotEmpty &&
+      return selectedFA != null && selectedFA!.isNotEmpty &&
           _dateAudit1Controller.text.isNotEmpty &&
           selectedDetaselingPlan != null && selectedDetaselingPlan!.isNotEmpty &&
           selectedTenagaKerjaDT != null && selectedTenagaKerjaDT!.isNotEmpty &&
@@ -996,7 +1010,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
       String flaggingAudit3 = (row.length > 63) ? row[63] : '';
       if (flaggingAudit3 == 'Discard') {
         // Hanya QA FI dan tanggal audit 1 yang wajib jika flagging AU3 adalah discard
-        if (selectedFI == null || selectedFI!.isEmpty) {
+        if (selectedFA == null || selectedFA!.isEmpty) {
           _showErrorSnackBar('QA FI is required.');
           return false;
         }
@@ -1011,7 +1025,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
       // Dalam kasus ini, semua field di AU1 tetap wajib seperti semula.
       // Ini karena permintaan Anda berfokus pada "selain discard" untuk *kedua* kondisi di AU3 agar *semuanya* jadi wajib.
       // Jika hanya salah satu yang discard di AU3, maka validasi standar AU1 berlaku.
-      return selectedFI != null && selectedFI!.isNotEmpty &&
+      return selectedFA != null && selectedFA!.isNotEmpty &&
           _dateAudit1Controller.text.isNotEmpty &&
           selectedDetaselingPlan != null && selectedDetaselingPlan!.isNotEmpty &&
           selectedTenagaKerjaDT != null && selectedTenagaKerjaDT!.isNotEmpty &&
@@ -1214,13 +1228,13 @@ class _SuccessScreenState extends State<SuccessScreen> {
           'Success',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.green.shade700,
+        backgroundColor: Colors.amber.shade700,
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 100),
+            const Icon(Icons.check_circle, color: Colors.amber, size: 100),
             const SizedBox(height: 20),
             const Text(
               'Data berhasil disimpan!',
@@ -1242,7 +1256,7 @@ class _SuccessScreenState extends State<SuccessScreen> {
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60),
-                backgroundColor: Colors.green.shade700,
+                backgroundColor: Colors.amber.shade700,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),

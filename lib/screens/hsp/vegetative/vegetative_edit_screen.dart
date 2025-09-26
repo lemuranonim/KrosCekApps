@@ -43,8 +43,8 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   late String spreadsheetId;
   late GoogleSheetsApi gSheetsApi;
 
-  String? selectedFI;
-  List<String> fiList = [];
+  String? selectedFA;
+  List<String> faList = [];
 
   String? selectedMaleSplit;
   String? selectedSplitField;
@@ -85,7 +85,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _fetchSpreadsheetId();
-      await _loadFIList(widget.region);
+      await _loadFAList(widget.region);
     });
     _loadUserCredentials();
     row = List<String>.from(widget.row);
@@ -100,7 +100,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     _sowingRatioController = TextEditingController(text: row[38]);
     _remarksController = TextEditingController(text: row[51]);
 
-    _loadFIList(widget.region);
+    _loadFAList(widget.region);
 
     // Initialize dropdown fields
     selectedMaleSplit = row[37];
@@ -189,17 +189,17 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     await gSheetsApi.init();
   }
 
-  Future<void> _loadFIList(String region) async {
+  Future<void> _loadFAList(String region) async {
     setState(() => isLoading = true);
 
     try {
       final gSheetsApi = GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
       await gSheetsApi.init();
-      final List<String> fetchedFI = await gSheetsApi.fetchFIByRegion('FI', region);
+      final List<String> fetchedFA = await gSheetsApi.fetchFIByRegion('FA', region);
 
       setState(() {
-        fiList = fetchedFI;
-        selectedFI = row[31];
+        faList = fetchedFA;
+        selectedFA = row[14];
       });
     } catch (e) {
       debugPrint('Gagal mengambil data FI: $e');
@@ -239,7 +239,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
               fontSize: 20,
             )
         ),
-        backgroundColor: Colors.green.shade700,
+        backgroundColor: Colors.amber.shade700,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -248,7 +248,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.green.shade700, Colors.green.shade100],
+            colors: [Colors.amber.shade700, Colors.amber.shade100],
             stops: const [0.0, 0.3],
           ),
         ),
@@ -265,7 +265,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
                       margin: const EdgeInsets.only(bottom: 20),
                       child: const LinearProgressIndicator(
                         backgroundColor: Colors.white,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.amber),
                       ),
                     ),
 
@@ -305,14 +305,14 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
 
                           // Audit Information Section
                           _buildSectionHeader('Audit Information', Icons.assignment),
-                          _buildFIDropdownField(
-                            'QA FI',
-                            selectedFI,
-                            fiList,
+                          _buildFADropdownField(
+                            'FA',
+                            selectedFA,
+                            faList,
                                 (value) {
                               setState(() {
-                                selectedFI = value;
-                                row[31] = value ?? '';
+                                selectedFA = value;
+                                row[14] = value ?? '';
                               });
                             },
                             validator: (value) {
@@ -327,7 +327,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
                             'Co Detasseling',
                             _coDetasselingController,
                             Icons.people,
-                            // Update the validator functions for all fields except QA FI and Date of Audit
+                            // Update the validator functions for all fields except FA and Date of Audit
                             onChanged: (value) {
                               setState(() {
                                 row[32] = value;
@@ -585,7 +585,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
-                                      'When "Discard" is selected, only QA FI and Date of Audit are required. Other fields are optional.',
+                                      'When "Discard" is selected, only FA and Date of Audit are required. Other fields are optional.',
                                       style: TextStyle(
                                         color: Colors.amber.shade800,
                                         fontSize: 14,
@@ -626,7 +626,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
                               },
                               style: ElevatedButton.styleFrom(
                                 minimumSize: const Size(220, 60),
-                                backgroundColor: Colors.green.shade700,
+                                backgroundColor: Colors.amber.shade700,
                                 foregroundColor: Colors.white,
                                 elevation: 5,
                                 shape: RoundedRectangleBorder(
@@ -663,7 +663,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
             Text(
               'Coordinates (Lat, Long)',
               style: TextStyle(
-                color: Colors.green.shade800,
+                color: Colors.amber.shade800,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -680,10 +680,10 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
             fontStyle: _isLocationTagged ? FontStyle.normal : FontStyle.italic,
           ),
           decoration: InputDecoration(
-            prefixIcon: Icon(Icons.gps_fixed, color: _isLocationTagged ? Colors.green.shade600 : Colors.red),
+            prefixIcon: Icon(Icons.gps_fixed, color: _isLocationTagged ? Colors.amber.shade600 : Colors.red),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.green.shade200),
+              borderSide: BorderSide(color: Colors.amber.shade200),
             ),
             filled: true,
             fillColor: Colors.grey[200],
@@ -694,7 +694,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
           child: _isGettingLocation
           // MODIFIKASI: Mengubah warna indikator loading
               ? CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade700),
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.amber.shade700),
           )
               : ElevatedButton.icon(
             onPressed: _getCurrentLocation,
@@ -702,7 +702,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
             label: const Text('Tag Current Location'),
             style: ElevatedButton.styleFrom(
               // MODIFIKASI: Mengubah warna tombol agar sesuai tema
-              backgroundColor: Colors.green.shade700,
+              backgroundColor: Colors.amber.shade700,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
@@ -731,7 +731,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
           Expanded(
             child: Text(
               selectedRecommendation == 'Discard'
-                  ? 'Only QA FI and Date of Audit are required when Recommendation is Discard'
+                  ? 'Only FA and Date of Audit are required when Recommendation is Discard'
                   : 'Fields marked with * are required and must be filled',
               style: TextStyle(
                 color: Colors.amber.shade800,
@@ -776,19 +776,19 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
             maxLines: maxLines,
             decoration: InputDecoration(
               labelText: isRequired ? "$label *" : label, // Add asterisk to indicate required field
-              labelStyle: TextStyle(color: Colors.green.shade700),
-              prefixIcon: Icon(icon, color: Colors.green.shade600),
+              labelStyle: TextStyle(color: Colors.amber.shade700),
+              prefixIcon: Icon(icon, color: Colors.amber.shade600),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade200),
+                borderSide: BorderSide(color: Colors.amber.shade200),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade200),
+                borderSide: BorderSide(color: Colors.amber.shade200),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+                borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
               ),
               filled: true,
               fillColor: Colors.white,
@@ -841,19 +841,19 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
         keyboardType: TextInputType.number,
         decoration: InputDecoration(
           labelText: isRequired ? "$label *" : label, // Add asterisk to indicate required field
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: Icon(icon, color: Colors.green.shade600),
+          labelStyle: TextStyle(color: Colors.amber.shade700),
+          prefixIcon: Icon(icon, color: Colors.amber.shade600),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+            borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -894,20 +894,20 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
         readOnly: true,
         decoration: InputDecoration(
           labelText: isRequired ? "$label *" : label, // Add asterisk to indicate required field
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
-          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          labelStyle: TextStyle(color: Colors.amber.shade700),
+          prefixIcon: Icon(Icons.calendar_today, color: Colors.amber.shade600),
+          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.amber.shade700),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+            borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -928,7 +928,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
               return Theme(
                 data: Theme.of(context).copyWith(
                   colorScheme: ColorScheme.light(
-                    primary: Colors.green.shade700,
+                    primary: Colors.amber.shade700,
                     onPrimary: Colors.white,
                     onSurface: Colors.black,
                   ),
@@ -950,7 +950,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     );
   }
 
-  Widget _buildFIDropdownField(
+  Widget _buildFADropdownField(
       String label,
       String? value,
       List<String> items,
@@ -974,19 +974,19 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
       child: DropdownButtonFormField<String>(
         decoration: InputDecoration(
           labelText: isRequired ? "$label *" : label, // Add asterisk to indicate required field
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: Icon(Icons.person, color: Colors.green.shade600),
+          labelStyle: TextStyle(color: Colors.amber.shade700),
+          prefixIcon: Icon(Icons.person, color: Colors.amber.shade600),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+            borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -1014,7 +1014,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
           );
         }).toList(),
         dropdownColor: Colors.white,
-        icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+        icon: Icon(Icons.arrow_drop_down, color: Colors.amber.shade700),
         isExpanded: true, // Make dropdown take full width
       ),
     );
@@ -1054,19 +1054,19 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
           child: DropdownButtonFormField<String>(
             decoration: InputDecoration(
               labelText: isRequired ? "$label *" : label, // Add asterisk to indicate required field
-              labelStyle: TextStyle(color: Colors.green.shade700),
-              prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+              labelStyle: TextStyle(color: Colors.amber.shade700),
+              prefixIcon: icon != null ? Icon(icon, color: Colors.amber.shade600) : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade200),
+                borderSide: BorderSide(color: Colors.amber.shade200),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade200),
+                borderSide: BorderSide(color: Colors.amber.shade200),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+                borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
               ),
               filled: true,
               fillColor: Colors.white,
@@ -1087,7 +1087,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
               );
             }).toList(),
             dropdownColor: Colors.white,
-            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+            icon: Icon(Icons.arrow_drop_down, color: Colors.amber.shade700),
           ),
         ),
         if (helpText != null) ...[
@@ -1110,19 +1110,19 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
       children: [
         Row(
           children: [
-            Icon(icon, color: Colors.green.shade800, size: 24),
+            Icon(icon, color: Colors.amber.shade800, size: 24),
             const SizedBox(width: 8),
             Text(
               title,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Colors.green.shade800,
+                color: Colors.amber.shade800,
               ),
             ),
           ],
         ),
-        const Divider(thickness: 2, color: Colors.green),
+        const Divider(thickness: 2, color: Colors.amber),
         const SizedBox(height: 10),
       ],
     );
@@ -1137,7 +1137,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
         padding: const EdgeInsets.all(12.0),
         child: Row(
           children: [
-            Icon(icon, color: Colors.green.shade700),
+            Icon(icon, color: Colors.amber.shade700),
             const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1168,11 +1168,11 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   bool _validateForm() {
 
     // Get the current form validation state
-    bool baseFieldsValid = selectedFI != null && selectedFI!.isNotEmpty &&
+    bool baseFieldsValid = selectedFA != null && selectedFA!.isNotEmpty &&
         _dateAuditController.text.isNotEmpty;
 
     if (!baseFieldsValid) {
-      _showErrorSnackBar('QA FI and Date of Audit are required fields.');
+      _showErrorSnackBar('FA and Date of Audit are required fields.');
       return false;
     }
 
@@ -1181,7 +1181,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
       _showErrorSnackBar('Please select a Recommendation.');
       return false;
     }
-    // If recommendation is "Discard", we only need to validate QA FI and Date of Audit
+    // If recommendation is "Discard", we only need to validate FA and Date of Audit
     if (selectedRecommendation == 'Discard') {
       return true; // Base fields are already validated
     }
@@ -1221,7 +1221,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
       barrierDismissible: false, // Prevent dismissing by tapping outside
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Confirm Save', style: TextStyle(color: Colors.green.shade800)),
+        title: Text('Confirm Save', style: TextStyle(color: Colors.amber.shade800)),
         content: const Text('Are you sure you want to save the changes? All fields must be filled correctly.'),
         actions: [
           TextButton(
@@ -1231,7 +1231,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade700,
+              backgroundColor: Colors.amber.shade700,
               foregroundColor: Colors.white,
             ),
             child: const Text('Save'),
@@ -1357,7 +1357,7 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
       // 2. Siapkan Map berisi data yang akan diupdate [columnIndex: value]
       final Map<int, String> updates = {
         18: _locationController.text, // Kolom R: Koordinat
-        32: selectedFI ?? '', // Kolom AF: QA FI
+        15: selectedFA ?? '', // Kolom P: FA
         33: _coDetasselingController.text, // Kolom AG: Co Detasseling
         34: _dateAuditController.text, // Kolom AH: Date of Audit
         36: _actualPlantingDateController.text, // Kolom AJ: Actual Female Planting Date
@@ -1577,13 +1577,13 @@ class _SuccessScreenState extends State<SuccessScreen> {
           'Success',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.green.shade700,
+        backgroundColor: Colors.amber.shade700,
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 100),
+            const Icon(Icons.check_circle, color: Colors.amber, size: 100),
             const SizedBox(height: 20),
             const Text(
               'Data berhasil disimpan!',
@@ -1605,7 +1605,7 @@ class _SuccessScreenState extends State<SuccessScreen> {
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60),
-                backgroundColor: Colors.green.shade700,
+                backgroundColor: Colors.amber.shade700,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),

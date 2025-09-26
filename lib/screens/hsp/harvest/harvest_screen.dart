@@ -315,14 +315,14 @@ class HarvestScreenState extends State<HarvestScreen> {
   void _filterData() {
     setState(() {
       _filteredData = _sheetData.where((row) {
-        final qaSpv = getValue(row, 28, '');
+        final hspSpv = getValue(row, 15, '');
         final district = getValue(row, 13, '').toLowerCase();
         final season = getValue(row, 1, '');
         final weekOfHarvest = getValue(row, 27, ''); // Ambil nilai minggu panen dari kolom 27
         final fase = getValue(row, 25, '').toLowerCase();
 
         bool matchesSeasonFilter = (_selectedSeason == null || season == _selectedSeason);
-        bool matchesQAFilter = (_selectedQA == null || qaSpv == _selectedQA);
+        bool matchesQAFilter = (_selectedQA == null || hspSpv == _selectedQA);
         bool matchesDistrictFilter =
             widget.selectedDistrict == null ||
                 district == widget.selectedDistrict!.toLowerCase();
@@ -566,7 +566,7 @@ class HarvestScreenState extends State<HarvestScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Colors.green.shade800, Colors.green.shade600],
+                colors: [Colors.amber.shade800, Colors.amber.shade600],
               ),
             ),
           ),
@@ -690,7 +690,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                   value: 'refresh',
                   child: Row(
                     children: [
-                      Icon(Icons.refresh, color: Colors.green),
+                      Icon(Icons.refresh, color: Colors.amber),
                       SizedBox(width: 8),
                       Text('Refresh Data'),
                     ],
@@ -700,7 +700,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                   value: 'analysis',
                   child: Row(
                     children: [
-                      Icon(Icons.analytics, color: Colors.green),
+                      Icon(Icons.analytics, color: Colors.amber),
                       SizedBox(width: 8),
                       Text('Analysis Aktivitas'),
                     ],
@@ -710,7 +710,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                   value: 'help',
                   child: Row(
                     children: [
-                      Icon(Icons.help_outline, color: Colors.green),
+                      Icon(Icons.help_outline, color: Colors.amber),
                       SizedBox(width: 8),
                       Text('Bantuan'),
                     ],
@@ -727,7 +727,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Colors.green.shade800, Colors.green.shade600],
+                  colors: [Colors.amber.shade800, Colors.amber.shade600],
                 ),
               ),
               child: Column(
@@ -736,7 +736,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                   _isLoading
                       ? LinearProgressIndicator(
                     value: _progress,
-                    backgroundColor: Colors.green.shade300.withAlpha(76),
+                    backgroundColor: Colors.amber.shade300.withAlpha(76),
                     valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
                   )
                       : const SizedBox(height: 4),
@@ -808,7 +808,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Colors.green.shade800, Colors.green.shade600],
+                  colors: [Colors.amber.shade800, Colors.amber.shade600],
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -829,7 +829,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                       gradient: LinearGradient(
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
-                        colors: [Colors.green.shade700, Colors.green.shade500],
+                        colors: [Colors.amber.shade700, Colors.amber.shade500],
                       ),
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -1035,7 +1035,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                     });
                     await _loadSheetData(refresh: true);
                   },
-                  color: Colors.green,
+                  color: Colors.amber,
                   backgroundColor: Colors.white,
                   height: 150,
                   showChildOpacityTransition: false,
@@ -1071,7 +1071,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                           icon: const Icon(Icons.refresh),
                           label: const Text('Try Again'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
+                            backgroundColor: Colors.amber,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             shape: RoundedRectangleBorder(
@@ -1120,7 +1120,7 @@ class HarvestScreenState extends State<HarvestScreen> {
                           icon: const Icon(Icons.refresh, color: Colors.white),
                           label: const Text('Reset Filters'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
+                            backgroundColor: Colors.amber,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             shape: RoundedRectangleBorder(

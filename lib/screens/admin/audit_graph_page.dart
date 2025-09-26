@@ -36,7 +36,8 @@ class _AuditGraphPageState extends State<AuditGraphPage> {
   // Nilai filter yang dipilih
   String? _selectedQaSpv;
   String? _selectedSeason;
-  int? _selectedWeek;
+  // ✅ Diubah menjadi List untuk multi-choice
+  final List<int> _selectedWeeks = [];
 
   // Opsi untuk dropdown filter
   List<String> _regionOptions = [];
@@ -75,7 +76,7 @@ class _AuditGraphPageState extends State<AuditGraphPage> {
       _selectedRegion = newRegion;
       _dataForSelectedRegion.clear();
       _filteredData.clear();
-      _resetSubFilters(); // Reset filter lain saat region berubah
+      _resetSubFilters();
     });
 
     try {
@@ -98,7 +99,7 @@ class _AuditGraphPageState extends State<AuditGraphPage> {
   Future<void> _fetchDataForSelectedRegion() async {
     if (_googleSheetsApi == null) return;
 
-    await _googleSheetsApi!.init(); // Menggunakan retry logic dari dalam
+    await _googleSheetsApi!.init();
     final rows = await _googleSheetsApi!.getSpreadsheetData('Generative');
 
     final List<VegetativeAuditData> newAuditData = [];
@@ -128,7 +129,8 @@ class _AuditGraphPageState extends State<AuditGraphPage> {
   void _resetSubFilters() {
     _selectedQaSpv = null;
     _selectedSeason = null;
-    _selectedWeek = null;
+    // ✅ Reset filter minggu
+    _selectedWeeks.clear();
     _qaSpvOptions.clear();
     _seasonOptions.clear();
     _weekOptions.clear();
@@ -139,7 +141,8 @@ class _AuditGraphPageState extends State<AuditGraphPage> {
       _filteredData = _dataForSelectedRegion.where((data) {
         final qaSpvMatch = _selectedQaSpv == null || data.qaSpv == _selectedQaSpv;
         final seasonMatch = _selectedSeason == null || data.season == _selectedSeason;
-        final weekMatch = _selectedWeek == null || data.week == _selectedWeek;
+        // ✅ Logika filter minggu disesuaikan untuk List
+        final weekMatch = _selectedWeeks.isEmpty || _selectedWeeks.contains(data.week);
         return qaSpvMatch && seasonMatch && weekMatch;
       }).toList();
     });
@@ -147,15 +150,11 @@ class _AuditGraphPageState extends State<AuditGraphPage> {
 
   @override
   Widget build(BuildContext context) {
-    // ignore: deprecated_member_use
     return PopScope(
-      // Callback saat pengguna menekan tombol back
-      canPop: false, // Mencegah pop langsung
+      canPop: false,
       // ignore: deprecated_member_use
       onPopInvoked: (didPop) {
-        // didPop akan false karena canPop: false
         context.go('/admin');
-        return;
       },
       child: Scaffold(
         appBar: AppBar(
@@ -175,7 +174,7 @@ class _AuditGraphPageState extends State<AuditGraphPage> {
         ),
         body: Column(
           children: [
-            _buildRegionSelector(), // Selector Region utama
+            _buildRegionSelector(),
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -286,14 +285,8 @@ class _AuditGraphPageState extends State<AuditGraphPage> {
                 ],
                 onChanged: (val) => setState(() { _selectedSeason = val; _applyFilters(); }),
               ),
-              CustomDropdown<int>(
-                labelText: 'Weeks of Vegetative', value: _selectedWeek, hintText: 'Semua Minggu',
-                items: [
-                  const DropdownMenuItem(value: null, child: Text("Semua Minggu")),
-                  ..._weekOptions.map((w) => DropdownMenuItem(value: w, child: Text("Minggu ke-$w"))),
-                ],
-                onChanged: (val) => setState(() { _selectedWeek = val; _applyFilters(); }),
-              ),
+              // ✅ Mengganti CustomDropdown dengan widget baru untuk multi-choice
+              _buildWeekMultiSelectDropdown(),
             ],
           ),
           const SizedBox(height: 16),
@@ -310,10 +303,104 @@ class _AuditGraphPageState extends State<AuditGraphPage> {
     );
   }
 
-  Widget _buildChartCard() {
-    // ... (Fungsi _buildChartCard, _prepareChartData, _buildDataTableCard, dan _buildDataRows
-    // tetap sama seperti di jawaban sebelumnya, tidak perlu diubah)
+  // ✅ WIDGET BARU UNTUK MULTI-SELECT DROPDOWN MINGGU
+  Widget _buildWeekMultiSelectDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Weeks of Vegetative",
+          style: TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+        const SizedBox(height: 4),
+        DropdownButtonHideUnderline(
+          child: DropdownButton2<int>(
+            isExpanded: true,
+            // Teks pada button akan berubah sesuai item yang dipilih
+            customButton: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              height: 40,
+              decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.grey.shade300)
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _selectedWeeks.isEmpty ? "Semua Minggu" : "Terpilih: ${_selectedWeeks.join(', ')}",
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ),
+            ),
+            // Item dalam dropdown
+            items: _weekOptions.map((week) {
+              return DropdownMenuItem<int>(
+                value: week,
+                // Menonaktifkan penutupan menu saat item diklik
+                enabled: false,
+                child: StatefulBuilder(
+                  builder: (context, menuSetState) {
+                    final isSelected = _selectedWeeks.contains(week);
+                    return InkWell(
+                      onTap: () {
+                        isSelected ? _selectedWeeks.remove(week) : _selectedWeeks.add(week);
+                        // Update UI di dalam menu dan di button utama
+                        setState(() {});
+                        menuSetState(() {});
+                      },
+                      child: Container(
+                        height: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Row(
+                          children: [
+                            if (isSelected) const Icon(Icons.check_box_outlined)
+                            else const Icon(Icons.check_box_outline_blank),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Text(
+                                "Minggu ke-$week",
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              );
+            }).toList(),
+            // Tidak ada value yang dipilih secara default di sini
+            value: null,
+            onChanged: (value) {}, // Dibiarkan kosong
+            // Handler saat menu dibuka/ditutup
+            onMenuStateChange: (isOpen) {
+              if (!isOpen) {
+                // Terapkan filter saat menu ditutup
+                _applyFilters();
+              }
+            },
+            dropdownStyleData: DropdownStyleData(
+              maxHeight: 200,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            menuItemStyleData: const MenuItemStyleData(
+              height: 40,
+              padding: EdgeInsets.zero, // Hapus padding default
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
+  Widget _buildChartCard() {
     final chartData = _prepareChartData();
 
     return CustomCard(

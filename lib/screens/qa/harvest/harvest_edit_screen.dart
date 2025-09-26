@@ -46,9 +46,9 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
   String? selectedReasonToDowngradeFlagging;
   String? selectedDowngradeFlaggingRecommendation;
 
-  final List<String> earConditionObservationItems = ['A', 'B', 'C'];
+  final List<String> earConditionObservationItems = ['2', '3', '4'];
   final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
-  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['1', '2', '3', '4', '5'];
   final List<String> recommendationItems = ['Continue', 'Discard'];
   final List<String> reasonToDowngradeFlaggingItems = ['A', 'B', 'C', 'D'];
   final List<String> downgradeFlaggingRecommendationItems = ['RFI', 'RFD'];
@@ -307,7 +307,7 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
                               row[32] = value ?? '';
                             });
                           },
-                          helpText: 'Kernel Milk Line (2; 3; 4)',
+                          helpText: 'Stage 2 : 2\nStage 3 : 3\nStage 4 : 4',
                           icon: Icons.agriculture,
                         ),
                         const SizedBox(height: 10),
@@ -337,7 +337,7 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
                               row[34] = value ?? '';
                             });
                           },
-                          helpText: 'A (Low)\nB (Moderate)\nC (High)',
+                          helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                           icon: Icons.health_and_safety,
                         ),
                         const SizedBox(height: 10),

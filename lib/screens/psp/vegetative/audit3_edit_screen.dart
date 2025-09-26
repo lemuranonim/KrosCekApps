@@ -40,10 +40,17 @@ class Audit3EditScreenState extends State<Audit3EditScreen> {
   String? selectedCropHealth;
   String? selectedCropUniformity;
 
-  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['1', '2', '3', '4', '5'];
   final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
 
   bool isLoading = false;
+
+  bool get isDiscardMode {
+    if (widget.row.length > 73) {
+      return widget.row[73] == 'Discard';
+    }
+    return false;
+  }
 
   @override
   void initState() {
@@ -178,7 +185,7 @@ class Audit3EditScreenState extends State<Audit3EditScreen> {
                               row[58] = value ?? '';
                             });
                           },
-                          helpText: 'A/B/C',
+                          helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                           icon: Icons.health_and_safety,
                           validator: (value) => (value == null || value.isEmpty) ? 'Crop Health wajib dipilih' : null,
                         ),
@@ -280,6 +287,9 @@ class Audit3EditScreenState extends State<Audit3EditScreen> {
         },
         // VALIDATOR ditambahkan di sini
         validator: (value) {
+          if (isDiscardMode) {
+            return null; // Tidak wajib jika mode discard aktif
+          }
           if (value == null || value.isEmpty) {
             return '$label wajib diisi';
           }
@@ -493,7 +503,15 @@ class Audit3EditScreenState extends State<Audit3EditScreen> {
             dropdownColor: Colors.white,
             icon: Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
             // Menggunakan validator yang dilewatkan
-            validator: validator,
+            validator: (value) {
+              if (isDiscardMode) {
+                return null; // Tidak wajib jika mode discard aktif
+              }
+              if (value == null || value.isEmpty) {
+                return '$label wajib diisi';
+              }
+              return null;
+            },
           ),
         ),
         if (helpText != null) ...[

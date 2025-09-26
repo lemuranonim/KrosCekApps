@@ -45,7 +45,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
   String? selectedFlagging;
   String? selectedRecommendation;
 
-  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['1', '2', '3', '4', '5'];
   final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
   final List<String> isolationAudit4Items = ['A', 'B'];
   final List<String> isolationTypeItems = ['A', 'B'];
@@ -193,7 +193,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
                               row[67] = value ?? '';
                             });
                           },
-                          helpText: 'A = GF (Good)\nB = GF (Fair)\nC = OF (Poor)',
+                          helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                           icon: Icons.health_and_safety,
                           validator: (value) => (value == null || value.isEmpty) ? 'Crop Health wajib dipilih' : null,
                         ),

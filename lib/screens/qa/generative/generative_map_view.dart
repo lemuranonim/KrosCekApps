@@ -4,11 +4,9 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'generative_detail_screen.dart';
+import '../../../utils/formatters.dart';
 
-enum MapViewMode {
-  street,
-  satellite
-}
+enum MapViewMode { street, satellite }
 
 class GenerativeMapView extends StatefulWidget {
   final List<List<String>> filteredData;
@@ -26,7 +24,8 @@ class GenerativeMapView extends StatefulWidget {
   State<GenerativeMapView> createState() => _GenerativeMapViewState();
 }
 
-class _GenerativeMapViewState extends State<GenerativeMapView> with AutomaticKeepAliveClientMixin {
+class _GenerativeMapViewState extends State<GenerativeMapView>
+    with AutomaticKeepAliveClientMixin {
   final MapController _mapController = MapController();
   Position? _currentPosition;
   List<Marker> _markers = [];
@@ -34,12 +33,13 @@ class _GenerativeMapViewState extends State<GenerativeMapView> with AutomaticKee
   bool _showUserLocation = false;
   LatLng? _selectedLocation;
   List<String>? _selectedData;
-  LatLng _mapCenter = const LatLng(-7.637017, 112.8272303); // Default to central Java
+  LatLng _mapCenter = const LatLng(-7.637017, 112.8272303);
   bool _initialCenterSet = false;
   MapViewMode _currentMapMode = MapViewMode.street;
 
-  // Cache for marker data to avoid recalculation
-  final Map<String, Marker> _markerCache = {};
+  int _sampunOnMapCount = 0;
+  int _derengJangkepOnMapCount = 0;
+  int _derengBlasOnMapCount = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -47,9 +47,8 @@ class _GenerativeMapViewState extends State<GenerativeMapView> with AutomaticKee
   @override
   void initState() {
     super.initState();
-    // Use Future.microtask to avoid blocking the UI during initialization
     Future.microtask(() {
-      _loadMarkers();
+      _processAndLoadMarkers();
       _getCurrentLocation();
     });
   }
@@ -58,11 +57,108 @@ class _GenerativeMapViewState extends State<GenerativeMapView> with AutomaticKee
   void didUpdateWidget(GenerativeMapView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.filteredData != oldWidget.filteredData) {
-      // Reset the initial center flag when data changes
       _initialCenterSet = false;
-      // Use compute for heavy processing
-      Future.microtask(_loadMarkers);
+      Future.microtask(_processAndLoadMarkers);
     }
+  }
+
+  void _processAndLoadMarkers() {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = true;
+      // Reset counter setiap kali data diproses ulang
+      _sampunOnMapCount = 0;
+      _derengJangkepOnMapCount = 0;
+      _derengBlasOnMapCount = 0;
+    });
+
+    final Map<String, List<List<String>>> groupedData =
+    _groupDataByLocation(widget.filteredData);
+
+    List<Marker> newMarkers = [];
+    double sumLat = 0;
+    double sumLng = 0;
+    int validCoordinatesCount = 0;
+
+    groupedData.forEach((coordString, dataList) {
+      final parts = coordString.split(',');
+      if (parts.length != 2) return;
+
+      final lat = double.tryParse(parts[0]);
+      final lng = double.tryParse(parts[1]);
+      if (lat == null || lng == null) return;
+
+      final point = LatLng(lat, lng);
+      sumLat += lat;
+      sumLng += lng;
+      validCoordinatesCount++;
+
+      // Hitung status untuk setiap item di lokasi ini
+      for (var row in dataList) {
+        final status = getGenerativeStatus(
+          _getValue(row, 72, "not audited"),
+          _getValue(row, 73, "not audited"),
+        );
+        switch (status) {
+          case "Sampun":
+            _sampunOnMapCount++;
+            break;
+          case "Dereng Jangkep":
+            _derengJangkepOnMapCount++;
+            break;
+          case "Dereng Blas":
+            _derengBlasOnMapCount++;
+            break;
+        }
+      }
+
+      Marker marker;
+      if (dataList.length == 1) {
+        marker = _createSingleMarker(point, dataList.first);
+      } else {
+        marker = _createStackedMarker(point, dataList);
+      }
+      newMarkers.add(marker);
+    });
+
+    if (mounted) {
+      setState(() {
+        _markers = newMarkers;
+        if (validCoordinatesCount > 0) {
+          _mapCenter = LatLng(sumLat / validCoordinatesCount, sumLng / validCoordinatesCount);
+          if (!_initialCenterSet) {
+            _initialCenterSet = true;
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (mounted) {
+                _mapController.moveAndRotate(_mapCenter, 10.0, 0);
+              }
+            });
+          }
+        }
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Fungsi untuk mengelompokkan data berdasarkan koordinat
+  Map<String, List<List<String>>> _groupDataByLocation(List<List<String>> data) {
+    final Map<String, List<List<String>>> groupedData = {};
+    for (var row in data) {
+      final coordinateStr = _getValue(row, 16, '');
+      final parts = coordinateStr.split(',');
+      if (coordinateStr.isNotEmpty &&
+          parts.length == 2 &&
+          double.tryParse(parts[0].trim()) != null &&
+          double.tryParse(parts[1].trim()) != null) {
+        if (groupedData.containsKey(coordinateStr)) {
+          groupedData[coordinateStr]!.add(row);
+        } else {
+          groupedData[coordinateStr] = [row];
+        }
+      }
+    }
+    return groupedData;
   }
 
   Future<void> _getCurrentLocation() async {
@@ -96,231 +192,286 @@ class _GenerativeMapViewState extends State<GenerativeMapView> with AutomaticKee
     }
   }
 
-  void _loadMarkers() {
-    if (!mounted) return;
+  // Fungsi untuk membuat marker tunggal
+  Marker _createSingleMarker(LatLng point, List<String> row) {
+    final status = getGenerativeStatus(
+      _getValue(row, 72, "not audited"),
+      _getValue(row, 73, "not audited"),
+    );
+    final dap = Formatters.calculateDAP(_getValue(row, 9, ''));
 
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Process markers in batches to avoid UI freezes
-    _processMarkersInBatches(widget.filteredData);
-  }
-
-  void _processMarkersInBatches(List<List<String>> data) {
-    // Adjust batch size based on data size
-    int batchSize = data.length <= 500 ? data.length : 200;
-
-    List<Marker> markers = [];
-    double sumLat = 0;
-    double sumLng = 0;
-    int validCoordinates = 0;
-    int sampunCount = 0;
-    int derengJangkepCount = 0;
-    int derengBlasCount = 0;
-
-    // Calculate total counts upfront
-    for (var row in data) {
-      final coordinateStr = _getValue(row, 16, '');
-      if (coordinateStr.isNotEmpty) {
-        final status = getGenerativeStatus(
-            _getValue(row, 72, "not audited"),
-            _getValue(row, 73, "not audited")
-        );
-
-        if (status == "Sampun") {
-          sampunCount++;
-        } else if (status == "Dereng Jangkep") {
-          derengJangkepCount++;
-        } else if (status == "Dereng Blas") {
-          derengBlasCount++;
-        }
-      }
-    }
-
-    // Update cached counts immediately
-    _cachedSampunCount = sampunCount;
-    _cachedDerengJangkepCount = derengJangkepCount;
-    _cachedDerengBlasCount = derengBlasCount;
-    _lastFilteredData = data;
-
-    // Process first batch immediately
-    int endIndex = data.length < batchSize ? data.length : batchSize;
-
-    for (int i = 0; i < endIndex; i++) {
-      final marker = _createMarkerFromRow(data[i]);
-      if (marker != null) {
-        markers.add(marker);
-        sumLat += marker.point.latitude;
-        sumLng += marker.point.longitude;
-        validCoordinates++;
-      }
-    }
-
-    // Update UI with first batch
-    if (mounted) {
-      setState(() {
-        _markers = markers;
-        _isLoading = endIndex < data.length; // Still loading if more data to process
-
-        // Update map center if we have valid coordinates
-        if (validCoordinates > 0) {
-          _mapCenter = LatLng(sumLat / validCoordinates, sumLng / validCoordinates);
-
-          // Center the map on markers if this is the first load
-          if (!_initialCenterSet) {
-            _initialCenterSet = true;
-            // Use a slight delay to ensure the map is ready
-            Future.delayed(const Duration(milliseconds: 100), () {
-              if (mounted) {
-                _mapController.moveAndRotate(_mapCenter, 10.0, 0);
-              }
-            });
-          }
-        }
-      });
-    }
-
-    // Process remaining batches asynchronously
-    if (endIndex < data.length) {
-      Future.microtask(() {
-        _processRemainingBatches(data, endIndex, batchSize, markers, sumLat, sumLng, validCoordinates);
-      });
-    }
-  }
-
-  void _processRemainingBatches(
-      List<List<String>> data,
-      int startIndex,
-      int batchSize,
-      List<Marker> markers,
-      double sumLat,
-      double sumLng,
-      int validCoordinates
-      ) {
-    int endIndex = startIndex + batchSize;
-    if (endIndex > data.length) endIndex = data.length;
-
-    for (int i = startIndex; i < endIndex; i++) {
-      final marker = _createMarkerFromRow(data[i]);
-      if (marker != null) {
-        markers.add(marker);
-        sumLat += marker.point.latitude;
-        sumLng += marker.point.longitude;
-        validCoordinates++;
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        _markers = markers;
-        _isLoading = endIndex < data.length;
-
-        if (validCoordinates > 0) {
-          _mapCenter = LatLng(sumLat / validCoordinates, sumLng / validCoordinates);
-
-          // If this is the first complete batch and we have a lot of markers,
-          // make sure the map is centered on them
-          if (markers.length > 10 && !_initialCenterSet) {
-            _initialCenterSet = true;
-            Future.delayed(const Duration(milliseconds: 100), () {
-              if (mounted) {
-                _mapController.moveAndRotate(_mapCenter, 10.0, 0);
-              }
-            });
-          }
-        }
-      });
-    }
-
-    // Continue with next batch if needed
-    if (endIndex < data.length) {
-      Future.microtask(() {
-        _processRemainingBatches(data, endIndex, batchSize, markers, sumLat, sumLng, validCoordinates);
-      });
-    }
-  }
-
-  Marker? _createMarkerFromRow(List<String> row) {
-    try {
-      // Get coordinates from column R (index 17)
-      final coordinateStr = _getValue(row, 16, '');
-      if (coordinateStr.isEmpty) return null;
-
-      // Check if we already have this marker in cache
-      if (_markerCache.containsKey(coordinateStr)) {
-        return _markerCache[coordinateStr];
-      }
-
-      // Parse coordinates (assuming format like "latitude,longitude")
-      final parts = coordinateStr.split(',');
-      if (parts.length != 2) return null;
-
-      final lat = double.tryParse(parts[0].trim());
-      final lng = double.tryParse(parts[1].trim());
-
-      if (lat == null || lng == null) return null;
-
-      final status = getGenerativeStatus(
-          _getValue(row, 72, "not audited"),
-          _getValue(row, 73, "not audited")
-      );
-      final dap = _calculateDAP(row);
-
-      final marker = Marker(
-        width: 40.0,
-        height: 40.0,
-        point: LatLng(lat, lng),
-        child: GestureDetector(
-          onTap: () {
-            setState(() {
-              _selectedLocation = LatLng(lat, lng);
-              _selectedData = row;
-            });
-            _mapController.moveAndRotate(LatLng(lat, lng), _mapController.camera.zoom, 0);
-          },
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: getStatusColor(status).withAlpha(178),
-              border: Border.all(color: Colors.white, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(51),
-                  blurRadius: 6,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Center(
-              child: Text(
-                '$dap',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 10,
-                ),
+    return Marker(
+      width: 40.0,
+      height: 40.0,
+      point: point,
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _selectedLocation = point;
+            _selectedData = row;
+          });
+          _mapController.moveAndRotate(point, _mapController.camera.zoom, 0);
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: getStatusColor(status).withAlpha(178),
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(51),
+                blurRadius: 6,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              '$dap',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 10,
               ),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 
-      // Cache the marker
-      _markerCache[coordinateStr] = marker;
+  // Fungsi untuk membuat marker tumpuk (stacked)
+  Marker _createStackedMarker(LatLng point, List<List<String>> dataList) {
+    return Marker(
+      width: 45.0,
+      height: 45.0,
+      point: point,
+      child: GestureDetector(
+        onTap: () => _showStackedDataSheet(dataList),
+        child: Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.purple.withAlpha(200),
+            border: Border.all(color: Colors.white, width: 2),
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              const Icon(Icons.layers, color: Colors.white, size: 18),
+              Positioned(
+                top: 2,
+                right: 2,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                  child: Text(
+                    '${dataList.length}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-      return marker;
-    } catch (e) {
-      // Skip invalid coordinates
-      return null;
+  // Fungsi untuk menampilkan bottom sheet berisi daftar data
+  void _showStackedDataSheet(List<List<String>> dataList) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${dataList.length} Lahan di Lokasi Ini',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const Divider(height: 16),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: dataList.length,
+                  itemBuilder: (context, index) {
+                    final row = dataList[index];
+                    final fieldNumber = _getValue(row, 2, "Unknown");
+                    final farmerName = _getValue(row, 3, "Unknown");
+                    final status = getGenerativeStatus(
+                      _getValue(row, 72, "not audited"),
+                      _getValue(row, 73, "not audited"),
+                    );
+
+                    return ListTile(
+                      leading: Icon(
+                        getStatusIcon(status),
+                        color: getStatusColor(status),
+                      ),
+                      title: Text(fieldNumber,
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text(farmerName),
+                      onTap: () {
+                        Navigator.pop(context); // Tutup bottom sheet
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => GenerativeDetailScreen(
+                              fieldNumber: fieldNumber,
+                              region: widget.selectedRegion ?? 'Unknown Region',
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Panel Statistik yang sudah dioptimalkan
+  Widget _buildStatsPanel() {
+    final int totalFilteredCount = widget.filteredData.length;
+    final int totalOnMap = _sampunOnMapCount + _derengJangkepOnMapCount + _derengBlasOnMapCount;
+    final int invalidCoordinatesCount = totalFilteredCount - totalOnMap;
+
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Total: $totalFilteredCount Lahan',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+                color: Colors.green.shade800,
+              ),
+            ),
+            const Divider(height: 12),
+            _buildStatRow(
+              status: "Sampun",
+              count: _sampunOnMapCount,
+              total: totalOnMap,
+            ),
+            const SizedBox(height: 4),
+            _buildStatRow(
+              status: "Dereng Jangkep",
+              count: _derengJangkepOnMapCount,
+              total: totalOnMap,
+            ),
+            const SizedBox(height: 4),
+            _buildStatRow(
+              status: "Dereng Blas",
+              count: _derengBlasOnMapCount,
+              total: totalOnMap,
+            ),
+            if (invalidCoordinatesCount > 0) ...[
+              const SizedBox(height: 4),
+              _buildStatRow(
+                status: "Tanpa Koordinat",
+                count: invalidCoordinatesCount,
+                total: totalOnMap,
+              ),
+            ]
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper widget untuk membuat baris statistik
+  Widget _buildStatRow({
+    required String status,
+    required int count,
+    required int total,
+  }) {
+    final percentage = total > 0 ? (count / total) * 100 : 0.0;
+    final isNoCoord = status == "Tanpa Koordinat";
+
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: isNoCoord ? Colors.grey : getStatusColor(status),
+            shape: BoxShape.circle,
+          ),
+          child: isNoCoord ? const Icon(Icons.location_off_outlined, color: Colors.white, size: 8) : null,
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            '$status: $count ${!isNoCoord ? "(${percentage.toStringAsFixed(1)}%)" : ""}',
+            style: const TextStyle(fontSize: 12),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- Fungsi utilitas spesifik untuk Generative ---
+  String getGenerativeStatus(String cekResult, String cekProses) {
+    if (cekResult.toLowerCase() == "audited" && cekProses.toLowerCase() == "audited") {
+      return "Sampun";
+    } else if ((cekResult.toLowerCase() == "audited" && cekProses.toLowerCase() == "not audited") ||
+        (cekResult.toLowerCase() == "not audited" && cekProses.toLowerCase() == "audited")) {
+      return "Dereng Jangkep";
+    } else if (cekResult.toLowerCase() == "not audited" && cekProses.toLowerCase() == "not audited") {
+      return "Dereng Blas";
+    }
+    return "Unknown";
+  }
+
+  Color getStatusColor(String status) {
+    switch (status) {
+      case "Sampun": return Colors.green;
+      case "Dereng Jangkep": return Colors.orange;
+      case "Dereng Blas": return Colors.red;
+      default: return Colors.grey;
+    }
+  }
+
+  IconData getStatusIcon(String status) {
+    switch (status) {
+      case "Sampun": return Icons.check_circle;
+      case "Dereng Jangkep": return Icons.hourglass_empty;
+      case "Dereng Blas": return Icons.cancel;
+      default: return Icons.help_outline;
     }
   }
 
   String _getValue(List<String> row, int index, String defaultValue) {
-    if (index < row.length) {
-      return row[index];
-    }
-    return defaultValue;
+    return (index < row.length) ? row[index] : defaultValue;
   }
 
   // Memoize DAP calculations to avoid recalculating
@@ -358,32 +509,6 @@ class _GenerativeMapViewState extends State<GenerativeMapView> with AutomaticKee
     }
   }
 
-  String getGenerativeStatus(String cekResult, String cekProses) {
-    if (cekResult.toLowerCase() == "audited" && cekProses.toLowerCase() == "audited") {
-      return "Sampun";
-    } else if ((cekResult.toLowerCase() == "audited" && cekProses.toLowerCase() == "not audited") ||
-        (cekResult.toLowerCase() == "not audited" && cekProses.toLowerCase() == "audited")) {
-      return "Dereng Jangkep";
-    } else if (cekResult.toLowerCase() == "not audited" && cekProses.toLowerCase() == "not audited") {
-      return "Dereng Blas";
-    }
-    return "Unknown";
-  }
-
-  // Get color based on status
-  Color getStatusColor(String status) {
-    switch (status) {
-      case "Sampun":
-        return Colors.green;
-      case "Dereng Jangkep":
-        return Colors.orange;
-      case "Dereng Blas":
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
   // Get gradient colors based on status
   List<Color> getStatusGradient(String status) {
     switch (status) {
@@ -395,20 +520,6 @@ class _GenerativeMapViewState extends State<GenerativeMapView> with AutomaticKee
         return [Colors.red.shade400, Colors.red.shade600];
       default:
         return [Colors.grey.shade400, Colors.grey.shade600];
-    }
-  }
-
-  // Get icon based on status
-  IconData getStatusIcon(String status) {
-    switch (status) {
-      case "Sampun":
-        return Icons.check_circle;
-      case "Dereng Jangkep":
-        return Icons.hourglass_empty;
-      case "Dereng Blas":
-        return Icons.cancel;
-      default:
-        return Icons.help_outline;
     }
   }
 
@@ -960,149 +1071,6 @@ class _GenerativeMapViewState extends State<GenerativeMapView> with AutomaticKee
     );
   }
 
-  // Cache for status counts
-  List<List<String>>? _lastFilteredData;
-  int _cachedSampunCount = 0;
-  int _cachedDerengJangkepCount = 0;
-  int _cachedDerengBlasCount = 0;
-
-  Widget _buildStatsPanel() {
-    // Use cached values if the data hasn't changed
-    if (_lastFilteredData != widget.filteredData) {
-      _updateStatusCounts();
-    }
-
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Total: ${_cachedSampunCount + _cachedDerengJangkepCount + _cachedDerengBlasCount} Lahan',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                color: Colors.green.shade800,
-              ),
-            ),
-            const SizedBox(height: 4),
-            _buildStatusIndicator(
-              count: _cachedSampunCount,
-              color: Colors.green,
-            ),
-            const SizedBox(height: 4),
-            _buildStatusIndicator(
-              count: _cachedDerengJangkepCount,
-              color: Colors.orange,
-            ),
-            const SizedBox(height: 4),
-            _buildStatusIndicator(
-              count: _cachedDerengBlasCount,
-              color: Colors.red,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _updateStatusCounts() {
-    int sampunCount = 0;
-    int derengJangkepCount = 0;
-    int derengBlasCount = 0;
-
-    for (var row in widget.filteredData) {
-      final status = getGenerativeStatus(
-          _getValue(row, 72, "not audited"),
-          _getValue(row, 73, "not audited")
-      );
-
-      if (status == "Sampun") {
-        sampunCount++;
-      } else if (status == "Dereng Jangkep") {
-        derengJangkepCount++;
-      } else if (status == "Dereng Blas") {
-        derengBlasCount++;
-      }
-    }
-
-    setState(() {
-      _cachedSampunCount = sampunCount;
-      _cachedDerengJangkepCount = derengJangkepCount;
-      _cachedDerengBlasCount = derengBlasCount;
-      _lastFilteredData = widget.filteredData;
-    });
-  }
-
-  Widget _buildStatusIndicator({
-    required int count,
-    required Color color,
-    bool isTotal = false,
-  }) {
-    final totalCount = _cachedSampunCount + _cachedDerengJangkepCount + _cachedDerengBlasCount;
-    final percentage = totalCount > 0 ? (count / totalCount * 100).toStringAsFixed(1) : '0.0';
-
-    IconData statusIcon;
-    if (color == Colors.green) {
-      statusIcon = Icons.check_circle; // Sampun
-    } else if (color == Colors.orange) {
-      statusIcon = Icons.hourglass_empty; // Dereng Jangkep
-    } else if (color == Colors.red) {
-      statusIcon = Icons.cancel; // Dereng Blas
-    } else {
-      statusIcon = Icons.grading_rounded; // Default icon
-    }
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 1),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(20),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        Icon(statusIcon, size: 14, color: color),
-        const Spacer(),
-        Text(
-          ': $count',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-            color: isTotal ? Colors.black : color.withAlpha(204),
-          ),
-        ),
-        if (!isTotal) ...[
-          const SizedBox(width: 6),
-          Text(
-            '($percentage%)',
-            style: TextStyle(
-              fontSize: 9,
-              color: Colors.grey.shade600,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
   Widget _buildInfoRow({
     required IconData icon,
     required String label,
@@ -1138,12 +1106,5 @@ class _GenerativeMapViewState extends State<GenerativeMapView> with AutomaticKee
         ),
       ],
     );
-  }
-
-  @override
-  void dispose() {
-    _markerCache.clear();
-    _dapCache.clear();
-    super.dispose();
   }
 }

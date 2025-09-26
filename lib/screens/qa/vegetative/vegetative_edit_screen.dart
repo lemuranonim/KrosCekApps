@@ -7,9 +7,11 @@ import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
+// import 'package:flutter/services.dart';
 
 import '../../services/config_manager.dart';
 import '../../services/google_sheets_api.dart';
+import '../../services/custom_numeric_keyboard.dart';
 
 class VegetativeEditScreen extends StatefulWidget {
   final List<String> row;
@@ -35,7 +37,8 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   late TextEditingController _actualPlantingDateController;
   late TextEditingController _coDetasselingController;
   late TextEditingController _fieldSizeController;
-  late TextEditingController _sowingRatioController;
+  late TextEditingController _sowingRatioFemaleController;
+  late TextEditingController _sowingRatioMaleController;
   late TextEditingController _remarksController;
 
   String userEmail = 'Fetching...';
@@ -80,6 +83,12 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   bool _isGettingLocation = false;
   bool _isLocationTagged = false;
 
+  final FocusNode _fieldSizeFocusNode = FocusNode();
+  final FocusNode _sowingRatioFemaleFocusNode = FocusNode();
+  final FocusNode _sowingRatioMaleFocusNode = FocusNode();
+  bool _isCustomKeyboardVisible = false;
+  TextEditingController? _activeController;
+
   @override
   void initState() {
     super.initState();
@@ -96,8 +105,22 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     _dateAuditController = TextEditingController(text: _convertToDateIfNecessary(row[33]));
     _actualPlantingDateController = TextEditingController(text: _convertToDateIfNecessary(row[35]));
     _coDetasselingController = TextEditingController(text: row[32]);
-    _fieldSizeController = TextEditingController(text: row[36].replaceAll("'", ""));
-    _sowingRatioController = TextEditingController(text: row[38]);
+    _fieldSizeController = TextEditingController(text: row[36].replaceAll('.', ','));
+    _sowingRatioFemaleController = TextEditingController();
+    _sowingRatioMaleController = TextEditingController();
+
+    final initialRatio = row.length > 38 ? row[38].replaceAll("'", "") : '';
+    if (initialRatio.contains(':')) {
+      final parts = initialRatio.split(':');
+      if (parts.length == 2) {
+        _sowingRatioFemaleController.text = parts[0];
+        _sowingRatioMaleController.text = parts[1];
+      }
+    }
+
+    // Menambahkan listener untuk menggabungkan input secara otomatis
+    _sowingRatioFemaleController.addListener(_updateSowingRatio);
+    _sowingRatioMaleController.addListener(_updateSowingRatio);
     _remarksController = TextEditingController(text: row[51]);
 
     _loadFIList(widget.region);
@@ -121,7 +144,63 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
         // This will trigger a rebuild with the correct required field indicators
       });
     });
-    _locationController = TextEditingController(text: row.length > 17 ? row[17] : 'No location set');
+    final initialLocation = (row.length > 16 && row[16].isNotEmpty) ? row[16] : 'No location set';
+    _locationController = TextEditingController(text: initialLocation);
+    _isLocationTagged = initialLocation.contains(',');
+
+    _fieldSizeFocusNode.addListener(() {
+      if (_fieldSizeFocusNode.hasFocus) {
+        setState(() {
+          _activeController = _fieldSizeController;
+          _isCustomKeyboardVisible = true;
+        });
+      } else {
+        // Cek jika tidak ada field lain yang fokus sebelum menyembunyikan keyboard
+        if (!_sowingRatioFemaleFocusNode.hasFocus && !_sowingRatioMaleFocusNode.hasFocus) {
+          setState(() {
+            _isCustomKeyboardVisible = false;
+          });
+        }
+      }
+    });
+    _sowingRatioFemaleFocusNode.addListener(() {
+      if (_sowingRatioFemaleFocusNode.hasFocus) {
+        setState(() {
+          _activeController = _sowingRatioFemaleController;
+          _isCustomKeyboardVisible = true;
+        });
+      } else {
+        if (!_fieldSizeFocusNode.hasFocus && !_sowingRatioMaleFocusNode.hasFocus) {
+          setState(() {
+            _isCustomKeyboardVisible = false;
+          });
+        }
+      }
+    });
+
+    // BARU: Tambahkan listener untuk Sowing Ratio Male
+    _sowingRatioMaleFocusNode.addListener(() {
+      if (_sowingRatioMaleFocusNode.hasFocus) {
+        setState(() {
+          _activeController = _sowingRatioMaleController;
+          _isCustomKeyboardVisible = true;
+        });
+      } else {
+        if (!_fieldSizeFocusNode.hasFocus && !_sowingRatioFemaleFocusNode.hasFocus) {
+          setState(() {
+            _isCustomKeyboardVisible = false;
+          });
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _fieldSizeFocusNode.dispose();
+    _sowingRatioFemaleFocusNode.dispose();
+    _sowingRatioMaleFocusNode.dispose();
+    super.dispose();
   }
 
   Future<void> _getCurrentLocation() async {
@@ -213,6 +292,14 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     await Hive.openBox('vegetativeData');
   }
 
+  void _updateSowingRatio() {
+    final female = _sowingRatioFemaleController.text;
+    final male = _sowingRatioMaleController.text;
+    setState(() {
+      row[38] = "'$female:$male";
+    });
+  }
+
   Future<void> _saveToHive(List<String> rowData) async {
     var box = await Hive.openBox('vegetativeData');
     final cacheKey = 'detailScreenData_${rowData[2]}';
@@ -232,425 +319,554 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-            'Edit Vegetative Field',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 20,
-            )
+          'Edit Vegetative Field',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
         ),
         backgroundColor: Colors.green.shade700,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.green.shade700, Colors.green.shade100],
-            stops: const [0.0, 0.3],
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Form(
-            key: _formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (isLoading)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 20),
-                      child: const LinearProgressIndicator(
-                        backgroundColor: Colors.white,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-                      ),
-                    ),
-
-                  // Main Card Container
-                  Card(
-                    elevation: 8,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Field Information Section
-                          _buildSectionHeader('Field Information', Icons.info_outline),
-
-                          _buildInfoCard(
-                            title: 'Field Number',
-                            value: row[2],
-                            icon: Icons.numbers,
-                          ),
-
-                          _buildInfoCard(
-                            title: 'Region',
-                            value: widget.region,
-                            icon: Icons.location_on,
-                          ),
-
-                          const SizedBox(height: 10),
-                          _buildSectionHeader('Tag Location', Icons.my_location),
-                          _buildLocationField(), // Memanggil widget baru
-                          const SizedBox(height: 10),
-
-                          const SizedBox(height: 20),
-                          _buildRequiredFieldsNotice(),
-
-                          // Audit Information Section
-                          _buildSectionHeader('Audit Information', Icons.assignment),
-                          _buildFIDropdownField(
-                            'QA FI',
-                            selectedFI,
-                            fiList,
-                                (value) {
-                              setState(() {
-                                selectedFI = value;
-                                row[31] = value ?? '';
-                              });
-                            },
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'This field is required';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 10),
-                          _buildTextField(
-                            'Co Detasseling',
-                            _coDetasselingController,
-                            Icons.people,
-                            // Update the validator functions for all fields except QA FI and Date of Audit
-                            onChanged: (value) {
-                              setState(() {
-                                row[32] = value;
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 10),
-                          _buildDateField(
-                            'Date of Audit',
-                            _dateAuditController,
-                                (date) {
-                              setState(() {
-                                row[33] = date;
-                              });
-                            },
-                            validator: (value) => value == null || value.toString().isEmpty ? 'Please select a date' : null,
-                          ),
-                          const SizedBox(height: 10),
-                          _buildDateField(
-                            'Actual Female Planting Date',
-                            _actualPlantingDateController,
-                                (date) {
-                              setState(() {
-                                row[35] = date;
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 10),
-
-                          // Field Metrics Section
-                          _buildSectionHeader('Field Metrics', Icons.straighten),
-                          _buildNumericField(
-                            'Field Size by Audit (Ha)',
-                            _fieldSizeController,
-                            Icons.crop_square,
-                            onChanged: (value) {
-                              setState(() {
-                                row[36] = "'$value";
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 10),
-                          _buildDropdownField(
-                            label: 'Male Split by Audit',
-                            value: selectedMaleSplit,
-                            items: maleSplitItems,
-                            onChanged: (value) {
-                              setState(() {
-                                selectedMaleSplit = value;
-                                row[37] = value ?? '';
-                              });
-                            },
-                            helpText: 'Y = Yes\nN = No',
-                            icon: Icons.view_week,
-                          ),
-                          const SizedBox(height: 10),
-                          _buildTextField(
-                            'Sowing Ratio by Audit',
-                            _sowingRatioController,
-                            Icons.compare_arrows,
-                            onChanged: (value) {
-                              setState(() {
-                                // Always ensure the value starts with a single quote
-                                row[38] = value.startsWith("'") ? value : "'$value";
-                              });
-                            },
-                            helpText: 'Female:Male (tanpa spasi)',
-                          ),
-                          const SizedBox(height: 10),
-
-                          // Field Conditions Section
-                          _buildSectionHeader('Field Conditions', Icons.landscape),
-                          _buildDropdownField(
-                            label: 'Split Field by Audit',
-                            value: selectedSplitField,
-                            items: splitFieldItems,
-                                onChanged: (value) {
-                              setState(() {
-                                selectedSplitField = value;
-                                row[39] = value ?? '';
-                              });
-                            },
-                            helpText: 'A = No\nB = Yes',
-                            icon: Icons.call_split,
-                          ),
-                          const SizedBox(height: 10),
-                          _buildDropdownField(
-                            label: 'Isolation Problem by Audit',
-                            value: selectedIsolationProblem,
-                            items: isolationProblemItems,
-                            onChanged: (value) {
-                              setState(() {
-                                selectedIsolationProblem = value;
-                                row[40] = value ?? '';
-                              });
-                            },
-                            helpText: 'Y = Yes\nN = No',
-                            icon: Icons.security,
-                          ),
-                          const SizedBox(height: 10),
-                          if (selectedIsolationProblem == 'Y')
-                            Column(
-                              children: [
-                                _buildDropdownField(
-                                  label: 'If "YES" Contaminant Type',
-                                  value: selectedContaminantType,
-                                  items: contaminantTypeItems,
-                                  onChanged: (value) {
-                                    setState(() {
-                                      selectedContaminantType = value;
-                                      row[41] = value ?? '';
-                                    });
-                                  },
-                                  helpText: 'A = Seed Production\nB = Jagung Komersial',
-                                  icon: Icons.category,
-                                ),
-                                const SizedBox(height: 10),
-
-                                _buildDropdownField(
-                                  label: 'If "YES" Contaminant Distance',
-                                  value: selectedContaminantDistance,
-                                  items: contaminantDistanceItems,
-                                  onChanged: (value) {
-                                    setState(() {
-                                      selectedContaminantDistance = value;
-                                      row[42] = value ?? '';
-                                    });
-                                  },
-                                  helpText: 'A = >300 m\nB = >200-<300 m\nC = >100 & <200 m\nD = <100 m',
-                                  icon: Icons.social_distance,
-                                ),
-                                const SizedBox(height: 10),
-                              ],
+      // Ganti body dengan GestureDetector yang membungkus Stack
+      body: GestureDetector(
+        onTap: () {
+          // Menghilangkan fokus jika mengetuk area di luar keyboard
+          if (_isCustomKeyboardVisible) {
+            FocusScope.of(context).unfocus();
+          }
+        },
+        child: Stack(
+          children: [
+            // 1. KONTEN UTAMA ANDA (SELURUH FORM)
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.green.shade700, Colors.green.shade100],
+                  stops: const [0.0, 0.3],
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Form(
+                  key: _formKey,
+                  // Gunakan SingleChildScrollView di sini agar form tetap bisa di-scroll
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isLoading)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 20),
+                            child: const LinearProgressIndicator(
+                              backgroundColor: Colors.white,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
                             ),
-                          const SizedBox(height: 10),
-                          // Crop Quality Section
-                          _buildSectionHeader('Crop Performance', Icons.eco),
-                          _buildDropdownField(
-                            label: 'Crop Uniformity',
-                            value: selectedCropUniformity,
-                            items: cropUniformityItems,
-                            onChanged: (value) {
-                              setState(() {
-                                selectedCropUniformity = value;
-                                row[43] = value ?? '';
-                              });
-                            },
-                            helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
-                            icon: Icons.grain,
                           ),
-                          const SizedBox(height: 10),
-                          _buildDropdownField(
-                            label: 'Offtype in Male',
-                            value: selectedOfftypeInMale,
-                            items: offtypeItems,
-                            onChanged: (value) {
-                              setState(() {
-                                selectedOfftypeInMale = value;
-                                row[44] = value ?? '';
-                              });
-                            },
-                            helpText: 'A = No\nB = Yes',
-                            icon: Icons.male,
+                        Card(
+                          elevation: 8,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          const SizedBox(height: 10),
-                          _buildDropdownField(
-                            label: 'Offtype in Female',
-                            value: selectedOfftypeInFemale,
-                            items: offtypeItems,
-                            onChanged: (value) {
-                              setState(() {
-                                selectedOfftypeInFemale = value;
-                                row[45] = value ?? '';
-                              });
-                            },
-                            helpText: 'A = No\nB = Yes',
-                            icon: Icons.female,
-                          ),
-                          const SizedBox(height: 10),
+                          // Pindahkan Padding dan Column dari kode lama Anda ke sini
+                          child: Padding(
+                            padding: const EdgeInsets.all(20.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Semua widget _build... Anda (dari _buildSectionHeader hingga tombol Simpan)
+                                // diletakkan di sini.
+                                // Contoh:
+                                _buildSectionHeader('Field Information', Icons.info_outline),
+                                _buildInfoCard(
+                                  title: 'Field Number',
+                                  value: row[2],
+                                  icon: Icons.numbers,
+                                ),
+                                // ... (lanjutkan dengan semua widget lainnya hingga tombol Simpan)
+                                // ...
+                                _buildInfoCard(
+                                  title: 'Region',
+                                  value: widget.region,
+                                  icon: Icons.location_on,
+                                ),
 
-                          // Field History Section
-                          _buildSectionHeader('Field History & Management', Icons.history),
-                          _buildDropdownField(
-                            label: 'Previous Crop by Audit',
-                            value: selectedPreviousCrop,
-                            items: offtypeItems,
-                            onChanged: (value) {
-                              setState(() {
-                                selectedPreviousCrop = value;
-                                row[46] = value ?? '';
-                              });
-                            },
-                            helpText: 'A = Not Corn\nB = Corn After Corn',
-                            icon: Icons.history_edu,
-                          ),
-                          const SizedBox(height: 10),
-                          _buildDropdownField(
-                            label: 'One Seed per Hole',
-                            value: selectedFIRApplied,
-                            items: firAppliedItems,
-                            onChanged: (value) {
-                              setState(() {
-                                selectedFIRApplied = value;
-                                row[47] = value ?? '';
-                              });
-                            },
-                            helpText: 'Y = Yes\nN = No',
-                            icon: Icons.hdr_weak_rounded,
-                          ),
-                          const SizedBox(height: 10),
+                                const SizedBox(height: 10),
+                                _buildSectionHeader('Tag Location', Icons.my_location),
+                                _buildLocationField(), // Memanggil widget baru
+                                const SizedBox(height: 10),
 
-                          // Field Validation Section
-                          _buildSectionHeader('Field Validation', Icons.verified),
-                          const SizedBox(height: 10),
-                          _buildDropdownField(
-                            label: 'Flagging (GF/RF)',
-                            value: selectedFlagging,
-                            items: flaggingItems,
-                            onChanged: (value) {
-                              setState(() {
-                                selectedFlagging = value;
-                                row[49] = value ?? '';
-                              });
-                            },
-                            helpText: 'Flagging (GF/RF)',
-                            icon: Icons.flag,
-                          ),
-                          const SizedBox(height: 10),
-                          _buildDropdownField(
-                            label: 'Recommendation',
-                            value: selectedRecommendation,
-                            items: recommendationItems,
-                            onChanged: (value) {
-                              setState(() {
-                                selectedRecommendation = value;
-                                row[50] = value ?? '';
-                              });
-                            },
-                            helpText: 'Continue to Next Process/Discard',
-                            icon: Icons.recommend,
-                          ),
-                          // Add this after the Recommendation dropdown
-                          if (selectedRecommendation == 'Discard')
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              margin: const EdgeInsets.symmetric(vertical: 16),
-                              decoration: BoxDecoration(
-                                color: Colors.amber.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.amber.shade200),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.info_outline, color: Colors.amber.shade800),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'When "Discard" is selected, only QA FI and Date of Audit are required. Other fields are optional.',
-                                      style: TextStyle(
-                                        color: Colors.amber.shade800,
-                                        fontSize: 14,
+                                const SizedBox(height: 20),
+                                _buildRequiredFieldsNotice(),
+
+                                // Audit Information Section
+                                _buildSectionHeader('Audit Information', Icons.assignment),
+                                _buildFIDropdownField(
+                                  'QA FI',
+                                  selectedFI,
+                                  fiList,
+                                      (value) {
+                                    setState(() {
+                                      selectedFI = value;
+                                      row[31] = value ?? '';
+                                    });
+                                  },
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'This field is required';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+                                _buildTextField(
+                                  'Co Detasseling',
+                                  _coDetasselingController,
+                                  Icons.people,
+                                  // Update the validator functions for all fields except QA FI and Date of Audit
+                                  onChanged: (value) {
+                                    setState(() {
+                                      row[32] = value;
+                                    });
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+                                _buildDateField(
+                                  'Date of Audit',
+                                  _dateAuditController,
+                                      (date) {
+                                    setState(() {
+                                      row[33] = date;
+                                    });
+                                  },
+                                  validator: (value) => value == null || value.toString().isEmpty ? 'Please select a date' : null,
+                                ),
+                                const SizedBox(height: 10),
+                                _buildDateField(
+                                  'Actual Female Planting Date',
+                                  _actualPlantingDateController,
+                                      (date) {
+                                    setState(() {
+                                      row[35] = date;
+                                    });
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+
+                                // Field Metrics Section
+                                _buildSectionHeader('Field Metrics', Icons.straighten),
+                                _buildNumericField(
+                                  'Field Size by Audit (Ha)',
+                                  _fieldSizeController,
+                                  Icons.crop_square,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      row[36] = value;
+                                    });
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+                                _buildDropdownField(
+                                  label: 'Male Split by Audit',
+                                  value: selectedMaleSplit,
+                                  items: maleSplitItems,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedMaleSplit = value;
+                                      row[37] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'Y = Yes\nN = No',
+                                  icon: Icons.view_week,
+                                ),
+                                const SizedBox(height: 10),
+                                _buildSowingRatioField(),
+                                const SizedBox(height: 10),
+
+                                // Field Conditions Section
+                                _buildSectionHeader('Field Conditions', Icons.landscape),
+                                _buildDropdownField(
+                                  label: 'Split Field by Audit',
+                                  value: selectedSplitField,
+                                  items: splitFieldItems,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedSplitField = value;
+                                      row[39] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'A = No\nB = Yes',
+                                  icon: Icons.call_split,
+                                ),
+                                const SizedBox(height: 10),
+                                _buildDropdownField(
+                                  label: 'Isolation Problem by Audit',
+                                  value: selectedIsolationProblem,
+                                  items: isolationProblemItems,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedIsolationProblem = value;
+                                      row[40] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'Y = Yes\nN = No',
+                                  icon: Icons.security,
+                                ),
+                                const SizedBox(height: 10),
+                                if (selectedIsolationProblem == 'Y')
+                                  Column(
+                                    children: [
+                                      _buildDropdownField(
+                                        label: 'If "YES" Contaminant Type',
+                                        value: selectedContaminantType,
+                                        items: contaminantTypeItems,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            selectedContaminantType = value;
+                                            row[41] = value ?? '';
+                                          });
+                                        },
+                                        helpText: 'A = Seed Production\nB = Jagung Komersial',
+                                        icon: Icons.category,
                                       ),
+                                      const SizedBox(height: 10),
+
+                                      _buildDropdownField(
+                                        label: 'If "YES" Contaminant Distance',
+                                        value: selectedContaminantDistance,
+                                        items: contaminantDistanceItems,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            selectedContaminantDistance = value;
+                                            row[42] = value ?? '';
+                                          });
+                                        },
+                                        helpText: 'A = >300 m\nB = >200-<300 m\nC = >100 & <200 m\nD = <100 m',
+                                        icon: Icons.social_distance,
+                                      ),
+                                      const SizedBox(height: 10),
+                                    ],
+                                  ),
+                                const SizedBox(height: 10),
+                                // Crop Quality Section
+                                _buildSectionHeader('Crop Performance', Icons.eco),
+                                _buildDropdownField(
+                                  label: 'Crop Uniformity',
+                                  value: selectedCropUniformity,
+                                  items: cropUniformityItems,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedCropUniformity = value;
+                                      row[43] = value ?? '';
+                                    });
+                                  },
+                                  helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
+                                  icon: Icons.grain,
+                                ),
+                                const SizedBox(height: 10),
+                                _buildDropdownField(
+                                  label: 'Offtype in Male',
+                                  value: selectedOfftypeInMale,
+                                  items: offtypeItems,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedOfftypeInMale = value;
+                                      row[44] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'A = No\nB = Yes',
+                                  icon: Icons.male,
+                                ),
+                                const SizedBox(height: 10),
+                                _buildDropdownField(
+                                  label: 'Offtype in Female',
+                                  value: selectedOfftypeInFemale,
+                                  items: offtypeItems,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedOfftypeInFemale = value;
+                                      row[45] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'A = No\nB = Yes',
+                                  icon: Icons.female,
+                                ),
+                                const SizedBox(height: 10),
+
+                                // Field History Section
+                                _buildSectionHeader('Field History & Management', Icons.history),
+                                _buildDropdownField(
+                                  label: 'Previous Crop by Audit',
+                                  value: selectedPreviousCrop,
+                                  items: offtypeItems,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedPreviousCrop = value;
+                                      row[46] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'A = Not Corn\nB = Corn After Corn',
+                                  icon: Icons.history_edu,
+                                ),
+                                const SizedBox(height: 10),
+                                _buildDropdownField(
+                                  label: 'One Seed per Hole',
+                                  value: selectedFIRApplied,
+                                  items: firAppliedItems,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedFIRApplied = value;
+                                      row[47] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'Y = Yes\nN = No',
+                                  icon: Icons.hdr_weak_rounded,
+                                ),
+                                const SizedBox(height: 10),
+
+                                // Field Validation Section
+                                _buildSectionHeader('Field Validation', Icons.verified),
+                                const SizedBox(height: 10),
+                                _buildDropdownField(
+                                  label: 'Flagging (GF/RF)',
+                                  value: selectedFlagging,
+                                  items: flaggingItems,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedFlagging = value;
+                                      row[49] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'Flagging (GF/RF)',
+                                  icon: Icons.flag,
+                                ),
+                                const SizedBox(height: 10),
+                                _buildDropdownField(
+                                  label: 'Recommendation',
+                                  value: selectedRecommendation,
+                                  items: recommendationItems,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedRecommendation = value;
+                                      row[50] = value ?? '';
+                                    });
+                                  },
+                                  helpText: 'Continue to Next Process/Discard',
+                                  icon: Icons.recommend,
+                                ),
+                                // Add this after the Recommendation dropdown
+                                if (selectedRecommendation == 'Discard')
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    margin: const EdgeInsets.symmetric(vertical: 16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.shade50,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.amber.shade200),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.info_outline, color: Colors.amber.shade800),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'When "Discard" is selected, only QA FI and Date of Audit are required. Other fields are optional.',
+                                            style: TextStyle(
+                                              color: Colors.amber.shade800,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ],
-                              ),
-                            ),
-                          const SizedBox(height: 10),
+                                const SizedBox(height: 10),
 
-                          // Remarks Section
-                          _buildSectionHeader('Additional Information', Icons.note_add),
-                          _buildTextField(
-                            'Remarks',
-                            _remarksController,
-                            Icons.comment,
-                            maxLines: 3,
-                            onChanged: (value) {
-                              setState(() {
-                                row[51] = value;
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 30),
-
-                          // Save Button
-                          Center(
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                if (_formKey.currentState!.validate()) {
-                                  if (_validateForm()) {
-                                    _showConfirmationDialog();
-                                  } else {
-                                    _showErrorSnackBar('Please complete all required fields');
-                                  }
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                minimumSize: const Size(220, 60),
-                                backgroundColor: Colors.green.shade700,
-                                foregroundColor: Colors.white,
-                                elevation: 5,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
+                                // Remarks Section
+                                _buildSectionHeader('Additional Information', Icons.note_add),
+                                _buildTextField(
+                                  'Remarks',
+                                  _remarksController,
+                                  Icons.comment,
+                                  maxLines: 3,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      row[51] = value;
+                                    });
+                                  },
                                 ),
-                              ),
-                              icon: const Icon(Icons.save, size: 26, color: Colors.white),
-                              label: const Text(
-                                'Simpan',
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                              ),
+                                const SizedBox(height: 30),
+
+                                // Save Button
+                                Center(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      if (_formKey.currentState!.validate()) {
+                                        if (_validateForm()) {
+                                          _showConfirmationDialog();
+                                        } else {
+                                          _showErrorSnackBar('Please complete all required fields');
+                                        }
+                                      }
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      minimumSize: const Size(220, 60),
+                                      backgroundColor: Colors.green.shade700,
+                                      foregroundColor: Colors.white,
+                                      elevation: 5,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(30),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.save, size: 26, color: Colors.white),
+                                    label: const Text(
+                                      'Simpan',
+                                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 30),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 30),
-                ],
+                ),
               ),
             ),
-          ),
+
+            // 2. KEYBOARD KUSTOM SEBAGAI OVERLAY
+            if (_isCustomKeyboardVisible && _activeController != null) // Tambahkan cek null
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Material(
+                  elevation: 8,
+                  child: CustomNumericKeyboard(
+                    // --- PERUBAHAN DI SINI ---
+                    controller: _activeController!, // Gunakan controller yang aktif
+                    onDone: () {
+                      // Cukup hilangkan fokus dari scope utama
+                      FocusScope.of(context).unfocus();
+                    },
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSowingRatioField() {
+    bool isRequired = selectedRecommendation == 'Continue';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Label untuk field
+        Row(
+          children: [
+            Icon(Icons.compare_arrows, color: Colors.green.shade800, size: 24),
+            const SizedBox(width: 8),
+            Text(
+              isRequired ? "Sowing Ratio by Audit*" : "Sowing Ratio by Audit",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.green.shade800,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // Baris yang berisi dua input field dan pemisah
+        Row(
+          children: [
+            // Input untuk Female
+            Expanded(
+              child: TextFormField(
+                controller: _sowingRatioFemaleController,
+                readOnly: true,
+                focusNode: _sowingRatioFemaleFocusNode,
+                showCursor: true,
+                textAlign: TextAlign.center,
+                decoration: InputDecoration(
+                  hintText: 'Female',
+                  labelStyle: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.green.shade200),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+                  ),
+                ),
+                validator: (value) {
+                  if (isRequired && (value == null || value.isEmpty)) {
+                    return 'Required';
+                  }
+                  return null;
+                },
+              ),
+            ),
+
+            // Pemisah ":"
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8.0),
+              child: Text(":", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            ),
+
+            // Input untuk Male
+            Expanded(
+              child: TextFormField(
+                controller: _sowingRatioMaleController,
+                readOnly: true,
+                focusNode: _sowingRatioMaleFocusNode,
+                showCursor: true,
+                textAlign: TextAlign.center,
+                decoration: InputDecoration(
+                  hintText: 'Male',
+                  labelStyle: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.green.shade200),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+                  ),
+                ),
+                validator: (value) {
+                  if (isRequired && (value == null || value.isEmpty)) {
+                    return 'Required';
+                  }
+                  return null;
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        const Text(
+          "Isi rasio Female:Male (tanpa spasi)",
+          style: TextStyle(
+            fontStyle: FontStyle.italic,
+            color: Colors.grey,
+          ),
+        ),
+      ],
     );
   }
 
@@ -838,9 +1054,13 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
       ),
       child: TextFormField(
         controller: controller,
-        keyboardType: TextInputType.number,
+        // BARU: Mengubah keyboard untuk menerima desimal dan memfilter input
+        readOnly: true, // Mencegah keyboard bawaan muncul
+        focusNode: _fieldSizeFocusNode, // Gunakan FocusNode yang sudah dibuat
+        showCursor: true,
+        // AKHIR DARI BARU
         decoration: InputDecoration(
-          labelText: isRequired ? "$label *" : label, // Add asterisk to indicate required field
+          labelText: isRequired ? "$label *" : label,
           labelStyle: TextStyle(color: Colors.green.shade700),
           prefixIcon: Icon(icon, color: Colors.green.shade600),
           border: OutlineInputBorder(
@@ -1205,7 +1425,8 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     row[35].isNotEmpty &&
     row[36].isNotEmpty &&
     row[37].isNotEmpty &&
-    row[38].isNotEmpty; // Ensure Date o
+            _sowingRatioFemaleController.text.isNotEmpty &&
+            _sowingRatioMaleController.text.isNotEmpty;
 
     if (!additionalFieldsValid) {
       _showErrorSnackBar('When Recommendation is Continue, all assessment fields are required.');
@@ -1221,8 +1442,14 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
       barrierDismissible: false, // Prevent dismissing by tapping outside
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Confirm Save', style: TextStyle(color: Colors.green.shade800)),
-        content: const Text('Are you sure you want to save the changes? All fields must be filled correctly.'),
+        title: Row(
+          children: [
+            Icon(Icons.save_outlined, color: Colors.green.shade700),
+            const SizedBox(width: 10),
+            const Text('Confirm Save'),
+          ],
+        ),
+        content: const Text('Are you sure you want to save the changes?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -1239,10 +1466,63 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
         ],
       ),
     );
-
     if (shouldSave == true) {
-      _showLoadingDialogAndClose();
-      _saveToGoogleSheets(row);
+      await _executeSaveProcess();
+    }
+  }
+
+  Future<void> _executeSaveProcess() async {
+    // 1. Tampilkan dialog loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Lottie.asset('assets/loading.json', width: 150, height: 150),
+              const SizedBox(height: 20),
+              const Text(
+                "Ngrantos sekedap...",
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    // 2. Coba simpan data
+    final bool success = await _saveToGoogleSheets(row);
+
+    // 3. Tutup dialog loading
+    if (mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    // 4. Navigasi berdasarkan hasil
+    if (mounted) {
+      if (success) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => SuccessScreen(
+              row: row,
+              userName: userName,
+              userEmail: userEmail,
+              region: widget.region,
+              phase: 'Vegetative',
+            ),
+          ),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => const FailedScreen(),
+          ),
+        );
+      }
     }
   }
 
@@ -1264,87 +1544,11 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _navigateBasedOnResponse(BuildContext context, String response) {
-    if (response == 'Data successfully saved to Audit Database') {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => SuccessScreen(
-            row: row,
-            userName: userName,
-            userEmail: userEmail,
-            region: widget.region,
-            phase: 'Vegetative',
-          ),
-        ),
-      );
-    } else if (response == 'Failed to save data. Please try again.') {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => FailedScreen(),
-        ),
-      );
-    } else {
-      _showSnackbar('Unknown response: $response');
-    }
-  }
-
-  void _showLoadingDialogAndClose() {
-    bool dialogShown = false;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        dialogShown = true;
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Lottie.asset('assets/loading.json', width: 150, height: 150),
-              const SizedBox(height: 20),
-              const Text(
-                "Ngrantos sekedap...",
-                style: TextStyle(color: Colors.white, fontSize: 18),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
-    Timer(const Duration(seconds: 5), () {
-      // Check if widget is still mounted and dialog was shown
-      if (dialogShown && mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-
-        // Use a microtask to ensure the navigation happens after the current frame
-        Future.microtask(() {
-          if (mounted) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (context) => SuccessScreen(
-                  row: row,
-                  userName: userName,
-                  userEmail: userEmail,
-                  region: widget.region,
-                  phase: 'Vegetative',
-                ),
-              ),
-            );
-          }
-        });
-      }
-    });
-  }
-
-  Future<void> _saveToGoogleSheets(List<String> rowData) async {
-    if (!mounted) return;
+  Future<bool> _saveToGoogleSheets(List<String> rowData) async {
+    if (!mounted) return false;
     setState(() => isLoading = true);
 
-    String responseMessage;
     try {
-      // 1. Cari tahu di baris mana data akan diperbarui
       final Worksheet? sheet = gSheetsApi.spreadsheet.worksheetByTitle('Vegetative');
       if (sheet == null) {
         throw Exception('Worksheet "Vegetative" tidak ditemukan.');
@@ -1354,49 +1558,45 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
         throw Exception('Data dengan Field Number ${rowData[2]} tidak ditemukan.');
       }
 
-      // 2. Siapkan Map berisi data yang akan diupdate [columnIndex: value]
       final Map<int, String> updates = {
-        18: _locationController.text, // Kolom R: Koordinat
-        32: selectedFI ?? '', // Kolom AF: QA FI
-        33: _coDetasselingController.text, // Kolom AG: Co Detasseling
-        34: _dateAuditController.text, // Kolom AH: Date of Audit
-        36: _actualPlantingDateController.text, // Kolom AJ: Actual Female Planting Date
-        37: "'${_fieldSizeController.text}", // Kolom AK: Field Size
-        38: selectedMaleSplit ?? '', // Kolom AL: Male Split
-        39: "'${_sowingRatioController.text}", // Kolom AM: Sowing Ratio
-        40: selectedSplitField ?? '', // Kolom AN: Split Field
-        41: selectedIsolationProblem ?? '', // Kolom AO: Isolation Problem
-        42: selectedContaminantType ?? '', // Kolom AP: Contaminant Type
-        43: selectedContaminantDistance ?? '', // Kolom AQ: Contaminant Distance
-        44: selectedCropUniformity ?? '', // Kolom AR: Crop Uniformity
-        45: selectedOfftypeInMale ?? '', // Kolom AS: Offtype in Male
-        46: selectedOfftypeInFemale ?? '', // Kolom AT: Offtype in Female
-        47: selectedPreviousCrop ?? '', // Kolom AU: Previous Crop
-        48: selectedFIRApplied ?? '', // Kolom AV: One Seed per Hole
-        50: selectedFlagging ?? '', // Kolom AX: Flagging
-        51: selectedRecommendation ?? '', // Kolom AY: Recommendation
-        52: _remarksController.text, // Kolom AZ: Remarks
+        18: _locationController.text,
+        32: selectedFI ?? '',
+        33: _coDetasselingController.text,
+        34: _dateAuditController.text,
+        36: _actualPlantingDateController.text,
+        37: _fieldSizeController.text.replaceAll(',', '.'),
+        38: selectedMaleSplit ?? '',
+        39: row[38],
+        40: selectedSplitField ?? '',
+        41: selectedIsolationProblem ?? '',
+        42: selectedContaminantType ?? '',
+        43: selectedContaminantDistance ?? '',
+        44: selectedCropUniformity ?? '',
+        45: selectedOfftypeInMale ?? '',
+        46: selectedOfftypeInFemale ?? '',
+        47: selectedPreviousCrop ?? '',
+        48: selectedFIRApplied ?? '',
+        50: selectedFlagging ?? '',
+        51: selectedRecommendation ?? '',
+        52: _remarksController.text,
       };
 
-      // 3. Panggil fungsi baru untuk memperbarui sel-sel spesifik
       await gSheetsApi.updateSpecificCells('Vegetative', rowIndex, updates);
 
-      // 4. Simpan ke cache lokal (Hive) dengan data terbaru
       updates.forEach((colIndex, value) {
         if ((colIndex - 1) < row.length) {
           row[colIndex - 1] = value;
         }
       });
       await _saveToHive(row);
-
-      responseMessage = 'Data successfully saved to Audit Database';
-
-      // 5. Kembalikan rumus (fungsi ini tetap penting)
+      await _logActivityAfterSave(); // Panggil fungsi logging baru
       await _restoreVegetativeFormulas(gSheetsApi, sheet, rowIndex);
+
+      return true; // Kembalikan true jika sukses
 
     } catch (e) {
       await _logErrorToActivity('Gagal menyimpan data: ${e.toString()}');
-      responseMessage = 'Failed to save data. Please try again.';
+      return false; // Kembalikan false jika gagal
     } finally {
       if (mounted) {
         setState(() {
@@ -1404,10 +1604,42 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
         });
       }
     }
+  }
 
-    if (mounted) {
-      // Navigasi tidak perlu diubah
-      _navigateBasedOnResponse(context, responseMessage);
+  Future<void> _logActivityAfterSave() async {
+    try {
+      final String spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
+      final gSheetsApi = GoogleSheetsApi(spreadsheetId);
+      await gSheetsApi.init();
+      final worksheetTitle = 'Aktivitas';
+
+      final Worksheet? sheet = gSheetsApi.spreadsheet.worksheetByTitle(worksheetTitle);
+      if (sheet == null) {
+        debugPrint('Gagal: Worksheet "$worksheetTitle" tidak ditemukan.');
+        return;
+      }
+
+      final String timestamp = DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now());
+      final String fieldNumber = widget.row[2];
+      final String regions = widget.row.length > 18 ? widget.row[18] : '';
+      final String action = 'Update';
+      final String status = 'Success';
+
+      final List<String> rowData = [
+        userEmail,
+        userName,
+        status,
+        regions,
+        action,
+        'Vegetative', // Phase
+        fieldNumber,
+        timestamp,
+      ];
+
+      await sheet.values.appendRow(rowData, fromColumn: 1);
+    } catch (e) {
+      debugPrint("Gagal mencatat aktivitas: $e");
+      _logErrorToActivity("Gagal mencatat aktivitas: $e");
     }
   }
 
@@ -1442,12 +1674,12 @@ class VegetativeEditScreenState extends State<VegetativeEditScreen> {
   }
 }
 
-class SuccessScreen extends StatefulWidget {
+class SuccessScreen extends StatelessWidget {
   final List<String> row;
   final String userName;
   final String userEmail;
   final String region;
-  final String phase; // BARU: Parameter untuk menampung nama Phase
+  final String phase;
 
   const SuccessScreen({
     super.key,
@@ -1455,121 +1687,11 @@ class SuccessScreen extends StatefulWidget {
     required this.userName,
     required this.userEmail,
     required this.region,
-    required this.phase, // BARU: Wajib diisi saat dipanggil
+    required this.phase,
   });
 
   @override
-  State<SuccessScreen> createState() => _SuccessScreenState();
-}
-
-class _SuccessScreenState extends State<SuccessScreen> {
-  bool _isSaving = false;
-
-  void _showErrorSnackBar(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red.shade800,
-      ),
-    );
-  }
-
-  Future<String> _getCurrentLocationForActivity() async {
-    // ... (Fungsi ini tidak berubah, biarkan seperti adanya)
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) _showErrorSnackBar('Location services are disabled.');
-        return 'Location Not Available';
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) _showErrorSnackBar('Location permissions are denied.');
-          return 'Location Not Available';
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) _showErrorSnackBar('Location permissions are permanently denied.');
-        return 'Location Not Available';
-      }
-
-      Position position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      );
-      return '${position.latitude},${position.longitude}';
-    } catch (e) {
-      if (mounted) _showErrorSnackBar('Failed to get location: $e');
-      return 'Location Not Available';
-    }
-  }
-
-  Future<void> _saveBackActivityToGoogleSheets(String region, String location) async {
-    final String spreadsheetId = ConfigManager.getSpreadsheetId(region) ?? 'defaultSpreadsheetId';
-    final String worksheetTitle = 'Aktivitas';
-
-    final gSheetsApi = GoogleSheetsApi(spreadsheetId);
-    await gSheetsApi.init();
-
-    final Worksheet? sheet = gSheetsApi.spreadsheet.worksheetByTitle(worksheetTitle);
-    if (sheet == null) {
-      debugPrint('Gagal: Worksheet "$worksheetTitle" tidak ditemukan.');
-      _showErrorSnackBar('Worksheet "$worksheetTitle" tidak ditemukan.');
-      return;
-    }
-
-    try {
-      // LANGKAH 1A: Cari tahu jumlah baris saat ini untuk menentukan di mana baris baru akan berada.
-      // Kita anggap kolom A selalu ada isinya untuk menghitung baris.
-      final List<String> columnA = await sheet.values.column(1, fromRow: 1);
-      final int nextRow = columnA.length + 1; // Baris baru akan ada di sini
-
-      final String timestamp = DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now());
-      final String fieldNumber = widget.row[2];
-      final String regions = widget.row.length > 18 ? widget.row[18] : '';
-      final String action = 'Update';
-      final String status = 'Success';
-
-      // Siapkan data, tapi kolom ke-10 (kolom J) kita beri placeholder kosong.
-      final List<String> rowData = [
-        widget.userEmail,
-        widget.userName,
-        status,
-        regions,
-        action,
-        widget.phase,
-        fieldNumber,
-        timestamp,
-        location,
-        '', // Placeholder untuk rumus
-      ];
-
-      // LANGKAH 1B: Tambahkan baris dengan data mentah (menggunakan ValueInputOption.RAW default)
-      await sheet.values.appendRow(rowData);
-      debugPrint('Langkah 1 Selesai: Data mentah ditambahkan di baris $nextRow.');
-
-      // LANGKAH 2: Perbarui sel spesifik (kolom 10 atau 'J') di baris baru dengan rumus.
-      if (location != 'Location Not Available' && location.contains(',')) {
-        final String formula = '=HYPERLINK("http://maps.google.com/maps?q=$location"; "Linked")';
-
-        // Perbarui hanya sel J[nextRow] dengan rumus.
-        await sheet.values.insertValue(formula, column: 10, row: nextRow);
-        debugPrint('Langkah 2 Selesai: Rumus disisipkan di sel J$nextRow.');
-      }
-
-    } catch (e) {
-      debugPrint('Gagal dalam proses dua langkah: $e');
-      _showErrorSnackBar('Gagal menyimpan aktivitas (dua langkah): $e');
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // ... (Fungsi build ini tidak berubah, biarkan seperti adanya)
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -1591,17 +1713,9 @@ class _SuccessScreenState extends State<SuccessScreen> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: _isSaving
-                  ? null
-                  : () async {
-                final navigator = Navigator.of(context);
-                setState(() {
-                  _isSaving = true;
-                });
-                final String currentLocation = await _getCurrentLocationForActivity();
-                await _saveBackActivityToGoogleSheets(widget.region, currentLocation);
-                if (!mounted) return;
-                navigator.pop();
+              onPressed: () {
+                // Langsung kembali ke layar sebelumnya.
+                Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60),
@@ -1611,10 +1725,8 @@ class _SuccessScreenState extends State<SuccessScreen> {
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
-              child: _isSaving
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text(
-                'Confirm!',
+              child: const Text(
+                'Selesai',
                 style: TextStyle(fontSize: 20),
               ),
             ),

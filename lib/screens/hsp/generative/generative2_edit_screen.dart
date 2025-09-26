@@ -108,7 +108,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
               fontSize: 20,
             )
         ),
-        backgroundColor: Colors.green.shade700,
+        backgroundColor: Colors.amber.shade700,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -117,7 +117,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.green.shade700, Colors.green.shade100],
+            colors: [Colors.amber.shade700, Colors.amber.shade100],
             stops: const [0.0, 0.3],
           ),
         ),
@@ -139,7 +139,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
                       children: [
                         if (isLoading)
                           const LinearProgressIndicator(
-                            backgroundColor: Colors.green,
+                            backgroundColor: Colors.amber,
                             valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
 
@@ -250,7 +250,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
                             },
                             style: ElevatedButton.styleFrom(
                               minimumSize: const Size(220, 60),
-                              backgroundColor: Colors.green.shade700,
+                              backgroundColor: Colors.amber.shade700,
                               foregroundColor: Colors.white,
                               elevation: 5,
                               shape: RoundedRectangleBorder(
@@ -286,10 +286,10 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.green.shade800,
+            color: Colors.amber.shade800,
           ),
         ),
-        const Divider(thickness: 2, color: Colors.green),
+        const Divider(thickness: 2, color: Colors.amber),
         const SizedBox(height: 10),
       ],
     );
@@ -304,7 +304,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
         padding: const EdgeInsets.all(12.0),
         child: Row(
           children: [
-            Icon(icon, color: Colors.green.shade700),
+            Icon(icon, color: Colors.amber.shade700),
             const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -378,20 +378,20 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
         readOnly: true,
         decoration: InputDecoration(
           labelText: required ? "$label *" : label, // Add asterisk to indicate required field
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
-          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          labelStyle: TextStyle(color: Colors.amber.shade700),
+          prefixIcon: Icon(Icons.calendar_today, color: Colors.amber.shade600),
+          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.amber.shade700),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+            borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -412,7 +412,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
               return Theme(
                 data: Theme.of(context).copyWith(
                   colorScheme: ColorScheme.light(
-                    primary: Colors.green.shade700,
+                    primary: Colors.amber.shade700,
                     onPrimary: Colors.white,
                     onSurface: Colors.black,
                   ),
@@ -467,19 +467,19 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
           child: DropdownButtonFormField<String>(
             decoration: InputDecoration(
               labelText: required ? "$label *" : label, // Add asterisk only if required
-              labelStyle: TextStyle(color: Colors.green.shade700),
-              prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+              labelStyle: TextStyle(color: Colors.amber.shade700),
+              prefixIcon: icon != null ? Icon(icon, color: Colors.amber.shade600) : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade200),
+                borderSide: BorderSide(color: Colors.amber.shade200),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade200),
+                borderSide: BorderSide(color: Colors.amber.shade200),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+                borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
               ),
               filled: true,
               fillColor: Colors.white,
@@ -500,7 +500,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
               );
             }).toList(),
             dropdownColor: Colors.white,
-            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+            icon: Icon(Icons.arrow_drop_down, color: Colors.amber.shade700),
           ),
         ),
         if (helpText != null) ...[
@@ -656,7 +656,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(Icons.save_outlined, color: Colors.green.shade700),
+            Icon(Icons.save_outlined, color: Colors.amber.shade700),
             const SizedBox(width: 10),
             const Text('Confirm Save'),
           ],
@@ -670,7 +670,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade700,
+              backgroundColor: Colors.amber.shade700,
               foregroundColor: Colors.white,
             ),
             child: const Text('Save'),
@@ -905,13 +905,13 @@ class _SuccessScreenState extends State<SuccessScreen> {
           'Success',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.green.shade700,
+        backgroundColor: Colors.amber.shade700,
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 100),
+            const Icon(Icons.check_circle, color: Colors.amber, size: 100),
             const SizedBox(height: 20),
             const Text(
               'Data berhasil disimpan!',
@@ -933,7 +933,7 @@ class _SuccessScreenState extends State<SuccessScreen> {
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60),
-                backgroundColor: Colors.green.shade700,
+                backgroundColor: Colors.amber.shade700,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),

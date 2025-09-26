@@ -105,17 +105,17 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
 
   // Filters
   String _searchQuery = '';
-  bool _showAuditedOnly = false;
-  bool _showNotAuditedOnly = false;
 
   // Sorting
   final String _sortColumn = 'activityCount';
   final bool _sortAscending = false;
 
-  // Filter state variables
-  final bool _showSampunOnly = false;
-  final bool _showDerengJangkepOnly = false;
-  final bool _showDerengBlasOnly = false;
+  // VARIABEL BARU UNTUK FILTER STATUS AUDIT
+  Set<String> _selectedAuditStatuses = {
+    _auditStatusSampun,
+    _auditStatusDerengJangkep,
+    _auditStatusDerengBlas,
+  };
 
   // Count variables for audit status
   int sampunCount = 0;
@@ -136,10 +136,60 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
   int _fieldsWithActivity = 0;
   Map<int, int> _activityDistribution = {};
 
+  // Variabel baru untuk analisis ketersediaan
+  double ketersediaanAreaA = 0.0;
+  double ketersediaanAreaB = 0.0;
+  double ketersediaanAreaC = 0.0;
+  double ketersediaanAreaD = 0.0;
+  double ketersediaanAreaE = 0.0;
+
+  // Variabel baru untuk analisis efektivitas
+  double efektivitasAreaEfektif = 0.0;
+  double efektivitasAreaTidakEfektif = 0.0;
+
+  // Variabel untuk filter "Week of Flowering"
+  Set<String> _selectedWeeks = {};
+  List<String> _availableWeeks = [];
+
+  List<String> _availableGrowers = [];
+  Set<String> _selectedGrowers = {};
+
+  List<String> _availableCoordinators = [];
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
+
+    final weekSet = <String>{};
+    for (var row in widget.generativeData) {
+      final week = getValue(row, 28, "").trim();
+      if (week.isNotEmpty) {
+        weekSet.add(week);
+      }
+    }
+    _availableWeeks = weekSet.toList()..sort();
+    _selectedWeeks = Set<String>.from(_availableWeeks);
+
+    final growerSet = <String>{};
+    for (var row in widget.generativeData) {
+      // Mengambil data dari kolom ke-4 (indeks) untuk Grower
+      final grower = getValue(row, 4, "").trim();
+      if (grower.isNotEmpty && grower != "0") {
+        growerSet.add(grower);
+      }
+    }
+    _availableGrowers = growerSet.toList()..sort();
+    _selectedGrowers = Set<String>.from(_availableGrowers);
+
+    final coordinatorSet = <String>{};
+    for (var row in widget.generativeData) {
+      final coordinator = getValue(row, 113, "").trim().toLowerCase();
+      if (coordinator.isNotEmpty && coordinator != "0") {
+        coordinatorSet.add(coordinator);
+      }
+    }
+    _availableCoordinators = coordinatorSet.toList()..sort();
 
     // Simulate loading delay
     Future.delayed(const Duration(milliseconds: 500), () {
@@ -154,6 +204,25 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  String getKetersediaanStatus(List<String> row) {
+    // Kolom AK adalah indeks ke-36 (A=0, B=1, ..., AK=36)
+    // Sesuaikan indeks ini jika posisi kolom berbeda
+    final value = getValue(row, 36, "").trim().toUpperCase();
+    return value; // Seharusnya mengembalikan 'A', 'B', 'C', 'D', atau 'E'
+  }
+
+  String getEffectivenessStatus(List<String> row) {
+    // Kolom AN adalah indeks ke-39 (A=0, B=1, ..., AN=39)
+    // Sesuaikan indeks ini jika posisi kolom berbeda
+    final value = getValue(row, 39, "").trim().toUpperCase();
+    if (value == 'A') {
+      return 'Efektif';
+    } else if (value == 'B') {
+      return 'Tidak Efektif';
+    }
+    return 'N/A'; // Default jika data tidak A atau B
   }
 
   String getAuditStatus(List<String> row) {
@@ -226,12 +295,23 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
     derengJangkepArea = 0.0;
     derengBlasArea = 0.0;
 
-    for (var row in widget.generativeData) {
+    // Reset variabel baru kita
+    ketersediaanAreaA = 0.0;
+    ketersediaanAreaB = 0.0;
+    ketersediaanAreaC = 0.0;
+    ketersediaanAreaD = 0.0;
+    ketersediaanAreaE = 0.0;
+
+    efektivitasAreaEfektif = 0.0;
+    efektivitasAreaTidakEfektif = 0.0;
+
+    // Gunakan data yang sudah difilter untuk perhitungan
+    final currentFilteredData = getFilteredData();
+
+    for (var row in currentFilteredData) {
       final fieldNumber = getValue(row, 2, "Unknown");
       final auditStatus = getAuditStatus(row);
       final hasActivity = widget.activityCounts.containsKey(fieldNumber);
-
-      // Calculate effective area
       final effectiveAreaStr = getValue(row, 8, "0").replaceAll(',', '.');
       final effectiveArea = double.tryParse(effectiveAreaStr) ?? 0.0;
 
@@ -248,6 +328,34 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
         derengBlasArea += effectiveArea;
         if (hasActivity) derengBlasWithActivity++;
       }
+
+      // Kalkulasi Analisis Ketersediaan
+      final ketersediaanStatus = getKetersediaanStatus(row);
+      switch (ketersediaanStatus) {
+        case 'A':
+          ketersediaanAreaA += effectiveArea;
+          break;
+        case 'B':
+          ketersediaanAreaB += effectiveArea;
+          break;
+        case 'C':
+          ketersediaanAreaC += effectiveArea;
+          break;
+        case 'D':
+          ketersediaanAreaD += effectiveArea;
+          break;
+        case 'E':
+          ketersediaanAreaE += effectiveArea;
+          break;
+      }
+
+      // Kalkulasi Analisis Efektivitas
+      final effectivenessStatus = getEffectivenessStatus(row);
+      if (effectivenessStatus == 'Efektif') {
+        efektivitasAreaEfektif += effectiveArea;
+      } else if (effectivenessStatus == 'Tidak Efektif') {
+        efektivitasAreaTidakEfektif += effectiveArea;
+      }
     }
   }
 
@@ -255,24 +363,24 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
     return widget.generativeData.where((row) {
       final fieldNumber = getValue(row, 2, "Unknown").toLowerCase();
       final farmerName = getValue(row, 3, "Unknown").toLowerCase();
-      final growerName = getValue(row, 4, "Unknown").toLowerCase();
       final hybrid = getValue(row, 5, "Unknown").toLowerCase();
       final auditStatus = getAuditStatus(row);
+      final weekValue = getValue(row, 28, "").trim();
+      final growerValue = getValue(row, 4, "").trim();
 
       // Apply search filter
       bool matchesSearch = _searchQuery.isEmpty ||
           fieldNumber.contains(_searchQuery.toLowerCase()) ||
           farmerName.contains(_searchQuery.toLowerCase()) ||
-          growerName.contains(_searchQuery.toLowerCase()) ||
+          getValue(row, 4, "").contains(_searchQuery.toLowerCase()) ||
           hybrid.contains(_searchQuery.toLowerCase());
 
       // Apply audit status filter
-      bool matchesAuditStatus = true;
-      if (_showSampunOnly && auditStatus != _auditStatusSampun) matchesAuditStatus = false;
-      if (_showDerengJangkepOnly && auditStatus != _auditStatusDerengJangkep) matchesAuditStatus = false;
-      if (_showDerengBlasOnly && auditStatus != _auditStatusDerengBlas) matchesAuditStatus = false;
+      bool matchesAuditStatus = _selectedAuditStatuses.contains(auditStatus);
+      bool matchesWeek = _selectedWeeks.contains(weekValue);
+      bool matchesGrower = _selectedGrowers.contains(growerValue);
 
-      return matchesSearch && matchesAuditStatus;
+      return matchesSearch && matchesAuditStatus && matchesWeek && matchesGrower;
     }).toList();
   }
 
@@ -345,6 +453,12 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
 
   @override
   Widget build(BuildContext context) {
+    // Panggil _calculateStatistics di sini agar selalu update saat filter berubah
+    // Panggilan ini akan terjadi setiap kali setState dipanggil
+    if (!_isLoading) {
+      _calculateStatistics();
+    }
+
     final filteredData = getFilteredData();
 
     return Scaffold(
@@ -396,121 +510,43 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
           ],
         ),
         actions: [
+          // Filter Dropdown untuk "Coordinator Detaseling"
+          IconButton(
+            icon: const Icon(Icons.supervisor_account),
+            color: Colors.white,
+            tooltip: 'Filter Grower',
+            onPressed: () {
+              _showGrowerFilterDialog();
+            },
+          ),
+
+          // Filter Dropdown Premium untuk "Week of Flowering"
+          IconButton(
+            icon: const Icon(Icons.calendar_today),
+            color: Colors.white,
+            tooltip: 'Filter Week of Flowering',
+            onPressed: () {
+              _showWeekFilterDialog(); // Panggil dialog filter minggu
+            },
+          ),
+
+          // Filter button
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            color: Colors.white,
+            tooltip: 'Filter Status Audit',
+            onPressed: () {
+              _showFilterDialog(); // Panggil dialog baru kita
+            },
+          ),
+
           // Search button
           IconButton(
             icon: const Icon(Icons.search),
             color: Colors.white,
             tooltip: 'Cari Lahan',
             onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Cari Lahan'),
-                  content: TextField(
-                    onChanged: (value) {
-                      setState(() {
-                        _searchQuery = value;
-                      });
-                    },
-                    decoration: const InputDecoration(
-                      hintText: 'Enter field number, farmer name...',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _searchQuery = '';
-                        });
-                        Navigator.pop(context);
-                      },
-                      child: const Text('CLEAR'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
-                      ),
-                      child: const Text('APPLY'),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-
-          // Filter button
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.filter_list),
-            tooltip: 'Filter Data',
-            onSelected: (value) {
-              setState(() {
-                if (value == 'audited') {
-                  _showAuditedOnly = !_showAuditedOnly;
-                  if (_showAuditedOnly) _showNotAuditedOnly = false;
-                } else if (value == 'notAudited') {
-                  _showNotAuditedOnly = !_showNotAuditedOnly;
-                  if (_showNotAuditedOnly) _showAuditedOnly = false;
-                } else if (value == 'reset') {
-                  _showAuditedOnly = false;
-                  _showNotAuditedOnly = false;
-                  _searchQuery = '';
-                }
-              });
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'audited',
-                child: Row(
-                  children: [
-                    Icon(
-                      _showAuditedOnly ? Icons.check_box : Icons.check_box_outline_blank,
-                      color: AppTheme.success,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    const Text('Show Audited Only'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'notAudited',
-                child: Row(
-                  children: [
-                    Icon(
-                      _showNotAuditedOnly ? Icons.check_box : Icons.check_box_outline_blank,
-                      color: AppTheme.error,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    const Text('Show Not Audited Only'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'reset',
-                child: Row(
-                  children: [
-                    Icon(Icons.refresh, color: AppTheme.info, size: 20),
-                    SizedBox(width: 12),
-                    Text('Reset Filters'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          // Help button
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            color: Colors.white,
-            tooltip: 'Help',
-            onPressed: () {
-              _showHelpDialog();
+              _showSearchDialog();
             },
           ),
         ],
@@ -536,13 +572,23 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
             derengBlasArea: derengBlasArea,
             fieldsWithActivity: _fieldsWithActivity,
             searchQuery: _searchQuery,
-            showAuditedOnly: _showAuditedOnly,
-            showNotAuditedOnly: _showNotAuditedOnly,
             tabController: _tabController,
             selectedRegion: widget.selectedRegion,
             getAuditStatus: getAuditStatus,
             getAuditStatusColor: getAuditStatusColor,
             getAuditStatusIcon: getAuditStatusIcon,
+            // Properti baru untuk analisis
+            ketersediaanAreaA: ketersediaanAreaA,
+            ketersediaanAreaB: ketersediaanAreaB,
+            ketersediaanAreaC: ketersediaanAreaC,
+            ketersediaanAreaD: ketersediaanAreaD,
+            ketersediaanAreaE: ketersediaanAreaE,
+            efektivitasAreaEfektif: efektivitasAreaEfektif,
+            efektivitasAreaTidakEfektif: efektivitasAreaTidakEfektif,
+            availableGrowers: _availableGrowers,
+            availableCoordinators: _availableCoordinators,
+            getKetersediaanStatus: getKetersediaanStatus,
+            getEffectivenessStatus: getEffectivenessStatus,
           ),
 
           // Heatmap Tab
@@ -555,6 +601,439 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
           ),
         ],
       ),
+    );
+  }
+
+  void _showSearchDialog() {
+    // Gunakan TextEditingController untuk mengelola input teks pencarian
+    // Initial value diambil dari _searchQuery saat ini
+    final TextEditingController searchController = TextEditingController(text: _searchQuery);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, // Sangat penting agar keyboard tidak menutupi input
+      backgroundColor: Colors.transparent, // Untuk sudut melengkung
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom), // Menyesuaikan dengan keyboard
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).canvasColor, // Warna latar belakang kartu
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(25.0)),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 16), // Padding atas, kiri, kanan, bawah
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min, // Sesuaikan tinggi dengan konten
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Judul Pencarian
+                  Text(
+                    'Cari Lahan',
+                    style: AppTheme.heading2.copyWith(fontSize: 22),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Deskripsi
+                  const Text(
+                    'Cari berdasarkan No. Lahan, Nama Petani, Nama Penanam, atau Hibrida:',
+                    style: TextStyle(fontSize: 14, color: AppTheme.textMedium),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // TextField untuk Input Pencarian
+                  TextField(
+                    controller: searchController,
+                    autofocus: true, // Otomatis fokus saat dialog muncul
+                    decoration: InputDecoration(
+                      hintText: 'Masukkan kata kunci...',
+                      prefixIcon: const Icon(Icons.search, color: AppTheme.primary),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none, // Hilangkan border default
+                      ),
+                      filled: true,
+                      fillColor: AppTheme.primary.withAlpha(20), // Warna latar belakang input
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                    ),
+                    onSubmitted: (value) {
+                      // Ketika Enter ditekan, terapkan pencarian dan tutup dialog
+                      setState(() {
+                        _searchQuery = value;
+                      });
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Tombol Aksi (Batal & Cari)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () {
+                            // Batalkan pencarian dan tutup dialog
+                            Navigator.of(context).pop();
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppTheme.textMedium,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('BATAL', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            // Terapkan pencarian dan tutup dialog
+                            setState(() {
+                              _searchQuery = searchController.text;
+                            });
+                            Navigator.of(context).pop();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                          ),
+                          child: const Text('CARI', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showGrowerFilterDialog() {
+    final tempSelectedGrowers = Set<String>.from(_selectedGrowers);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).canvasColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(25.0)),
+              ),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Filter Grower', // <-- Diubah
+                      style: AppTheme.heading2.copyWith(fontSize: 22),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 200,
+                      child: SingleChildScrollView(
+                        child: Wrap(
+                          spacing: 10.0,
+                          runSpacing: 10.0,
+                          children: _availableGrowers.map((grower) { // <-- Diubah
+                            return _buildFilterChip(
+                              label: grower, // <-- Diubah
+                              status: grower, // <-- Diubah
+                              isSelected: tempSelectedGrowers.contains(grower), // <-- Diubah
+                              color: AppTheme.info,
+                              onSelected: (selected) {
+                                setDialogState(() {
+                                  if (selected) {
+                                    tempSelectedGrowers.add(grower); // <-- Diubah
+                                  } else {
+                                    tempSelectedGrowers.remove(grower); // <-- Diubah
+                                  }
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            setDialogState(() {
+                              tempSelectedGrowers.addAll(_availableGrowers); // <-- Diubah
+                            });
+                          },
+                          child: const Text('Pilih Semua'),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setDialogState(() {
+                              tempSelectedGrowers.clear(); // <-- Diubah
+                            });
+                          },
+                          child: const Text('Hapus Semua'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop(); // Batal, tutup dialog
+                            },
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.textMedium,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: const Text('BATAL', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              // Terapkan perubahan ke state utama
+                              setState(() {
+                                _selectedGrowers = tempSelectedGrowers;
+                              });
+                              Navigator.of(context).pop();
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primary, // Warna utama aplikasi
+                              foregroundColor: Colors.white, // Warna teks
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 0, // Tanpa shadow untuk tampilan flat modern
+                            ),
+                            child: const Text('TERAPKAN FILTER', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showFilterDialog() {
+    final tempSelectedStatuses = Set<String>.from(_selectedAuditStatuses);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, // Penting agar bisa scroll jika kontennya panjang
+      backgroundColor: Colors.transparent, // Untuk sudut melengkung
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Container(
+              // Gaya kontainer bottom sheet
+              decoration: BoxDecoration(
+                color: Theme.of(context).canvasColor, // Warna latar belakang kartu
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(25.0)),
+              ),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 8), // Padding atas, kiri, kanan, bawah
+              child: SafeArea( // Pastikan konten tidak terhalang notch/gesture bar
+                child: Column(
+                  mainAxisSize: MainAxisSize.min, // Sesuaikan tinggi dengan konten
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Judul Dialog
+                    Text(
+                      'Filter Status Audit',
+                      style: AppTheme.heading2.copyWith(fontSize: 22), // Lebih besar dan bold
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Deskripsi (opsional, bisa dihapus jika tidak diperlukan)
+                    const Text(
+                      'Pilih status audit yang ingin Anda tampilkan:',
+                      style: TextStyle(fontSize: 14, color: AppTheme.textMedium),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Opsi Filter menggunakan Wrap dan FilterChip
+                    Wrap(
+                      spacing: 10.0, // Jarak antar chip
+                      runSpacing: 10.0, // Jarak antar baris chip
+                      children: [
+                        _buildFilterChip(
+                          label: 'Sampun',
+                          status: _auditStatusSampun,
+                          isSelected: tempSelectedStatuses.contains(_auditStatusSampun),
+                          color: AppTheme.success,
+                          onSelected: (selected) {
+                            setDialogState(() {
+                              if (selected) {
+                                tempSelectedStatuses.add(_auditStatusSampun);
+                              } else {
+                                tempSelectedStatuses.remove(_auditStatusSampun);
+                              }
+                            });
+                          },
+                        ),
+                        _buildFilterChip(
+                          label: 'Dereng Jangkep',
+                          status: _auditStatusDerengJangkep,
+                          isSelected: tempSelectedStatuses.contains(_auditStatusDerengJangkep),
+                          color: AppTheme.warning,
+                          onSelected: (selected) {
+                            setDialogState(() {
+                              if (selected) {
+                                tempSelectedStatuses.add(_auditStatusDerengJangkep);
+                              } else {
+                                tempSelectedStatuses.remove(_auditStatusDerengJangkep);
+                              }
+                            });
+                          },
+                        ),
+                        _buildFilterChip(
+                          label: 'Dereng Blas',
+                          status: _auditStatusDerengBlas,
+                          isSelected: tempSelectedStatuses.contains(_auditStatusDerengBlas),
+                          color: AppTheme.error,
+                          onSelected: (selected) {
+                            setDialogState(() {
+                              if (selected) {
+                                tempSelectedStatuses.add(_auditStatusDerengBlas);
+                              } else {
+                                tempSelectedStatuses.remove(_auditStatusDerengBlas);
+                              }
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Tombol Aksi (Pilih Semua / Hapus Semua)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            setDialogState(() {
+                              tempSelectedStatuses.addAll([_auditStatusSampun, _auditStatusDerengJangkep, _auditStatusDerengBlas]);
+                            });
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppTheme.accent, // Warna teks
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text('Pilih Semua', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setDialogState(() {
+                              tempSelectedStatuses.clear();
+                            });
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppTheme.error, // Warna teks
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text('Hapus Semua', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24), // Spasi sebelum tombol utama
+
+                    // Tombol Terapkan dan Batal (di bagian bawah sheet)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop(); // Batal, tutup dialog
+                            },
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.textMedium,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: const Text('BATAL', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              // Terapkan perubahan ke state utama
+                              setState(() {
+                                _selectedAuditStatuses = tempSelectedStatuses;
+                              });
+                              Navigator.of(context).pop();
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primary, // Warna utama aplikasi
+                              foregroundColor: Colors.white, // Warna teks
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 0, // Tanpa shadow untuk tampilan flat modern
+                            ),
+                            child: const Text('TERAPKAN FILTER', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: MediaQuery.of(context).viewInsets.bottom > 0 ? 0 : 8), // Menyesuaikan dengan keyboard
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Tambahkan helper widget untuk FilterChip agar kode lebih rapi
+  Widget _buildFilterChip({
+    required String label,
+    required String status,
+    required bool isSelected,
+    required Color color,
+    required Function(bool) onSelected,
+  }) {
+    return FilterChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: onSelected,
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : AppTheme.textDark,
+        fontWeight: FontWeight.w600,
+      ),
+      checkmarkColor: Colors.white,
+      selectedColor: color,
+      backgroundColor: color.withAlpha(25), // Latar belakang samar saat tidak dipilih
+      side: BorderSide(color: isSelected ? color : AppTheme.textMedium.withAlpha(127)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     );
   }
 
@@ -576,74 +1055,137 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
     );
   }
 
-  void _showHelpDialog() {
-    showDialog(
+  void _showWeekFilterDialog() {
+    final tempSelectedWeeks = Set<String>.from(_selectedWeeks);
+
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.help_outline, color: AppTheme.accent),
-            const SizedBox(width: 8),
-            const Text('Info Mase!'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Text(
-                'Audit Status Categories',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).canvasColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(25.0)),
               ),
-              SizedBox(height: 4),
-              Text(
-                  '• Sampun: Display all phases marked as "Audited"\n'
-                      '• Dereng Jangkep: Display at least one phase marked as "Audited," but not all\n'
-                      '• Dereng Blas: Display no phases marked as "Audited"'
-              ),
-              SizedBox(height: 12),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Filter Week of Flowering',
+                      style: AppTheme.heading2.copyWith(fontSize: 22),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Pilih satu atau beberapa minggu untuk ditampilkan:',
+                      style: TextStyle(fontSize: 14, color: AppTheme.textMedium),
+                    ),
+                    const SizedBox(height: 16),
 
-              Text(
-                'Dashboard Tab',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Shows summary statistics and key metrics about generative activity. The cards display information about activity status, audit status, and area analysis.',
-              ),
-              SizedBox(height: 12),
+                    // Gunakan SingleChildScrollView jika daftar minggu sangat panjang
+                    SizedBox(
+                      height: 150, // Batasi tinggi area chip agar bisa di-scroll
+                      child: SingleChildScrollView(
+                        child: Wrap(
+                          spacing: 10.0,
+                          runSpacing: 10.0,
+                          children: _availableWeeks.map((week) {
+                            return _buildFilterChip( // Kita gunakan lagi helper yang sama!
+                              label: week,
+                              status: week,
+                              isSelected: tempSelectedWeeks.contains(week),
+                              color: AppTheme.accent, // Gunakan warna aksen
+                              onSelected: (selected) {
+                                setDialogState(() {
+                                  if (selected) {
+                                    tempSelectedWeeks.add(week);
+                                  } else {
+                                    tempSelectedWeeks.remove(week);
+                                  }
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
 
-              Text(
-                'Heatmap Tab',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Displays a grid view of fields with color coding based on activity count. Border colors indicate audit status: green for Sampun, yellow for Dereng Jangkep, and red for Dereng Blas.',
-              ),
-              SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            setDialogState(() {
+                              tempSelectedWeeks.addAll(_availableWeeks);
+                            });
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppTheme.accent,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text('Pilih Semua', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setDialogState(() {
+                              tempSelectedWeeks.clear();
+                            });
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppTheme.error,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text('Hapus Semua', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
 
-              Text(
-                'Filtering & Searching',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('BATAL', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _selectedWeeks = tempSelectedWeeks;
+                              });
+                              Navigator.of(context).pop();
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 0,
+                            ),
+                            child: const Text('TERAPKAN FILTER', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: MediaQuery.of(context).viewInsets.bottom > 0 ? 0 : 8),
+                  ],
+                ),
               ),
-              SizedBox(height: 4),
-              Text(
-                'Use the search box to find specific fields by field number, farmer name, etc. Use the filter options to show fields with specific audit statuses.',
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-            },
-            child: const Text('Close'),
-          ),
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
   }
 

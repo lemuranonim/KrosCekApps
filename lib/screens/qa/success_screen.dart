@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'home_screen.dart';
+import 'qa_screen.dart';
 
 class SuccessScreen extends StatefulWidget {
   const SuccessScreen({super.key});
@@ -33,7 +33,7 @@ class SuccessScreenState extends State<SuccessScreen> {
         // Gunakan mounted check untuk mencegah error jika widget sudah tidak ada
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
+            MaterialPageRoute(builder: (context) => const QaScreen()),
                 (Route<dynamic> route) => false,
           );
         }

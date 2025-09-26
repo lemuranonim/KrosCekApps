@@ -243,11 +243,11 @@ class VegetativeDetailScreenState extends State<VegetativeDetailScreen> {
                   context, 'Field Audit', [
                 _buildDetailRow('QA FI', row![31]),
                 _buildDetailRow('Co Detasseling', row![32]),
-                _buildDetailRow('Date of Audit', _convertToDateIfNecessary(row![33])),
-                _buildDetailRow('Actual Female Planting Date', _convertToDateIfNecessary(row![35])),
-                _buildDetailRow('Field Size by Audit (Ha)', _convertToFixedDecimalIfNecessary(row![36])),
-                _buildDetailRow('Male Split by Audit', _convertToFixedDecimalIfNecessary(row![37])),
-                _buildDetailRow('Sowing Ratio by Audit', row![38]),
+                _buildDetailRow('Date of Audit', _convertToDateIfNecessary(row![33])), // BENAR
+                _buildDetailRow('Actual Female Planting Date', _convertToDateIfNecessary(row![35])), // BENAR
+                _buildDetailRow('Field Size by Audit (Ha)', _convertToFixedDecimalIfNecessary(row![36])), // DIPERBAIKI
+                _buildDetailRow('Male Split by Audit', row![37]), // DIPERBAIKI
+                _buildDetailRow('Sowing Ratio by Audit', row![38]), // DIPERBAIKI
                 _buildDetailRow('Split Field by Audit', row![39]),
                 _buildDetailRow('Isolation Problem by Audit', row![40]),
                 _buildDetailRow('If "YES" Contaminant Type', row![41]),
@@ -260,7 +260,8 @@ class VegetativeDetailScreenState extends State<VegetativeDetailScreen> {
                 _buildDetailRow('Flagging', row![49]),
                 _buildDetailRow('Recommendation', row![50]),
                 _buildDetailRow('Remarks', row![51]),
-              ]),
+              ]
+              ),
             ],
           ),
         ),

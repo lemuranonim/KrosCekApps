@@ -3,7 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart' hide Marker;
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
-import 'package:url_launcher/url_launcher.dart';  // Tambahkan ini untuk menggunakan url_launcher
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as latlng;
@@ -42,9 +42,15 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeHive();
-    _determineSpreadsheetId();
-    _loadDataFromCacheOrFetch();
+    // PERBAIKAN: Memanggil satu fungsi async untuk memastikan urutan eksekusi yang benar.
+    _initializeAndLoadData();
+  }
+
+  // FUNGSI BARU: Menggabungkan inisialisasi dan pengambilan data dalam urutan yang benar.
+  Future<void> _initializeAndLoadData() async {
+    await _initializeHive();
+    await _determineSpreadsheetId(); // Sekarang kita menunggu (await) fungsi ini selesai.
+    await _loadDataFromCacheOrFetch();
   }
 
   Future<void> _determineSpreadsheetId() async {
@@ -53,33 +59,35 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
   }
 
   Future<void> _initializeHive() async {
-    await Hive.initFlutter(); // Inisialisasi Hive Flutter
+    // Tidak perlu inisialisasi Hive di sini jika sudah diinisialisasi di main.dart
+    // Namun, jika belum, baris ini penting.
+    // await Hive.initFlutter();
   }
 
   @override
   void dispose() {
-    Hive.close(); // Tutup semua kotak Hive saat aplikasi keluar
+    // Tidak disarankan menutup Hive di sini karena bisa dibutuhkan oleh layar lain.
+    // Sebaiknya, biarkan Hive terbuka selama aplikasi berjalan.
+    // Hive.close(); 
+    _pageController.dispose();
     super.dispose();
   }
 
-  // Fungsi utama untuk mengecek cache atau mengambil data dari Google Sheets
   Future<void> _loadDataFromCacheOrFetch() async {
     final box = await Hive.openBox('pspGenerativeData');
     final cacheKey = 'detailScreenData_${widget.fieldNumber}';
     final cachedData = box.get(cacheKey);
 
     if (cachedData != null) {
-      // Konversi cachedData menjadi Map<String, dynamic>
       _setDataFromCache(Map<String, dynamic>.from(cachedData));
-      setState(() => isLoading = false);
     } else {
       await _fetchData();
-      await _saveDataToCache();
     }
   }
 
   Future<void> _saveDataToCache() async {
-    final box = Hive.box('pspGenerativeData');
+    if (row == null) return; // Jangan simpan cache jika data gagal diambil
+    final box = await Hive.openBox('pspGenerativeData');
     final cacheKey = 'detailScreenData_${widget.fieldNumber}';
     await box.put(cacheKey, {
       'row': row,
@@ -89,43 +97,70 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
   }
 
   void _setDataFromCache(Map<String, dynamic> cachedData) {
+    // PERBAIKAN: Menambahkan pengecekan 'mounted' untuk keamanan.
+    if (!mounted) return;
     setState(() {
       row = List<String>.from(cachedData['row']);
       latitude = cachedData['latitude'];
       longitude = cachedData['longitude'];
+      isLoading = false;
     });
   }
 
-  // Fungsi _fetchData tetap sama untuk mengambil data dari Google Sheets
   Future<void> _fetchData() async {
-    if (spreadsheetId.isEmpty) {
-      throw Exception("Spreadsheet ID belum diatur.");
-    }
-
+    // PERBAIKAN: Menambahkan pengecekan 'mounted' sebelum setState.
+    if (!mounted) return;
     setState(() => isLoading = true);
 
     try {
+      // Pastikan spreadsheetId sudah diinisialisasi
+      if (spreadsheetId.isEmpty || spreadsheetId == 'defaultSpreadsheetId') {
+        throw Exception("Spreadsheet ID tidak valid atau belum diatur.");
+      }
+
       final gSheetsApi = GoogleSheetsApi(spreadsheetId);
       await gSheetsApi.init();
       final List<List<String>> data = await gSheetsApi.getSpreadsheetData('Generative');
-      final fetchedRow = data.firstWhere((row) => row[2] == widget.fieldNumber);
+      final fetchedRow = data.firstWhere((row) => row[2] == widget.fieldNumber, orElse: () => []);
 
-      final String coordinatesStr = fetchedRow[20];
+      if (fetchedRow.isEmpty) {
+        throw Exception("Data untuk field number ${widget.fieldNumber} tidak ditemukan.");
+      }
+
+      final String coordinatesStr = fetchedRow.length > 20 ? fetchedRow[20] : '';
       final coordinates = _parseCoordinates(coordinatesStr);
 
-      latitude = coordinates['lat'] ?? defaultLat;
-      longitude = coordinates['lng'] ?? defaultLng;
-
+      // PERBAIKAN: Menambahkan pengecekan 'mounted' lagi sebelum setState akhir.
+      if (!mounted) return;
       setState(() {
         row = fetchedRow;
+        latitude = coordinates['lat'] ?? defaultLat;
+        longitude = coordinates['lng'] ?? defaultLng;
         isLoading = false;
       });
+      // Setelah data berhasil diambil, simpan ke cache
+      await _saveDataToCache();
+
     } catch (e) {
-      latitude = defaultLat;
-      longitude = defaultLng;
-      setState(() => isLoading = false);
+      // PERBAIKAN: Menambahkan pengecekan 'mounted' di blok catch.
+      if (!mounted) return;
+      setState(() {
+        latitude = defaultLat;
+        longitude = defaultLng;
+        isLoading = false;
+      });
+      // Anda bisa menambahkan dialog atau snackbar untuk menampilkan error di sini
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal mengambil data: ${e.toString()}'))
+        );
+      }
     }
   }
+
+  // ... (Sisa kode dari _parseCoordinates sampai akhir tetap sama)
+  // Pastikan Anda menyalin sisa kode Anda dari sini ke bawah.
+  // Saya akan menyertakan sisa kodenya di bawah ini agar lengkap.
 
   Map<String, double?> _parseCoordinates(String coordinatesStr) {
     try {
@@ -142,8 +177,8 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
     final lat = latitude ?? defaultLat;
     final lng = longitude ?? defaultLng;
 
-    final googleMapsUrl = Uri.parse(
-        'https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    // URL yang lebih kuat untuk Google Maps
+    final googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
     final appleMapsUrl = Uri.parse('https://maps.apple.com/?q=$lat,$lng');
 
     if (await canLaunchUrl(googleMapsUrl)) {
@@ -157,17 +192,15 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
 
   int _calculateDAP(List<String> row) {
     try {
-      // Use _convertToDateIfNecessary to get the planting date
-      final plantingDateString = row[11]; // Access planting date directly from row
+      final plantingDateString = row[11];
       final plantingDate = _convertToDateIfNecessary(plantingDateString);
 
-      // Parse the converted date string
       final parsedDate = DateFormat('dd/MM/yyyy').parse(plantingDate);
-      final today = DateTime.now(); // Keep today as DateTime for calculation
+      final today = DateTime.now();
 
-      return today.difference(parsedDate).inDays; // Calculate the difference in days
+      return today.difference(parsedDate).inDays;
     } catch (e) {
-      return 0; // Return 0 if there's an error in parsing
+      return 0;
     }
   }
 
@@ -185,45 +218,46 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
-            fontSize: 20, // Increased font size for better visibility
+            fontSize: 20,
           ),
         ),
-        backgroundColor: Colors.redAccent.shade700, // Darker redAccent for a premium look
+        backgroundColor: Colors.redAccent.shade700,
         iconTheme: const IconThemeData(color: Colors.white),
-        elevation: 4, // Subtle elevation for depth
+        elevation: 4,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
-            bottom: Radius.circular(20), // Rounded bottom corners
+            bottom: Radius.circular(20),
           ),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),
             onPressed: () {
-              // Action for info button
               _showInfoDialog(context);
             },
           ),
           IconButton(
             icon: const Icon(Icons.sync_rounded),
             onPressed: () async {
+              // Langsung panggil _fetchData untuk refresh
               await _fetchData();
-              _saveDataToCache();
             },
           ),
         ],
       ),
       body: isLoading
           ? Center(child: Lottie.asset('assets/loading.json'))
+          : row == null // Tambahkan pengecekan jika 'row' null setelah loading selesai
+          ? const Center(child: Text("Gagal memuat data. Silakan coba lagi."))
           : SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(5.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildInteractiveMap(), // Peta Statis
+              _buildInteractiveMap(),
               const SizedBox(height: 10),
-              _buildCoordinatesText(), // Tampilkan koordinat
+              _buildCoordinatesText(),
               const SizedBox(height: 10),
               _buildDetailCard('Field Information', [
                 _buildDetailRow('Season', row![1]),
@@ -231,18 +265,13 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                 _buildDetailRow('Farmer', row![4]),
                 _buildDetailRow('Grower/Agent', row![5]),
                 _buildDetailRow('PS Code', row![6]),
-                _buildDetailRow('Total Area Planted',
-                    _convertToFixedDecimalIfNecessary(row![7])),
-                _buildDetailRow('Effective Area (Ha)',
-                    _convertToFixedDecimalIfNecessary(row![9])),
+                _buildDetailRow('Total Area Planted', _convertToFixedDecimalIfNecessary(row![7])),
+                _buildDetailRow('Effective Area (Ha)', _convertToFixedDecimalIfNecessary(row![9])),
                 _buildDetailRow('Previous Crope', row![10]),
-                _buildDetailRow(
-                    'Planting Date', _convertToDateIfNecessary(row![11])),
+                _buildDetailRow('Planting Date', _convertToDateIfNecessary(row![11])),
                 _buildDetailRow('DAP', _calculateDAP(row!).toString()),
-                _buildDetail2Row(
-                    'Est. Date Audit 5', _convertToDateIfNecessary(row![28])),
-                _buildDetail2Row(
-                    'FASE', row![24]),
+                _buildDetail2Row('Est. Date Audit 5', _convertToDateIfNecessary(row![28])),
+                _buildDetail2Row('FASE', row![24]),
                 _buildDetailRow('Desa', row![14]),
                 _buildDetailRow('Kecamatan', row![15]),
                 _buildDetailRow('Kabupaten', row![16]),
@@ -250,15 +279,14 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                 _buildDetailRow('FA', row![19]),
               ]),
               const SizedBox(height: 20),
-              // Field Audit (Menggunakan PageView untuk scroll horizontal)
               SizedBox(
                 height: MediaQuery.of(context).size.height * 0.75,
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center, // Tengah secara vertikal
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     SmoothPageIndicator(
                       controller: _pageController,
-                      count: 3, // Jumlah halaman audit
+                      count: 3,
                       effect: WormEffect(
                         dotHeight: 10,
                         dotWidth: 10,
@@ -272,88 +300,49 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                         controller: _pageController,
                         scrollDirection: Axis.horizontal,
                         children: [
-                          // Audit 5
-                          _buildAudit5Section(
-                              context, 'AUDIT 5', [
+                          _buildAudit5Section(context, 'AUDIT 5', [
                             _buildDetailRow('QA FI', row?[26] ?? 'Kosong'),
                             _buildDetailRow('Co-Rog', row?[27] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Week of Audit 5', row?[31] ?? 'Kosong'),
-                            _buildDetailRow('Date Of Audit 5',
-                                _convertToDateIfNecessary(row?[30] ?? '0')),
-                            _buildDetailRow('Standing crop Offtype',
-                                row?[32] ?? 'Kosong'),
-                            _buildDetailRow('Standing crop Volunteer',
-                                row?[33] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Offtype Sheed', row?[34] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Volunteer Sheed', row?[35] ?? 'Kosong'),
+                            _buildDetailRow('Week of Audit 5', row?[31] ?? 'Kosong'),
+                            _buildDetailRow('Date Of Audit 5', _convertToDateIfNecessary(row?[30] ?? '0')),
+                            _buildDetailRow('Standing crop Offtype', row?[32] ?? 'Kosong'),
+                            _buildDetailRow('Standing crop Volunteer', row?[33] ?? 'Kosong'),
+                            _buildDetailRow('Offtype Sheed', row?[34] ?? 'Kosong'),
+                            _buildDetailRow('Volunteer Sheed', row?[35] ?? 'Kosong'),
                             _buildDetailRow('LSV', row?[36] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Corp Health', row?[37] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Crop Uniformity', row?[38] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Isolation', row?[39] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Isolation Type', row?[40] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Isolation Distance', row?[41] ?? 'Kosong'),
+                            _buildDetailRow('Corp Health', row?[37] ?? 'Kosong'),
+                            _buildDetailRow('Crop Uniformity', row?[38] ?? 'Kosong'),
+                            _buildDetailRow('Isolation', row?[39] ?? 'Kosong'),
+                            _buildDetailRow('Isolation Type', row?[40] ?? 'Kosong'),
+                            _buildDetailRow('Isolation Distance', row?[41] ?? 'Kosong'),
                             _buildDetailRow('Nicking Observation', row?[42] ?? 'Kosong'),
                             _buildDetailRow('Flagging', row?[43] ?? 'Kosong'),
                           ]),
-
-                          // Audit 6
-                          _buildAudit6Section(
-                              context, 'AUDIT 6', [
-                            _buildDetailRow(
-                                'Week of Audit 6', row?[47] ?? 'Kosong'),
-                            _buildDetailRow('Date Of Audit 6',
-                                _convertToDateIfNecessary(row?[46] ?? '0')),
-                            _buildDetailRow('Standing crop Offtype',
-                                row?[48] ?? 'Kosong'),
-                            _buildDetailRow('Standing crop Volunteer',
-                                row?[49] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Offtype Sheed', row?[50] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Volunteer Sheed', row?[51] ?? 'Kosong'),
+                          _buildAudit6Section(context, 'AUDIT 6', [
+                            _buildDetailRow('Week of Audit 6', row?[47] ?? 'Kosong'),
+                            _buildDetailRow('Date Of Audit 6', _convertToDateIfNecessary(row?[46] ?? '0')),
+                            _buildDetailRow('Standing crop Offtype', row?[48] ?? 'Kosong'),
+                            _buildDetailRow('Standing crop Volunteer', row?[49] ?? 'Kosong'),
+                            _buildDetailRow('Offtype Sheed', row?[50] ?? 'Kosong'),
+                            _buildDetailRow('Volunteer Sheed', row?[51] ?? 'Kosong'),
                             _buildDetailRow('LSV', row?[52] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Corp Health', row?[53] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Crop Uniformity', row?[54] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Isolation', row?[55] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Isolation Type', row?[56] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Isolation Distance', row?[57] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Nicking Observation', row?[58] ?? 'Kosong'),
+                            _buildDetailRow('Corp Health', row?[53] ?? 'Kosong'),
+                            _buildDetailRow('Crop Uniformity', row?[54] ?? 'Kosong'),
+                            _buildDetailRow('Isolation', row?[55] ?? 'Kosong'),
+                            _buildDetailRow('Isolation Type', row?[56] ?? 'Kosong'),
+                            _buildDetailRow('Isolation Distance', row?[57] ?? 'Kosong'),
+                            _buildDetailRow('Nicking Observation', row?[58] ?? 'Kosong'),
                             _buildDetailRow('Flagging', row?[59] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Recommendation', row?[60] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Recommendation PLD', row?[61] ?? 'Kosong'),
+                            _buildDetailRow('Recommendation', row?[60] ?? 'Kosong'),
+                            _buildDetailRow('Recommendation PLD', row?[61] ?? 'Kosong'),
                             _buildDetailRow('Remarks', row?[62] ?? 'Kosong'),
                           ]),
-
-                          // Audit Maturity
-                          _buildAuditMaturitySection(
-                              context, 'AUDIT Maturity', [
-                            _buildDetailRow(
-                                'Week of Inspection', row?[66] ?? 'Kosong'),
-                            _buildDetailRow('Date of Inspection',
-                                _convertToDateIfNecessary(row?[65] ?? '0')),
-                            _buildDetailRow(
-                                'Wet Cob Est', row?[67] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Ear Condition Observation (Maturity)',
-                                row?[68] ?? 'Kosong'),
-                            _buildDetailRow(
-                                'Corp Health', row?[69] ?? 'Kosong'),
+                          _buildAuditMaturitySection(context, 'AUDIT Maturity', [
+                            _buildDetailRow('Week of Inspection', row?[66] ?? 'Kosong'),
+                            _buildDetailRow('Date of Inspection', _convertToDateIfNecessary(row?[65] ?? '0')),
+                            _buildDetailRow('Wet Cob Est', row?[67] ?? 'Kosong'),
+                            _buildDetailRow('Ear Condition Observation (Maturity)', row?[68] ?? 'Kosong'),
+                            _buildDetailRow('Corp Health', row?[69] ?? 'Kosong'),
                             _buildDetailRow('Remarks', row?[70] ?? 'Kosong'),
                           ]),
                         ],
@@ -402,7 +391,6 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
   }
 
   Widget _buildInteractiveMap() {
-    // Gunakan latitude dan longitude yang sudah ada, dengan default jika null
     final mapCenterLat = latitude ?? defaultLat;
     final mapCenterLng = longitude ?? defaultLng;
 
@@ -411,8 +399,8 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
       width: double.infinity,
       child: FlutterMap(
         options: MapOptions(
-          initialCenter: latlng.LatLng(mapCenterLat, mapCenterLng), // Gunakan latlng.LatLng dari package
-          initialZoom: 15.0, // Sesuaikan level zoom awal sesuai kebutuhan
+          initialCenter: latlng.LatLng(mapCenterLat, mapCenterLng),
+          initialZoom: 15.0,
           onTap: (tapPosition, point) {
             _openMaps();
           },
@@ -422,15 +410,14 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             userAgentPackageName: 'com.vegetative.kroscek',
           ),
-          // Tambahkan Marker untuk menunjukkan lokasi
-          if (latitude != null && longitude != null) // Hanya tampilkan marker jika koordinat valid
+          if (latitude != null && longitude != null)
             MarkerLayer(
               markers: [
                 Marker(
                   width: 80.0,
                   height: 80.0,
-                  point: latlng.LatLng(latitude!, longitude!), // Koordinat marker
-                  child: Tooltip( // Tambahkan Tooltip jika ingin
+                  point: latlng.LatLng(latitude!, longitude!),
+                  child: Tooltip(
                     message: 'Lokasi: ${latitude!.toStringAsFixed(5)}, ${longitude!.toStringAsFixed(5)}',
                     child: Icon(
                       Icons.location_pin,
@@ -549,15 +536,15 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
     return Stack(
       children: [
         Card(
-          elevation: 8, // Increased elevation for more depth
-          color: Colors.white, // Clean white background
+          elevation: 8,
+          color: Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20), // More rounded corners
-            side: BorderSide(color: Colors.redAccent.shade200, width: 1.5), // Subtle border
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.redAccent.shade200, width: 1.5),
           ),
           margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50),
           child: Padding(
-            padding: const EdgeInsets.all(20.0), // More padding for spaciousness
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -590,7 +577,6 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-
                 Expanded(
                   child: Scrollbar(
                     controller: scrollController,
@@ -599,7 +585,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                     radius: const Radius.circular(10),
                     child: SingleChildScrollView(
                       controller: scrollController,
-                      physics: const BouncingScrollPhysics(), // Smooth scrolling
+                      physics: const BouncingScrollPhysics(),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
                         child: Column(
@@ -615,7 +601,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
         ),
         Positioned(
           bottom: 20,
-          right: 30, // Moved to right side for better UX
+          right: 30,
           child: Container(
             decoration: BoxDecoration(
               boxShadow: [
@@ -629,8 +615,9 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
             child: FloatingActionButton(
               onPressed: () async {
                 await _navigateToAudit5EditScreen(context);
-                await _fetchData();
-                _saveDataToCache();
+                // PERBAIKAN: Tidak perlu fetch data lagi di sini karena
+                // data sudah di-update melalui callback onSave.
+                // Cukup panggil _fetchData jika ingin sinkronisasi paksa dari server.
               },
               backgroundColor: Colors.red.shade600,
               elevation: 8,
@@ -651,15 +638,15 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
     return Stack(
       children: [
         Card(
-          elevation: 8, // Increased elevation for more depth
-          color: Colors.white, // Clean white background
+          elevation: 8,
+          color: Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20), // More rounded corners
-            side: BorderSide(color: Colors.redAccent.shade200, width: 1.5), // Subtle border
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.redAccent.shade200, width: 1.5),
           ),
           margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50),
           child: Padding(
-            padding: const EdgeInsets.all(20.0), // More padding for spaciousness
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -692,7 +679,6 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-
                 Expanded(
                   child: Scrollbar(
                     controller: scrollController,
@@ -701,7 +687,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                     radius: const Radius.circular(10),
                     child: SingleChildScrollView(
                       controller: scrollController,
-                      physics: const BouncingScrollPhysics(), // Smooth scrolling
+                      physics: const BouncingScrollPhysics(),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
                         child: Column(
@@ -717,7 +703,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
         ),
         Positioned(
           bottom: 20,
-          right: 30, // Moved to right side for better UX
+          right: 30,
           child: Container(
             decoration: BoxDecoration(
               boxShadow: [
@@ -731,8 +717,6 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
             child: FloatingActionButton(
               onPressed: () async {
                 await _navigateToAudit6EditScreen(context);
-                await _fetchData();
-                _saveDataToCache();
               },
               backgroundColor: Colors.red.shade600,
               elevation: 8,
@@ -753,15 +737,15 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
     return Stack(
       children: [
         Card(
-          elevation: 8, // Increased elevation for more depth
-          color: Colors.white, // Clean white background
+          elevation: 8,
+          color: Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20), // More rounded corners
-            side: BorderSide(color: Colors.redAccent.shade200, width: 1.5), // Subtle border
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.redAccent.shade200, width: 1.5),
           ),
           margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50),
           child: Padding(
-            padding: const EdgeInsets.all(20.0), // More padding for spaciousness
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -794,7 +778,6 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-
                 Expanded(
                   child: Scrollbar(
                     controller: scrollController,
@@ -803,7 +786,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                     radius: const Radius.circular(10),
                     child: SingleChildScrollView(
                       controller: scrollController,
-                      physics: const BouncingScrollPhysics(), // Smooth scrolling
+                      physics: const BouncingScrollPhysics(),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
                         child: Column(
@@ -819,7 +802,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
         ),
         Positioned(
           bottom: 20,
-          right: 30, // Moved to right side for better UX
+          right: 30,
           child: Container(
             decoration: BoxDecoration(
               boxShadow: [
@@ -833,8 +816,6 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
             child: FloatingActionButton(
               onPressed: () async {
                 await _navigateToAuditMaturityEditScreen(context);
-                await _fetchData();
-                _saveDataToCache();
               },
               backgroundColor: Colors.red.shade600,
               elevation: 8,
@@ -1023,87 +1004,82 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
     try {
       final parsedNumber = double.tryParse(value);
       if (parsedNumber != null) {
-        // Mengambil jumlah digit desimal dari input
         List<String> parts = value.split(',');
         if (parts.length > 1) {
-          int decimalPlaces = parts[1].length; // Hitung digit desimal
-          return parsedNumber.toStringAsFixed(decimalPlaces); // Tampilkan sesuai input
+          int decimalPlaces = parts[1].length;
+          return parsedNumber.toStringAsFixed(decimalPlaces);
         }
-        return parsedNumber.toString(); // Jika tidak ada desimal, kembalikan angka asli
+        return parsedNumber.toString();
       }
     } catch (e) {
       // Tangani kesalahan parsing
     }
-    return value; // Kembalikan nilai asli jika gagal parsing
+    return value;
   }
 
-  // Fungsi untuk menavigasi ke layar edit Audit 5
   Future<void> _navigateToAudit5EditScreen(BuildContext context) async {
-    final updatedRow = await Navigator.push(
+    if (row == null) return;
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => Audit5EditScreen(
           row: row!,
-          region: widget.region, // Tambahkan parameter region di sini
+          region: widget.region,
           onSave: (updatedActivity) {
+            if (!mounted) return;
             setState(() {
               row = updatedActivity;
             });
+            // Simpan ke cache setelah update lokal
+            _saveDataToCache();
           },
         ),
       ),
     );
-
-    if (updatedRow != null) {
-      setState(() {
-        row = updatedRow; // Update row setelah di-edit
-      });
+    // Jika ada hasil dari pop (meski callback sudah menangani), kita bisa refresh state
+    if (result != null) {
+      if (!mounted) return;
+      setState(() {});
     }
   }
-  // Fungsi untuk menavigasi ke layar edit Audit 6
+
   Future<void> _navigateToAudit6EditScreen(BuildContext context) async {
-    final updatedRow = await Navigator.push(
+    if (row == null) return;
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => Audit6EditScreen(
           row: row!,
-          region: widget.region, // Tambahkan parameter region di sini
+          region: widget.region,
           onSave: (updatedActivity) {
+            if (!mounted) return;
             setState(() {
               row = updatedActivity;
             });
+            _saveDataToCache();
           },
         ),
       ),
     );
-
-    if (updatedRow != null) {
-      setState(() {
-        row = updatedRow; // Update row setelah di-edit
-      });
-    }
   }
-  // Fungsi untuk menavigasi ke layar edit Audit Maturity
+
   Future<void> _navigateToAuditMaturityEditScreen(BuildContext context) async {
-    final updatedRow = await Navigator.push(
+    if (row == null) return;
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => AuditMaturityEditScreen(
           row: row!,
-          region: widget.region, // Tambahkan parameter region di sini
+          region: widget.region,
           onSave: (updatedActivity) {
+            if (!mounted) return;
             setState(() {
               row = updatedActivity;
             });
+            _saveDataToCache();
           },
         ),
       ),
     );
-
-    if (updatedRow != null) {
-      setState(() {
-        row = updatedRow; // Update row setelah di-edit
-      });
-    }
   }
 }

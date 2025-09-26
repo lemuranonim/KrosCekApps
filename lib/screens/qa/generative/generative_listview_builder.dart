@@ -211,7 +211,7 @@ class GenerativeListViewBuilder extends StatelessWidget {
         final fieldSpv = getValue(row, 15, "Unknown");
         final fa = getValue(row, 14, "Unknown");
         final fi = getValue(row, 31, "Unknown");
-        final weekOfGenerative = getValue(row, 29, "Unknown");
+        final weekOfGenerative = getValue(row, 28, "Unknown");
 
         final activityCount = activityCounts[fieldNumber] ?? 0;
 

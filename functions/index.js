@@ -1,42 +1,51 @@
-const functions = require('firebase-functions');
-const admin = require('firebase-admin');
-const xlsx = require('xlsx');
-const { Storage } = require('@google-cloud/storage');
-const os = require('os');
-const path = require('path');
-const fs = require('fs');
+// Mengimpor modul yang diperlukan dari Firebase
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { getMessaging } = require("firebase-admin/messaging");
+const { initializeApp } = require("firebase-admin/app");
 
-admin.initializeApp();
-const storage = new Storage();
+// Inisialisasi Firebase Admin SDK
+initializeApp();
 
-exports.processExcelFile = functions.storage.object().onFinalize(async (object) => {
-  const bucketName = object.bucket;
-  const filePath = object.name;
-  const fileName = path.basename(filePath);
-  const tempFilePath = path.join(os.tmpdir(), fileName);
+exports.sendPushNotification = onDocumentCreated("notifications/{notificationId}", async (event) => {
+  const notificationData = event.data.data();
+  const title = notificationData.title;
+  const body = notificationData.body;
 
-  // Download file dari Firebase Storage
-  await storage.bucket(bucketName).file(filePath).download({destination: tempFilePath});
+  // --- MULAI PERUBAHAN DI SINI ---
 
-  // Membaca file Excel
-  const workbook = xlsx.readFile(tempFilePath);
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  const data = xlsx.utils.sheet_to_json(sheet);
+  // Buat payload "Pesan Data" (BUKAN "Pesan Notifikasi")
+  // Ini memastikan pesan akan diproses oleh aplikasi Flutter di background
+  const payload = {
+    data: {
+      title: title,
+      body: body,
+      // Anda bisa menambahkan data lain di sini jika perlu
+    },
+    android: {
+      // Atur prioritas ke "high" untuk membangunkan aplikasi dari mode doze
+      priority: "high",
+    },
+    apns: {
+      payload: {
+        aps: {
+          // Setting ini membantu memicu background handler di iOS
+          "content-available": 1,
+          // Suara notifikasi untuk iOS ditempatkan di sini
+          sound: "notification_sound.caf",
+        },
+      },
+    },
+    topic: "all_users",
+  };
 
-  // Proses data yang diambil dari file Excel (misalnya, simpan ke Firestore)
-  const db = admin.firestore();
-  const batch = db.batch();
+  // --- SELESAI PERUBAHAN ---
 
-  data.forEach((row) => {
-    const docRef = db.collection('excelData').doc();  // Ganti 'excelData' dengan koleksi yang diinginkan
-    batch.set(docRef, row);
-  });
-
-  await batch.commit();
-
-  // Hapus file sementara
-  fs.unlinkSync(tempFilePath);
-
-  console.log(`Processed file: ${fileName}`);
+  // Kirim notifikasi menggunakan payload baru
+  try {
+    // Gunakan send() untuk mengirim payload yang kompleks
+    await getMessaging().send(payload);
+    console.log("Pesan data berhasil dikirim ke topik 'all_users'");
+  } catch (error) {
+    console.error("Gagal mengirim pesan data:", error);
+  }
 });

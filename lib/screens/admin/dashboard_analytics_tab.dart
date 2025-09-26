@@ -25,8 +25,6 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
   @override
   bool get wantKeepAlive => true;
 
-  String _selectedRegion = '';
-  List<String> _availableRegions = [];
   Map<String, dynamic> _dashboardData = {};
   bool _isLoading = true;
 
@@ -40,33 +38,48 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
     _loadData();
   }
 
-  Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      // Periksa cache jika masih valid
-      final now = DateTime.now();
-      if (_lastCacheTime != null &&
-          now.difference(_lastCacheTime!) < _cacheDuration &&
-          _dashboardDataCache.isNotEmpty) {
+  @override
+  void didUpdateWidget(DashboardAnalyticsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Muat ulang data jika state loading dari parent berubah (menandakan ada aksi refresh/ganti region)
+    if (widget.isLoading && !oldWidget.isLoading) {
+      _loadData();
+    }
+    // Jika parent sudah selesai loading, update state di sini
+    if (!widget.isLoading && oldWidget.isLoading) {
+      if (mounted) {
         setState(() {
-          _dashboardData = _dashboardDataCache;
           _isLoading = false;
         });
+      }
+    }
+  }
+
+  Future<void> _loadData() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
+    try {
+      final now = DateTime.now();
+      // Logika cache sederhana
+      if (_lastCacheTime != null && now.difference(_lastCacheTime!) < _cacheDuration && _dashboardDataCache.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _dashboardData = _dashboardDataCache;
+            _isLoading = false;
+          });
+        }
         return;
       }
 
-      // Load regions
-      final regions = await widget.dataService.getAvailableRegions();
-      final selectedRegion = widget.dataService.getSelectedRegion();
+      // Ambil data summary dari service
       final dashboardData = await widget.dataService.getDashboardSummary();
 
       if (mounted) {
         setState(() {
-          _availableRegions = regions;
-          _selectedRegion = selectedRegion.isNotEmpty ? selectedRegion : (regions.isNotEmpty ? regions.first : '');
           _dashboardData = dashboardData;
           _dashboardDataCache = Map.from(dashboardData);
           _lastCacheTime = now;
@@ -79,19 +92,11 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
         setState(() {
           _isLoading = false;
         });
+        // Tampilkan pesan error jika perlu
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memuat data analitik: $e'), backgroundColor: Colors.red),
+        );
       }
-    }
-  }
-
-  Future<void> _onRegionChanged(String? region) async {
-    if (region != null && region != _selectedRegion) {
-      setState(() {
-        _selectedRegion = region;
-        _isLoading = true;
-      });
-
-      await widget.dataService.setSelectedRegion(region);
-      await _loadData();
     }
   }
 
@@ -99,9 +104,11 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
   Widget build(BuildContext context) {
     super.build(context);
 
-    // Deteksi ukuran layar
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth > 600;
+
+    // Gunakan _isLoading dari state lokal yang disinkronkan dengan widget.isLoading
+    final showLoading = _isLoading;
 
     return RefreshIndicator(
       onRefresh: _loadData,
@@ -112,48 +119,43 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeaderSection(),
-            SizedBox(height: isTablet ? 32 : 24),
-            _buildRegionSelector(),
+            _buildHeaderSection(isLoading: showLoading),
             SizedBox(height: isTablet ? 32 : 24),
 
-            // Layout berbeda untuk tablet
             if (isTablet)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    flex: 3,
-                    child: _buildQuickStatsSection(),
-                  ),
-                  SizedBox(width: 24),
-                  Expanded(
-                    flex: 2,
-                    child: _buildStatusDistributionSection(),
-                  ),
+                  Expanded(flex: 3, child: _buildQuickStatsSection(isLoading: showLoading)),
+                  const SizedBox(width: 24),
+                  Expanded(flex: 2, child: _buildStatusDistributionSection(isLoading: showLoading)),
                 ],
               )
             else
               Column(
                 children: [
-                  _buildQuickStatsSection(),
-                  SizedBox(height: 32),
-                  _buildStatusDistributionSection(),
+                  _buildQuickStatsSection(isLoading: showLoading),
+                  const SizedBox(height: 32),
+                  _buildStatusDistributionSection(isLoading: showLoading),
                 ],
               ),
 
-            SizedBox(height: 32),
-            _buildChartSection(),
-            SizedBox(height: 32),
-            _buildRecentActivitiesSection(),
-            SizedBox(height: 24),
+            const SizedBox(height: 32),
+            _buildChartSection(isLoading: showLoading),
+            const SizedBox(height: 32),
+            _buildRecentActivitiesSection(isLoading: showLoading),
+            const SizedBox(height: 24),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeaderSection() {
+  // Semua fungsi build helper di bawah ini sekarang menerima parameter `isLoading`
+  // untuk memastikan UI menampilkan state yang benar.
+
+  Widget _buildHeaderSection({required bool isLoading}) {
+    final selectedRegion = widget.dataService.getSelectedRegion();
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -191,7 +193,7 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    DateFormat('EEEE, d MMMM yyyy').format(DateTime.now()),
+                    DateFormat('EEEE, d MMMM yyyy', 'id_ID').format(DateTime.now()),
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       color: Colors.white.withAlpha(204),
@@ -199,10 +201,9 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
                   ),
                 ],
               ),
-              // Tambahkan tombol refresh
               IconButton(
                 onPressed: _loadData,
-                icon: Icon(
+                icon: const Icon(
                   Icons.refresh_rounded,
                   color: Colors.white,
                   size: 28,
@@ -216,16 +217,18 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
             children: [
               Expanded(
                 child: _buildHeaderStat(
+                  isLoading: isLoading,
                   title: 'Total Pengguna',
-                  value: _isLoading ? '...' : '${_dashboardData['totalUsers'] ?? 0}',
+                  value: '${_dashboardData['totalUsers'] ?? 0}',
                   icon: Icons.people_outlined,
                 ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: _buildHeaderStat(
+                  isLoading: isLoading,
                   title: 'Aktivitas Hari Ini',
-                  value: _isLoading ? '...' : '${_dashboardData['aktivitasToday'] ?? 0}',
+                  value: '${_dashboardData['aktivitasToday'] ?? 0}',
                   icon: Icons.trending_up_outlined,
                 ),
               ),
@@ -236,16 +239,18 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
             children: [
               Expanded(
                 child: _buildHeaderStat(
+                  isLoading: isLoading,
                   title: 'Absensi Hari Ini',
-                  value: _isLoading ? '...' : '${_dashboardData['absensiToday'] ?? 0}',
+                  value: '${_dashboardData['absensiToday'] ?? 0}',
                   icon: Icons.check_circle_outline,
                 ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: _buildHeaderStat(
+                  isLoading: isLoading,
                   title: 'Region Aktif',
-                  value: _selectedRegion.isEmpty ? 'Semua' : _selectedRegion,
+                  value: selectedRegion.isEmpty ? 'Semua' : selectedRegion,
                   icon: Icons.location_on_outlined,
                 ),
               ),
@@ -257,6 +262,7 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
   }
 
   Widget _buildHeaderStat({
+    required bool isLoading,
     required String title,
     required String value,
     required IconData icon,
@@ -293,7 +299,7 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
                     color: Colors.white.withAlpha(204),
                   ),
                 ),
-                _isLoading && value == '...'
+                isLoading && title != 'Region Aktif'
                     ? Shimmer.fromColors(
                   baseColor: Colors.white.withAlpha(127),
                   highlightColor: Colors.white.withAlpha(204),
@@ -323,95 +329,10 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
     );
   }
 
-  Widget _buildRegionSelector() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(12),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.location_on_rounded,
-            color: Colors.green.shade700,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Filter Region:',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade700,
-              ),
-            ),
-          ),
-          _isLoading
-              ? SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade700),
-            ),
-          )
-              : DropdownButton<String>(
-            value: _selectedRegion.isEmpty ? null : _selectedRegion,
-            hint: Text(
-              'Pilih Region',
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-            items: [
-              DropdownMenuItem<String>(
-                value: '',
-                child: Text(
-                  'Semua Region',
-                  style: TextStyle(
-                    color: Colors.green.shade700,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              ..._availableRegions.map((String region) {
-                return DropdownMenuItem<String>(
-                  value: region,
-                  child: Text(
-                    region,
-                    style: TextStyle(
-                      color: _selectedRegion == region
-                          ? Colors.green.shade700
-                          : Colors.grey.shade800,
-                      fontWeight: _selectedRegion == region
-                          ? FontWeight.w600
-                          : FontWeight.w400,
-                    ),
-                  ),
-                );
-              }),
-            ],
-            onChanged: _onRegionChanged,
-            underline: const SizedBox(),
-            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
-            dropdownColor: Colors.white,
-            elevation: 3,
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildQuickStatsSection({required bool isLoading}) {
+    if (isLoading) return _buildLoadingQuickStats();
 
-  Widget _buildQuickStatsSection() {
-    return _isLoading
-        ? _buildLoadingQuickStats()
-        : Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -469,68 +390,28 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
           ),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: Shimmer.fromColors(
-                baseColor: Colors.grey.shade300,
-                highlightColor: Colors.grey.shade100,
-                child: Container(
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
+        Shimmer.fromColors(
+          baseColor: Colors.grey.shade300,
+          highlightColor: Colors.grey.shade100,
+          child: Container(
+            height: 100,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Shimmer.fromColors(
-                baseColor: Colors.grey.shade300,
-                highlightColor: Colors.grey.shade100,
-                child: Container(
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: Shimmer.fromColors(
-                baseColor: Colors.grey.shade300,
-                highlightColor: Colors.grey.shade100,
-                child: Container(
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
+        Shimmer.fromColors(
+          baseColor: Colors.grey.shade300,
+          highlightColor: Colors.grey.shade100,
+          child: Container(
+            height: 100,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Shimmer.fromColors(
-                baseColor: Colors.grey.shade300,
-                highlightColor: Colors.grey.shade100,
-                child: Container(
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ],
     );
@@ -543,7 +424,7 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
     required Color color,
   }) {
     return AnimatedContainer(
-      duration: Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 500),
       curve: Curves.easeInOut,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -608,7 +489,7 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
     );
   }
 
-  Widget _buildChartSection() {
+  Widget _buildChartSection({required bool isLoading}) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -636,39 +517,11 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
                   color: Colors.grey.shade800,
                 ),
               ),
-              // Tambahkan dropdown untuk memilih periode
-              DropdownButton<String>(
-                value: 'Mingguan',
-                underline: const SizedBox(),
-                icon: Icon(Icons.keyboard_arrow_down, color: Colors.green.shade700, size: 18),
-                items: ['Harian', 'Mingguan', 'Bulanan'].map((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: value == 'Mingguan' ? Colors.green.shade50 : Colors.transparent,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        value,
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.green.shade700,
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  // Implementasi perubahan periode
-                },
-              ),
+              // Opsi periode bisa diimplementasikan lebih lanjut nanti
             ],
           ),
           const SizedBox(height: 24),
-          _isLoading
+          isLoading
               ? Shimmer.fromColors(
             baseColor: Colors.grey.shade300,
             highlightColor: Colors.grey.shade100,
@@ -686,7 +539,7 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
               future: widget.dataService.getActivityTrendData(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Center(
+                  return const Center(
                     child: CircularProgressIndicator(
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
                     ),
@@ -696,8 +549,8 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
                 if (snapshot.hasError) {
                   return Center(
                     child: Text(
-                      'Error loading chart data',
-                      style: TextStyle(color: Colors.red),
+                      'Gagal memuat data chart',
+                      style: TextStyle(color: Colors.red.shade400),
                     ),
                   );
                 }
@@ -727,12 +580,15 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
                   );
                 }
 
+                // Temukan nilai y maksimum untuk mengatur skala chart
+                final maxY = spots.map((e) => e.y).reduce((a, b) => a > b ? a : b);
+
                 return LineChart(
                   LineChartData(
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: false,
-                      horizontalInterval: 1,
+                      horizontalInterval: (maxY / 4).ceilToDouble(), // Atur interval grid horizontal
                       getDrawingHorizontalLine: (value) {
                         return FlLine(
                           color: Colors.grey.shade200,
@@ -742,19 +598,15 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
                     ),
                     titlesData: FlTitlesData(
                       show: true,
-                      rightTitles: AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      topTitles: AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
+                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       bottomTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
                           reservedSize: 30,
-                          interval: 1,
+                          interval: (spots.length / 5).ceilToDouble(), // Tampilkan sekitar 5 label
                           getTitlesWidget: (value, meta) {
-                            // Get date for the x-axis
+                            if (value.toInt() >= spots.length) return const SizedBox.shrink();
                             final now = DateTime.now();
                             final date = now.subtract(Duration(days: (spots.length - 1 - value.toInt())));
                             return Padding(
@@ -773,7 +625,7 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
                       leftTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          interval: 1,
+                          interval: (maxY / 4).ceilToDouble(), // Atur interval label vertikal
                           getTitlesWidget: (value, meta) {
                             return Text(
                               value.toInt().toString(),
@@ -787,22 +639,17 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
                         ),
                       ),
                     ),
-                    borderData: FlBorderData(
-                      show: false,
-                    ),
+                    borderData: FlBorderData(show: false),
                     minX: 0,
-                    maxX: spots.length - 1.0,
+                    maxX: spots.length.toDouble() - 1,
                     minY: 0,
-                    maxY: spots.map((e) => e.y).reduce((a, b) => a > b ? a : b) + 1,
+                    maxY: maxY + (maxY * 0.1), // Beri sedikit ruang di atas
                     lineBarsData: [
                       LineChartBarData(
                         spots: spots,
                         isCurved: true,
                         gradient: LinearGradient(
-                          colors: [
-                            Colors.green.shade300,
-                            Colors.green.shade700,
-                          ],
+                          colors: [Colors.green.shade300, Colors.green.shade700],
                         ),
                         barWidth: 3,
                         isStrokeCapRound: true,
@@ -840,7 +687,7 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
     );
   }
 
-  Widget _buildStatusDistributionSection() {
+  Widget _buildStatusDistributionSection({required bool isLoading}) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -866,7 +713,7 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
             ),
           ),
           const SizedBox(height: 24),
-          _isLoading
+          isLoading
               ? Shimmer.fromColors(
             baseColor: Colors.grey.shade300,
             highlightColor: Colors.grey.shade100,
@@ -879,28 +726,17 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
             ),
           )
               : Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Absensi',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
+                    Text('Absensi', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
                     const SizedBox(height: 16),
                     ..._buildStatusBars(
-                      Map<dynamic, dynamic>.from(_dashboardData['absensiStatusCounts'] ?? {}),
-                      [
-                        Colors.green.shade500,
-                        Colors.orange.shade500,
-                        Colors.red.shade500,
-                        Colors.blue.shade500,
-                      ],
+                      _dashboardData['absensiStatusCounts'],
+                      [Colors.green.shade500, Colors.orange.shade500, Colors.red.shade500, Colors.blue.shade500],
                     ),
                   ],
                 ),
@@ -910,23 +746,11 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Aktivitas',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
+                    Text('Aktivitas', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
                     const SizedBox(height: 16),
                     ..._buildStatusBars(
-                      Map<dynamic, dynamic>.from(_dashboardData['aktivitasTypeCounts'] ?? {}),
-                      [
-                        Colors.purple.shade500,
-                        Colors.teal.shade500,
-                        Colors.amber.shade500,
-                        Colors.indigo.shade500,
-                      ],
+                      _dashboardData['aktivitasTypeCounts'],
+                      [Colors.purple.shade500, Colors.teal.shade500, Colors.amber.shade500, Colors.indigo.shade500],
                     ),
                   ],
                 ),
@@ -938,36 +762,44 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
     );
   }
 
-  List<Widget> _buildStatusBars(Map<dynamic, dynamic> statusCounts, List<Color> colors) {
-    if (statusCounts.isEmpty) {
+  // ✅ FUNGSI YANG DIPERBAIKI
+  List<Widget> _buildStatusBars(dynamic data, List<Color> colors) {
+    // Pastikan data adalah Map, jika tidak atau null, kembalikan state kosong.
+    if (data == null || data is! Map) {
       return [
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 32.0),
-            child: Text(
-              'Tidak ada data',
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 14,
-              ),
-            ),
-          ),
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 32.0),
+          child: Center(child: Text('Tidak ada data', style: TextStyle(color: Colors.grey))),
         ),
       ];
     }
 
-    // Calculate total for percentage
-    final total = statusCounts.values.fold<int>(0, (sum, count) => sum + (count as int));
+    // Konversi ke Map<String, dynamic> untuk keamanan
+    final statusCounts = Map<String, dynamic>.from(data);
+    if(statusCounts.isEmpty) {
+      return [
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 32.0),
+          child: Center(child: Text('Tidak ada data', style: TextStyle(color: Colors.grey))),
+        ),
+      ];
+    }
 
-    // Sort by count (descending)
+    // Ubah nilai menjadi num untuk keamanan, lalu hitung total.
+    final total = statusCounts.values.fold<num>(0, (sum, count) => sum + (num.tryParse(count.toString()) ?? 0));
+
+    // Urutkan berdasarkan nilai (descending)
     final sortedEntries = statusCounts.entries.toList()
-      ..sort((a, b) => (b.value as int).compareTo(a.value as int));
+      ..sort((a, b) {
+        final valA = num.tryParse(a.value.toString()) ?? 0;
+        final valB = num.tryParse(b.value.toString()) ?? 0;
+        return valB.compareTo(valA);
+      });
 
-    // Create status bars
     return sortedEntries.asMap().entries.map((entry) {
       final index = entry.key;
-      final status = entry.value.key.toString(); // Convert key to String
-      final count = entry.value.value as int;
+      final status = entry.value.key;
+      final count = num.tryParse(entry.value.value.toString()) ?? 0;
       final percentage = total > 0 ? (count / total * 100) : 0;
       final color = index < colors.length ? colors[index] : Colors.grey;
 
@@ -979,20 +811,17 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  status,
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.grey.shade700,
+                Expanded(
+                  child: Text(
+                    status,
+                    style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade700),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                const SizedBox(width: 4),
                 Text(
                   '$count (${percentage.toStringAsFixed(1)}%)',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                  ),
+                  style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: color),
                 ),
               ],
             ),
@@ -1002,19 +831,13 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
                 Container(
                   height: 8,
                   width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
+                  decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4)),
                 ),
                 FractionallySizedBox(
                   widthFactor: percentage / 100,
                   child: Container(
                     height: 8,
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+                    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4)),
                   ),
                 ),
               ],
@@ -1025,111 +848,76 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
     }).toList();
   }
 
-  Widget _buildRecentActivitiesSection() {
+  Widget _buildRecentActivitiesSection({required bool isLoading}) {
     return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(12),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-          Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Aktivitas Terbaru',
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade800,
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                // Navigate to full aktivitas tab
-                DefaultTabController.of(context).animateTo(2);
-              },
-              child: Text(
-                'Lihat Semua',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.green.shade700,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _isLoading
-            ? _buildLoadingActivities()
-            : FutureBuilder<List<AktivitasData>>(
-        future: widget.dataService.getRecentActivities(),
-    builder: (context, snapshot) {
-    if (snapshot.connectionState == ConnectionState.waiting) {
-    return _buildLoadingActivities();
-    } else if (snapshot.hasError) {
-    return Center(
-    child: Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Text(
-        'Error: ${snapshot.error}',
-        style: TextStyle(color: Colors.red),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(12),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-    ),
-    );
-    } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Lottie.asset(
-                'assets/animations/empty_data.json',
-                width: 120,
-                height: 120,
-              ),
-              const SizedBox(height: 16),
               Text(
-                'Belum ada aktivitas terbaru',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 14,
+                'Aktivitas Terbaru',
+                style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+              ),
+              TextButton(
+                onPressed: () => DefaultTabController.of(context).animateTo(2),
+                child: Text(
+                  'Lihat Semua',
+                  style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.green.shade700),
                 ),
               ),
             ],
           ),
-        ),
-      );
-    }
+          const SizedBox(height: 16),
+          isLoading
+              ? _buildLoadingActivities()
+              : FutureBuilder<List<AktivitasData>>(
+            future: widget.dataService.getRecentActivities(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return _buildLoadingActivities();
+              } else if (snapshot.hasError) {
+                return Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red))));
+              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32.0),
+                    child: Column(
+                      children: [
+                        Lottie.asset('assets/animations/empty_data.json', width: 120, height: 120),
+                        const SizedBox(height: 16),
+                        Text('Belum ada aktivitas terbaru', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+                      ],
+                    ),
+                  ),
+                );
+              }
 
-    final activities = snapshot.data!;
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: activities.length,
-      separatorBuilder: (context, index) => Divider(
-        color: Colors.grey.shade200,
-        height: 1,
+              final activities = snapshot.data!;
+              return ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: activities.length,
+                separatorBuilder: (context, index) => Divider(color: Colors.grey.shade200, height: 1),
+                itemBuilder: (context, index) => _buildActivityItem(activities[index]),
+              );
+            },
+          ),
+        ],
       ),
-      itemBuilder: (context, index) {
-        final activity = activities[index];
-        return _buildActivityItem(activity);
-      },
-    );
-    },
-        ),
-          ],
-        ),
     );
   }
 
@@ -1138,10 +926,7 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: 3,
-      separatorBuilder: (context, index) => Divider(
-        color: Colors.grey.shade200,
-        height: 1,
-      ),
+      separatorBuilder: (context, index) => Divider(color: Colors.grey.shade200, height: 1),
       itemBuilder: (context, index) {
         return Shimmer.fromColors(
           baseColor: Colors.grey.shade300,
@@ -1150,36 +935,15 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
             padding: const EdgeInsets.symmetric(vertical: 12.0),
             child: Row(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                ),
+                Container(width: 40, height: 40, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: double.infinity,
-                        height: 14,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
+                      Container(width: double.infinity, height: 14, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
                       const SizedBox(height: 8),
-                      Container(
-                        width: 100,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
+                      Container(width: 100, height: 10, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
                     ],
                   ),
                 ),
@@ -1220,41 +984,17 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
           Container(
             width: 40,
             height: 40,
-            decoration: BoxDecoration(
-              color: statusColor.withAlpha(25),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              statusIcon,
-              color: statusColor,
-              size: 20,
-            ),
+            decoration: BoxDecoration(color: statusColor.withAlpha(25), shape: BoxShape.circle),
+            child: Icon(statusIcon, color: statusColor, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  activity.name,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade800,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                Text(activity.name, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade800), maxLines: 1, overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 4),
-                Text(
-                  '${activity.type} - ${activity.aksi}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                Text('${activity.type} - ${activity.aksi}', style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade600), maxLines: 1, overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
@@ -1262,22 +1002,9 @@ class _DashboardAnalyticsTabState extends State<DashboardAnalyticsTab> with Auto
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                DateFormat('dd/MM/yyyy').format(activity.timestamp),
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
-              ),
+              Text(DateFormat('dd/MM/yy').format(activity.timestamp), style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade600)),
               const SizedBox(height: 4),
-              Text(
-                DateFormat('HH:mm').format(activity.timestamp),
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade700,
-                ),
-              ),
+              Text(DateFormat('HH:mm').format(activity.timestamp), style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
             ],
           ),
         ],

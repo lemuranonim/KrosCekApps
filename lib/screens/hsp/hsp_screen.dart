@@ -61,27 +61,7 @@ class HspScreenState extends State<HspScreen>
 
   // Map untuk ID document di Firestore
   final Map<String, String> regionDocumentIds = {
-    'Region 1': 'region 1',
-    'Region 2': 'region 2',
-    'Region 3': 'region 3',
-    'Region 4': 'region 4',
-    'Region 5': 'region 5',
-    'Region 6': 'region 6',
-    'Region 7': 'region 7',
-    'Region 8': 'region 8',
-    'Region 9': 'region 9',
-    'Region 10': 'region 10',
-    'SWC': 'swc',
-    'SWC 1': 'swc 1',
-    'SWC 2': 'swc 2',
-    'SWC 3': 'swc 3',
-    'SWC 4': 'swc 4',
-    'SWC 5': 'swc 5',
-    'SWC 6': 'swc 6',
-    'SWC 7': 'swc 7',
-    'SWC 8': 'swc 8',
-    'SWC 9': 'swc 9',
-    'SWC 10': 'swc 10',
+    'HSP SWC': 'swc',
   };
 
   @override
@@ -145,7 +125,7 @@ class HspScreenState extends State<HspScreen>
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: Colors.green,
+                    color: Colors.amber,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -168,7 +148,7 @@ class HspScreenState extends State<HspScreen>
                       child: Text(
                         "Batal",
                         style: TextStyle(
-                          color: Colors.green,
+                          color: Colors.amber,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -180,7 +160,7 @@ class HspScreenState extends State<HspScreen>
                         SystemNavigator.pop();
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
+                        backgroundColor: Colors.amber,
                         // Use backgroundColor instead of primary
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12.0),
@@ -304,7 +284,7 @@ class HspScreenState extends State<HspScreen>
     });
   }
 
-  // Stream untuk mendapatkan data QA SPV secara real-time
+  // Stream untuk mendapatkan data HSP SPV secara real-time
   Stream<List<String>> getQASPVStream(String selectedRegion) {
     if (selectedRegion.isEmpty) return Stream.value([]);
 
@@ -318,7 +298,7 @@ class HspScreenState extends State<HspScreen>
         .map((snapshot) {
       if (!snapshot.exists) return [];
       Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
-      return (data['qa_spv'] as Map<String, dynamic>).keys.toList();
+      return (data['hsp_spv'] as Map<String, dynamic>).keys.toList();
     });
   }
 
@@ -340,11 +320,11 @@ class HspScreenState extends State<HspScreen>
       if (!snapshot.exists) return [];
       Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
 
-      if (data.containsKey('qa_spv') &&
-          data['qa_spv'] is Map &&
-          data['qa_spv'][selectedQASPV] != null &&
-          data['qa_spv'][selectedQASPV]['districts'] != null) {
-        return List<String>.from(data['qa_spv'][selectedQASPV]['districts']);
+      if (data.containsKey('hsp_spv') &&
+          data['hsp_spv'] is Map &&
+          data['hsp_spv'][selectedQASPV] != null &&
+          data['hsp_spv'][selectedQASPV]['districts'] != null) {
+        return List<String>.from(data['hsp_spv'][selectedQASPV]['districts']);
       }
       return [];
     });
@@ -360,8 +340,8 @@ class HspScreenState extends State<HspScreen>
       if (!snapshot.exists) return [];
       Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
 
-      if (data.containsKey('qa') && data['qa'] is List) {
-        return List<String>.from(data['qa']);
+      if (data.containsKey('swc') && data['swc'] is List) {
+        return List<String>.from(data['swc']);
       }
       return [];
     });
@@ -455,9 +435,9 @@ class HspScreenState extends State<HspScreen>
           .get();
       if (configSnapshot.exists) {
         final data = configSnapshot.data();
-        if (data != null && data.containsKey('qa')) {
+        if (data != null && data.containsKey('swc')) {
           setState(() {
-            fieldSPVList = List<String>.from(data['qa']);
+            fieldSPVList = List<String>.from(data['swc']);
           });
         }
       }
@@ -542,7 +522,7 @@ class HspScreenState extends State<HspScreen>
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: Colors.green,
+              color: Colors.amber,
             ),
           ),
           content:
@@ -556,7 +536,7 @@ class HspScreenState extends State<HspScreen>
                   child: Text(
                     "Batal",
                     style: TextStyle(
-                      color: Colors.green,
+                      color: Colors.amber,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -566,7 +546,7 @@ class HspScreenState extends State<HspScreen>
                     Navigator.of(context).pop(true);
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
+                    backgroundColor: Colors.amber,
                     // Use backgroundColor instead of primary
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12.0),
@@ -656,7 +636,7 @@ class HspScreenState extends State<HspScreen>
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.green,
+                    color: Colors.amber,
                   ),
                 ),
               ),
@@ -775,7 +755,7 @@ class HspScreenState extends State<HspScreen>
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content:
-                        Text('Pilih Region, QA SPV & District dulu boloo!'),
+                        Text('Pilih Region, HSP SPV & District dulu boloo!'),
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
@@ -822,10 +802,10 @@ class HspScreenState extends State<HspScreen>
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: Colors.green.withAlpha(26),
+          color: Colors.amber.withAlpha(26),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(icon, color: Colors.green),
+        child: Icon(icon, color: Colors.amber),
       ),
       title: Text(
         title,
@@ -877,7 +857,7 @@ class HspScreenState extends State<HspScreen>
         slideWidth: MediaQuery.of(context).size.width * 0.95,
         openCurve: Curves.fastOutSlowIn,
         closeCurve: Curves.fastOutSlowIn,
-        menuBackgroundColor: Colors.green[100]!,
+        menuBackgroundColor: Colors.amber[100]!,
       ),
     );
   }
@@ -888,7 +868,7 @@ class HspScreenState extends State<HspScreen>
         Scaffold(
           appBar: AppBar(
             title: _selectedIndex == 0
-                ? const Text('Dashboard',
+                ? const Text('HSP',
                 style: TextStyle(
                     color: Colors.white, fontWeight: FontWeight.bold))
                 : const Text('Aktivitas',
@@ -899,7 +879,7 @@ class HspScreenState extends State<HspScreen>
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Colors.green.shade800, Colors.green.shade600],
+                  colors: [Colors.amber.shade800, Colors.amber.shade600],
                 ),
               ),
             ),
@@ -940,7 +920,7 @@ class HspScreenState extends State<HspScreen>
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.green.withAlpha(60),
+                  color: Colors.amber.withAlpha(60),
                   blurRadius: 10,
                   spreadRadius: 2,
                   offset: const Offset(0, 4),
@@ -949,7 +929,7 @@ class HspScreenState extends State<HspScreen>
             ),
             child: FloatingActionButton(
               onPressed: _showBottomSheetMenu,
-              backgroundColor: Colors.green,
+              backgroundColor: Colors.amber,
               elevation: 0,
               child: const Icon(
                 Icons.add,
@@ -965,11 +945,11 @@ class HspScreenState extends State<HspScreen>
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Colors.green.shade800, Colors.green.shade600],
+                colors: [Colors.amber.shade800, Colors.amber.shade600],
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.green.withAlpha(50),
+                  color: Colors.amber.withAlpha(50),
                   blurRadius: 10,
                   spreadRadius: 0,
                   offset: const Offset(0, -2),
@@ -1045,7 +1025,7 @@ class HspScreenState extends State<HspScreen>
                   Text(
                     'Ngrantos sekedap...',
                     style: TextStyle(
-                      color: Colors.green.shade700,
+                      color: Colors.amber.shade700,
                       fontFamily: 'Poppins',
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
@@ -1068,7 +1048,7 @@ class HspScreenState extends State<HspScreen>
           title: const Text(
             'Info Mase!',
             style: TextStyle(
-              color: Colors.green,
+              color: Colors.amber,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -1129,14 +1109,14 @@ class HspScreenState extends State<HspScreen>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          Colors.green.shade50,
-                          Colors.green.shade100,
+                          Colors.amber.shade50,
+                          Colors.amber.shade100,
                         ],
                       ),
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.green.withAlpha(25),
+                          color: Colors.amber.withAlpha(25),
                           blurRadius: 10,
                           spreadRadius: 1,
                           offset: const Offset(0, 4),
@@ -1160,7 +1140,7 @@ class HspScreenState extends State<HspScreen>
                                         textStyle: TextStyle(
                                           fontSize: 24.0,
                                           fontWeight: FontWeight.w700,
-                                          color: Colors.green.shade800,
+                                          color: Colors.amber.shade800,
                                         ),
                                         textAlign: TextAlign.left,
                                         speed:
@@ -1176,7 +1156,7 @@ class HspScreenState extends State<HspScreen>
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.green.shade800,
+                                      color: Colors.amber.shade800,
                                     ),
                                   ),
                                 ],
@@ -1189,7 +1169,7 @@ class HspScreenState extends State<HspScreen>
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.green.withAlpha(25),
+                                    color: Colors.amber.withAlpha(25),
                                     blurRadius: 8,
                                     spreadRadius: 1,
                                     offset: const Offset(0, 2),
@@ -1225,7 +1205,7 @@ class HspScreenState extends State<HspScreen>
                             borderRadius: BorderRadius.circular(30),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.green.withAlpha(15),
+                                color: Colors.amber.withAlpha(15),
                                 blurRadius: 4,
                                 spreadRadius: 1,
                                 offset: const Offset(0, 2),
@@ -1238,14 +1218,14 @@ class HspScreenState extends State<HspScreen>
                               Icon(
                                 Icons.calendar_today_rounded,
                                 size: 16,
-                                color: Colors.green.shade700,
+                                color: Colors.amber.shade700,
                               ),
                               const SizedBox(width: 8),
                               Text(
                                 _currentTime,
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.green.shade700,
+                                  color: Colors.amber.shade700,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -1316,12 +1296,12 @@ class HspScreenState extends State<HspScreen>
                         ),
                         dropdownColor: Colors.white,
                         icon: const Icon(Icons.arrow_drop_down,
-                            color: Colors.green),
+                            color: Colors.amber),
                         iconSize: 28,
                         decoration: InputDecoration(
                           labelText: 'Field Region',
                           labelStyle: const TextStyle(
-                            color: Colors.green,
+                            color: Colors.amber,
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                           ),
@@ -1329,18 +1309,18 @@ class HspScreenState extends State<HspScreen>
                           fillColor: Colors.white,
                           enabledBorder: OutlineInputBorder(
                             borderSide: const BorderSide(
-                                color: Colors.green, width: 2.0),
+                                color: Colors.amber, width: 2.0),
                             borderRadius: BorderRadius.circular(12.0),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderSide: const BorderSide(
-                                color: Colors.green, width: 2.5),
+                                color: Colors.amber, width: 2.5),
                             borderRadius: BorderRadius.circular(12.0),
                           ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12.0),
                             borderSide: const BorderSide(
-                                color: Colors.green, width: 2.0),
+                                color: Colors.amber, width: 2.0),
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                               vertical: 16, horizontal: 20),
@@ -1352,7 +1332,7 @@ class HspScreenState extends State<HspScreen>
                   ),
                   const SizedBox(height: 8),
 
-                  // StreamBuilder untuk QA SPV
+                  // StreamBuilder untuk HSP SPV
                   if (selectedFieldSPV != null) ...[
                     StreamBuilder<List<String>>(
                       stream: getQASPVStream(selectedFieldSPV!),
@@ -1365,7 +1345,7 @@ class HspScreenState extends State<HspScreen>
 
                         return DropdownButtonFormField<String>(
                           value: selectedQA,
-                          hint: const Text("Pilih QA SPV!",
+                          hint: const Text("Pilih HSP SPV!",
                               style: TextStyle(color: Colors.grey)),
                           items: qaSPVList.map((qa) {
                             return DropdownMenuItem<String>(
@@ -1388,12 +1368,12 @@ class HspScreenState extends State<HspScreen>
                           ),
                           dropdownColor: Colors.white,
                           icon: const Icon(Icons.arrow_drop_down,
-                              color: Colors.green),
+                              color: Colors.amber),
                           iconSize: 28,
                           decoration: InputDecoration(
-                            labelText: 'QA SPV',
+                            labelText: 'HSP SPV',
                             labelStyle: const TextStyle(
-                              color: Colors.green,
+                              color: Colors.amber,
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
                             ),
@@ -1401,18 +1381,18 @@ class HspScreenState extends State<HspScreen>
                             fillColor: Colors.white,
                             enabledBorder: OutlineInputBorder(
                               borderSide: const BorderSide(
-                                  color: Colors.green, width: 2.0),
+                                  color: Colors.amber, width: 2.0),
                               borderRadius: BorderRadius.circular(12.0),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderSide: const BorderSide(
-                                  color: Colors.green, width: 2.5),
+                                  color: Colors.amber, width: 2.5),
                               borderRadius: BorderRadius.circular(12.0),
                             ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12.0),
                               borderSide: const BorderSide(
-                                  color: Colors.green, width: 2.0),
+                                  color: Colors.amber, width: 2.0),
                             ),
                             contentPadding: const EdgeInsets.symmetric(
                                 vertical: 16, horizontal: 20),
@@ -1461,12 +1441,12 @@ class HspScreenState extends State<HspScreen>
                           ),
                           dropdownColor: Colors.white,
                           icon: const Icon(Icons.arrow_drop_down,
-                              color: Colors.green),
+                              color: Colors.amber),
                           iconSize: 28,
                           decoration: InputDecoration(
                             labelText: 'District',
                             labelStyle: const TextStyle(
-                              color: Colors.green,
+                              color: Colors.amber,
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
                             ),
@@ -1474,18 +1454,18 @@ class HspScreenState extends State<HspScreen>
                             fillColor: Colors.white,
                             enabledBorder: OutlineInputBorder(
                               borderSide: const BorderSide(
-                                  color: Colors.green, width: 2.0),
+                                  color: Colors.amber, width: 2.0),
                               borderRadius: BorderRadius.circular(12.0),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderSide: const BorderSide(
-                                  color: Colors.green, width: 2.5),
+                                  color: Colors.amber, width: 2.5),
                               borderRadius: BorderRadius.circular(12.0),
                             ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12.0),
                               borderSide: const BorderSide(
-                                  color: Colors.green, width: 2.0),
+                                  color: Colors.amber, width: 2.0),
                             ),
                             contentPadding: const EdgeInsets.symmetric(
                                 vertical: 16, horizontal: 20),
@@ -1508,14 +1488,14 @@ class HspScreenState extends State<HspScreen>
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.green.withAlpha(25), // ~10% opacity
+                            color: Colors.amber.withAlpha(25), // ~10% opacity
                             spreadRadius: 3,
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
                         ],
                         border: Border.all(
-                          color: Colors.green.withAlpha(76),
+                          color: Colors.amber.withAlpha(76),
                           // ~30% opacity (255 * 0.3 ≈ 76)
                           width: 1.5,
                         ),
@@ -1525,7 +1505,7 @@ class HspScreenState extends State<HspScreen>
                           colors: [
                             Colors.white,
                             Color.alphaBlend(
-                                Colors.green.withAlpha(12), Colors.white),
+                                Colors.amber.withAlpha(12), Colors.white),
                             // ~5% opacity
                           ],
                         ),
@@ -1536,7 +1516,7 @@ class HspScreenState extends State<HspScreen>
                           if (selectedQA != null) ...[
                             _buildResultItem(
                               icon: Icons.supervisor_account_rounded,
-                              label: 'QA SPV',
+                              label: 'HSP SPV',
                               value: selectedQA!,
                             ),
                             const Divider(
@@ -1574,14 +1554,14 @@ class HspScreenState extends State<HspScreen>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.green.shade600,
-                Colors.green.shade800,
+                Colors.amber.shade600,
+                Colors.amber.shade800,
               ],
             ),
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.green.withAlpha(76),
+                color: Colors.amber.withAlpha(76),
                 blurRadius: 10,
                 spreadRadius: 1,
                 offset: const Offset(0, 4),
@@ -1675,7 +1655,7 @@ class HspScreenState extends State<HspScreen>
                   Icon(
                     Icons.auto_graph_rounded,
                     // You can change this to any icon you prefer
-                    color: Colors.green[700],
+                    color: Colors.amber[700],
                     size: 28,
                   ),
                   const SizedBox(width: 8),
@@ -1684,7 +1664,7 @@ class HspScreenState extends State<HspScreen>
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.green[700],
+                      color: Colors.amber[700],
                     ),
                   ),
                 ],
@@ -1714,6 +1694,10 @@ class HspScreenState extends State<HspScreen>
                 crossAxisSpacing: 20,
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
+                  buildPremiumCategoryItem(
+                    context, 'assets/vegetative.png', 'Planting', 'Seed sowing phase',
+                    selectedSpreadsheetId, selectedFA, selectedQA, selectedSeason, selectedFieldSPV, seasonList,
+                  ),
                   buildPremiumCategoryItem(
                     context,
                     'assets/vegetative.png',
@@ -1779,10 +1763,10 @@ class HspScreenState extends State<HspScreen>
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.green.withAlpha(25), // ~10% opacity
+            color: Colors.amber.withAlpha(25), // ~10% opacity
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: Colors.green, size: 20),
+          child: Icon(icon, color: Colors.amber, size: 20),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -1802,7 +1786,7 @@ class HspScreenState extends State<HspScreen>
                 value,
                 style: const TextStyle(
                   fontSize: 16,
-                  color: Colors.green,
+                  color: Colors.amber,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -1837,7 +1821,7 @@ class HspScreenState extends State<HspScreen>
         if (selectedQA == null) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text('QA SPV belum dipilih gaes!',
+                content: Text('HSP SPV belum dipilih gaes!',
                     textAlign: TextAlign.center)),
           );
           return;
@@ -1930,7 +1914,7 @@ class HspScreenState extends State<HspScreen>
                 Text(
                   label,
                   style: const TextStyle(
-                    color: Colors.green,
+                    color: Colors.amber,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
@@ -1959,6 +1943,18 @@ Widget buildPremiumCategoryItem(
     ) {
   return GestureDetector(
     onTap: () {
+      if (label == 'Planting') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Coming Soon!', textAlign: TextAlign.center),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.symmetric(vertical: 20, horizontal: 50),
+            shape: StadiumBorder(),
+          ),
+        );
+        return; // Menghentikan eksekusi agar tidak lanjut ke navigasi
+      }
       if (spreadsheetId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1970,7 +1966,7 @@ Widget buildPremiumCategoryItem(
       if (selectedQA == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('QA SPV belum dipilih gaes!',
+              content: Text('HSP SPV belum dipilih gaes!',
                   textAlign: TextAlign.center)),
         );
         return;
@@ -2041,20 +2037,20 @@ Widget buildPremiumCategoryItem(
           end: Alignment.bottomRight,
           colors: [
             Colors.white,
-            Colors.green.withAlpha(5),
+            Colors.amber.withAlpha(5),
           ],
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withAlpha(25),
+            color: Colors.amber.withAlpha(25),
             blurRadius: 10,
             spreadRadius: 1,
             offset: const Offset(0, 4),
           ),
         ],
         border: Border.all(
-          color: Colors.green.withAlpha(51),
+          color: Colors.amber.withAlpha(51),
           width: 1.5,
         ),
       ),
@@ -2070,8 +2066,8 @@ Widget buildPremiumCategoryItem(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Colors.green.withAlpha(25),
-                  Colors.green.withAlpha(51),
+                  Colors.amber.withAlpha(25),
+                  Colors.amber.withAlpha(51),
                 ],
               ),
             ),
@@ -2087,7 +2083,7 @@ Widget buildPremiumCategoryItem(
           Text(
             label,
             style: const TextStyle(
-              color: Colors.green,
+              color: Colors.amber,
               fontWeight: FontWeight.bold,
               fontSize: 16,
             ),
@@ -2133,7 +2129,7 @@ class MenuScreen extends StatelessWidget {
       width: MediaQuery.of(context).size.width,
       height: screenHeight,
       decoration: BoxDecoration(
-        color: Colors.green,
+        color: Colors.amber,
         borderRadius: const BorderRadius.only(
           topRight: Radius.circular(30.0),
           bottomRight: Radius.circular(30.0),
@@ -2211,18 +2207,18 @@ class MenuScreen extends StatelessWidget {
                       icon: const Icon(
                         Icons.logout_rounded,
                         size: 20,
-                        color: Colors.green,
+                        color: Colors.amber,
                       ),
                       label: const Text(
                         'Logout',
                         style: TextStyle(
-                          color: Colors.green,
+                          color: Colors.amber,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
-                        foregroundColor: Colors.green,
+                        foregroundColor: Colors.amber,
                         padding: const EdgeInsets.symmetric(
                           vertical: 12,
                           horizontal: 24,
@@ -2262,7 +2258,7 @@ class MenuScreen extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 16),
             decoration: BoxDecoration(
-              color: Colors.green.shade800,
+              color: Colors.amber.shade800,
               borderRadius: const BorderRadius.only(
                 bottomRight: Radius.circular(30.0),
               ),

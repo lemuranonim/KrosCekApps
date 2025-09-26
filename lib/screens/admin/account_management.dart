@@ -21,7 +21,8 @@ class _AccountManagementState extends State<AccountManagement> {
   final Map<String, String> _roleTypes = {
     'adminEmails': 'Admin Role',
     'pspEmails': 'PSP Role',
-    'userEmails': 'User Role',
+    'userEmails': 'QA Role',
+    'swcEmails': 'HSP Role',
   };
 
   @override
@@ -234,6 +235,8 @@ class _AccountManagementState extends State<AccountManagement> {
         return Icons.verified_user_outlined;
       case 'userEmails':
         return Icons.person_outline;
+      case 'swcEmails':
+        return Icons.security_outlined;
       default:
         return Icons.group_outlined;
     }

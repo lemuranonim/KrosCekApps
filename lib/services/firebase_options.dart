@@ -31,7 +31,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+              'you can reconfigure this by running the FlutterFire CLI again.',
         );
       default:
         throw UnsupportedError(
@@ -47,7 +47,7 @@ class DefaultFirebaseOptions {
     projectId: 'kroscek',
     authDomain: 'kroscek.firebaseapp.com',
     databaseURL: 'https://kroscek-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'kroscek.appspot.com',
+    storageBucket: 'kroscek.firebasestorage.app',
     measurementId: 'G-JJMYBRE23G',
   );
 
@@ -57,7 +57,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '837386298671',
     projectId: 'kroscek',
     databaseURL: 'https://kroscek-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'kroscek.appspot.com',
+    storageBucket: 'kroscek.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
@@ -66,7 +66,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '837386298671',
     projectId: 'kroscek',
     databaseURL: 'https://kroscek-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'kroscek.appspot.com',
+    storageBucket: 'kroscek.firebasestorage.app',
     androidClientId: '837386298671-d9pnm7dat8iiuqm12hjvakgc4n8btlsf.apps.googleusercontent.com',
     iosClientId: '837386298671-l1hj5okjjh4v954fn9rt3u96e1b3q0i4.apps.googleusercontent.com',
     iosBundleId: 'com.example.kroscek',
@@ -78,7 +78,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '837386298671',
     projectId: 'kroscek',
     databaseURL: 'https://kroscek-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'kroscek.appspot.com',
+    storageBucket: 'kroscek.firebasestorage.app',
     androidClientId: '837386298671-d9pnm7dat8iiuqm12hjvakgc4n8btlsf.apps.googleusercontent.com',
     iosClientId: '837386298671-l1hj5okjjh4v954fn9rt3u96e1b3q0i4.apps.googleusercontent.com',
     iosBundleId: 'com.example.kroscek',
@@ -91,7 +91,7 @@ class DefaultFirebaseOptions {
     projectId: 'kroscek',
     authDomain: 'kroscek.firebaseapp.com',
     databaseURL: 'https://kroscek-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'kroscek.appspot.com',
+    storageBucket: 'kroscek.firebasestorage.app',
     measurementId: 'G-KV86CS0BN1',
   );
 

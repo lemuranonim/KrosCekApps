@@ -19,6 +19,23 @@ import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
+// LANGKAH 1: Pindahkan downloadCallback ke luar kelas (menjadi top-level function).
+// Anotasi @pragma('vm:entry-point') penting agar Flutter tahu fungsi ini bisa dijalankan di background.
+@pragma('vm:entry-point')
+void downloadCallback(String id, int status, int progress) {
+  debugPrint("DOWNLOAD_CALLBACK: Task id=$id, status=$status, progress=$progress%");
+
+  // Cari port komunikasi yang sudah kita daftarkan di main isolate.
+  final SendPort? send = IsolateNameServer.lookupPortByName('downloader_send_port');
+  if (send != null) {
+    // Kirim data (id, status, progress) kembali ke main isolate.
+    send.send([id, status, progress]);
+  } else {
+    debugPrint("DOWNLOAD_CALLBACK_ERROR: Port 'downloader_send_port' tidak ditemukan!");
+  }
+}
+
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -40,10 +57,12 @@ class SplashScreenState extends State<SplashScreen>
   double _downloadProgress = 0.0;
   String _downloadMessage = "";
   String? _downloadTaskId;
-  bool _installationInitiated = false; // Flag to track if installation has started
+  bool _installationInitiated = false;
   final ReceivePort _port = ReceivePort();
   bool _isPortInitialized = false;
-  StateSetter? _dialogStateSetter;
+
+  final ValueNotifier<double> _downloadProgressNotifier = ValueNotifier(0.0);
+  final ValueNotifier<String> _downloadMessageNotifier = ValueNotifier("");
 
   @override
   void initState() {
@@ -78,7 +97,9 @@ class SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    _initializeDownloader();
+    // LANGKAH 2: Panggil fungsi inisialisasi yang sudah digabungkan.
+    _initializeAndSetupDownloader();
+
     _controller.forward();
     _fetchVersion();
 
@@ -91,79 +112,57 @@ class SplashScreenState extends State<SplashScreen>
     });
   }
 
-  Future<void> _initializeDownloader() async {
+  // LANGKAH 3: Gabungkan _initializeDownloader dan _setupPortListener menjadi satu fungsi.
+  Future<void> _initializeAndSetupDownloader() async {
     try {
-      await FlutterDownloader.initialize(debug: true);
+      // 1. Inisialisasi FlutterDownloader
+      // `ignoreSsl: true` berguna saat development jika server download
+      // tidak memiliki sertifikat SSL yang valid. Hati-hati saat production.
+      await FlutterDownloader.initialize(debug: true, ignoreSsl: true);
 
-      // Set up port communication
+      // 2. Daftarkan callback top-level kita.
+      FlutterDownloader.registerCallback(downloadCallback);
+
+      // 3. Siapkan port untuk komunikasi antar isolate (hanya jika belum diinisialisasi).
       if (!_isPortInitialized) {
         IsolateNameServer.registerPortWithName(_port.sendPort, 'downloader_send_port');
         _isPortInitialized = true;
 
+        // 4. Dengarkan data yang dikirim dari `downloadCallback`.
         _port.listen((dynamic data) {
           if (data is List && data.length >= 3) {
             String id = data[0] as String;
-            int status = data[1] as int;
+            DownloadTaskStatus status = DownloadTaskStatus.fromInt(data[1] as int);
             int progress = data[2] as int;
 
-            debugPrint('Download callback: id=$id, status=$status, progress=$progress');
+            debugPrint('NOTIFIER CALLBACK: id=$id, status=$status, progress=$progress');
 
+            // Pastikan update UI hanya untuk task download yang sedang aktif.
             if (mounted && id == _downloadTaskId) {
-              // UBAH BLOK DI BAWAH INI
-              final updater = _dialogStateSetter ?? setState;
-
-              updater(() {
-                final DownloadTaskStatus taskStatus = DownloadTaskStatus.values[status];
-
-                if (taskStatus == DownloadTaskStatus.running) {
-                  _isDownloading = true;
-                  _installationInitiated = false;
-                  _downloadProgress = progress / 100;
-                  _downloadMessage = "Downloading apk: $progress%";
-                } else if (taskStatus == DownloadTaskStatus.complete) {
-                  _isDownloading = true;
-                  _installationInitiated = false;
-                  _downloadProgress = 1.0;
-                  _downloadMessage = "Download complete. Preparing installation...";
-                  Future.delayed(const Duration(milliseconds: 500), () {
-                    if (mounted && id == _downloadTaskId) {
-                      _installApk(id);
-                    }
-                  });
-                } else if (taskStatus == DownloadTaskStatus.failed) {
-                  _isDownloading = false;
-                  _installationInitiated = false;
-                  _downloadProgress = 0.0;
-                  _downloadMessage = "Download failed. Please try again.";
-                } else if (taskStatus == DownloadTaskStatus.paused) {
-                  _downloadMessage = "Download paused.";
-                } else if (taskStatus == DownloadTaskStatus.canceled) {
-                  _isDownloading = false;
-                  _installationInitiated = false;
-                  _downloadProgress = 0.0;
-                  _downloadMessage = "Download cancelled.";
-                } else if (taskStatus == DownloadTaskStatus.enqueued) {
-                  _downloadMessage = "Download queued...";
-                }
-              });
+              if (status == DownloadTaskStatus.running) {
+                _downloadProgressNotifier.value = progress / 100.0;
+                _downloadMessageNotifier.value = "Mendownload pembaruan: $progress%";
+              } else if (status == DownloadTaskStatus.complete) {
+                _downloadProgressNotifier.value = 1.0;
+                _downloadMessageNotifier.value = "Download selesai. Mempersiapkan instalasi...";
+                Future.delayed(const Duration(seconds: 1), () {
+                  if (mounted && id == _downloadTaskId) {
+                    _installApk(id);
+                  }
+                });
+              } else if (status == DownloadTaskStatus.failed) {
+                _isDownloading = false;
+                _downloadMessageNotifier.value = "Download gagal. Silakan coba lagi.";
+              } else if (status == DownloadTaskStatus.enqueued) {
+                _isDownloading = true;
+                _downloadMessageNotifier.value = "Download sedang dalam antrean...";
+              }
             }
           }
         });
       }
-
-      // Register the callback correctly
-      FlutterDownloader.registerCallback(downloadCallback);
-
     } catch (e) {
       debugPrint("Error initializing FlutterDownloader: $e");
-    }
-  }
-
-  @pragma('vm:entry-point')
-  void downloadCallback(String id, int status, int progress) {
-    final send = IsolateNameServer.lookupPortByName('downloader_send_port');
-    if (send != null) {
-      send.send([id, status, progress]);
     }
   }
 
@@ -226,7 +225,6 @@ class SplashScreenState extends State<SplashScreen>
       debugPrint("Force update: ${forceUpdate ?? false}");
       debugPrint("Download URL: $downloadUrl");
 
-      // Compare versions (implement proper version comparison if needed)
       if (currentVersion != latestVersion) {
         _updateRequired = true;
         if (mounted) {
@@ -270,24 +268,24 @@ class SplashScreenState extends State<SplashScreen>
 
       final String fileName = 'app-update-${DateTime.now().millisecondsSinceEpoch}.apk';
 
-      // Enqueue download
       final taskId = await FlutterDownloader.enqueue(
         url: apkUrl,
         savedDir: downloadPath,
         fileName: fileName,
         showNotification: true,
-        openFileFromNotification: false, // We handle opening manually
-        saveInPublicStorage: true,
+        openFileFromNotification: false,
+        saveInPublicStorage: false,
       );
 
-      if (taskId != null) {
-        dialogSetState(() {
-          _downloadTaskId = taskId;
-          _downloadMessage = "Download starting..."; // Initial message before callback updates
-        });
-      } else {
+      if (taskId == null) {
         throw Exception("Failed to enqueue download task.");
       }
+
+      _downloadTaskId = taskId;
+
+      dialogSetState(() {
+        _downloadMessage = "Download starting...";
+      });
 
     } catch (e) {
       dialogSetState(() {
@@ -298,6 +296,10 @@ class SplashScreenState extends State<SplashScreen>
       onDownloadCancelledOrFailed();
     }
   }
+
+  // Sisa kode di bawah ini tetap sama, tidak perlu diubah.
+  // ... (sisa kode dari _requestPermissions hingga akhir file tidak berubah)
+  // ...
 
   Future<bool> _requestPermissions() async {
     final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
@@ -402,7 +404,6 @@ class SplashScreenState extends State<SplashScreen>
       if (await file.exists()) {
         debugPrint("File exists, attempting installation");
 
-        // Try FlutterDownloader.open first
         bool openResult = false;
         try {
           openResult = await FlutterDownloader.open(taskId: taskId);
@@ -414,11 +415,7 @@ class SplashScreenState extends State<SplashScreen>
         if (!openResult) {
           debugPrint("FlutterDownloader.open failed, trying direct file installation");
 
-          // Try direct file installation using Intent
           try {
-            // Add this import: import 'package:android_intent_plus/android_intent.dart';
-            // Add this import: import 'package:android_intent_plus/flag.dart';
-
             final intent = AndroidIntent(
               action: 'android.intent.action.VIEW',
               data: 'file://$filePath',
@@ -435,7 +432,6 @@ class SplashScreenState extends State<SplashScreen>
           } catch (intentError) {
             debugPrint("Error launching intent: $intentError");
 
-            // Last resort: Try to open the file using the default file handler
             try {
               final openAnyResult = await OpenFile.open(filePath);
               debugPrint("OpenFile result: ${openAnyResult.message}");
@@ -478,7 +474,6 @@ class SplashScreenState extends State<SplashScreen>
   void _showUpdateDialog(bool forceUpdate, String newVersion, String apkUrl) {
     debugPrint("Showing update dialog: force=$forceUpdate, url=$apkUrl");
 
-    // Reset state for the dialog instance
     _isDownloading = false;
     _installationInitiated = false;
     _downloadProgress = 0.0;
@@ -491,19 +486,17 @@ class SplashScreenState extends State<SplashScreen>
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, StateSetter dialogSetState) {
-            _dialogStateSetter = dialogSetState;
             void handleNonForcedUpdateContinuation() {
               if (!forceUpdate && mounted) {
                 debugPrint("Non-forced update cancelled or failed, closing dialog and proceeding.");
-                Navigator.of(dialogContext).pop(); // Close the dialog
-                _checkLoginStatus(); // Proceed with app flow
+                Navigator.of(dialogContext).pop();
+                _checkLoginStatus();
               } else if (forceUpdate) {
                 debugPrint("Forced update failed, staying in dialog.");
               }
             }
 
             return PopScope(
-              // Prevent closing dialog if downloading/installing or if force update
               canPop: !forceUpdate && !_isDownloading && !_installationInitiated,
               onPopInvokedWithResult: (bool didPop, dynamic result) {
                 debugPrint("Update Dialog PopScope: didPop=$didPop, canPop=${!forceUpdate && !_isDownloading && !_installationInitiated}");
@@ -535,14 +528,12 @@ class SplashScreenState extends State<SplashScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // HEADER SECTION
                       _isDownloading || _installationInitiated
                           ? _buildProgressHeader(dialogSetState)
                           : _buildUpdateHeader(),
 
                       const SizedBox(height: 20),
 
-                      // VERSION INFO
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
                         decoration: BoxDecoration(
@@ -560,7 +551,6 @@ class SplashScreenState extends State<SplashScreen>
                       ),
                       const SizedBox(height: 20),
 
-                      // DESCRIPTION TEXT
                       if (!_isDownloading && !_installationInitiated)
                         Text(
                           forceUpdate
@@ -573,20 +563,17 @@ class SplashScreenState extends State<SplashScreen>
                           ),
                         ),
 
-                      // PROGRESS SECTION
                       if (_isDownloading || _installationInitiated) ...[
                         const SizedBox(height: 25),
-                        _buildProgressIndicator(dialogSetState),
+                        _buildProgressIndicator(),
                       ],
 
                       const SizedBox(height: 25),
 
-                      // BUTTONS SECTION
                       if (!_isDownloading && !_installationInitiated) ...[
                         _buildActionButtons(forceUpdate, apkUrl, dialogSetState, handleNonForcedUpdateContinuation),
                       ],
 
-                      // INSTALLATION MESSAGE
                       if (_installationInitiated)
                         Padding(
                           padding: const EdgeInsets.only(top: 15.0),
@@ -606,21 +593,18 @@ class SplashScreenState extends State<SplashScreen>
       },
     ).then((_) {
       debugPrint("Update dialog closed.");
-      _dialogStateSetter = null; // <-- TAMBAHKAN INI
       if (!forceUpdate && mounted && !_isDownloading && !_installationInitiated) {
         debugPrint("Dialog closed callback: Proceeding with app flow if needed.");
         _checkLoginStatus();
       }
     }).catchError((error) {
       debugPrint("Error showing/handling dialog: $error");
-      _dialogStateSetter = null; // <-- TAMBAHKAN INI JUGA
       if (!forceUpdate && mounted) {
         _checkLoginStatus();
       }
     });
   }
 
-// Helper methods for UI components
   Widget _buildUpdateHeader() {
     return Container(
       padding: const EdgeInsets.all(15),
@@ -665,111 +649,116 @@ class SplashScreenState extends State<SplashScreen>
     );
   }
 
-  Widget _buildProgressIndicator(StateSetter setState) {
-    return Column(
-      children: [
-        // Progress bar (only show during download, not during installation)
-        if (_isDownloading && !_installationInitiated) ...[
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              // Circular progress indicator
-              SizedBox(
-                height: 80,
-                width: 80,
-                child: CircularProgressIndicator(
-                  value: _downloadProgress,
-                  backgroundColor: Colors.grey.shade200,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                      _downloadProgress >= 1.0 ? Colors.green.shade600 : Colors.blue.shade600
+  Widget _buildProgressIndicator() {
+    return ValueListenableBuilder<double>(
+      valueListenable: _downloadProgressNotifier,
+      builder: (context, progress, _) {
+        return ValueListenableBuilder<String>(
+          valueListenable: _downloadMessageNotifier,
+          builder: (context, message, _) {
+            return Column(
+              children: [
+                if (_isDownloading && !_installationInitiated) ...[
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        height: 80,
+                        width: 80,
+                        child: CircularProgressIndicator(
+                          value: progress,
+                          backgroundColor: Colors.grey.shade200,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                              progress >= 1.0 ? Colors.green.shade600 : Colors.blue.shade600
+                          ),
+                          strokeWidth: 8,
+                        ),
+                      ),
+                      Text(
+                        "${(progress * 100).toInt()}%",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: progress >= 1.0 ? Colors.green.shade800 : Colors.blue.shade800,
+                        ),
+                      ),
+                    ],
                   ),
-                  strokeWidth: 8,
-                ),
-              ),
-              // Percentage text
-              Text(
-                "${(_downloadProgress * 100).toInt()}%",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: _downloadProgress >= 1.0 ? Colors.green.shade800 : Colors.blue.shade800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-        ],
-        if (_isDownloading || _installationInitiated) ...[
-          Padding(
-            padding: const EdgeInsets.only(top: 10.0, left: 16.0, right: 16.0),
-            child: Text(
-              "Proses download sedang berlangsung, cek di bilah notifikasi...\n*Jika download selesai, cek apk di folder download(file manager).",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 8,
-                color: Colors.blueGrey.shade600,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ),
-        ],
+                  const SizedBox(height: 20),
+                ],
 
-        const SizedBox(height: 25),
-
-        // Status message
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-          decoration: BoxDecoration(
-            color: _getStatusColor().withAlpha(25),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                _getStatusIcon(),
-                color: _getStatusColor(),
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  _downloadMessage,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: _getStatusColor(),
+                Padding(
+                  padding: const EdgeInsets.only(top: 10.0, left: 16.0, right: 16.0),
+                  child: Text(
+                    "Proses download sedang berlangsung, cek di bilah notifikasi...\n*Jika download selesai, cek apk di folder download(file manager).",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 8,
+                      color: Colors.blueGrey.shade600,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-      ],
+                const SizedBox(height: 25),
+
+                if (message.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(message).withAlpha(25),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _getStatusIcon(message),
+                          color: _getStatusColor(message),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            message,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: _getStatusColor(message),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
-  Color _getStatusColor() {
-    if (_downloadMessage.contains("failed") || _downloadMessage.contains("Error") || _downloadMessage.contains("Gagal")) {
+  Color _getStatusColor(String message) {
+    if (message.contains("failed") || message.contains("Error") || message.contains("Gagal")) {
       return Colors.red.shade700;
-    } else if (_downloadMessage.contains("complete") || _downloadMessage.contains("Installation started")) {
+    } else if (message.contains("complete") || message.contains("Installation started")) {
       return Colors.green.shade700;
-    } else if (_downloadMessage.contains("paused")) {
+    } else if (message.contains("paused")) {
       return Colors.orange.shade700;
     } else {
       return Colors.blue.shade700;
     }
   }
 
-  IconData _getStatusIcon() {
-    if (_downloadMessage.contains("failed") || _downloadMessage.contains("Error") || _downloadMessage.contains("Gagal")) {
+  IconData _getStatusIcon(String message) {
+    if (message.contains("failed") || message.contains("Error") || message.contains("Gagal")) {
       return Icons.error_outline;
-    } else if (_downloadMessage.contains("complete") || _downloadMessage.contains("Installation started")) {
+    } else if (message.contains("complete") || message.contains("Installation started")) {
       return Icons.check_circle_outline;
-    } else if (_downloadMessage.contains("paused")) {
+    } else if (message.contains("paused")) {
       return Icons.pause_circle_outline;
-    } else if (_downloadMessage.contains("Preparing")) {
+    } else if (message.contains("Preparing")) {
       return Icons.settings;
     } else {
       return Icons.info_outline;
@@ -780,13 +769,11 @@ class SplashScreenState extends State<SplashScreen>
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // 'Later' button (only for non-forced updates)
         if (!forceUpdate)
           Expanded(
             child: TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                // _checkLoginStatus() will be called by PopScope
               },
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 12),
@@ -807,7 +794,6 @@ class SplashScreenState extends State<SplashScreen>
           ),
         if (!forceUpdate) const SizedBox(width: 15),
 
-        // 'Update Now' / 'Retry Download' button
         Expanded(
           child: ElevatedButton(
             onPressed: () {
@@ -823,7 +809,6 @@ class SplashScreenState extends State<SplashScreen>
               ),
             ),
             child: Text(
-              // Change button text if previous attempt failed
               _downloadMessage.contains("failed") || _downloadMessage.contains("Error") || _downloadMessage.contains("Gagal")
                   ? "Retry Download"
                   : "Update Now",
@@ -840,7 +825,6 @@ class SplashScreenState extends State<SplashScreen>
 
 
   Future<void> _checkLoginStatus() async {
-    // Prevent navigation if update process is active
     if (_isDownloading || _installationInitiated) {
       debugPrint("Update process active, _checkLoginStatus deferred.");
       return;
@@ -862,8 +846,11 @@ class SplashScreenState extends State<SplashScreen>
         case 'psp':
           context.go('/psp');
           break;
+        case 'hsp':
+          context.go('/hsp');
+          break;
         default:
-          context.go('/home');
+          context.go('/qa');
           break;
       }
     } else {
@@ -875,7 +862,6 @@ class SplashScreenState extends State<SplashScreen>
   void dispose() {
     _controller.dispose();
 
-    // Clean up port
     if (_isPortInitialized) {
       IsolateNameServer.removePortNameMapping('downloader_send_port');
     }
@@ -905,7 +891,6 @@ class SplashScreenState extends State<SplashScreen>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Your existing logo/title widgets here...
                       const SizedBox(height: 35),
                       Text(
                         'Crop Inspection\nand Check Result',

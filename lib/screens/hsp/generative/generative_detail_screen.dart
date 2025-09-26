@@ -186,7 +186,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
             fontSize: 20, // Increased font size for better visibility
           ),
         ),
-        backgroundColor: Colors.green.shade700, // Darker green for a premium look
+        backgroundColor: Colors.amber.shade700, // Darker amber for a premium look
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 4, // Subtle elevation for depth
         shape: const RoundedRectangleBorder(
@@ -253,7 +253,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                       effect: WormEffect(
                         dotHeight: 10,
                         dotWidth: 10,
-                        activeDotColor: Colors.green,
+                        activeDotColor: Colors.amber,
                         dotColor: Colors.grey,
                       ),
                     ),
@@ -266,7 +266,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                           // Audit 1
                           _buildAudit1Section(
                             context, 'Field Audit 1', [
-                            _buildDetailRow('QA FI', row![31]),
+                            _buildDetailRow('HSP FA', row![14]),
                             _buildDetailRow('Date of Audit 1 (dd/MM)', _convertToDateIfNecessary(row![32])),
                             _buildDetailRow('Detaseling Plan (Form)', row![35]),
                             _buildDetailRow('Labor Availability for DT', row![36]),
@@ -332,7 +332,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
           title: const Text(
               'Info Mase!',
               style: TextStyle(
-                color: Colors.green,
+                color: Colors.amber,
                 fontWeight: FontWeight.bold,
               ),
           ),
@@ -413,11 +413,11 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
       margin: const EdgeInsets.symmetric(vertical: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.green.shade50,
+        color: Colors.amber.shade50,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withAlpha(25),
+            color: Colors.amber.withAlpha(25),
             blurRadius: 6,
             offset: const Offset(0, 3),
           ),
@@ -430,7 +430,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
         style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w700,
-          color: latitude != null && longitude != null ? Colors.green.shade800 : Colors.grey,
+          color: latitude != null && longitude != null ? Colors.amber.shade800 : Colors.grey,
         ),
         textAlign: TextAlign.center,
       ),
@@ -442,7 +442,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
       elevation: 8,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.green.shade100, width: 1.0),
+        side: BorderSide(color: Colors.amber.shade100, width: 1.0),
       ),
       margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       child: Container(
@@ -451,7 +451,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Colors.white, Colors.green.shade50],
+            colors: [Colors.white, Colors.amber.shade50],
             stops: const [0.7, 1.0],
           ),
         ),
@@ -465,14 +465,14 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Colors.green.shade600, Colors.green.shade800],
+                    colors: [Colors.amber.shade600, Colors.amber.shade800],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.green.withAlpha(76),
+                      color: Colors.amber.withAlpha(76),
                       blurRadius: 6,
                       offset: const Offset(0, 3),
                     ),
@@ -489,7 +489,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                 ),
               ),
               const Divider(
-                color: Colors.green,
+                color: Colors.amber,
                 thickness: 0.8,
                 height: 20,
               ),
@@ -515,7 +515,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
           color: Colors.white, // Clean white background
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20), // More rounded corners
-            side: BorderSide(color: Colors.green.shade200, width: 1.5), // Subtle border
+            side: BorderSide(color: Colors.amber.shade200, width: 1.5), // Subtle border
           ),
           margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50),
           child: Padding(
@@ -527,14 +527,14 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.green.shade400, Colors.green.shade700],
+                      colors: [Colors.amber.shade400, Colors.amber.shade700],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(15),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.green.withAlpha(76),
+                        color: Colors.amber.withAlpha(76),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),
@@ -582,7 +582,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
             decoration: BoxDecoration(
               boxShadow: [
                 BoxShadow(
-                  color: Colors.green.withAlpha(102),
+                  color: Colors.amber.withAlpha(102),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -594,7 +594,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                 await _fetchData();
                 _saveDataToCache();
               },
-              backgroundColor: Colors.green.shade600,
+              backgroundColor: Colors.amber.shade600,
               elevation: 8,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -617,7 +617,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
           color: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: Colors.green.shade200, width: 1.5),
+            side: BorderSide(color: Colors.amber.shade200, width: 1.5),
           ),
           margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50),
           child: Padding(
@@ -629,14 +629,14 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.green.shade400, Colors.green.shade700],
+                      colors: [Colors.amber.shade400, Colors.amber.shade700],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(15),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.green.withAlpha(76),
+                        color: Colors.amber.withAlpha(76),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),
@@ -684,7 +684,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
             decoration: BoxDecoration(
               boxShadow: [
                 BoxShadow(
-                  color: Colors.green.withAlpha(102),
+                  color: Colors.amber.withAlpha(102),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -696,7 +696,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                 await _fetchData();
                 _saveDataToCache();
               },
-              backgroundColor: Colors.green.shade600,
+              backgroundColor: Colors.amber.shade600,
               elevation: 8,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -719,7 +719,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
           color: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: Colors.green.shade200, width: 1.5),
+            side: BorderSide(color: Colors.amber.shade200, width: 1.5),
           ),
           margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50),
           child: Padding(
@@ -731,14 +731,14 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.green.shade400, Colors.green.shade700],
+                      colors: [Colors.amber.shade400, Colors.amber.shade700],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(15),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.green.withAlpha(76),
+                        color: Colors.amber.withAlpha(76),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),
@@ -786,7 +786,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
             decoration: BoxDecoration(
               boxShadow: [
                 BoxShadow(
-                  color: Colors.green.withAlpha(102),
+                  color: Colors.amber.withAlpha(102),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -798,7 +798,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                 await _fetchData();
                 _saveDataToCache();
               },
-              backgroundColor: Colors.green.shade600,
+              backgroundColor: Colors.amber.shade600,
               elevation: 8,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -838,7 +838,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                   height: 18,
                   width: 4,
                   decoration: BoxDecoration(
-                    color: Colors.green.shade600,
+                    color: Colors.amber.shade600,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -891,19 +891,19 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.green.shade50, Colors.white],
+          colors: [Colors.amber.shade50, Colors.white],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withAlpha(25),
+            color: Colors.amber.withAlpha(25),
             blurRadius: 6,
             offset: const Offset(0, 3),
           ),
         ],
-        border: Border.all(color: Colors.green.shade200, width: 1.5),
+        border: Border.all(color: Colors.amber.shade200, width: 1.5),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -914,7 +914,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
               children: [
                 Icon(
                   Icons.arrow_right,
-                  color: Colors.green.shade700,
+                  color: Colors.amber.shade700,
                   size: 24,
                 ),
                 const SizedBox(width: 4),
@@ -924,7 +924,7 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Colors.green.shade800,
+                      color: Colors.amber.shade800,
                       letterSpacing: 0.3,
                       height: 1.3,
                     ),
@@ -943,12 +943,12 @@ class GenerativeDetailScreenState extends State<GenerativeDetailScreen> {
                 borderRadius: BorderRadius.circular(10),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.green.withAlpha(25),
+                    color: Colors.amber.withAlpha(25),
                     blurRadius: 4,
                     offset: const Offset(0, 2),
                   ),
                 ],
-                border: Border.all(color: Colors.green.shade300),
+                border: Border.all(color: Colors.amber.shade300),
               ),
               child: Text(
                 value.isNotEmpty ? value : 'Kosong Lur...',

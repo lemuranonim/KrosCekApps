@@ -48,11 +48,21 @@ class GoogleSheetsApi {
   // Inisialisasi GSheets dengan kredensial dari file JSON
   bool isInitialized = false;  // Status inisialisasi
 
-  Future<void> init() async {
-    final String credentials = await rootBundle.loadString('assets/credentials.json');
-    final Map<String, dynamic> jsonCredentials = jsonDecode(credentials);
-    _gSheets = GSheets(jsonCredentials);
-    _spreadsheet = await _gSheets.spreadsheet(spreadsheetId);
+  Future<bool> init() async {
+    try {
+      final String credentials = await rootBundle.loadString('assets/credentials.json');
+      final Map<String, dynamic> jsonCredentials = jsonDecode(credentials);
+      _gSheets = GSheets(jsonCredentials);
+      _spreadsheet = await _gSheets.spreadsheet(spreadsheetId);
+      isInitialized = true; // Tandai inisialisasi berhasil
+      log("Inisialisasi Google Sheets berhasil.");
+      return true; // Kembalikan true jika sukses
+    } catch (e) {
+      // Tangkap error dan log pesan
+      log("Gagal inisialisasi Google Sheets: $e");
+      isInitialized = false; // Tandai inisialisasi gagal
+      return false; // Kembalikan false jika gagal
+    }
   }
 
   Spreadsheet get spreadsheet => _spreadsheet;

@@ -205,13 +205,13 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.green.shade600, Colors.green.shade800],
+          colors: [Colors.amber.shade600, Colors.amber.shade800],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withAlpha(76),
+            color: Colors.amber.withAlpha(76),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -292,10 +292,10 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: count > 0 ? Colors.green.shade50 : Colors.grey.shade50,
+        color: count > 0 ? Colors.amber.shade50 : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: count > 0 ? Colors.green.shade300 : Colors.grey.shade300,
+          color: count > 0 ? Colors.amber.shade300 : Colors.grey.shade300,
           width: 1.5,
         ),
       ),
@@ -303,7 +303,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
         children: [
           Icon(
             count > 0 ? Icons.filter_list_alt : Icons.filter_alt_off,
-            color: count > 0 ? Colors.green.shade700 : Colors.grey.shade700,
+            color: count > 0 ? Colors.amber.shade700 : Colors.grey.shade700,
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -315,7 +315,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: count > 0 ? Colors.green.shade700 : Colors.grey.shade700,
+                color: count > 0 ? Colors.amber.shade700 : Colors.grey.shade700,
               ),
             ),
           ),
@@ -372,7 +372,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.green.shade800,
+            color: Colors.amber.shade800,
           ),
         ),
         const SizedBox(height: 4),
@@ -417,13 +417,13 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
         gradient: LinearGradient(
           colors: [
             Colors.white,
-            _selectedWeeks.isNotEmpty ? Colors.green.shade50 : Colors.grey.shade50
+            _selectedWeeks.isNotEmpty ? Colors.amber.shade50 : Colors.grey.shade50
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         border: Border.all(
-          color: _selectedWeeks.isNotEmpty ? Colors.green.shade300 : Colors.grey.shade300,
+          color: _selectedWeeks.isNotEmpty ? Colors.amber.shade300 : Colors.grey.shade300,
           width: 1.5,
         ),
       ),
@@ -437,7 +437,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
             children: [
               Icon(
                 Icons.date_range,
-                color: _selectedWeeks.isNotEmpty ? Colors.green.shade700 : Colors.grey.shade600,
+                color: _selectedWeeks.isNotEmpty ? Colors.amber.shade700 : Colors.grey.shade600,
                 size: 20,
               ),
               const SizedBox(width: 12),
@@ -449,7 +449,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: _selectedWeeks.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
-                    color: _selectedWeeks.isNotEmpty ? Colors.green.shade700 : Colors.grey.shade700,
+                    color: _selectedWeeks.isNotEmpty ? Colors.amber.shade700 : Colors.grey.shade700,
                   ),
                 ),
               ),
@@ -458,12 +458,12 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
           trailing: Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: _selectedWeeks.isNotEmpty ? Colors.green.shade100 : Colors.grey.shade200,
+              color: _selectedWeeks.isNotEmpty ? Colors.amber.shade100 : Colors.grey.shade200,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               Icons.expand_more,
-              color: _selectedWeeks.isNotEmpty ? Colors.green.shade700 : Colors.grey.shade700,
+              color: _selectedWeeks.isNotEmpty ? Colors.amber.shade700 : Colors.grey.shade700,
               size: 16,
             ),
           ),
@@ -507,11 +507,11 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? Colors.green.shade700 : Colors.black87,
+                                color: isSelected ? Colors.amber.shade700 : Colors.black87,
                               ),
                             ),
                             value: isSelected,
-                            activeColor: Colors.green.shade600,
+                            activeColor: Colors.amber.shade600,
                             checkColor: Colors.white,
                             onChanged: (bool? value) {
                               setState(() {
@@ -525,7 +525,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                             controlAffinity: ListTileControlAffinity.leading,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                             visualDensity: VisualDensity.compact,
-                            tileColor: isSelected ? Colors.green.withAlpha(15) : null,
+                            tileColor: isSelected ? Colors.amber.withAlpha(15) : null,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -554,11 +554,11 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                               _selectedWeeks = List.from(widget.weekOfGenerativeList);
                             });
                           },
-                          icon: Icon(Icons.select_all, color: Colors.green.shade700, size: 16),
+                          icon: Icon(Icons.select_all, color: Colors.amber.shade700, size: 16),
                           label: Text(
                             'Select All',
                             style: TextStyle(
-                              color: Colors.green.shade700,
+                              color: Colors.amber.shade700,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
@@ -622,12 +622,12 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
           ),
         ],
         gradient: LinearGradient(
-          colors: [Colors.white, value != null ? Colors.green.shade50 : Colors.grey.shade50],
+          colors: [Colors.white, value != null ? Colors.amber.shade50 : Colors.grey.shade50],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         border: Border.all(
-          color: value != null ? Colors.green.shade300 : Colors.grey.shade300,
+          color: value != null ? Colors.amber.shade300 : Colors.grey.shade300,
           width: 1.5,
         ),
       ),
@@ -661,12 +661,12 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
             icon: Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: value != null ? Colors.green.shade100 : Colors.grey.shade200,
+                color: value != null ? Colors.amber.shade100 : Colors.grey.shade200,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 Icons.expand_more,
-                color: value != null ? Colors.green.shade700 : Colors.grey.shade700,
+                color: value != null ? Colors.amber.shade700 : Colors.grey.shade700,
                 size: 16,
               ),
             ),
@@ -695,9 +695,9 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
             selectedMenuItemBuilder: (context, child) {
               return Container(
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: Colors.amber.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.shade200),
+                  border: Border.all(color: Colors.amber.shade200),
                 ),
                 child: child,
               );
@@ -709,7 +709,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
               children: [
                 Icon(
                   icon,
-                  color: value == item ? Colors.green.shade700 : Colors.grey.shade700,
+                  color: value == item ? Colors.amber.shade700 : Colors.grey.shade700,
                   size: 18,
                 ),
                 const SizedBox(width: 12),
@@ -719,12 +719,12 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: value == item ? FontWeight.bold : FontWeight.normal,
-                      color: value == item ? Colors.green.shade700 : Colors.black87,
+                      color: value == item ? Colors.amber.shade700 : Colors.black87,
                     ),
                   ),
                 ),
                 if (value == item)
-                  Icon(Icons.check_circle, color: Colors.green.shade600, size: 18),
+                  Icon(Icons.check_circle, color: Colors.amber.shade600, size: 18),
               ],
             ),
           )).toList(),
@@ -748,13 +748,13 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
         gradient: LinearGradient(
           colors: [
             Colors.white,
-            _selectedFA.isNotEmpty ? Colors.green.shade50 : Colors.grey.shade50
+            _selectedFA.isNotEmpty ? Colors.amber.shade50 : Colors.grey.shade50
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         border: Border.all(
-          color: _selectedFA.isNotEmpty ? Colors.green.shade300 : Colors.grey.shade300,
+          color: _selectedFA.isNotEmpty ? Colors.amber.shade300 : Colors.grey.shade300,
           width: 1.5,
         ),
       ),
@@ -768,7 +768,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
             children: [
               Icon(
                 Icons.group,
-                color: _selectedFA.isNotEmpty ? Colors.green.shade700 : Colors.grey.shade600,
+                color: _selectedFA.isNotEmpty ? Colors.amber.shade700 : Colors.grey.shade600,
                 size: 20,
               ),
               const SizedBox(width: 12),
@@ -780,7 +780,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: _selectedFA.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
-                    color: _selectedFA.isNotEmpty ? Colors.green.shade700 : Colors.grey.shade700,
+                    color: _selectedFA.isNotEmpty ? Colors.amber.shade700 : Colors.grey.shade700,
                   ),
                 ),
               ),
@@ -789,12 +789,12 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
           trailing: Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: _selectedFA.isNotEmpty ? Colors.green.shade100 : Colors.grey.shade200,
+              color: _selectedFA.isNotEmpty ? Colors.amber.shade100 : Colors.grey.shade200,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               Icons.expand_more,
-              color: _selectedFA.isNotEmpty ? Colors.green.shade700 : Colors.grey.shade700,
+              color: _selectedFA.isNotEmpty ? Colors.amber.shade700 : Colors.grey.shade700,
               size: 16,
             ),
           ),
@@ -838,11 +838,11 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? Colors.green.shade700 : Colors.black87,
+                                color: isSelected ? Colors.amber.shade700 : Colors.black87,
                               ),
                             ),
                             value: isSelected,
-                            activeColor: Colors.green.shade600,
+                            activeColor: Colors.amber.shade600,
                             checkColor: Colors.white,
                             onChanged: (bool? value) {
                               setState(() {
@@ -856,7 +856,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                             controlAffinity: ListTileControlAffinity.leading,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                             visualDensity: VisualDensity.compact,
-                            tileColor: isSelected ? Colors.green.withAlpha(15) : null,
+                            tileColor: isSelected ? Colors.amber.withAlpha(15) : null,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -885,11 +885,11 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                               _selectedFA = List.from(widget.faNames);
                             });
                           },
-                          icon: Icon(Icons.select_all, color: Colors.green.shade700, size: 16),
+                          icon: Icon(Icons.select_all, color: Colors.amber.shade700, size: 16),
                           label: Text(
                             'Select All',
                             style: TextStyle(
-                              color: Colors.green.shade700,
+                              color: Colors.amber.shade700,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
@@ -949,13 +949,13 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
         gradient: LinearGradient(
           colors: [
             Colors.white,
-            _selectedFIs.isNotEmpty ? Colors.green.shade50 : Colors.grey.shade50
+            _selectedFIs.isNotEmpty ? Colors.amber.shade50 : Colors.grey.shade50
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         border: Border.all(
-          color: _selectedFIs.isNotEmpty ? Colors.green.shade300 : Colors.grey.shade300,
+          color: _selectedFIs.isNotEmpty ? Colors.amber.shade300 : Colors.grey.shade300,
           width: 1.5,
         ),
       ),
@@ -969,7 +969,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
             children: [
               Icon(
                 Icons.check_circle,
-                color: _selectedFIs.isNotEmpty ? Colors.green.shade700 : Colors.grey.shade600,
+                color: _selectedFIs.isNotEmpty ? Colors.amber.shade700 : Colors.grey.shade600,
                 size: 20,
               ),
               const SizedBox(width: 12),
@@ -981,7 +981,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: _selectedFIs.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
-                    color: _selectedFIs.isNotEmpty ? Colors.green.shade700 : Colors.grey.shade700,
+                    color: _selectedFIs.isNotEmpty ? Colors.amber.shade700 : Colors.grey.shade700,
                   ),
                 ),
               ),
@@ -990,12 +990,12 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
           trailing: Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: _selectedFIs.isNotEmpty ? Colors.green.shade100 : Colors.grey.shade200,
+              color: _selectedFIs.isNotEmpty ? Colors.amber.shade100 : Colors.grey.shade200,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               Icons.expand_more,
-              color: _selectedFIs.isNotEmpty ? Colors.green.shade700 : Colors.grey.shade700,
+              color: _selectedFIs.isNotEmpty ? Colors.amber.shade700 : Colors.grey.shade700,
               size: 16,
             ),
           ),
@@ -1039,11 +1039,11 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? Colors.green.shade700 : Colors.black87,
+                                color: isSelected ? Colors.amber.shade700 : Colors.black87,
                               ),
                             ),
                             value: isSelected,
-                            activeColor: Colors.green.shade600,
+                            activeColor: Colors.amber.shade600,
                             checkColor: Colors.white,
                             onChanged: (bool? value) {
                               setState(() {
@@ -1057,7 +1057,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                             controlAffinity: ListTileControlAffinity.leading,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                             visualDensity: VisualDensity.compact,
-                            tileColor: isSelected ? Colors.green.withAlpha(15) : null,
+                            tileColor: isSelected ? Colors.amber.withAlpha(15) : null,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -1086,11 +1086,11 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                               _selectedFIs = List.from(widget.fiNames);
                             });
                           },
-                          icon: Icon(Icons.select_all, color: Colors.green.shade700, size: 16),
+                          icon: Icon(Icons.select_all, color: Colors.amber.shade700, size: 16),
                           label: Text(
                             'Select All',
                             style: TextStyle(
-                              color: Colors.green.shade700,
+                              color: Colors.amber.shade700,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
@@ -1224,8 +1224,8 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                 Navigator.pop(context); // Just close without applying
               },
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.green.shade700,
-                side: BorderSide(color: Colors.green.shade700, width: 1.5),
+                foregroundColor: Colors.amber.shade700,
+                side: BorderSide(color: Colors.amber.shade700, width: 1.5),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1255,7 +1255,7 @@ class _GenerativeFilterOptionsState extends State<GenerativeFilterOptions> with 
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade700,
+                backgroundColor: Colors.amber.shade700,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 elevation: 0,

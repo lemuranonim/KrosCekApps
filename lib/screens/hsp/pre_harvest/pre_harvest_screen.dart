@@ -70,7 +70,6 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
 
   bool _showAuditedOnly = false;
   bool _showNotAuditedOnly = false;
-
   bool _showDiscardedFaseItems = false;
 
   @override
@@ -233,7 +232,6 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
         _currentPage++;
         _progress = (_sheetData.length / totalDataCount).clamp(0.0, 1.0); // Perbarui progres
 
-        // Update total Effective Area (Ha)
         _totalEffectiveArea = _filteredData.fold(0.0, (sum, row) {
           final effectiveAreaStr = getValue(row, 8, '0').replaceAll(',', '.'); // Handle decimal separators
           final effectiveArea = double.tryParse(effectiveAreaStr) ?? 0.0;
@@ -257,7 +255,6 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
     _filterData(); // Call filter data after preferences are loaded
   }
 
-  // Ekstrak nama-nama FA yang unik dari data
   void _extractUniqueFA() {
     final faSet = <String>{}; // Menggunakan set untuk menyimpan nama unik
     for (var row in _sheetData) {
@@ -315,14 +312,14 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
   void _filterData() {
     setState(() {
       _filteredData = _sheetData.where((row) {
-        final qaSpv = getValue(row, 28, '');
+        final hspSpv = getValue(row, 15, '');
         final district = getValue(row, 13, '').toLowerCase();
         final season = getValue(row, 1, '');
         final weekOfPreHarvest = getValue(row, 27, ''); // Ambil nilai minggu pre-harvest dari kolom 27
         final fase = getValue(row, 25, '').toLowerCase();
 
         bool matchesSeasonFilter = (_selectedSeason == null || season == _selectedSeason);
-        bool matchesQAFilter = (_selectedQA == null || qaSpv == _selectedQA);
+        bool matchesQAFilter = (_selectedQA == null || hspSpv == _selectedQA);
         bool matchesDistrictFilter =
             widget.selectedDistrict == null ||
                 district == widget.selectedDistrict!.toLowerCase();
@@ -564,7 +561,7 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Colors.green.shade800, Colors.green.shade600],
+                colors: [Colors.amber.shade800, Colors.amber.shade600],
               ),
             ),
           ),
@@ -688,7 +685,7 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                   value: 'refresh',
                   child: Row(
                     children: [
-                      Icon(Icons.refresh, color: Colors.green),
+                      Icon(Icons.refresh, color: Colors.amber),
                       SizedBox(width: 8),
                       Text('Refresh Data'),
                     ],
@@ -698,7 +695,7 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                   value: 'analysis',
                   child: Row(
                     children: [
-                      Icon(Icons.analytics, color: Colors.green),
+                      Icon(Icons.analytics, color: Colors.amber),
                       SizedBox(width: 8),
                       Text('Analysis Aktivitas'),
                     ],
@@ -708,7 +705,7 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                   value: 'help',
                   child: Row(
                     children: [
-                      Icon(Icons.help_outline, color: Colors.green),
+                      Icon(Icons.help_outline, color: Colors.amber),
                       SizedBox(width: 8),
                       Text('Bantuan'),
                     ],
@@ -725,7 +722,7 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Colors.green.shade800, Colors.green.shade600],
+                  colors: [Colors.amber.shade800, Colors.amber.shade600],
                 ),
               ),
               child: Column(
@@ -734,7 +731,7 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                   _isLoading
                       ? LinearProgressIndicator(
                     value: _progress,
-                    backgroundColor: Colors.green.shade300.withAlpha(76),
+                    backgroundColor: Colors.amber.shade300.withAlpha(76),
                     valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
                   )
                       : const SizedBox(height: 4),
@@ -806,7 +803,7 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Colors.green.shade800, Colors.green.shade600],
+                  colors: [Colors.amber.shade800, Colors.amber.shade600],
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -827,7 +824,7 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                       gradient: LinearGradient(
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
-                        colors: [Colors.green.shade700, Colors.green.shade500],
+                        colors: [Colors.amber.shade700, Colors.amber.shade500],
                       ),
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -901,14 +898,14 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                                     borderRadius: BorderRadius.circular(12),
                                     gradient: _showAuditedOnly
                                         ? LinearGradient(
-                                      colors: [Colors.green.shade400, Colors.green.shade500],
+                                      colors: [Colors.amber.shade400, Colors.amber.shade500],
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
                                     )
                                         : null,
                                     color: _showAuditedOnly ? null : Colors.white,
                                     border: Border.all(
-                                      color: _showAuditedOnly ? Colors.transparent : Colors.green.shade200,
+                                      color: _showAuditedOnly ? Colors.transparent : Colors.amber.shade200,
                                       width: 1.5,
                                     ),
                                   ),
@@ -917,14 +914,14 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                                     children: [
                                       Icon(
                                         Icons.check_circle_outline,
-                                        color: _showAuditedOnly ? Colors.white : Colors.green.shade700,
+                                        color: _showAuditedOnly ? Colors.white : Colors.amber.shade700,
                                         size: 18,
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
                                         'Sampun',
                                         style: TextStyle(
-                                          color: _showAuditedOnly ? Colors.white : Colors.green.shade700,
+                                          color: _showAuditedOnly ? Colors.white : Colors.amber.shade700,
                                           fontWeight: FontWeight.bold,
                                           fontSize: 14,
                                         ),
@@ -1033,7 +1030,7 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                     });
                     await _loadSheetData(refresh: true);
                   },
-                  color: Colors.green,
+                  color: Colors.amber,
                   backgroundColor: Colors.white,
                   height: 150,
                   showChildOpacityTransition: false,
@@ -1069,7 +1066,7 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                           icon: const Icon(Icons.refresh),
                           label: const Text('Try Again'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
+                            backgroundColor: Colors.amber,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             shape: RoundedRectangleBorder(
@@ -1118,7 +1115,7 @@ class PreHarvestScreenState extends State<PreHarvestScreen> {
                           icon: const Icon(Icons.refresh, color: Colors.white),
                           label: const Text('Reset Filters'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
+                            backgroundColor: Colors.amber,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             shape: RoundedRectangleBorder(

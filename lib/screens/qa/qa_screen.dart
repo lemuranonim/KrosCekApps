@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'dart:async';
 
 import 'package:animated_text_kit/animated_text_kit.dart';
@@ -12,6 +14,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:weather_icons/weather_icons.dart';
 
+import '../services/region_mapper_service.dart';
 import '../services/config_manager.dart';
 import 'absen_log_screen.dart';
 import 'activity_screen.dart';
@@ -25,15 +28,17 @@ import 'pre_harvest/pre_harvest_screen.dart';
 import 'training_screen.dart';
 import 'vegetative/vegetative_screen.dart';
 import 'weather_widget.dart';
+import '../../services/notification_service.dart';
+import 'notification_list_screen.dart';
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class QaScreen extends StatefulWidget {
+  const QaScreen({super.key});
 
   @override
-  HomeScreenState createState() => HomeScreenState();
+  QaScreenState createState() => QaScreenState();
 }
 
-class HomeScreenState extends State<HomeScreen>
+class QaScreenState extends State<QaScreen>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   bool _isLoading = true;
   int _selectedIndex = 0;
@@ -54,35 +59,37 @@ class HomeScreenState extends State<HomeScreen>
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   String? userPhotoUrl;
   StreamSubscription? _seasonsSubscription;
-
+  Stream<int>? _unreadNotificationsStream;
+  StreamSubscription? _notificationListener;
   String _greeting = '';
   String _currentTime = '';
   Timer? _timer;
 
   // Map untuk ID document di Firestore
-  final Map<String, String> regionDocumentIds = {
-    'Region 1': 'region 1',
-    'Region 2': 'region 2',
-    'Region 3': 'region 3',
-    'Region 4': 'region 4',
-    'Region 5': 'region 5',
-    'Region 6': 'region 6',
-    'Region 7': 'region 7',
-    'Region 8': 'region 8',
-    'Region 9': 'region 9',
-    'Region 10': 'region 10',
-    'SWC': 'swc',
-    'SWC 1': 'swc 1',
-    'SWC 2': 'swc 2',
-    'SWC 3': 'swc 3',
-    'SWC 4': 'swc 4',
-    'SWC 5': 'swc 5',
-    'SWC 6': 'swc 6',
-    'SWC 7': 'swc 7',
-    'SWC 8': 'swc 8',
-    'SWC 9': 'swc 9',
-    'SWC 10': 'swc 10',
-  };
+  // final Map<String, String> regionDocumentIds = {
+  //   'Region 1': 'region 1',
+  //   'Region 2': 'region 2',
+  //   'Region 3': 'region 3',
+  //   'Region 4': 'region 4',
+  //   'Region 5': 'region 5',
+  //   'Region 6': 'region 6',
+  //   'Region 7': 'region 7',
+  //   'Region 8': 'region 8',
+  //   'Region 9': 'region 9',
+  //   'Region 10': 'region 10',
+  //   'SWC': 'swc',
+  //   'SWC 1': 'swc 1',
+  //   'SWC 2': 'swc 2',
+  //   'SWC 3': 'swc 3',
+  //   'SWC 4': 'swc 4',
+  //   'SWC 5': 'swc 5',
+  //   'SWC 6': 'swc 6',
+  //   'SWC 7': 'swc 7',
+  //   'SWC 8': 'swc 8',
+  //   'SWC 9': 'swc 9',
+  //   'SWC 10': 'swc 10',
+  // };
+  Map<String, String> _regionDocumentIds = {};
 
   @override
   bool get wantKeepAlive => true;
@@ -97,13 +104,88 @@ class HomeScreenState extends State<HomeScreen>
     });
 
     _loadInitialData();
+    _setupLocalNotificationListener();
+    _initializeUnreadStream();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _seasonsSubscription?.cancel();
+    _notificationListener?.cancel();
     super.dispose();
+  }
+
+  void _setupLocalNotificationListener() {
+    _notificationListener = FirebaseFirestore.instance
+        .collection('notifications')
+        .orderBy('timestamp', descending: true)
+        .limit(1) // Kita hanya peduli pada notifikasi terbaru
+        .snapshots()
+        .listen((snapshot) async {
+      if (snapshot.docs.isEmpty) return; // Tidak ada notifikasi
+
+      final notificationDoc = snapshot.docs.first;
+      final notificationId = notificationDoc.id;
+      final notificationData = notificationDoc.data();
+
+      final prefs = await SharedPreferences.getInstance();
+      final lastShownId = prefs.getString('lastLocalNotificationId');
+
+      // Tampilkan notifikasi hanya jika ini adalah notifikasi baru
+      if (notificationId != lastShownId) {
+        final title = notificationData['title'] ?? 'Notifikasi Baru';
+        String body = notificationData['body'] ?? 'Anda memiliki pesan baru.';
+        final bool isRichText = notificationData['isRichText'] ?? false;
+
+        // --- PENYESUAIAN UTAMA DIMULAI DI SINI ---
+        // Jika notifikasi adalah rich text, kita ubah dari format JSON ke teks biasa.
+        if (isRichText) {
+          try {
+            // 1. Ubah string JSON menjadi objek List
+            var json = jsonDecode(body);
+            // 2. Buat objek Document dari data JSON tersebut
+            final doc = Document.fromJson(json);
+            // 3. Gunakan fungsi toPlainText() untuk mendapatkan teks biasa
+            //    Kita juga mengganti karakter baris baru (\n) dengan spasi agar rapi.
+            body = doc.toPlainText().replaceAll('\n', ' ').trim();
+
+            // Jika body kosong setelah konversi, beri pesan default
+            if (body.isEmpty) {
+              body = 'Anda menerima pesan terformat. Buka aplikasi untuk melihat.';
+            }
+
+          } catch (e) {
+            // Jika terjadi error saat konversi, tampilkan pesan fallback
+            body = 'Anda menerima pesan terformat. Buka aplikasi untuk melihat.';
+            debugPrint("Error converting Quill JSON to plain text: $e");
+          }
+        }
+        // --- PENYESUAIAN SELESAI ---
+
+        // Panggil service untuk menampilkan notifikasi di HP dengan body yang sudah bersih
+        NotificationService().showNotification(title, body);
+
+        // Simpan ID notifikasi terakhir yang ditampilkan untuk menghindari duplikat
+        await prefs.setString('lastLocalNotificationId', notificationId);
+      }
+    });
+  }
+
+  void _initializeUnreadStream() {
+    setState(() {
+      _unreadNotificationsStream = Stream.fromFuture(SharedPreferences.getInstance()).asyncExpand((prefs) {
+        final lastReadTimestamp = prefs.getString('lastNotificationViewTimestamp');
+
+        Query query = FirebaseFirestore.instance.collection('notifications');
+
+        if (lastReadTimestamp != null) {
+          query = query.where('timestamp', isGreaterThan: Timestamp.fromDate(DateTime.parse(lastReadTimestamp)));
+        }
+
+        return query.snapshots().map((snapshot) => snapshot.size);
+      });
+    });
   }
 
   void _handleBackInHomeScreen() {
@@ -308,7 +390,7 @@ class HomeScreenState extends State<HomeScreen>
   Stream<List<String>> getQASPVStream(String selectedRegion) {
     if (selectedRegion.isEmpty) return Stream.value([]);
 
-    String? documentId = regionDocumentIds[selectedRegion];
+    String? documentId = _regionDocumentIds[selectedRegion];
     if (documentId == null) return Stream.value([]);
 
     return FirebaseFirestore.instance
@@ -329,7 +411,7 @@ class HomeScreenState extends State<HomeScreen>
       return Stream.value([]);
     }
 
-    String? documentId = regionDocumentIds[selectedRegion];
+    String? documentId = _regionDocumentIds[selectedRegion];
 
     if (documentId == null) return Stream.value([]);
     return FirebaseFirestore.instance
@@ -448,22 +530,18 @@ class HomeScreenState extends State<HomeScreen>
     await Future.delayed(const Duration(milliseconds: 800));
 
     try {
-      // Load regions from Firestore
-      final configSnapshot = await FirebaseFirestore.instance
-          .collection('config')
-          .doc('filter')
-          .get();
-      if (configSnapshot.exists) {
-        final data = configSnapshot.data();
-        if (data != null && data.containsKey('qa')) {
-          setState(() {
-            fieldSPVList = List<String>.from(data['qa']);
-          });
-        }
-      }
+      // BARU: Memuat semua konfigurasi secara paralel untuk efisiensi
+      await Future.wait([
+        ConfigManager.loadConfig(),         // Memuat config spreadsheet
+        RegionMapperService.loadMappings(), // Memuat config pemetaan region
+      ]);
 
-      // Load config from ConfigManager
-      await ConfigManager.loadConfig();
+      // Ambil pemetaan region KHUSUS untuk peran 'qa' dari service yang baru
+      if (mounted) {
+        setState(() {
+          _regionDocumentIds = RegionMapperService.getRegionDocumentIdsForRole('qa');
+        });
+      }
 
       // Setup other data
       _setupRealTimeListeners();
@@ -909,11 +987,26 @@ class HomeScreenState extends State<HomeScreen>
               onPressed: () => _drawerController.toggle!(),
             ),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.info_outline_rounded),
-                onPressed: () {
-                  // Action for info button
-                  _showInfoDialog(context);
+              StreamBuilder<int>(
+                stream: _unreadNotificationsStream,
+                builder: (context, snapshot) {
+                  final unreadCount = snapshot.data ?? 0;
+                  return Badge(
+                    label: Text('$unreadCount'),
+                    isLabelVisible: unreadCount > 0, // Hanya tampil jika ada notif baru
+                    backgroundColor: Colors.red,
+                    child: IconButton(
+                      icon: const Icon(Icons.notifications_rounded),
+                      onPressed: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(builder: (context) => const NotificationListScreen()),
+                        );
+                        // Setelah kembali dari halaman notifikasi, refresh stream
+                        _initializeUnreadStream();
+                      },
+                      tooltip: 'Riwayat Notifikasi',
+                    ),
+                  );
                 },
               ),
               // Add refresh button to AppBar
@@ -1057,39 +1150,6 @@ class HomeScreenState extends State<HomeScreen>
             ),
           ),
       ],
-    );
-  }
-
-  void _showInfoDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text(
-            'Info Mase!',
-            style: TextStyle(
-              color: Colors.green,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: const Text(
-              'Yen diperluake, pencet tombol refresh kanggo nganyari data region dadi kosong koyo awal.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text(
-                'Tutup',
-                style: TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
     );
   }
 

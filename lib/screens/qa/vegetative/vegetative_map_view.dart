@@ -38,8 +38,8 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
   bool _initialCenterSet = false;
   MapViewMode _currentMapMode = MapViewMode.street;
 
-  // Cache for marker data to avoid recalculation
-  final Map<String, Marker> _markerCache = {};
+  int _auditedOnMapCount = 0;
+  int _notAuditedOnMapCount = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -49,7 +49,7 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
     super.initState();
     // Use Future.microtask to avoid blocking the UI during initialization
     Future.microtask(() {
-      _loadMarkers();
+      _processAndLoadMarkers();
       _getCurrentLocation();
     });
   }
@@ -58,11 +58,100 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
   void didUpdateWidget(VegetativeMapView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.filteredData != oldWidget.filteredData) {
-      // Reset the initial center flag when data changes
       _initialCenterSet = false;
-      // Use compute for heavy processing
-      Future.microtask(_loadMarkers);
+      Future.microtask(_processAndLoadMarkers);
     }
+  }
+
+  void _processAndLoadMarkers() {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = true;
+      // Reset counter setiap kali data diproses ulang
+      _auditedOnMapCount = 0;
+      _notAuditedOnMapCount = 0;
+    });
+
+    final Map<String, List<List<String>>> groupedData = _groupDataByLocation(
+        widget.filteredData);
+
+    List<Marker> newMarkers = [];
+    double sumLat = 0;
+    double sumLng = 0;
+    int validCoordinatesCount = 0;
+
+    // Iterasi data yang sudah dikelompokkan berdasarkan koordinat
+    groupedData.forEach((coordString, dataList) {
+      final parts = coordString.split(',');
+      if (parts.length != 2) return;
+
+      final lat = double.tryParse(parts[0]);
+      final lng = double.tryParse(parts[1]);
+      if (lat == null || lng == null) return;
+
+      final point = LatLng(lat, lng);
+      sumLat += lat;
+      sumLng += lng;
+      validCoordinatesCount++;
+
+      // BARU: Hitung status audit untuk setiap item di lokasi ini
+      for (var row in dataList) {
+        if (_getValue(row, 55, "NOT Audited") == "Audited") {
+          _auditedOnMapCount++;
+        } else {
+          _notAuditedOnMapCount++;
+        }
+      }
+
+      Marker marker;
+      if (dataList.length == 1) {
+        marker = _createSingleMarker(point, dataList.first);
+      } else {
+        marker = _createStackedMarker(point, dataList);
+      }
+      newMarkers.add(marker);
+    });
+
+    if (mounted) {
+      setState(() {
+        _markers = newMarkers;
+        if (validCoordinatesCount > 0) {
+          _mapCenter = LatLng(
+              sumLat / validCoordinatesCount, sumLng / validCoordinatesCount);
+          if (!_initialCenterSet) {
+            _initialCenterSet = true;
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (mounted) {
+                _mapController.moveAndRotate(_mapCenter, 10.0, 0);
+              }
+            });
+          }
+        }
+        _isLoading = false;
+      });
+    }
+  }
+
+  // BARU: Fungsi untuk mengelompokkan data berdasarkan koordinat
+  Map<String, List<List<String>>> _groupDataByLocation(
+      List<List<String>> data) {
+    final Map<String, List<List<String>>> groupedData = {};
+    for (var row in data) {
+      final coordinateStr = _getValue(row, 16, '');
+      // Pastikan format koordinat benar (lat,lng)
+      final parts = coordinateStr.split(',');
+      if (coordinateStr.isNotEmpty && parts.length == 2 &&
+          double.tryParse(parts[0]) != null &&
+          double.tryParse(parts[1]) != null) {
+        if (groupedData.containsKey(coordinateStr)) {
+          groupedData[coordinateStr]!.add(row);
+        } else {
+          groupedData[coordinateStr] = [row];
+        }
+      }
+    }
+    return groupedData;
   }
 
   Future<void> _getCurrentLocation() async {
@@ -96,212 +185,168 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
     }
   }
 
-  void _loadMarkers() {
-    if (!mounted) return;
+  Marker _createSingleMarker(LatLng point, List<String> row) {
+    final isAudited = _getValue(row, 55, "NOT Audited") == "Audited";
+    final dap = _calculateDAP(row);
 
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Process markers in batches to avoid UI freezes
-    _processMarkersInBatches(widget.filteredData);
-  }
-
-  void _processMarkersInBatches(List<List<String>> data) {
-    // Adjust batch size based on data size
-    int batchSize = data.length <= 500 ? data.length : 200;
-
-    List<Marker> markers = [];
-    double sumLat = 0;
-    double sumLng = 0;
-    int validCoordinates = 0;
-    int auditedCount = 0;
-    int notAuditedCount = 0;
-
-    // Calculate total counts upfront
-    for (var row in data) {
-      final coordinateStr = _getValue(row, 16, '');
-      if (coordinateStr.isNotEmpty) {
-        if (_getValue(row, 55, "NOT Audited") == "Audited") {
-          auditedCount++;
-        } else {
-          notAuditedCount++;
-        }
-      }
-    }
-
-    // Update cached counts immediately
-    _cachedAuditedCount = auditedCount;
-    _cachedNotAuditedCount = notAuditedCount;
-    _lastFilteredData = data;
-
-    // Process first batch immediately
-    int endIndex = data.length < batchSize ? data.length : batchSize;
-
-    for (int i = 0; i < endIndex; i++) {
-      final marker = _createMarkerFromRow(data[i]);
-      if (marker != null) {
-        markers.add(marker);
-        sumLat += marker.point.latitude;
-        sumLng += marker.point.longitude;
-        validCoordinates++;
-      }
-    }
-
-    // Update UI with first batch
-    if (mounted) {
-      setState(() {
-        _markers = markers;
-        _isLoading = endIndex < data.length; // Still loading if more data to process
-
-        // Update map center if we have valid coordinates
-        if (validCoordinates > 0) {
-          _mapCenter = LatLng(sumLat / validCoordinates, sumLng / validCoordinates);
-
-          // Center the map on markers if this is the first load
-          if (!_initialCenterSet) {
-            _initialCenterSet = true;
-            // Use a slight delay to ensure the map is ready
-            Future.delayed(const Duration(milliseconds: 100), () {
-              if (mounted) {
-                _mapController.moveAndRotate(_mapCenter, 10.0, 0);
-              }
-            });
-          }
-        }
-      });
-    }
-
-    // Process remaining batches asynchronously
-    if (endIndex < data.length) {
-      Future.microtask(() {
-        _processRemainingBatches(data, endIndex, batchSize, markers, sumLat, sumLng, validCoordinates);
-      });
-    }
-  }
-
-  void _processRemainingBatches(
-      List<List<String>> data,
-      int startIndex,
-      int batchSize,
-      List<Marker> markers,
-      double sumLat,
-      double sumLng,
-      int validCoordinates
-      ) {
-    int endIndex = startIndex + batchSize;
-    if (endIndex > data.length) endIndex = data.length;
-
-    for (int i = startIndex; i < endIndex; i++) {
-      final marker = _createMarkerFromRow(data[i]);
-      if (marker != null) {
-        markers.add(marker);
-        sumLat += marker.point.latitude;
-        sumLng += marker.point.longitude;
-        validCoordinates++;
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        _markers = markers;
-        _isLoading = endIndex < data.length;
-
-        if (validCoordinates > 0) {
-          _mapCenter = LatLng(sumLat / validCoordinates, sumLng / validCoordinates);
-
-          // If this is the first complete batch and we have a lot of markers,
-          // make sure the map is centered on them
-          if (markers.length > 10 && !_initialCenterSet) {
-            _initialCenterSet = true;
-            Future.delayed(const Duration(milliseconds: 100), () {
-              if (mounted) {
-                _mapController.moveAndRotate(_mapCenter, 10.0, 0);
-              }
-            });
-          }
-        }
-      });
-    }
-
-    // Continue with next batch if needed
-    if (endIndex < data.length) {
-      Future.microtask(() {
-        _processRemainingBatches(data, endIndex, batchSize, markers, sumLat, sumLng, validCoordinates);
-      });
-    }
-  }
-
-  Marker? _createMarkerFromRow(List<String> row) {
-    try {
-      // Get coordinates from column R (index 17)
-      final coordinateStr = _getValue(row, 16, '');
-      if (coordinateStr.isEmpty) return null;
-
-      // Check if we already have this marker in cache
-      if (_markerCache.containsKey(coordinateStr)) {
-        return _markerCache[coordinateStr];
-      }
-
-      // Parse coordinates (assuming format like "latitude,longitude")
-      final parts = coordinateStr.split(',');
-      if (parts.length != 2) return null;
-
-      final lat = double.tryParse(parts[0].trim());
-      final lng = double.tryParse(parts[1].trim());
-
-      if (lat == null || lng == null) return null;
-
-      final isAudited = _getValue(row, 55, "NOT Audited") == "Audited";
-      final dap = _calculateDAP(row);
-
-      final marker = Marker(
-        width: 40.0,
-        height: 40.0,
-        point: LatLng(lat, lng),
-        child: GestureDetector(
-          onTap: () {
-            setState(() {
-              _selectedLocation = LatLng(lat, lng);
-              _selectedData = row;
-            });
-            _mapController.moveAndRotate(LatLng(lat, lng), _mapController.camera.zoom, 0);
-          },
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isAudited ? Colors.green.withAlpha(178) : Colors.red.withAlpha(178),
-              border: Border.all(color: Colors.white, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(51),
-                  blurRadius: 6,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Center(
-              child: Text(
-                '$dap',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 10,
-                ),
+    return Marker(
+      width: 40.0,
+      height: 40.0,
+      point: point,
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _selectedLocation = point;
+            _selectedData = row;
+          });
+          _mapController.moveAndRotate(point, _mapController.camera.zoom, 0);
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isAudited ? Colors.green.withAlpha(178) : Colors.red.withAlpha(178),
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(51),
+                blurRadius: 6,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              '$dap',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 10,
               ),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 
-      // Cache the marker
-      _markerCache[coordinateStr] = marker;
+  Marker _createStackedMarker(LatLng point, List<List<String>> dataList) {
+    return Marker(
+      width: 45.0,
+      height: 45.0,
+      point: point,
+      child: GestureDetector(
+        onTap: () {
+          // BARU: Tampilkan bottom sheet saat marker tumpuk ditekan
+          _showStackedDataSheet(dataList);
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.purple.withAlpha(200), // Warna berbeda untuk penanda
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(51),
+                blurRadius: 6,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              const Icon(Icons.layers, color: Colors.white, size: 18),
+              Positioned(
+                top: 2,
+                right: 2,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(
+                      minWidth: 14, minHeight: 14),
+                  child: Text(
+                    '${dataList.length}',
+                    style: const TextStyle(color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-      return marker;
-    } catch (e) {
-      // Skip invalid coordinates
-      return null;
-    }
+  // BARU: Fungsi untuk menampilkan bottom sheet berisi daftar data
+  void _showStackedDataSheet(List<List<String>> dataList) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${dataList.length} Lahan di Lokasi Ini',
+                style: Theme
+                    .of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Divider(),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: dataList.length,
+                  itemBuilder: (context, index) {
+                    final row = dataList[index];
+                    final fieldNumber = _getValue(row, 2, "Unknown");
+                    final farmerName = _getValue(row, 3, "Unknown");
+                    final isAudited = _getValue(row, 55, "NOT Audited") ==
+                        "Audited";
+
+                    return ListTile(
+                      leading: Icon(
+                        isAudited ? Icons.check_circle : Icons.cancel,
+                        color: isAudited ? Colors.green : Colors.red,
+                      ),
+                      title: Text(fieldNumber,
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text(farmerName),
+                      onTap: () {
+                        Navigator.pop(context); // Tutup bottom sheet
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                VegetativeDetailScreen(
+                                  fieldNumber: fieldNumber,
+                                  region: widget.selectedRegion ??
+                                      'Unknown Region',
+                                ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   String _getValue(List<String> row, int index, String defaultValue) {
@@ -316,7 +361,8 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
 
   int _calculateDAP(List<String> row) {
     try {
-      final plantingDate = _getValue(row, 9, ''); // Get planting date from column 9
+      final plantingDate = _getValue(
+          row, 9, ''); // Get planting date from column 9
       if (plantingDate.isEmpty) return 0;
 
       // Check cache first
@@ -328,14 +374,22 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
       // Try to parse as Excel date number
       final parsedNumber = double.tryParse(plantingDate);
       if (parsedNumber != null) {
-        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
+        final date = DateTime(1899, 12, 30).add(
+            Duration(days: parsedNumber.toInt()));
         final today = DateTime.now();
-        dap = today.difference(date).inDays;
+        dap = today
+            .difference(date)
+            .inDays;
       } else {
         // Try to parse as formatted date
-        final parsedDate = DateTime.parse(plantingDate.split('/').reversed.join('-'));
+        final parsedDate = DateTime.parse(plantingDate
+            .split('/')
+            .reversed
+            .join('-'));
         final today = DateTime.now();
-        dap = today.difference(parsedDate).inDays;
+        dap = today
+            .difference(parsedDate)
+            .inDays;
       }
 
       // Cache the result
@@ -442,7 +496,8 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
                   Marker(
                     width: 30.0,
                     height: 30.0,
-                    point: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                    point: LatLng(_currentPosition!.latitude,
+                        _currentPosition!.longitude),
                     child: Container(
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
@@ -469,7 +524,8 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
             child: Card(
               color: Colors.white,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -480,7 +536,8 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Loading ${_markers.length}/${widget.filteredData.length} fields...',
+                      'Loading ${_markers.length}/${widget.filteredData
+                          .length} fields...',
                       style: const TextStyle(fontSize: 12),
                     ),
                   ],
@@ -566,7 +623,8 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
                   await _getCurrentLocation();
                   if (_currentPosition != null) {
                     _mapController.moveAndRotate(
-                      LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                      LatLng(_currentPosition!.latitude,
+                          _currentPosition!.longitude),
                       15,
                       0,
                     );
@@ -679,7 +737,8 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: isAudited
@@ -711,7 +770,8 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
                   ),
                   // Activity Count Badge
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: activityCount == 0
@@ -727,7 +787,9 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
                         BoxShadow(
                           color: activityCount == 0
                               ? Colors.red.withAlpha(25)
-                              : (activityCount < 2 ? Colors.orange.withAlpha(25) : Colors.green.withAlpha(25)),
+                              : (activityCount < 2
+                              ? Colors.orange.withAlpha(25)
+                              : Colors.green.withAlpha(25)),
                           blurRadius: 4,
                           offset: const Offset(0, 2),
                         ),
@@ -735,7 +797,9 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
                       border: Border.all(
                         color: activityCount == 0
                             ? Colors.red.shade200
-                            : (activityCount < 2 ? Colors.orange.shade200 : Colors.green.shade200),
+                            : (activityCount < 2
+                            ? Colors.orange.shade200
+                            : Colors.green.shade200),
                         width: 1.0,
                       ),
                     ),
@@ -745,10 +809,13 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
                         Icon(
                           activityCount == 0
                               ? Icons.history_toggle_off
-                              : (activityCount < 2 ? Icons.history : Icons.history_edu),
+                              : (activityCount < 2 ? Icons.history : Icons
+                              .history_edu),
                           color: activityCount == 0
                               ? Colors.red.shade700
-                              : (activityCount < 2 ? Colors.orange.shade700 : Colors.green.shade700),
+                              : (activityCount < 2
+                              ? Colors.orange.shade700
+                              : Colors.green.shade700),
                           size: 16,
                         ),
                         const SizedBox(width: 6),
@@ -761,7 +828,9 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
                           style: TextStyle(
                             color: activityCount == 0
                                 ? Colors.red.shade700
-                                : (activityCount < 2 ? Colors.orange.shade700 : Colors.green.shade700),
+                                : (activityCount < 2
+                                ? Colors.orange.shade700
+                                : Colors.green.shade700),
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
                           ),
@@ -799,7 +868,8 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
                           ),
                         ),
                         Text(
-                          _getValue(_selectedData!, 3, "Unknown"), // Farmer Name
+                          _getValue(_selectedData!, 3, "Unknown"),
+                          // Farmer Name
                           style: const TextStyle(
                             fontSize: 14,
                             color: Colors.black87,
@@ -858,10 +928,11 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => VegetativeDetailScreen(
-                        fieldNumber: fieldNumber,
-                        region: widget.selectedRegion ?? 'Unknown Region',
-                      ),
+                      builder: (context) =>
+                          VegetativeDetailScreen(
+                            fieldNumber: fieldNumber,
+                            region: widget.selectedRegion ?? 'Unknown Region',
+                          ),
                     ),
                   );
                 },
@@ -877,7 +948,8 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.visibility, size: 16),
-                    Text(' View Details', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text(' View Details',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                     SizedBox(width: 8),
                   ],
                 ),
@@ -889,55 +961,47 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
     );
   }
 
-  // Memoize stats calculation
-  int? _cachedAuditedCount;
-  int? _cachedNotAuditedCount;
-  List<List<String>>? _lastFilteredData;
+  // // Memoize stats calculation
+  // int? _cachedAuditedCount;
+  // int? _cachedNotAuditedCount;
+  // List<List<String>>? _lastFilteredData;
 
   Widget _buildStatsPanel() {
-    // Only recalculate if data has changed
-    if (_lastFilteredData != widget.filteredData) {
-      _lastFilteredData = widget.filteredData;
-      _cachedAuditedCount = null;
-      _cachedNotAuditedCount = null;
-    }
-
-    // Calculate counts if not cached
-    if (_cachedAuditedCount == null || _cachedNotAuditedCount == null) {
-      int auditedCount = 0;
-      int notAuditedCount = 0;
-
-      for (var marker in _markers) {
-        for (var row in widget.filteredData) {
-          final coordinateStr = _getValue(row, 16, '');
-          if (coordinateStr.isEmpty || coordinateStr.split(',').length != 2) continue;
-
-          try {
-            final lat = double.parse(coordinateStr.split(',')[0].trim());
-            final lng = double.parse(coordinateStr.split(',')[1].trim());
-            final point = LatLng(lat, lng);
-
-            if (point == marker.point) {
-              if (_getValue(row, 55, "NOT Audited") == "Audited") {
-                auditedCount++;
-              } else {
-                notAuditedCount++;
+    // Total data yang lolos filter, terlepas dari validitas koordinat
+    final int totalFilteredCount = widget.filteredData.length;
+    // Total data yang berhasil ditampilkan di peta
+    final int totalOnMap = _markers.fold<int>(0, (sum, marker) {
+      if (marker.child is GestureDetector) {
+        final gestureDetector = marker.child as GestureDetector;
+        if (gestureDetector.child is Container) {
+          final container = gestureDetector.child as Container;
+          if (container.child is Stack) {
+            final stack = container.child as Stack;
+            for (var child in stack.children) {
+              if (child is Positioned) {
+                final positioned = child;
+                if (positioned.child is Container) {
+                  final textContainer = positioned.child as Container;
+                  if (textContainer.child is Text) {
+                    final text = textContainer.child as Text;
+                    return sum + (int.tryParse(text.data ?? '1') ?? 1);
+                  }
+                }
               }
-              break; // Found the matching row, no need to continue
             }
-          } catch (e) {
-            continue;
           }
         }
       }
+      return sum + 1; // Default untuk marker tunggal
+    });
+    // Total data yang tidak punya koordinat valid
+    final int invalidCoordinatesCount = totalFilteredCount - totalOnMap;
 
-      _cachedAuditedCount = auditedCount;
-      _cachedNotAuditedCount = notAuditedCount;
-    }
-
-    int totalCount = _markers.length;
-    double auditedPercentage = totalCount > 0 ? (_cachedAuditedCount! / totalCount) * 100 : 0;
-    double notAuditedPercentage = totalCount > 0 ? (_cachedNotAuditedCount! / totalCount) * 100 : 0;
+    // Persentase dihitung dari total yang ADA DI PETA
+    double auditedPercentage = totalOnMap > 0 ? (_auditedOnMapCount /
+        totalOnMap) * 100 : 0;
+    double notAuditedPercentage = totalOnMap > 0 ? (_notAuditedOnMapCount /
+        totalOnMap) * 100 : 0;
 
     return Card(
       elevation: 4,
@@ -951,49 +1015,38 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Total: $totalCount Lahan',
+              'Total: $totalFilteredCount Lahan',
+              // Menggunakan total dari filter
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 12,
                 color: Colors.green.shade800,
               ),
             ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: Colors.green.withAlpha(178),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  'Sampun: ${_cachedAuditedCount ?? 0} (${auditedPercentage.toStringAsFixed(1)}%)',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ],
+            const Divider(height: 12),
+            _buildStatRow(
+              color: Colors.green.withAlpha(178),
+              label: 'Sampun',
+              count: _auditedOnMapCount,
+              percentage: auditedPercentage,
             ),
             const SizedBox(height: 4),
-            Row(
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: Colors.red.withAlpha(178),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  'Dereng: ${_cachedNotAuditedCount ?? 0} (${notAuditedPercentage.toStringAsFixed(1)}%)',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ],
+            _buildStatRow(
+              color: Colors.red.withAlpha(178),
+              label: 'Dereng',
+              count: _notAuditedOnMapCount,
+              percentage: notAuditedPercentage,
             ),
+            // BARU: Tampilkan data tanpa koordinat jika ada
+            if (invalidCoordinatesCount > 0) ...[
+              const SizedBox(height: 4),
+              _buildStatRow(
+                color: Colors.grey.withAlpha(178),
+                label: 'Tanpa Koordinat',
+                count: invalidCoordinatesCount,
+                icon: Icons.location_off_outlined, // Ikon baru
+              ),
+            ]
           ],
         ),
       ),
@@ -1036,11 +1089,36 @@ class _VegetativeMapViewState extends State<VegetativeMapView> with AutomaticKee
       ],
     );
   }
+}
 
-  @override
-  void dispose() {
-    _markerCache.clear();
-    _dapCache.clear();
-    super.dispose();
-  }
+// BARU: Helper widget untuk membuat baris statistik agar lebih rapi
+Widget _buildStatRow({
+  required Color color,
+  required String label,
+  required int count,
+  double? percentage,
+  IconData? icon,
+}) {
+  return Row(
+    children: [
+      Container(
+        width: 12,
+        height: 12,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+        ),
+        child: icon != null ? Icon(icon, color: Colors.white, size: 8) : null,
+      ),
+      const SizedBox(width: 4),
+      Expanded(
+        child: Text(
+          '$label: $count ${percentage != null ? "(${percentage
+              .toStringAsFixed(1)}%)" : ""}',
+          style: const TextStyle(fontSize: 12),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    ],
+  );
 }

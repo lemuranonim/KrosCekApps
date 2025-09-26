@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'generative_detail_screen.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class AnalysisDashboardTab extends StatelessWidget {
   final List<List<String>> filteredData;
@@ -17,13 +16,22 @@ class AnalysisDashboardTab extends StatelessWidget {
   final double derengBlasArea;
   final int fieldsWithActivity;
   final String searchQuery;
-  final bool showAuditedOnly;
-  final bool showNotAuditedOnly;
   final TabController tabController;
   final String? selectedRegion;
   final Function(List<String>) getAuditStatus;
   final Function(String) getAuditStatusColor;
   final Function(String) getAuditStatusIcon;
+  final double ketersediaanAreaA;
+  final double ketersediaanAreaB;
+  final double ketersediaanAreaC;
+  final double ketersediaanAreaD;
+  final double ketersediaanAreaE;
+  final double efektivitasAreaEfektif;
+  final double efektivitasAreaTidakEfektif;
+  final List<String> availableGrowers;
+  final List<String> availableCoordinators;
+  final Function getKetersediaanStatus;
+  final Function getEffectivenessStatus;
 
   const AnalysisDashboardTab({
     super.key,
@@ -41,13 +49,22 @@ class AnalysisDashboardTab extends StatelessWidget {
     required this.derengBlasArea,
     required this.fieldsWithActivity,
     required this.searchQuery,
-    required this.showAuditedOnly,
-    required this.showNotAuditedOnly,
     required this.tabController,
     required this.selectedRegion,
     required this.getAuditStatus,
     required this.getAuditStatusColor,
     required this.getAuditStatusIcon,
+    required this.ketersediaanAreaA,
+    required this.ketersediaanAreaB,
+    required this.ketersediaanAreaC,
+    required this.ketersediaanAreaD,
+    required this.ketersediaanAreaE,
+    required this.efektivitasAreaEfektif,
+    required this.efektivitasAreaTidakEfektif,
+    required this.availableGrowers,
+    required this.availableCoordinators,
+    required this.getKetersediaanStatus,
+    required this.getEffectivenessStatus,
   });
 
   @override
@@ -69,7 +86,7 @@ class AnalysisDashboardTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Filter info
-          if (searchQuery.isNotEmpty || showAuditedOnly || showNotAuditedOnly)
+          if (searchQuery.isNotEmpty)
             _buildActiveFiltersCard(),
 
           // Dashboard Grid
@@ -157,23 +174,30 @@ class AnalysisDashboardTab extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          // Recent Activities
           Text(
-            'Update Terbaru',
+            'Analisis Ketersediaan',
             style: AppTheme.heading2,
           ),
           const SizedBox(height: 16),
-          _buildRecentActivitiesCard(filteredData, context),
+          // Panggil Widget baru di sini
+          KetersediaanCard(
+            allFilteredData: filteredData,
+            availableCoordinators: availableCoordinators,
+            getKetersediaanStatus: getKetersediaanStatus,
+          ),
 
           const SizedBox(height: 24),
 
-          // Fields with Most Activities
           Text(
-            'Lahan Visited Terbanyak',
+            'Analisis Efektivitas',
             style: AppTheme.heading2,
           ),
           const SizedBox(height: 16),
-          _buildTopFieldsTable(filteredData, context),
+          EffectivenessCard( // <-- Panggil widget stateful yang sudah kita buat
+            allFilteredData: filteredData,
+            availableCoordinators: availableCoordinators,
+            getEffectivenessStatus: getEffectivenessStatus,
+          ),
         ],
       ),
     );
@@ -231,38 +255,6 @@ class AnalysisDashboardTab extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Search: "$searchQuery"',
-                      style: AppTheme.body,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          if (showAuditedOnly)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle, size: 16, color: AppTheme.success),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Show Audited Only',
-                      style: AppTheme.body,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          if (showNotAuditedOnly)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.cancel, size: 16, color: AppTheme.error),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Show Not Audited Only',
                       style: AppTheme.body,
                     ),
                   ),
@@ -875,437 +867,10 @@ class AnalysisDashboardTab extends StatelessWidget {
     );
   }
 
-  Widget _buildRecentActivitiesCard(List<List<String>> filteredData, BuildContext context) {
-    // Get all timestamps for filtered data
-    final List<MapEntry<String, DateTime>> allActivities = [];
-
-    for (var row in filteredData) {
-      final fieldNumber = _getValue(row, 2, "Unknown");
-      final timestamps = activityTimestamps[fieldNumber];
-
-      if (timestamps != null && timestamps.isNotEmpty) {
-        for (var timestamp in timestamps) {
-          allActivities.add(MapEntry(fieldNumber, timestamp));
-        }
-      }
-    }
-
-    // Sort by timestamp (newest first)
-    allActivities.sort((a, b) => b.value.compareTo(a.value));
-
-    // Take the 5 most recent activities
-    final recentActivities = allActivities.take(5).toList();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(12),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.history, color: AppTheme.accent),
-              const SizedBox(width: 8),
-              const Text(
-                'Update Terbaru',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 24),
-
-          if (recentActivities.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(
-                child: Text(
-                  'No recent activities found.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontStyle: FontStyle.italic,
-                    color: AppTheme.textMedium,
-                  ),
-                ),
-              ),
-            )
-          else
-            Column(
-              children: recentActivities.map((activity) {
-                final fieldNumber = activity.key;
-                final timestamp = activity.value;
-                final dateFormat = DateFormat('dd MMM yyyy HH:mm');
-
-                // Find the field data
-                final fieldData = filteredData.firstWhere(
-                      (row) => _getValue(row, 2, "") == fieldNumber,
-                  orElse: () => [],
-                );
-
-                final farmerName = fieldData.isNotEmpty ? _getValue(fieldData, 3, "Unknown") : "Unknown";
-                final auditStatus = fieldData.isNotEmpty ? getAuditStatus(fieldData) : "Dereng Blas";
-
-                return InkWell(
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => GenerativeDetailScreen(
-                          fieldNumber: fieldNumber,
-                          region: selectedRegion ?? 'Unknown Region',
-                        ),
-                      ),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: getAuditStatusColor(auditStatus).withAlpha(25),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Icon(
-                              getAuditStatusIcon(auditStatus),
-                              color: getAuditStatusColor(auditStatus),
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Lahan $fieldNumber ($auditStatus)',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Farmer: $farmerName',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.textMedium,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              dateFormat.format(timestamp),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _getTimeAgo(timestamp),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppTheme.accent.withAlpha(204),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTopFieldsTable(List<List<String>> filteredData, BuildContext context) {
-    // Sort fields by activity count
-    final List<MapEntry<String, int>> sortedFields = [];
-
-    for (var row in filteredData) {
-      final fieldNumber = _getValue(row, 2, "Unknown");
-      final count = activityCounts[fieldNumber] ?? 0;
-
-      if (count > 0) {
-        sortedFields.add(MapEntry(fieldNumber, count));
-      }
-    }
-
-    sortedFields.sort((a, b) => b.value.compareTo(a.value));
-
-    // Take top 5 or fewer
-    final topFields = sortedFields.take(5).toList();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(12),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.star, color: AppTheme.warning),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Visited Teratas',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              Text(
-                'Top ${topFields.length}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppTheme.textMedium,
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 24),
-
-          if (topFields.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(
-                child: Text(
-                  'No fields with activities found.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontStyle: FontStyle.italic,
-                    color: AppTheme.textMedium,
-                  ),
-                ),
-              ),
-            )
-          else
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                columnSpacing: 16,
-                horizontalMargin: 0,
-                headingRowHeight: 40,
-                headingTextStyle: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
-                  fontSize: 13,
-                ),
-                columns: const [
-                  DataColumn(label: Text('Lahan')),
-                  DataColumn(label: Text('Visited')),
-                  DataColumn(label: Text('Visit Terakhir')),
-                  DataColumn(label: Text('Status')),
-                  DataColumn(label: Text('DAP')),
-                  DataColumn(label: Text('Area (Ha)')),
-                ],
-                rows: topFields.map((entry) {
-                  // Find corresponding field data
-                  final fieldData = filteredData.firstWhere(
-                        (row) => _getValue(row, 2, "") == entry.key,
-                    orElse: () => [],
-                  );
-
-                  final auditStatus = fieldData.isNotEmpty ? getAuditStatus(fieldData) : "Dereng Blas";
-                  final dap = fieldData.isNotEmpty ? _calculateDAP(fieldData) : 0;
-                  final effectiveAreaStr = fieldData.isNotEmpty ? _getValue(fieldData, 8, "0").replaceAll(',', '.') : "0";
-                  final effectiveArea = double.tryParse(effectiveAreaStr) ?? 0.0;
-
-                  return DataRow(
-                    cells: [
-                      DataCell(
-                        Text(
-                          entry.key,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => GenerativeDetailScreen(
-                                fieldNumber: entry.key,
-                                region: selectedRegion ?? 'Unknown Region',
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      DataCell(
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: _getActivityCountColor(entry.value),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${entry.value}',
-                            style: TextStyle(
-                              color: entry.value > 2 ? Colors.white : Colors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                      DataCell(Text(_getLastVisitText(entry.key), style: const TextStyle(fontSize: 12))),
-                      DataCell(
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: getAuditStatusColor(auditStatus).withAlpha(25),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            auditStatus,
-                            style: TextStyle(
-                              color: getAuditStatusColor(auditStatus),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                      DataCell(Text('$dap', style: const TextStyle(fontSize: 13))),
-                      DataCell(Text(effectiveArea.toStringAsFixed(2), style: const TextStyle(fontSize: 13))),
-                    ],
-                  );
-                }).toList(),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   // Helper methods
   String _getValue(List<String> row, int index, String defaultValue) {
     if (row.isEmpty || index >= row.length) return defaultValue;
     return row[index];
-  }
-
-  int _calculateDAP(List<String> row) {
-    try {
-      final plantingDate = _getValue(row, 9, ''); // Get planting date from column 9
-      if (plantingDate.isEmpty) return 0;
-
-      // Try to parse as Excel date number
-      final parsedNumber = double.tryParse(plantingDate);
-      if (parsedNumber != null) {
-        final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
-        final today = DateTime.now();
-        return today.difference(date).inDays;
-      } else {
-        // Try to parse as formatted date
-        try {
-          final parts = plantingDate.split('/');
-          if (parts.length == 3) {
-            final day = int.tryParse(parts[0]) ?? 1;
-            final month = int.tryParse(parts[1]) ?? 1;
-            final year = int.tryParse(parts[2]) ?? DateTime.now().year;
-
-            final date = DateTime(year, month, day);
-            final today = DateTime.now();
-            return today.difference(date).inDays;
-          }
-        } catch (e) {
-          // Ignore parsing errors
-        }
-      }
-      return 0;
-    } catch (e) {
-      return 0;
-    }
-  }
-
-  String _getLastVisitText(String fieldNumber) {
-    // Get the list of timestamps for this field
-    final timestamps = activityTimestamps[fieldNumber];
-
-    // If no timestamps, return "No data"
-    if (timestamps == null || timestamps.isEmpty) {
-      return "Mboten wonten data";
-    }
-
-    // Get the most recent timestamp (already sorted in _loadActivityData)
-    final lastVisit = timestamps.first;
-
-    return _getTimeAgo(lastVisit);
-  }
-
-  String _getTimeAgo(DateTime timestamp) {
-    final now = DateTime.now();
-    final difference = now.difference(timestamp);
-
-    // Format based on how long ago the visit was
-    if (difference.inDays == 0) {
-      // Today
-      if (difference.inHours == 0) {
-        if (difference.inMinutes < 5) {
-          return "Baru saja";
-        } else {
-          // Minutes ago
-          return "${difference.inMinutes} menit yang lalu";
-        }
-      } else {
-        // Hours ago
-        return "${difference.inHours} jam yang lalu";
-      }
-    } else if (difference.inDays == 1) {
-      // Yesterday
-      return "Kemarin";
-    } else if (difference.inDays < 7) {
-      // Within a week
-      return "${difference.inDays} hari yang lalu";
-    } else if (difference.inDays < 30) {
-      // Within a month
-      final weeks = (difference.inDays / 7).floor();
-      return "$weeks minggu yang lalu";
-    } else if (difference.inDays < 365) {
-      // Within a year
-      final months = (difference.inDays / 30).floor();
-      return "$months bulan yang lalu";
-    } else {
-      // More than a year
-      final years = (difference.inDays / 365).floor();
-      return "$years tahun yang lalu";
-    }
   }
 
   String _formatPercentage(int part, int total) {
@@ -1320,6 +885,516 @@ class AnalysisDashboardTab extends StatelessWidget {
     if (count == 3) return Colors.amber.shade400;
     if (count <= 5) return Colors.orange.shade500;
     return Colors.red.shade500;
+  }
+}
+
+// ===================================================================
+// CLASS WIDGET BARU UNTUK DONUT CHART (DARI OPSI 2)
+// LETAKKAN INI DI LUAR CLASS AnalysisDashboardTab, TAPI MASIH DALAM FILE YANG SAMA
+// ===================================================================
+class DonutChartCard extends StatefulWidget {
+  final String title;
+  final IconData icon;
+  final double totalValue;
+  final List<Map<String, dynamic>> chartData;
+
+  const DonutChartCard({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.totalValue,
+    required this.chartData,
+  });
+
+  @override
+  State<DonutChartCard> createState() => _DonutChartCardState();
+}
+
+class _DonutChartCardState extends State<DonutChartCard> {
+  int touchedIndex = -1;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Bagian Header Kartu (tetap sama)
+          Row(
+            children: [
+              Icon(widget.icon, color: AppTheme.primary),
+              const SizedBox(width: 8),
+              Text(widget.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // LayoutBuilder untuk Tampilan Responsif
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Tentukan breakpoint. Jika lebar kurang dari 350, ganti ke Column.
+              // Anda bisa menyesuaikan nilai 350 ini jika perlu.
+              const double breakpoint = 350.0;
+
+              // --- Definisikan Widget Chart ---
+              final pieChart = PieChart(
+                PieChartData(
+                  pieTouchData: PieTouchData(
+                    touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                      setState(() {
+                        if (!event.isInterestedForInteractions || pieTouchResponse == null || pieTouchResponse.touchedSection == null) {
+                          touchedIndex = -1;
+                          return;
+                        }
+                        touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                      });
+                    },
+                  ),
+                  borderData: FlBorderData(show: false),
+                  sectionsSpace: 4,
+                  centerSpaceRadius: 40,
+                  sections: List.generate(widget.chartData.length, (i) {
+                    final isTouched = i == touchedIndex;
+                    final radius = isTouched ? 60.0 : 50.0;
+                    final data = widget.chartData[i];
+                    return PieChartSectionData(
+                      color: data['color'],
+                      value: data['value'],
+                      title: '${data['percentage']}%',
+                      radius: radius,
+                      titleStyle: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold, color: Colors.white, shadows: [Shadow(color: Colors.black, blurRadius: 2)]),
+                    );
+                  }),
+                ),
+              );
+
+              // --- Definisikan Widget Legenda ---
+              final legend = Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: widget.chartData.map((data) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6.0),
+                    child: Row(
+                      children: [
+                        Container(width: 12, height: 12, decoration: BoxDecoration(color: data['color'], borderRadius: BorderRadius.circular(2))),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text('${data['title']} (${data['value'].toStringAsFixed(2)} Ha)', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+
+              // Tampilkan layout berdasarkan lebar yang tersedia
+              if (constraints.maxWidth < breakpoint) {
+                // TAMPILAN SEMPIT (Ponsel Potret)
+                return Column(
+                  children: [
+                    SizedBox(height: 180, child: pieChart), // Chart di atas
+                    const SizedBox(height: 24),
+                    legend, // Legenda di bawah
+                  ],
+                );
+              } else {
+                // TAMPILAN LEBAR (Tablet / Ponsel Lanskap)
+                return Row(
+                  children: [
+                    Expanded(flex: 2, child: AspectRatio(aspectRatio: 1, child: pieChart)), // Chart di kiri
+                    const SizedBox(width: 20),
+                    Expanded(flex: 3, child: legend), // Legenda di kanan
+                  ],
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// analysis_dashboard_tab.dart
+
+// ===================================================================
+// KARTU BARU UNTUK ANALISIS KETERSEDIAAN (STATEFUL)
+// ===================================================================
+class KetersediaanCard extends StatefulWidget {
+  final List<List<String>> allFilteredData;
+  final List<String> availableCoordinators;
+  final Function getKetersediaanStatus;
+
+  const KetersediaanCard({
+    super.key,
+    required this.allFilteredData,
+    required this.availableCoordinators,
+    required this.getKetersediaanStatus,
+  });
+
+  @override
+  State<KetersediaanCard> createState() => _KetersediaanCardState();
+}
+
+class _KetersediaanCardState extends State<KetersediaanCard> {
+  String? _selectedCoordinator;
+
+  // Helper untuk mengambil nilai dari baris data
+  String _getValue(List<String> row, int index, String defaultValue) {
+    if (row.isEmpty || index >= row.length) return defaultValue;
+    return row[index];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Saring data secara lokal berdasarkan dropdown koordinator
+    final localFilteredData = widget.allFilteredData.where((row) {
+      if (_selectedCoordinator == null) return true; // Tampilkan semua jika tidak ada yang dipilih
+      // Filter berdasarkan Koordinator dari kolom DJ (indeks 113)
+      return _getValue(row, 113, "").trim().toLowerCase() == _selectedCoordinator;
+    }).toList();
+
+    // Lakukan kalkulasi berdasarkan data yang sudah difilter secara lokal
+    double ketersediaanAreaA = 0.0;
+    double ketersediaanAreaB = 0.0;
+    double ketersediaanAreaC = 0.0;
+    double ketersediaanAreaD = 0.0;
+    double ketersediaanAreaE = 0.0;
+
+    for (var row in localFilteredData) {
+      final effectiveAreaStr = _getValue(row, 8, "0").replaceAll(',', '.');
+      final effectiveArea = double.tryParse(effectiveAreaStr) ?? 0.0;
+      final ketersediaanStatus = widget.getKetersediaanStatus(row);
+
+      switch (ketersediaanStatus) {
+        case 'A': ketersediaanAreaA += effectiveArea; break;
+        case 'B': ketersediaanAreaB += effectiveArea; break;
+        case 'C': ketersediaanAreaC += effectiveArea; break;
+        case 'D': ketersediaanAreaD += effectiveArea; break;
+        case 'E': ketersediaanAreaE += effectiveArea; break;
+      }
+    }
+    final totalArea = ketersediaanAreaA + ketersediaanAreaB + ketersediaanAreaC + ketersediaanAreaD + ketersediaanAreaE;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.people, color: AppTheme.accent),
+              const SizedBox(width: 8),
+              const Text('Ketersediaan Tenaga Kerja', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              _buildCoordinatorDropdown(),
+            ],
+          ),
+          const Divider(height: 24),
+          _buildProgressRow(title: 'A (100%)', valueHa: ketersediaanAreaA.toStringAsFixed(2), percentage: _formatPercentageDouble(ketersediaanAreaA, totalArea), color: Colors.green.shade700, progress: totalArea > 0 ? ketersediaanAreaA / totalArea : 0.0),
+          _buildProgressRow(title: 'B (80%)', valueHa: ketersediaanAreaB.toStringAsFixed(2), percentage: _formatPercentageDouble(ketersediaanAreaB, totalArea), color: Colors.lightGreen.shade600, progress: totalArea > 0 ? ketersediaanAreaB / totalArea : 0.0),
+          _buildProgressRow(title: 'C (60%)', valueHa: ketersediaanAreaC.toStringAsFixed(2), percentage: _formatPercentageDouble(ketersediaanAreaC, totalArea), color: AppTheme.warning, progress: totalArea > 0 ? ketersediaanAreaC / totalArea : 0.0),
+          _buildProgressRow(title: 'D (40%)', valueHa: ketersediaanAreaD.toStringAsFixed(2), percentage: _formatPercentageDouble(ketersediaanAreaD, totalArea), color: Colors.orange.shade700, progress: totalArea > 0 ? ketersediaanAreaD / totalArea : 0.0),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 0),
+            child: _buildProgressRow(title: 'E (20%)', valueHa: ketersediaanAreaE.toStringAsFixed(2), percentage: _formatPercentageDouble(ketersediaanAreaE, totalArea), color: AppTheme.error, progress: totalArea > 0 ? ketersediaanAreaE / totalArea : 0.0),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCoordinatorDropdown() {
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedCoordinator,
+          hint: const Text('All Co-Det', style: TextStyle(fontSize: 12)),
+          icon: const Icon(Icons.arrow_drop_down, size: 20),
+          style: const TextStyle(color: AppTheme.textDark, fontSize: 12),
+          onChanged: (String? newValue) {
+            setState(() {
+              _selectedCoordinator = newValue;
+            });
+          },
+          items: [
+            const DropdownMenuItem<String>(
+              value: null,
+              child: Text('All Co-Det'),
+            ),
+            ...widget.availableCoordinators.map((String value) {
+              return DropdownMenuItem<String>(
+                value: value,
+                child: Text(value.toTitleCase(), overflow: TextOverflow.ellipsis),
+              );
+            })
+          ],
+        ),
+      ),
+    );
+  }
+
+
+
+  Widget _buildProgressRow({
+    required String title,
+    required String valueHa,
+    required String percentage,
+    required Color color,
+    required double progress,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppTheme.textMedium)),
+              Text('$valueHa Ha', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.textDark)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Stack(
+            children: [
+              Container(
+                height: 10,
+                decoration: BoxDecoration(color: color.withAlpha(51), borderRadius: BorderRadius.circular(5)),
+              ),
+              LayoutBuilder(
+                builder: (context, constraints) => Container(
+                  width: constraints.maxWidth * progress,
+                  height: 10,
+                  decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(5)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text('$percentage%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatPercentageDouble(double part, double total) {
+    if (total == 0) return '0.0';
+    return ((part / total) * 100).toStringAsFixed(1);
+  }
+}
+
+// analysis_dashboard_tab.dart
+
+// ===================================================================
+// KARTU BARU UNTUK ANALISIS EFEKTIVITAS (STATEFUL)
+// ===================================================================
+class EffectivenessCard extends StatefulWidget {
+  final List<List<String>> allFilteredData;
+  final List<String> availableCoordinators;
+  final Function getEffectivenessStatus;
+
+  const EffectivenessCard({
+    super.key,
+    required this.allFilteredData,
+    required this.availableCoordinators,
+    required this.getEffectivenessStatus,
+  });
+
+  @override
+  State<EffectivenessCard> createState() => _EffectivenessCardState();
+}
+
+class _EffectivenessCardState extends State<EffectivenessCard> {
+  String? _selectedCoordinator;
+  int touchedIndex = -1;
+
+  String _getValue(List<String> row, int index, String defaultValue) {
+    if (row.isEmpty || index >= row.length) return defaultValue;
+    return row[index];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 1. Saring data secara lokal berdasarkan dropdown
+    final localFilteredData = widget.allFilteredData.where((row) {
+      if (_selectedCoordinator == null) return true;
+      // Filter berdasarkan Koordinator dari kolom DJ (indeks 113)
+      return _getValue(row, 113, "").trim().toLowerCase() == _selectedCoordinator;
+    }).toList();
+
+    // 2. Lakukan kalkulasi berdasarkan data yang sudah difilter
+    double efektivitasAreaEfektif = 0.0;
+    double efektivitasAreaTidakEfektif = 0.0;
+
+    for (var row in localFilteredData) {
+      final effectiveAreaStr = _getValue(row, 8, "0").replaceAll(',', '.');
+      final effectiveArea = double.tryParse(effectiveAreaStr) ?? 0.0;
+      final effectivenessStatus = widget.getEffectivenessStatus(row);
+
+      if (effectivenessStatus == 'Efektif') {
+        efektivitasAreaEfektif += effectiveArea;
+      } else if (effectivenessStatus == 'Tidak Efektif') {
+        efektivitasAreaTidakEfektif += effectiveArea;
+      }
+    }
+
+    final totalArea = efektivitasAreaEfektif + efektivitasAreaTidakEfektif;
+    final List<Map<String, dynamic>> chartData = [
+      {'title': 'Efektif', 'value': efektivitasAreaEfektif, 'percentage': _formatPercentageDouble(efektivitasAreaEfektif, totalArea), 'color': AppTheme.success},
+      {'title': 'Tidak Efektif', 'value': efektivitasAreaTidakEfektif, 'percentage': _formatPercentageDouble(efektivitasAreaTidakEfektif, totalArea), 'color': AppTheme.error},
+    ];
+
+    // 3. Bangun UI lengkap dengan Donut Chart dan Legenda
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Kartu dengan Dropdown
+          Row(
+            children: [
+              const Icon(Icons.task_alt, color: AppTheme.primary),
+              const SizedBox(width: 8),
+              const Text('Efektivitas Tenaga Kerja', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              _buildCoordinatorDropdown(),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // LayoutBuilder untuk Tampilan Responsif (Chart & Legenda)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const double breakpoint = 350.0;
+
+              final pieChart = PieChart(
+                PieChartData(
+                  pieTouchData: PieTouchData(
+                    touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                      setState(() {
+                        if (!event.isInterestedForInteractions || pieTouchResponse == null || pieTouchResponse.touchedSection == null) {
+                          touchedIndex = -1;
+                          return;
+                        }
+                        touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                      });
+                    },
+                  ),
+                  borderData: FlBorderData(show: false),
+                  sectionsSpace: 4,
+                  centerSpaceRadius: 40,
+                  sections: List.generate(chartData.length, (i) {
+                    final isTouched = i == touchedIndex;
+                    final radius = isTouched ? 60.0 : 50.0;
+                    final data = chartData[i];
+                    return PieChartSectionData(
+                      color: data['color'],
+                      value: data['value'] as double,
+                      title: '${data['percentage']}%',
+                      radius: radius,
+                      titleStyle: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold, color: Colors.white, shadows: [Shadow(color: Colors.black, blurRadius: 2)]),
+                    );
+                  }),
+                ),
+              );
+
+              final legend = Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: chartData.map((data) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6.0),
+                    child: Row(
+                      children: [
+                        Container(width: 12, height: 12, decoration: BoxDecoration(color: data['color'] as Color, borderRadius: BorderRadius.circular(2))),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text('${data['title']} (${(data['value'] as double).toStringAsFixed(2)} Ha)', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+
+              if (constraints.maxWidth < breakpoint) {
+                return Column(
+                  children: [
+                    SizedBox(height: 180, child: pieChart),
+                    const SizedBox(height: 24),
+                    legend,
+                  ],
+                );
+              } else {
+                return Row(
+                  children: [
+                    Expanded(flex: 2, child: AspectRatio(aspectRatio: 1, child: pieChart)),
+                    const SizedBox(width: 20),
+                    Expanded(flex: 3, child: legend),
+                  ],
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCoordinatorDropdown() {
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedCoordinator,
+          hint: const Text('All Co-Det', style: TextStyle(fontSize: 12)),
+          icon: const Icon(Icons.arrow_drop_down, size: 20),
+          style: const TextStyle(color: AppTheme.textDark, fontSize: 12),
+          onChanged: (String? newValue) {
+            setState(() {
+              _selectedCoordinator = newValue;
+            });
+          },
+          items: [
+            const DropdownMenuItem<String>(
+              value: null,
+              child: Text('All Co-Det'),
+            ),
+            ...widget.availableCoordinators.map((String value) {
+              return DropdownMenuItem<String>(
+                value: value,
+                child: Text(value.toTitleCase(), overflow: TextOverflow.ellipsis),
+              );
+            })
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatPercentageDouble(double part, double total) {
+    if (total == 0) return '0.0';
+    return ((part / total) * 100).toStringAsFixed(1);
   }
 }
 
@@ -1382,4 +1457,21 @@ class AppTheme {
     fontSize: 12,
     color: textMedium,
   );
+
+  static BoxDecoration cardDecoration = BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(12),
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withAlpha(12),
+        blurRadius: 10,
+        offset: const Offset(0, 4),
+      ),
+    ],
+  );
+}
+
+extension StringCasingExtension on String {
+  String toCapitalized() => length > 0 ?'${this[0].toUpperCase()}${substring(1).toLowerCase()}' : '';
+  String toTitleCase() => replaceAll(RegExp(' +'), ' ').split(' ').map((str) => str.toCapitalized()).join(' ');
 }

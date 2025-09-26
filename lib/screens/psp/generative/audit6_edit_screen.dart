@@ -48,7 +48,7 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
   String? selectedRecommendation;
 
   final List<String> lsvItems = ['YES', 'NO'];
-  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['1', '2', '3', '4', '5'];
   final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
   final List<String> isolationAudit6Items = ['A', 'B'];
   final List<String> isolationTypeItems = ['A', 'B'];
@@ -210,7 +210,7 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
                               row[53] = value ?? '';
                             });
                           },
-                          helpText: 'A = GF (Good)\nB = GF (Fair)\nC = YF (Poor)',
+                          helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                           icon: Icons.health_and_safety_rounded,
                           validator: (value) => (value == null || value.isEmpty) ? 'Crop Health wajib dipilih' : null,
                         ),

@@ -51,7 +51,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
   String? selectedFlagging;
 
   final List<String> lsvItems = ['YES', 'NO'];
-  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['1', '2', '3', '4', '5'];
   final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
   final List<String> isolationAudit5Items = ['A', 'B'];
   final List<String> isolationTypeItems = ['A', 'B'];
@@ -60,6 +60,14 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
   final List<String> flaggingItems = ['GF', 'OF', 'RF'];
 
   bool isLoading = false;
+
+  bool get isDiscardMode {
+    // Recommendation dari Audit 6 disimpan di indeks 60
+    if (widget.row.length > 60) {
+      return widget.row[60] == 'Discard';
+    }
+    return false;
+  }
 
   @override
   void initState() {
@@ -250,7 +258,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                             });
                           },
                           helpText:
-                          'A = GF (Good)\nB = GF (Fair)\nC = YF (Poor)',
+                          '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best))',
                           icon: Icons.health_and_safety_rounded,
                           validator: (value) =>
                           (value == null || value.isEmpty)
@@ -447,8 +455,11 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
           });
         },
         validator: (value) {
+          if (isDiscardMode) {
+            return null; // Tidak wajib jika mode discard aktif
+          }
           if (value == null || value.isEmpty) {
-            return '$label wajib diisi';
+            return '$label wajib dipilih';
           }
           return null;
         },
@@ -581,6 +592,9 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
         icon: Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
         isExpanded: true,
         validator: (value) {
+          if (isDiscardMode) {
+            return null; // Tidak wajib jika mode discard aktif
+          }
           if (value == null || value.isEmpty) {
             return '$label wajib dipilih';
           }
@@ -629,6 +643,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
           filled: true,
           fillColor: Colors.white,
         ),
+        // Di dalam widget _buildDatePickerField
         onTap: () async {
           DateTime? pickedDate = await showDatePicker(
             context: context,
@@ -648,11 +663,22 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
               );
             },
           );
+
           if (pickedDate != null) {
             String formattedDate = DateFormat('dd/MM/yyyy').format(pickedDate);
             setState(() {
               controller.text = formattedDate;
-              row[index] = formattedDate;
+              row[index] = formattedDate; // index = 30 untuk Date of Audit 5
+
+              // --- LOGIKA OTOMATISASI BARU ---
+              if (isDiscardMode) {
+                // Otomatis isi tanggal untuk Audit 6 (indeks 46)
+                if (row.length > 46) {
+                  row[46] = formattedDate;
+                }
+                debugPrint('Mode Discard Aktif: Tanggal Audit 6 diatur otomatis.');
+              }
+              // --- AKHIR LOGIKA OTOMATISASI ---
             });
           }
         },

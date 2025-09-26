@@ -42,7 +42,7 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
   String? selectedCropHealth;
 
   final List<String> earConditionObservationItems = ['2', '3', '4'];
-  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['1', '2', '3', '4', '5'];
 
   bool isLoading = false;
 
@@ -174,7 +174,7 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
                               row[68] = value ?? '';
                             });
                           },
-                          helpText: '2 = 2\n3 = 3\n4 = 4',
+                          helpText: 'Stage 2 : 2\nStage 3 : 3\nStage 4 : 4',
                           icon: Icons.manage_search_rounded,
                         ),
                         const SizedBox(height: 10),
@@ -189,7 +189,7 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
                             });
                           },
                           helpText:
-                              'A = GF (Good)\nB = GF (Fair)\nC = YF (Poor)',
+                            '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                           icon: Icons.health_and_safety_rounded,
                         ),
                         const SizedBox(height: 10),

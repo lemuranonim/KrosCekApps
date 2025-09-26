@@ -10,7 +10,7 @@ import '../../services/config_manager.dart';
 import '../../services/google_sheets_api.dart';
 import 'vegetative_detail_screen.dart';
 import 'vegetative_filter_options.dart';
-import 'vegetative_listview_builder.dart';
+import 'vegetative_sliver_list_builder.dart';
 import 'vegetative_map_view.dart';
 import 'vegetative_activity_analysis_screen.dart';
 
@@ -328,6 +328,25 @@ class VegetativeScreenState extends State<VegetativeScreen> {
         final fi = getValue(row, 31, '').toLowerCase();
         final statusAudit = getValue(row, 55, "NOT Audited").toLowerCase() == "audited";
         bool matchesAuditFilter = true;
+
+        // 1. Pecah query pencarian menjadi beberapa kata kunci (keywords)
+        final searchKeywords = _searchQuery.toLowerCase().split(' ').where((s) => s.isNotEmpty).toList();
+
+        // 2. Logika pencocokan baru: setiap keyword HARUS ada di dalam baris data
+        final bool matchesSearchQuery = searchKeywords.isEmpty || searchKeywords.every((keyword) {
+          // Sebuah keyword dianggap cocok jika ada di SALAH SATU kolom berikut
+          return fieldNumber.contains(keyword) ||
+              farmerName.contains(keyword) ||
+              grower.contains(keyword) ||
+              hybrid.contains(keyword) ||
+              desa.contains(keyword) ||
+              kecamatan.contains(keyword) ||
+              district.contains(keyword) ||
+              fa.contains(keyword) ||
+              fi.contains(keyword) ||
+              fieldSpv.contains(keyword);
+        });
+
         bool matchesSeasonFilter = (_selectedSeason == null || season == _selectedSeason);
         bool matchesQAFilter = (_selectedQA == null || qaSpv == _selectedQA);
         bool matchesDistrictFilter =
@@ -351,16 +370,6 @@ class VegetativeScreenState extends State<VegetativeScreen> {
         bool matchesFIFilter =
             _selectedFIs.isEmpty ||
                 _selectedFIs.contains(toTitleCase(fi));
-        bool matchesSearchQuery = fieldNumber.contains(_searchQuery) ||
-            farmerName.contains(_searchQuery) ||
-            grower.contains(_searchQuery) ||
-            hybrid.contains(_searchQuery) ||
-            desa.contains(_searchQuery) ||
-            kecamatan.contains(_searchQuery) ||
-            district.contains(_searchQuery) ||
-            fa.contains(_searchQuery) ||
-            fi.contains(_searchQuery) ||
-            fieldSpv.contains(_searchQuery);
 
         return matchesQAFilter &&
             matchesDistrictFilter &&
@@ -469,18 +478,20 @@ class VegetativeScreenState extends State<VegetativeScreen> {
 
               initialShowDiscardedFase: _showDiscardedFaseItems,
               onShowDiscardedFaseChanged: (newValue) {
+                _showDiscardedFaseItems = newValue;
               },
 
               onResetAll: () {
                 setState(() {
-                _selectedSeason = null;
-                _selectedWeeks.clear();
-                _selectedFA.clear();
-                _selectedFIs.clear();
-                _showDiscardedFaseItems = false; // Reset ke default
+                  _selectedSeason = null;
+                  _selectedWeeks.clear();
+                  _selectedFA.clear();
+                  _selectedFIs.clear();
+                  // BARU: Pastikan filter FASE juga di-reset
+                  _showDiscardedFaseItems = false;
                 });
-                _filterData(); // Panggil filter data setelah reset
                 Navigator.pop(context); // Tutup modal setelah reset
+                _filterData(); // Panggil filter data setelah reset
               },
 
               onApplyFilters: () {
@@ -534,631 +545,490 @@ class VegetativeScreenState extends State<VegetativeScreen> {
     });
   }
 
+  // Widget Helper untuk filter audit status
+  Widget _buildFilterChipsContainer() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.green.shade800, Colors.green.shade600.withAlpha(204)],
+        ),
+      ),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [Colors.green.shade700, Colors.green.shade500],
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  _showFilterChipsContainer = !_showFilterChipsContainer;
+                });
+              },
+              icon: Icon(
+                _showFilterChipsContainer
+                    ? Icons.keyboard_arrow_up
+                    : Icons.keyboard_arrow_down,
+                color: Colors.white,
+              ),
+              label: Text(
+                _showFilterChipsContainer
+                    ? 'Hide Filter Audit Status'
+                    : 'Show Filter Audit Status',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                backgroundColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+          if (_showFilterChipsContainer) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(child: _buildFilterChip(isAudited: true)),
+                const SizedBox(width: 12),
+                Expanded(child: _buildFilterChip(isAudited: false)),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Widget Helper untuk chip filter individual
+  Widget _buildFilterChip({required bool isAudited}) {
+    final bool isActive = isAudited ? _showAuditedOnly : _showNotAuditedOnly;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: isActive
+            ? [
+          BoxShadow(
+            color: Colors.black.withAlpha(38),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          )
+        ]
+            : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            setState(() {
+              if (isAudited) {
+                _showAuditedOnly = !_showAuditedOnly;
+                if (_showAuditedOnly) _showNotAuditedOnly = false;
+              } else {
+                _showNotAuditedOnly = !_showNotAuditedOnly;
+                if (_showNotAuditedOnly) _showAuditedOnly = false;
+              }
+              _filterData();
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              gradient: isActive
+                  ? LinearGradient(
+                colors: isAudited
+                    ? [Colors.green.shade400, Colors.green.shade500]
+                    : [Colors.red.shade400, Colors.red.shade600],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+                  : null,
+              color: isActive ? null : Colors.white,
+              border: Border.all(
+                color: isActive
+                    ? Colors.transparent
+                    : (isAudited ? Colors.green.shade200 : Colors.red.shade200),
+                width: 1.5,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  isAudited
+                      ? Icons.check_circle_outline
+                      : Icons.pending_outlined,
+                  color: isActive
+                      ? Colors.white
+                      : (isAudited ? Colors.green.shade700 : Colors.red.shade600),
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isAudited ? 'Sampun' : 'Dereng',
+                  style: TextStyle(
+                    color: isActive
+                        ? Colors.white
+                        : (isAudited ? Colors.green.shade700 : Colors.red.shade600),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Konstanta untuk mengelola tinggi AppBar
+    const double baseAppBarHeight = 100.0;
+    // PERUBAIKAN 1: Menambah tinggi area ringkasan untuk memberi ruang vertikal ekstra.
+    const double summaryInfoHeight = 60.0; // Dinaikkan dari 60.0
+    const double filterSectionHeight = 90.0;
+
+    // Hitung tinggi AppBar yang diperluas secara dinamis dengan nilai baru
+    final double expandedAppBarHeight = baseAppBarHeight +
+        summaryInfoHeight +
+        (_showFilterChipsContainer ? filterSectionHeight : 10.0);
+
     // ignore: deprecated_member_use
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        appBar: AppBar(
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: _navigateBackToHome,
-          ),
-          flexibleSpace: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Colors.green.shade800, Colors.green.shade600],
-              ),
-            ),
-          ),
-          title: !_isSearching
-              ? Row(
-            children: [
-              const Icon(Icons.eco_rounded, size: 22, color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Vegetative',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
-                    Text(
-                      selectedRegion ?? 'Unknown Region',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+        body: LiquidPullToRefresh(
+          onRefresh: () async {
+            setState(() {
+              _selectedSeason = null;
+              _selectedWeeks = [];
+              _selectedFA.clear();
+              _selectedFIs.clear();
+              _searchQuery = '';
+              _showAuditedOnly = false;
+              _showNotAuditedOnly = false;
+              _filterData();
+            });
+            await _loadSheetData(refresh: true);
+          },
+          color: Colors.green.shade700,
+          backgroundColor: Colors.white,
+          height: 150,
+          showChildOpacityTransition: false,
+          child: CustomScrollView(
+            slivers: [
+              SliverAppBar(
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: _navigateBackToHome,
                 ),
-              ),
-            ],
-          )
-              : TextField(
-            onChanged: _onSearchChanged,
-            autofocus: true,
-            style: const TextStyle(color: Colors.white),
-            cursorColor: Colors.white,
-            decoration: const InputDecoration(
-              hintText: 'Search field, farmer, grower...',
-              hintStyle: TextStyle(color: Colors.white70),
-              border: InputBorder.none,
-              prefixIcon: Icon(Icons.search, color: Colors.white),
-              contentPadding: EdgeInsets.symmetric(vertical: 15),
-            ),
-          ),
-          actions: [
-            // Search button
-            !_isSearching
-                ? IconButton(
-              icon: const Icon(Icons.search, color: Colors.white),
-              tooltip: 'Search',
-              onPressed: () {
-                setState(() {
-                  _isSearching = true;
-                });
-              },
-            )
-                : IconButton(
-              icon: const Icon(Icons.clear, color: Colors.white),
-              tooltip: 'Cancel Search',
-              onPressed: () {
-                setState(() {
-                  _isSearching = false;
-                  _searchQuery = '';
-                  _filterData();
-                });
-              },
-            ),
-
-            // Filter button with indicator
-            IconButton(
-              icon: Stack(
-                children: [
-                  const Icon(Icons.filter_list_rounded, color: Colors.white),
-                  if (_selectedSeason != null ||
-                      _selectedWeeks.isNotEmpty ||
-                      _selectedFA.isNotEmpty ||
-                      _selectedFIs.isNotEmpty)
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 12,
-                          minHeight: 12,
-                        ),
-                        child: Text(
-                          '!',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              tooltip: 'Filter Options',
-              onPressed: _showFilterOptions,
-            ),
-
-            // View toggle button
-            IconButton(
-              icon: Icon(
-                _showMapView ? Icons.view_list : Icons.map,
-                color: Colors.white,
-              ),
-              tooltip: _showMapView ? 'Show List View' : 'Show Map View',
-              onPressed: _toggleViewMode,
-            ),
-
-            // In VegetativeScreen class, add to the PopupMenuButton options:
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, color: Colors.white),
-              tooltip: 'More options',
-              onSelected: (value) {
-                if (value == 'refresh') {
-                  _loadSheetData(refresh: true);
-                } else if (value == 'help') {
-                  // Show help dialog
-                } else if (value == 'analysis') {
-                  // Navigate to analysis screen
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => VegetativeActivityAnalysisScreen(
-                        activityCounts: _activityCounts,
-                        activityTimestamps: _activityTimestamps,
-                        vegetativeData: _filteredData,
-                        selectedRegion: selectedRegion,
-                      ),
-                    ),
-                  );
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'refresh',
-                  child: Row(
-                    children: [
-                      Icon(Icons.refresh, color: Colors.green),
-                      SizedBox(width: 8),
-                      Text('Refresh Data'),
-                    ],
+                pinned: true,
+                floating: true,
+                elevation: 0,
+                title: _isSearching
+                    ? TextField(
+                  onChanged: _onSearchChanged,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.white),
+                  cursorColor: Colors.white,
+                  decoration: const InputDecoration(
+                    hintText: 'Cari lahan, petani...',
+                    hintStyle: TextStyle(color: Colors.white70),
+                    border: InputBorder.none,
                   ),
+                )
+                    : const Text('Vegetative Inspection',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 ),
-                const PopupMenuItem(
-                  value: 'analysis',
-                  child: Row(
-                    children: [
-                      Icon(Icons.analytics, color: Colors.green),
-                      SizedBox(width: 8),
-                      Text('Analysis Aktivitas'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'help',
-                  child: Row(
-                    children: [
-                      Icon(Icons.help_outline, color: Colors.green),
-                      SizedBox(width: 8),
-                      Text('Bantuan'),
-                    ],
-                  ),
-                ),
-              ],
-            )
-          ],
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(80.0),
-            child: Container(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Colors.green.shade800, Colors.green.shade600],
-                ),
-              ),
-              child: Column(
-                children: [
-                  // Progress indicator
-                  _isLoading
+                centerTitle: true,
+
+                bottom: PreferredSize(
+                  preferredSize: const Size.fromHeight(4.0),
+                  child: _isLoading
                       ? LinearProgressIndicator(
-                    value: _progress,
+                    value: _progress > 0 ? _progress : null,
                     backgroundColor: Colors.green.shade300.withAlpha(76),
                     valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
                   )
-                      : const SizedBox(height: 4),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      : const SizedBox.shrink(),
+                ),
+                expandedHeight: expandedAppBarHeight,
+                backgroundColor: Colors.green.shade800,
+
+                flexibleSpace: FlexibleSpaceBar(
+                  background: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Colors.green.shade800, Colors.green.shade600],
+                      ),
+                    ),
+
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        // Data count
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withAlpha(51),
-                            borderRadius: BorderRadius.circular(20),
+                        Opacity(
+                          opacity: (1 - (_progress.clamp(0.0, 1.0) * 2)).clamp(0.0, 1.0),
+                          child: Text(
+                            selectedRegion ?? 'Unknown Region',
+                            style: const TextStyle(color: Colors.white70, fontSize: 14),
                           ),
+                        ),
+
+                        // PERUBAIKAN 2: Menambah jarak vertikal untuk mendorong ringkasan info ke bawah.
+                        const SizedBox(height: 20),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
                           child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              const Icon(Icons.format_list_numbered, color: Colors.white, size: 16),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${_filteredData.length} Lahan',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 13,
-                                ),
-                              ),
+                              _buildSummaryInfo(Icons.format_list_numbered, '${_filteredData.length} Lahan'),
+                              _buildSummaryInfo(Icons.crop, 'Σ Area: ${_totalEffectiveArea.toStringAsFixed(1)} Ha'),
                             ],
                           ),
                         ),
 
-                        // Effective area
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withAlpha(51),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
+                        const SizedBox(height: 15),
+
+                        _buildFilterChipsContainer(),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  IconButton(
+                    icon: Icon(_isSearching ? Icons.close : Icons.search, color: Colors.white),
+                    onPressed: () => setState(() {
+                      if (_isSearching) _searchQuery = '';
+                      _isSearching = !_isSearching;
+                      _filterData();
+                    }),
+                  ),
+                  if (!_isSearching)
+                    IconButton(
+                      icon: Badge(
+                        isLabelVisible: _selectedSeason != null ||
+                            _selectedWeeks.isNotEmpty ||
+                            _selectedFA.isNotEmpty ||
+                            _showDiscardedFaseItems ||
+                            _selectedFIs.isNotEmpty,
+                        backgroundColor: Colors.red,
+                        child: const Icon(Icons.filter_list_rounded, color: Colors.white),
+                      ),
+                      tooltip: 'Filter Options',
+                      onPressed: _showFilterOptions,
+                    ),
+                    // IconButton(
+                    //   icon: const Icon(Icons.filter_list_rounded, color: Colors.white),
+                    //   onPressed: _showFilterOptions,
+                    // ),
+                  if (!_isSearching)
+                    IconButton(
+                      icon: Icon(_showMapView ? Icons.view_list : Icons.map_outlined, color: Colors.white),
+                      onPressed: _toggleViewMode,
+                    ),
+                  if (!_isSearching)
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, color: Colors.white),
+                      tooltip: 'More options',
+                      onSelected: (value) {
+                        if (value == 'refresh') {
+                          _loadSheetData(refresh: true);
+                        } else if (value == 'analysis') {
+                          // Navigate to analysis screen
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => VegetativeActivityAnalysisScreen(
+                                activityCounts: _activityCounts,
+                                activityTimestamps: _activityTimestamps,
+                                vegetativeData: _filteredData,
+                                selectedRegion: selectedRegion,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'refresh',
                           child: Row(
                             children: [
-                              const Icon(Icons.crop, color: Colors.white, size: 16),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Σ Area: ${_totalEffectiveArea.toStringAsFixed(1)} Ha',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 13,
-                                ),
-                              ),
+                              Icon(Icons.refresh, color: Colors.green),
+                              SizedBox(width: 8),
+                              Text('Refresh Data'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'analysis',
+                          child: Row(
+                            children: [
+                              Icon(Icons.analytics, color: Colors.green),
+                              SizedBox(width: 8),
+                              Text('Analysis Aktivitas'),
                             ],
                           ),
                         ),
                       ],
-                    ),
-                  ),
+                    )
                 ],
               ),
-            ),
-          ),
-        ),
-        body: Column(
-          children: [
-            // Filter Chips Container
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Colors.green.shade800, Colors.green.shade600],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(25),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    width: double.infinity, // Make button take full width
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [Colors.green.shade700, Colors.green.shade500],
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: TextButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _showFilterChipsContainer = !_showFilterChipsContainer;
-                        });
-                      },
-                      icon: Icon(
-                        _showFilterChipsContainer
-                            ? Icons.keyboard_arrow_up
-                            : Icons.keyboard_arrow_down,
-                        color: Colors.white,
-                      ),
-                      label: Text(
-                        _showFilterChipsContainer
-                            ? 'Hide Filter Audit Status'
-                            : 'Show Filter Audit Status',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        softWrap: false,
-                      ),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        backgroundColor: Colors.transparent,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (_showFilterChipsContainer) ...[
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: _showAuditedOnly
-                                  ? [
-                                BoxShadow(
-                                  color: Colors.black.withAlpha(38),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                )
-                              ]
-                                  : null,
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () {
-                                  setState(() {
-                                    _showAuditedOnly = !_showAuditedOnly;
-                                    if (_showAuditedOnly) _showNotAuditedOnly = false;
-                                    _filterData();
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(12),
-                                    gradient: _showAuditedOnly
-                                        ? LinearGradient(
-                                      colors: [Colors.green.shade400, Colors.green.shade500],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    )
-                                        : null,
-                                    color: _showAuditedOnly ? null : Colors.white,
-                                    border: Border.all(
-                                      color: _showAuditedOnly ? Colors.transparent : Colors.green.shade200,
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.check_circle_outline,
-                                        color: _showAuditedOnly ? Colors.white : Colors.green.shade700,
-                                        size: 18,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Sampun',
-                                        style: TextStyle(
-                                          color: _showAuditedOnly ? Colors.white : Colors.green.shade700,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: _showNotAuditedOnly
-                                  ? [
-                                BoxShadow(
-                                  color: Colors.black.withAlpha(38),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                )
-                              ]
-                                  : null,
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () {
-                                  setState(() {
-                                    _showNotAuditedOnly = !_showNotAuditedOnly;
-                                    if (_showNotAuditedOnly) _showAuditedOnly = false;
-                                    _filterData();
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(12),
-                                    gradient: _showNotAuditedOnly
-                                        ? LinearGradient(
-                                      colors: [Colors.red.shade400, Colors.red.shade600],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    )
-                                        : null,
-                                    color: _showNotAuditedOnly ? null : Colors.white,
-                                    border: Border.all(
-                                      color: _showNotAuditedOnly ? Colors.transparent : Colors.red.shade200,
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.pending_outlined,
-                                        color: _showNotAuditedOnly ? Colors.white : Colors.red.shade600,
-                                        size: 18,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Dereng',
-                                        style: TextStyle(
-                                          color: _showNotAuditedOnly ? Colors.white : Colors.red.shade600,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            // Main Content
-            Expanded(
-              child: _showMapView
-                  ? VegetativeMapView(
-                filteredData: _filteredData,
-                selectedRegion: selectedRegion,
-                activityCounts: _activityCounts,
-              )
-                  : LiquidPullToRefresh(
-                  onRefresh: () async {
-                    // Reset filters and load data
-                    setState(() {
-                      _selectedSeason = null;
-                      _selectedWeeks = [];
-                      _selectedFA.clear();
-                      _selectedFIs.clear();
-                      _searchQuery = '';
-                      _showAuditedOnly = false;
-                      _showNotAuditedOnly = false;
-                      _filterData();
-                    });
-                    await _loadSheetData(refresh: true);
-                  },
-                  color: Colors.green,
-                  backgroundColor: Colors.white,
-                  height: 150,
-                  showChildOpacityTransition: false,
-                  child: _isLoading
-                      ? Center(child: Lottie.asset('assets/loading.json'))
-                      : _errorMessage != null
-                      ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.error_outline, size: 60, color: Colors.red.shade300),
-                        const SizedBox(height: 16),
-                        Text(
-                          _errorMessage!,
-                          style: TextStyle(color: Colors.red.shade700),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _selectedSeason = null;
-                              _selectedWeeks = [];
-                              _selectedFA.clear();
-                              _selectedFIs.clear();
-                              _searchQuery = '';
-                              _showAuditedOnly = false;
-                              _showNotAuditedOnly = false;
-                              _filterData();
-                              _loadSheetData(refresh: true);
-                            });
-                          },
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Try Again'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                      : _filteredData.isEmpty
-                      ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Lottie.asset('assets/empty.json', height: 180),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Ora ono data sing kasedhiya',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Cobo ganti saringan utowo kritéria telusuran',
-                          style: TextStyle(color: Colors.grey),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _selectedSeason = null;
-                              _selectedWeeks = [];
-                              _selectedFA.clear();
-                              _selectedFIs.clear();
-                              _searchQuery = '';
-                              _showAuditedOnly = false;
-                              _showNotAuditedOnly = false;
-                              _filterData();
-                            });
-                          },
-                          icon: const Icon(Icons.refresh, color: Colors.white),
-                          label: const Text('Reset Filters'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                      : VegetativeListViewBuilder(
+
+              // Konten lainnya tidak berubah
+              if (_showMapView)
+                SliverFillRemaining(
+                  child: VegetativeMapView(
                     filteredData: _filteredData,
                     selectedRegion: selectedRegion,
                     activityCounts: _activityCounts,
-                    onItemTap: (fieldNumber) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => VegetativeDetailScreen(
-                            fieldNumber: fieldNumber,
-                            region: selectedRegion ?? 'Unknown Region',
+                  ),
+                )
+              else if (_isLoading)
+                _buildSliverCenteredContent(child: Lottie.asset('assets/loading.json'))
+              else if (_errorMessage != null)
+                  _buildSliverCenteredContent(child: _buildErrorState())
+                else if (_filteredData.isEmpty)
+                    _buildSliverCenteredContent(child: _buildEmpty())
+                  else
+                    VegetativeSliverListBuilder(
+                      filteredData: _filteredData,
+                      selectedRegion: selectedRegion,
+                      activityCounts: _activityCounts,
+                      onItemTap: (fieldNumber) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => VegetativeDetailScreen(
+                              fieldNumber: fieldNumber,
+                              region: selectedRegion ?? 'Unknown Region',
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  )
-              ),
-            ),
-          ],
+                        );
+                      },
+                    ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+// Helper untuk tampilan data kosong
+  Widget _buildEmpty() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Lottie.asset('assets/empty.json', height: 180),
+        const SizedBox(height: 16),
+        const Text('Data tidak ditemukan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey)),
+        const SizedBox(height: 8),
+        const Text('Coba ubah filter atau kata kunci pencarian.', style: TextStyle(color: Colors.grey)),
+        const SizedBox(height: 24),
+        ElevatedButton.icon(
+          onPressed: () {
+            setState(() {
+              _selectedSeason = null;
+              _selectedWeeks = [];
+              _selectedFA.clear();
+              _selectedFIs.clear();
+              _searchQuery = '';
+              _showAuditedOnly = false;
+              _showNotAuditedOnly = false;
+              _filterData();
+            });
+          },
+          icon: const Icon(Icons.refresh, color: Colors.white),
+          label: const Text('Reset Filters'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Helper widget untuk ringkasan data
+  Widget _buildSummaryInfo(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withAlpha(51),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper untuk menampilkan widget di tengah sebagai sliver
+  Widget _buildSliverCenteredContent({required Widget child}) {
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: Center(
+        child: child,
+      ),
+    );
+  }
+
+  // Helper untuk tampilan error
+  Widget _buildErrorState() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.error_outline, size: 60, color: Colors.red.shade300),
+        const SizedBox(height: 16),
+        Text(
+          _errorMessage!,
+          style: TextStyle(color: Colors.red.shade700),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 24),
+        ElevatedButton.icon(
+          onPressed: () => _loadSheetData(refresh: true),
+          icon: const Icon(Icons.refresh),
+          label: const Text('Try Again'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ],
     );
   }
 }

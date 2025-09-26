@@ -117,14 +117,14 @@ class _WeatherWidgetState extends State<WeatherWidget> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Colors.green.shade50,
-              Colors.green.shade100,
+              Colors.amber.shade50,
+              Colors.amber.shade100,
             ],
           ),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.green.withAlpha(25),
+              color: Colors.amber.withAlpha(25),
               blurRadius: 10,
               spreadRadius: 1,
               offset: const Offset(0, 4),
@@ -138,7 +138,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
             height: 24,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade700),
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.amber.shade700),
             ),
           ),
         )
@@ -163,7 +163,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                   borderRadius: BorderRadius.circular(30),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.green.withAlpha(15),
+                      color: Colors.amber.withAlpha(15),
                       blurRadius: 4,
                       spreadRadius: 1,
                       offset: const Offset(0, 2),
@@ -176,7 +176,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                     Icon(
                       Icons.location_on,
                       size: 14,
-                      color: Colors.green.shade700,
+                      color: Colors.amber.shade700,
                     ),
                     const SizedBox(width: 4),
                     Flexible(
@@ -184,7 +184,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                         _weatherData.locationName,
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.green.shade700,
+                          color: Colors.amber.shade700,
                           fontWeight: FontWeight.w500,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -206,7 +206,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
-                          color: Colors.green.shade700,
+                          color: Colors.amber.shade700,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -215,7 +215,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
-                          color: Colors.green.shade900,
+                          color: Colors.amber.shade900,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -223,7 +223,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                         _weatherData.weatherCondition,
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.green.shade800,
+                          color: Colors.amber.shade800,
                         ),
                       ),
                     ],
@@ -236,7 +236,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.green.withAlpha(25),
+                        color: Colors.amber.withAlpha(25),
                         blurRadius: 8,
                         spreadRadius: 1,
                         offset: const Offset(0, 2),
@@ -264,7 +264,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.green.withAlpha(15),
+                          color: Colors.amber.withAlpha(15),
                           blurRadius: 4,
                           spreadRadius: 1,
                           offset: const Offset(0, 2),
@@ -277,14 +277,14 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                         BoxedIcon(
                           WeatherIcons.strong_wind,
                           size: 16,
-                          color: Colors.green.shade700,
+                          color: Colors.amber.shade700,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           _weatherData.windSpeed,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.green.shade700,
+                            color: Colors.amber.shade700,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -299,7 +299,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.green.withAlpha(15),
+                          color: Colors.amber.withAlpha(15),
                           blurRadius: 4,
                           spreadRadius: 1,
                           offset: const Offset(0, 2),
@@ -312,14 +312,14 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                         BoxedIcon(
                           WeatherIcons.wind_direction,
                           size: 16,
-                          color: Colors.green.shade700,
+                          color: Colors.amber.shade700,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           _weatherData.windDirection,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.green.shade700,
+                            color: Colors.amber.shade700,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -330,11 +330,11 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.green.shade700,
+                      color: Colors.amber.shade700,
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.green.withAlpha(15),
+                          color: Colors.amber.withAlpha(15),
                           blurRadius: 4,
                           spreadRadius: 1,
                           offset: const Offset(0, 2),
@@ -367,7 +367,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                 style: TextStyle(
                   fontSize: 10,
                   fontStyle: FontStyle.italic,
-                  color: Colors.green.shade700.withAlpha(178),
+                  color: Colors.amber.shade700.withAlpha(178),
                 ),
               ),
             ),
@@ -381,14 +381,14 @@ class _WeatherWidgetState extends State<WeatherWidget> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Colors.green.shade50,
-              Colors.green.shade100,
+              Colors.amber.shade50,
+              Colors.amber.shade100,
             ],
           ),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.green.withAlpha(25),
+              color: Colors.amber.withAlpha(25),
               blurRadius: 10,
               spreadRadius: 1,
               offset: const Offset(0, 4),
@@ -402,7 +402,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
             height: 24,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade700),
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.amber.shade700),
             ),
           ),
         )
@@ -423,7 +423,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: Colors.green.shade900,
+                color: Colors.amber.shade900,
               ),
             ),
             const SizedBox(height: 12),
@@ -432,7 +432,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
               decoration: BoxDecoration(
-                color: Colors.green.shade200.withAlpha(76),
+                color: Colors.amber.shade200.withAlpha(76),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -444,7 +444,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
-                        color: Colors.green.shade800,
+                        color: Colors.amber.shade800,
                       ),
                     ),
                   ),
@@ -455,7 +455,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
-                        color: Colors.green.shade800,
+                        color: Colors.amber.shade800,
                       ),
                     ),
                   ),
@@ -466,7 +466,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
-                        color: Colors.green.shade800,
+                        color: Colors.amber.shade800,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -478,7 +478,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
-                        color: Colors.green.shade800,
+                        color: Colors.amber.shade800,
                       ),
                       textAlign: TextAlign.end,
                     ),
@@ -495,7 +495,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                   decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(
-                        color: Colors.green.shade100,
+                        color: Colors.amber.shade100,
                         width: 1,
                       ),
                     ),
@@ -512,7 +512,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.green.shade800,
+                                color: Colors.amber.shade800,
                               ),
                             ),
                             if (_forecastData.dailyForecasts[entry.key]?.date.isNotEmpty ?? false)
@@ -520,7 +520,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                                 _forecastData.dailyForecasts[entry.key]!.date.split(',')[0],
                                 style: TextStyle(
                                   fontSize: 10,
-                                  color: Colors.green.shade600,
+                                  color: Colors.amber.shade600,
                                 ),
                               ),
                           ],
@@ -541,7 +541,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                                 _forecastData.dailyForecasts[entry.key]?.condition ?? '--',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.green.shade800,
+                                  color: Colors.amber.shade800,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -555,7 +555,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                           _forecastData.dailyForecasts[entry.key]?.tempRange ?? '-- → --',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.green.shade800,
+                            color: Colors.amber.shade800,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -567,8 +567,8 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                           style: TextStyle(
                             fontSize: 12,
                             color: (_forecastData.dailyForecasts[entry.key]?.rainAmount ?? 0) > 0
-                                ? Colors.green.shade700
-                                : Colors.green.shade800,
+                                ? Colors.amber.shade700
+                                : Colors.amber.shade800,
                             fontWeight: (_forecastData.dailyForecasts[entry.key]?.rainAmount ?? 0) > 0
                                 ? FontWeight.bold
                                 : FontWeight.normal,

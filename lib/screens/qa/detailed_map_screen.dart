@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_map/flutter_map.dart';
@@ -24,8 +25,6 @@ class DetailedMapScreen extends StatefulWidget {
   final String? initialDistrict;
   final String? initialSeason;
   final String? initialQASpv;
-  // Parameter initialQASpv dan allSeasonsList tidak lagi diperlukan di sini
-  // karena layar ini akan mengelola filternya sendiri dari data yang di-fetch.
 
   const DetailedMapScreen({
     super.key,
@@ -52,6 +51,10 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
   String? _selectedDistrictState;
   String? _selectedGrowingSeasonState;
   String? _selectedWeekState;
+
+  // UBAH: Menambahkan konstanta untuk "Semua Region" dan "Semua Minggu"
+  // Ini membuat kode lebih mudah dibaca dan di-maintain daripada menggunakan string langsung.
+  static const String _allRegionsSentinel = "Semua Region";
   static const String _allWeeksSentinel = "Semua Minggu";
 
   List<String> _availableRegions = [];
@@ -70,6 +73,7 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
   bool _isDetailPanelVisible = false;
   bool _isStreetView = true;
 
+  // Definisi kolom
   final int colGrowingSeason = 1; // B
   final int colFieldNo = 2; // C
   final int colEffectiveArea = 8; // I
@@ -81,16 +85,11 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
 
   int get colWeek {
     switch (_selectedWorksheetTitle) {
-      case 'Vegetative':
-        return 29;
-      case 'Generative':
-        return 29;
-      case 'Pre Harvest':
-        return 27;
-      case 'Harvest':
-        return 27;
-      default:
-        return 29;
+      case 'Vegetative': return 29;
+      case 'Generative': return 29;
+      case 'Pre Harvest': return 27;
+      case 'Harvest': return 27;
+      default: return 29;
     }
   }
 
@@ -107,13 +106,47 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     super.initState();
     _googleSheetsApi = GoogleSheetsApi(widget.spreadsheetId);
     _selectedWorksheetTitle = widget.initialWorksheetTitle;
-    _selectedRegionState = widget.initialRegion;
+
+    _selectedRegionState = widget.initialRegion ?? _allRegionsSentinel;
     _selectedDistrictState = widget.initialDistrict;
     _selectedGrowingSeasonState = widget.initialSeason;
     _selectedWeekState = _allWeeksSentinel;
 
+    // UBAH: Panggil fungsi untuk memuat konfigurasi dan data secara berurutan
+    _initializeScreen();
+  }
+
+  // UBAH: Buat fungsi inisialisasi baru untuk mengatur urutan loading
+  Future<void> _initializeScreen() async {
+    await _loadRegionConfig(); // Muat konfigurasi region terlebih dahulu
     _initializeGeoJson();
     _fetchDataForWorksheet(_selectedWorksheetTitle);
+  }
+
+  Future<void> _loadRegionConfig() async {
+    try {
+      final configSnapshot = await FirebaseFirestore.instance
+          .collection('config')
+          .doc('filter')
+          .get();
+
+      if (configSnapshot.exists) {
+        final data = configSnapshot.data();
+        if (data != null && data.containsKey('qa') && data['qa'] is List) {
+          final regionsFromConfig = List<String>.from(data['qa']);
+          if (mounted) {
+            setState(() {
+              _availableRegions = [_allRegionsSentinel, ...regionsFromConfig];
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Error loading region config: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal memuat konfigurasi region: $e')));
+      }
+    }
   }
 
   Future<void> _initializeGeoJson() async {
@@ -139,13 +172,14 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     setState(() {
       _isLoadingData = true;
       _currentSheetData = [];
-      _availableRegions = [];
+
+      // Tidak perlu lagi mereset _availableRegions karena sudah fix dari config
       if (worksheetName != _selectedWorksheetTitle) {
-        _selectedRegionState = null;
+        _selectedRegionState = _allRegionsSentinel;
       }
       _availableDistricts = []; _selectedDistrictState = null;
       _availableGrowingSeasons = []; _selectedGrowingSeasonState = null;
-      _availableWeeks = [_allWeeksSentinel]; _selectedWeekState = _allWeeksSentinel; // Reset ke "Semua Minggu"
+      _availableWeeks = [_allWeeksSentinel]; _selectedWeekState = _allWeeksSentinel;
       _kecamatanDataPoints.clear(); _selectedKecamatanKey = null; _isDetailPanelVisible = false;
       _initialZoomDone = false;
     });
@@ -160,7 +194,8 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
           _selectedWorksheetTitle = worksheetName;
           _isLoadingData = false;
         });
-        _extractFiltersFromCurrentSheetData();
+        // UBAH: Nama fungsi diubah agar lebih sesuai
+        _extractFiltersFromSheetData();
       }
     } catch (e) {
       debugPrint("Error loading sheet data for $worksheetName: $e");
@@ -171,16 +206,17 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     }
   }
 
-  void _extractFiltersFromCurrentSheetData() {
+  void _extractFiltersFromSheetData() {
     if (!mounted || _currentSheetData.isEmpty || _currentSheetData.length <= 1) {
       if (mounted) {
         setState(() {
-          _availableRegions = []; _availableDistricts = [];
-          _availableGrowingSeasons = []; _availableWeeks = [_allWeeksSentinel]; // Selalu ada opsi Semua Minggu
+          _availableRegions = [_allRegionsSentinel]; // UBAH: Pastikan sentinel ada
+          _availableDistricts = [];
+          _availableGrowingSeasons = []; _availableWeeks = [_allWeeksSentinel];
           if (_availableRegions.isEmpty) _selectedRegionState = null;
           if (_availableDistricts.isEmpty) _selectedDistrictState = null;
           if (_availableGrowingSeasons.isEmpty) _selectedGrowingSeasonState = null;
-          _selectedWeekState = _allWeeksSentinel; // Default ke Semua Minggu
+          _selectedWeekState = _allWeeksSentinel;
         });
         _applyAllFiltersAndBuildMap();
       }
@@ -188,25 +224,26 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     }
     final dataRows = _currentSheetData.skip(1);
 
-    final regions = <String>{};
+    // final regions = <String>{};
     final seasons = <String>{};
-    // Week tidak diekstrak secara global di sini lagi, melainkan di _populateAvailableWeeks
 
     for (final row in dataRows) {
-      final regionVal = _getValue(row, colRegion, "");
-      if (regionVal.isNotEmpty) regions.add(regionVal);
+      // final regionVal = _getValue(row, colRegion, "");
+      // if (regionVal.isNotEmpty) regions.add(regionVal);
       final seasonVal = _getValue(row, colGrowingSeason, "");
       if (seasonVal.isNotEmpty) seasons.add(seasonVal);
     }
 
     if(mounted){
       setState(() {
-        _availableRegions = regions.toList()..sort();
+        // UBAH: Tambahkan "Semua Region" ke daftar yang tersedia di dropdown.
+        // _availableRegions = [_allRegionsSentinel, ...regions.toList()..sort()];
         _availableGrowingSeasons = seasons.toList()..sort();
 
-        if (_selectedRegionState == null || !_availableRegions.contains(_selectedRegionState)) {
-          _selectedRegionState = _availableRegions.isNotEmpty ? _availableRegions.first : null;
-        }
+        // UBAH: Atur default ke "Semua Region" jika pilihan sebelumnya tidak valid.
+        // if (_selectedRegionState == null || !_availableRegions.contains(_selectedRegionState)) {
+        //   _selectedRegionState = _allRegionsSentinel;
+        // }
         if (_selectedGrowingSeasonState == null || !_availableGrowingSeasons.contains(_selectedGrowingSeasonState)) {
           _selectedGrowingSeasonState = _availableGrowingSeasons.isNotEmpty ? _availableGrowingSeasons.first : null;
         }
@@ -217,16 +254,21 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
 
   void _populateAvailableDistricts() {
     if (!mounted) {
-      _populateAvailableWeeks(); // Pastikan rantai berlanjut meskipun tidak mounted
+      _populateAvailableWeeks();
       return;
     }
 
     List<String> newDistricts = [];
-    if (_currentSheetData.isNotEmpty && _selectedRegionState != null) {
+    if (_currentSheetData.isNotEmpty) {
       final dataRows = _currentSheetData.skip(1);
       final districtsSet = <String>{};
       for (final row in dataRows) {
-        if (_getValue(row, colRegion, "") == _selectedRegionState) {
+        // UBAH: Logika baru untuk menangani "Semua Region".
+        // Jika "Semua Region" terpilih, regionMatch akan selalu true.
+        final bool isAllRegionsSelected = _selectedRegionState == _allRegionsSentinel;
+        final bool regionMatch = isAllRegionsSelected || _getValue(row, colRegion, "") == _selectedRegionState;
+
+        if (regionMatch) {
           final districtValue = _getValue(row, colDistrict, "");
           if (districtValue.isNotEmpty) districtsSet.add(districtValue);
         }
@@ -264,11 +306,12 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
       final dataRows = _currentSheetData.skip(1);
       final weeksSet = <String>{};
       for (final row in dataRows) {
-        bool regionMatch = _selectedRegionState == null || _getValue(row, colRegion, "") == _selectedRegionState;
+        // UBAH: Sesuaikan logika pencocokan region
+        bool regionMatch = _selectedRegionState == _allRegionsSentinel || _selectedRegionState == null || _getValue(row, colRegion, "") == _selectedRegionState;
         bool districtMatch = _selectedDistrictState == null || _getValue(row, colDistrict, "") == _selectedDistrictState;
         bool seasonMatch = _selectedGrowingSeasonState == null || _getValue(row, colGrowingSeason, "") == _selectedGrowingSeasonState;
 
-        if (regionMatch && districtMatch && seasonMatch) { // Filter minggu berdasarkan season juga
+        if (regionMatch && districtMatch && seasonMatch) {
           final weekVal = _getValue(row, colWeek, "");
           if (weekVal.isNotEmpty) weeksSet.add(weekVal);
         }
@@ -288,7 +331,6 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
 
     _availableWeeks = newAvailableWeeksWithAll;
 
-    // Jika pilihan sebelumnya tidak ada di daftar baru, atau null, default ke "Semua Minggu"
     if (_selectedWeekState == null || !_availableWeeks.contains(_selectedWeekState)) {
       _selectedWeekState = _allWeeksSentinel;
     }
@@ -316,16 +358,18 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
 
     _filteredMapData = List.from(_currentSheetData.length > 1 ? _currentSheetData.skip(1) : <List<String>>[]);
 
-    if (_selectedRegionState != null) {
+    // UBAH: INI BAGIAN PALING PENTING.
+    // Filter region hanya diterapkan jika pilihan BUKAN "Semua Region".
+    if (_selectedRegionState != null && _selectedRegionState != _allRegionsSentinel) {
       _filteredMapData = _filteredMapData.where((row) => _getValue(row, colRegion, "") == _selectedRegionState).toList();
     }
+    // Filter lainnya tetap berjalan seperti biasa.
     if (_selectedDistrictState != null) {
       _filteredMapData = _filteredMapData.where((row) => _getValue(row, colDistrict, "") == _selectedDistrictState).toList();
     }
     if (_selectedGrowingSeasonState != null) {
       _filteredMapData = _filteredMapData.where((row) => _getValue(row, colGrowingSeason, "") == _selectedGrowingSeasonState).toList();
     }
-    // Filter minggu hanya jika bukan "Semua Minggu" yang dipilih
     if (_selectedWeekState != null && _selectedWeekState != _allWeeksSentinel) {
       _filteredMapData = _filteredMapData.where((row) => _getValue(row, colWeek, "") == _selectedWeekState).toList();
     }
@@ -375,7 +419,7 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
   void _triggerMapActionsIfNeeded() {
     if (mounted && _isMapReady && !_isLoadingGeoJson && !_isLoadingData && !_initialZoomDone) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _isMapReady) { // Periksa _isMapReady lagi di dalam callback
+        if (mounted && _isMapReady) {
           _autoZoomToFilteredArea();
           if(mounted) setState(() => _initialZoomDone = true);
         }
@@ -395,26 +439,25 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     normalized = normalized.replaceAll(",", "");
     normalized = normalized.replaceAll(" ", "");
 
-    // Menambahkan kurung kurawal pada blok if
-    if (normalized.startsWith("KOTAADMINISTRASI")) { // Baris sekitar 377
+    if (normalized.startsWith("KOTAADMINISTRASI")) {
       normalized = normalized.substring("KOTAADMINISTRASI".length);
     }
-    if (normalized.startsWith("KABUPATEN")) { // Baris sekitar 378
+    if (normalized.startsWith("KABUPATEN")) {
       normalized = normalized.substring("KABUPATEN".length);
     }
-    if (normalized.startsWith("KOTA")) { // Baris sekitar 379
+    if (normalized.startsWith("KOTA")) {
       normalized = normalized.substring("KOTA".length);
     }
-    if (normalized.startsWith("KECAMATAN")) { // Baris sekitar 380
+    if (normalized.startsWith("KECAMATAN")) {
       normalized = normalized.substring("KECAMATAN".length);
     }
-    if (normalized.startsWith("KAB")) { // Baris sekitar 381
+    if (normalized.startsWith("KAB")) {
       normalized = normalized.substring("KAB".length);
     }
-    if (normalized.startsWith("KEC")) { // Baris sekitar 382
+    if (normalized.startsWith("KEC")) {
       normalized = normalized.substring("KEC".length);
     }
-    return normalized.trim(); // Baris sekitar 383 (setelah blok if)
+    return normalized.trim();
   }
 
   String _getValue(List<String> row, int index, String defaultValue) {
@@ -422,47 +465,39 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
   }
 
   Color _getKecamatanColor(String kecamatanKey) {
-    // Mengambil nilai workload, default ke 0.0 jika tidak ada.
     double workload = _kecamatanWorkload[kecamatanKey] ?? 0.0;
-    // Menetapkan nilai transparansi untuk warna isi poligon.
     int alphaValue = 220;
 
-    // Kategori "Tidak Ada Data"
     if (workload <= 0) {
       return Colors.lightGreenAccent.shade100.withAlpha(150);
     }
-    // --- 🟢 Kategori Hijau (Aman: 0.1 - 10.0) ---
     else if (workload <= 3.5) {
-      return Colors.green.shade200.withAlpha(alphaValue); // Sangat Aman
+      return Colors.green.shade200.withAlpha(alphaValue);
     } else if (workload <= 7.0) {
-      return Colors.green.shade500.withAlpha(alphaValue); // Aman
+      return Colors.green.shade500.withAlpha(alphaValue);
     } else if (workload <= 10.0) {
-      return Colors.green.shade800.withAlpha(alphaValue); // Batas Aman
+      return Colors.green.shade800.withAlpha(alphaValue);
     }
-    // --- 🟡 Kategori Kuning (Waspada: 10.0 - 15.0) ---
     else if (workload <= 11.5) {
-      return Colors.yellow.shade200.withAlpha(alphaValue); // Waspada Awal
+      return Colors.yellow.shade200.withAlpha(alphaValue);
     } else if (workload <= 13.5) {
-      return Colors.yellow.shade500.withAlpha(alphaValue); // Waspada
+      return Colors.yellow.shade500.withAlpha(alphaValue);
     } else if (workload <= 15.0) {
-      return Colors.amber.shade700.withAlpha(alphaValue); // Waspada Lanjut
+      return Colors.amber.shade700.withAlpha(alphaValue);
     }
-    // --- 🟠 Kategori Oranye (Perhatian: 15.0 - 20.0) ---
     else if (workload <= 16.5) {
-      return Colors.orange.shade200.withAlpha(alphaValue); // Perhatian Awal
+      return Colors.orange.shade200.withAlpha(alphaValue);
     } else if (workload <= 18.5) {
-      return Colors.orange.shade500.withAlpha(alphaValue); // Perhatian Serius
+      return Colors.orange.shade500.withAlpha(alphaValue);
     } else if (workload <= 20.0) {
-      return Colors.deepOrange.shade500.withAlpha(alphaValue); // Perhatian Tinggi
+      return Colors.deepOrange.shade500.withAlpha(alphaValue);
     }
-    // --- 🔴 Kategori Merah (Kritis: > 20.0) ---
     else if (workload <= 25.0) {
-      return Colors.red.shade200.withAlpha(alphaValue); // Kritis
+      return Colors.red.shade200.withAlpha(alphaValue);
     } else if (workload <= 30.0) {
-      return Colors.red.shade500.withAlpha(alphaValue); // Sangat Kritis
+      return Colors.red.shade500.withAlpha(alphaValue);
     } else {
-      // Untuk nilai di atas 30.0
-      return Colors.red.shade900.withAlpha(alphaValue); // Bahaya / Overload
+      return Colors.red.shade900.withAlpha(alphaValue);
     }
   }
 
@@ -484,9 +519,17 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
       final String normalizedGeoKabName = _normalizeName(gideonKabNameRaw);
       final String uniqueGeoKecamatanKey = '${normalizedGeoKabName}_$normalizedGeoKecName';
 
-      bool districtMatch = _selectedDistrictState == null || normalizedGeoKabName == _normalizeName(_selectedDistrictState!);
+      // UBAH: Sesuaikan logika pencocokan distrik
+      bool isAllDistricts = _selectedDistrictState == null;
+      bool isAllRegions = _selectedRegionState == _allRegionsSentinel;
+      bool districtMatch = isAllDistricts || normalizedGeoKabName == _normalizeName(_selectedDistrictState!);
 
-      if (districtMatch && (_kecamatanWorkload.containsKey(uniqueGeoKecamatanKey) || _selectedDistrictState == null) ) {
+      // Tampilkan poligon jika:
+      // 1. Distriknya cocok DAN (Workload ada ATAU Semua distrik dipilih)
+      // 2. ATAU Semua region dipilih DAN workload ada untuk kunci kecamatan tersebut
+      bool shouldDisplay = (districtMatch && (_kecamatanWorkload.containsKey(uniqueGeoKecamatanKey) || isAllDistricts)) || (isAllRegions && _kecamatanWorkload.containsKey(uniqueGeoKecamatanKey));
+
+      if (shouldDisplay) {
         final Color fillColor = _getKecamatanColor(uniqueGeoKecamatanKey);
         final bool isSelectedKecamatan = _selectedKecamatanKey == uniqueGeoKecamatanKey;
         final type = geometry['type'];
@@ -518,6 +561,7 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
       for(final polygon in _currentPolygons) {
         allPointsInView.addAll(polygon.points);
       }
+      // UBAH: Jangan hanya zoom ke distrik jika "Semua Region" aktif dan tidak ada distrik terpilih
     } else if (_selectedDistrictState != null) {
       final features = _geojsonFeatures!['features'] as List;
       for (final feature in features) {
@@ -575,29 +619,27 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     if (pointsToFit.isNotEmpty) {
       try {
         if (pointsToFit.length == 1) {
-          _mapController.move(pointsToFit.first, 13.0); // Zoom level untuk satu titik
+          _mapController.move(pointsToFit.first, 13.0);
         } else {
-          // Langsung buat bounds dan panggil fitCamera
           LatLngBounds bounds = LatLngBounds.fromPoints(pointsToFit);
           _mapController.fitCamera(
               CameraFit.bounds(
                 bounds: bounds,
-                padding: const EdgeInsets.all(40.0), // Beri padding agar tidak terlalu mepet
+                padding: const EdgeInsets.all(40.0),
               )
           );
         }
       } catch (e) {
         debugPrint("Error centering map on features: $e");
-        // Fallback jika ada error
         if (pointsToFit.isNotEmpty) {
           _mapController.move(pointsToFit.first, 10.0);
         } else {
-          _mapController.move(LatLng(-2.548926, 118.0148634), 5.0); // Default Indonesia
+          _mapController.move(LatLng(-2.548926, 118.0148634), 5.0);
         }
       }
     } else {
       _autoZoomToFilteredArea();
-      if (mounted && context.mounted) { // Pastikan context masih valid
+      if (mounted && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Tidak ada fitur untuk dipusatkan pada filter saat ini.'), duration: Duration(seconds: 2)),
         );
@@ -670,7 +712,6 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
         }
       }
       _currentPolygons = _buildPolygons();
-      // Menggunakan parameter dontZoom yang sudah diganti namanya
       if(_isMapReady && !dontZoom) {
         _fitBoundsForSelectedKecamatan(tappedKecKey);
       }
@@ -804,8 +845,7 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
                     setState(() {
                       _selectedGrowingSeasonState = newValue;
                       _selectedKecamatanKey = null; _isDetailPanelVisible = false; _kecamatanDataPoints.clear();
-                      // Perubahan season bisa mempengaruhi minggu yang tersedia
-                      _populateAvailableWeeks(); // Ini akan memicu _applyAllFiltersAndBuildMap
+                      _populateAvailableWeeks();
                     });
                   }
                 },
@@ -814,16 +854,20 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
             const SizedBox(height: 8),
             Row(children: [
               _buildFilterDropdown<String>( labelText: 'Region', value: _selectedRegionState, items: _availableRegions, hintText: "Pilih Region",
-                isLoading: _isLoadingData && _availableRegions.isEmpty,
+                isLoading: _isLoadingData && _availableRegions.length <= 1, // UBAH: Cek jika hanya ada sentinel
                 onChanged: (newValue) {
                   if (newValue != _selectedRegionState) {
                     setState(() {
                       _selectedRegionState = newValue;
+                      // UBAH: Saat region diganti, reset district dan week.
+                      // Ini memberikan alur yang lebih logis bagi pengguna.
                       _selectedDistrictState = null;
                       _availableDistricts = [];
-                      _selectedWeekState = _allWeeksSentinel; // Reset ke Semua Minggu
+                      _selectedWeekState = _allWeeksSentinel;
                       _availableWeeks = [_allWeeksSentinel];
                       _selectedKecamatanKey = null; _isDetailPanelVisible = false; _kecamatanDataPoints.clear();
+                      // UBAH: Reset zoom agar peta bisa menyesuaikan dengan area baru.
+                      _initialZoomDone = false;
                     });
                     _populateAvailableDistricts();
                   }
@@ -831,14 +875,16 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
               ),
               const SizedBox(width: 8),
               _buildFilterDropdown<String>( labelText: 'District', value: _selectedDistrictState, items: _availableDistricts, hintText: "Pilih District",
-                isLoading: _isLoadingData && _availableDistricts.isEmpty && _selectedRegionState != null,
+                isLoading: _isLoadingData && _availableDistricts.isEmpty, // UBAH: Kondisi loading disederhanakan
                 onChanged: (newValue) {
                   if (newValue != _selectedDistrictState) {
                     setState(() {
                       _selectedDistrictState = newValue;
-                      _selectedWeekState = _allWeeksSentinel;   // Reset ke Semua Minggu
+                      // UBAH: Reset week dan peta saat district diganti.
+                      _selectedWeekState = _allWeeksSentinel;
                       _availableWeeks = [_allWeeksSentinel];
                       _selectedKecamatanKey = null; _isDetailPanelVisible = false; _kecamatanDataPoints.clear();
+                      _initialZoomDone = false;
                     });
                     _populateAvailableWeeks();
                   }
@@ -847,12 +893,12 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
             ]),
             const SizedBox(height: 8),
             Row(children: [
-              _buildFilterDropdown<String>( labelText: 'Minggu Ke-', value: _selectedWeekState, items: _availableWeeks, hintText: "Filter Minggu", // Ubah hint jika perlu
-                isLoading: _isLoadingData && _availableWeeks.length <= 1 && _selectedDistrictState != null, // Loading jika hanya ada "Semua Minggu" atau kurang
+              _buildFilterDropdown<String>( labelText: 'Minggu Ke-', value: _selectedWeekState, items: _availableWeeks, hintText: "Filter Minggu",
+                isLoading: _isLoadingData && _availableWeeks.length <= 1, // UBAH: Kondisi loading disederhanakan
                 onChanged: (newValue) {
-                  if (newValue != _selectedWeekState) { // newValue bisa null jika items kosong dan value null
+                  if (newValue != _selectedWeekState) {
                     setState(() {
-                      _selectedWeekState = newValue ?? _allWeeksSentinel; // Jika newValue null (jarang terjadi jika items tidak kosong), default ke All
+                      _selectedWeekState = newValue ?? _allWeeksSentinel;
                       _selectedKecamatanKey = null; _isDetailPanelVisible = false; _kecamatanDataPoints.clear();
                     });
                     _applyAllFiltersAndBuildMap();
@@ -895,7 +941,7 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
             child: Text(itemValue.toString(), style: TextStyle(fontSize: 14, color: AppTheme.textDark), overflow: TextOverflow.ellipsis),
           );
         }).toList(),
-        onChanged: isLoading || (items.isEmpty && value == null) ? null : onChanged,
+        onChanged: isLoading || (items.isEmpty && value == null && !items.contains(value)) ? null : onChanged, // UBAH: Penyesuaian kondisi disabled
         style: TextStyle(color: AppTheme.textDark, fontSize: 14),
         dropdownColor: Colors.white,
         icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primary),
@@ -928,13 +974,13 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
               },
               child: const Icon(Icons.remove, color: AppTheme.primaryDark)
           ),
-          const SizedBox(height: 8), // Tambahkan spasi
-          FloatingActionButton( // TOMBOL BARU: Center Markers/Features
+          const SizedBox(height: 8),
+          FloatingActionButton(
               heroTag: "centerFeaturesDMS",
               mini: true,
               backgroundColor: Colors.white,
               tooltip: 'Pusatkan Peta ke Fitur',
-              onPressed: _centerMapOnCurrentFeatures, // Panggil fungsi baru
+              onPressed: _centerMapOnCurrentFeatures,
               child: const Icon(Icons.center_focus_strong, color: AppTheme.primaryDark)
           ),
           const SizedBox(height: 8),
@@ -952,7 +998,7 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    bool showOverallLoading = _isLoadingGeoJson || _isLoadingData;
+    bool showOverallLoading = _isLoadingGeoJson || (_isLoadingData && _currentSheetData.isEmpty);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -983,6 +1029,7 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
                     },
                     onTap: (tapPosition, latLng) {
                       String? tappedKey;
+                      // Balik urutan poligon agar poligon yang lebih kecil/di atas bisa diketuk
                       for (final polygon in _currentPolygons.reversed) {
                         if (polygon.points.isNotEmpty && isPointInPolygon(latLng, polygon.points)) {
                           tappedKey = polygon.label;
@@ -1015,14 +1062,14 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
                 ),
                 if (_isDetailPanelVisible && _selectedKecamatanKey != null)
                   Positioned(
-                    bottom: 10, left: 10, right: 10,
-                    child: Material(elevation: 4.0, borderRadius: BorderRadius.circular(12), child: _buildDetailPanel()),
+                    bottom: 10, left: 10,
+                    child: _buildDetailPanel(), // UBAH: Hapus right: 10 agar panel tidak stretch
                   ),
                 _buildMapControls(),
               ],
             ),
           ),
-          if (showOverallLoading && !_isLoadingGeoJson)
+          if (_isLoadingData && !showOverallLoading) // UBAH: Tampilkan loading bar saat filter
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8.0),
               child: Row(

@@ -52,10 +52,18 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
   final List<String> isolationAudit1Items = ['Y', 'N'];
   final List<String> isolationTypeItems = ['A', 'B'];
   final List<String> isolationDistanceItems = ['A', 'B'];
-  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['1', '2', '3', '4', '5'];
   final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
 
   bool isLoading = false;
+
+  bool get isDiscardMode {
+    // Recommendation dari Audit 4 disimpan di indeks 73
+    if (widget.row.length > 73) {
+      return widget.row[73] == 'Discard';
+    }
+    return false;
+  }
 
   @override
   void initState() {
@@ -304,7 +312,7 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
                                 row[40] = value ?? '';
                               });
                             },
-                            helpText: 'A/B/C',
+                            helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                             icon: Icons.monitor_heart_rounded,
                             validator: (value) => (value == null || value.isEmpty) ? 'Crop Health wajib dipilih' : null,
                           ),
@@ -408,6 +416,9 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
         },
         // VALIDATOR ditambahkan di sini
         validator: (value) {
+          if (isDiscardMode) {
+            return null; // Tidak wajib jika mode discard aktif
+          }
           if (value == null || value.isEmpty) {
             return '$label wajib diisi';
           }
@@ -461,6 +472,9 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
         },
         // VALIDATOR ditambahkan di sini
         validator: (value) {
+          if (isDiscardMode) {
+            return null; // Tidak wajib jika mode discard aktif
+          }
           if (value == null || value.isEmpty || value == "'") {
             return '$label wajib diisi';
           }
@@ -595,6 +609,9 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
         isExpanded: true, // Memastikan dropdown mengisi ruang yang tersedia
         // VALIDATOR ditambahkan di sini
         validator: (value) {
+          if (isDiscardMode) {
+            return null; // Tidak wajib jika mode discard aktif
+          }
           if (value == null || value.isEmpty) {
             return '$label wajib dipilih';
           }
@@ -664,7 +681,21 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
           if (pickedDate != null) {
             String formattedDate = DateFormat('dd/MM/yyyy').format(pickedDate);
             setState(() {
-              controller.text = formattedDate; row[index] = formattedDate;
+              controller.text = formattedDate;
+              row[index] = formattedDate; // index = 30 untuk Date of Audit 1
+
+              // --- LOGIKA OTOMATISASI BARU ---
+              if (isDiscardMode) {
+                // Otomatis isi tanggal untuk Audit 2 (indeks 44) dan Audit 3 (indeks 53)
+                if (row.length > 44) {
+                  row[44] = formattedDate;
+                }
+                if (row.length > 53) {
+                  row[53] = formattedDate;
+                }
+                debugPrint('Mode Discard Aktif: Tanggal Audit 2 & 3 diatur otomatis.');
+              }
+              // --- AKHIR LOGIKA OTOMATISASI ---
             });
           }
         },

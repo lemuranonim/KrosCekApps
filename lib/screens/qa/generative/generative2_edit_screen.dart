@@ -6,7 +6,6 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:geolocator/geolocator.dart';
 
 import '../../services/config_manager.dart';
 import '../../services/google_sheets_api.dart';
@@ -20,7 +19,8 @@ class Generative2EditScreen extends StatefulWidget {
     super.key,
     required this.row,
     required this.region,
-    required this.onSave});
+    required this.onSave,
+  });
 
   @override
   Generative2EditScreenState createState() => Generative2EditScreenState();
@@ -28,6 +28,7 @@ class Generative2EditScreen extends StatefulWidget {
 
 class Generative2EditScreenState extends State<Generative2EditScreen> {
   late List<String> row;
+  late GoogleSheetsApi gSheetsApi;
   final _formKey = GlobalKey<FormState>();
 
   String? selectedRecommendation;
@@ -65,7 +66,10 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
     _initHive();
     _fetchSpreadsheetId();
 
-    _dateAudit2Controller = TextEditingController(text: _convertToDateIfNecessary(row[40]));
+    _dateAudit2Controller = TextEditingController(text: _convertToDateIfNecessary(row[41]));
+
+    gSheetsApi = GoogleSheetsApi(spreadsheetId);
+    gSheetsApi.init();
 
     selectedFemaleShed1 = row[43];
     selectedSheddingMale1 = row[44];
@@ -520,62 +524,10 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
     );
   }
 
-  void _showLoadingDialogAndClose() {
-    bool dialogShown = false;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        dialogShown = true;
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Lottie.asset('assets/loading.json', width: 150, height: 150),
-              const SizedBox(height: 20),
-              const Text(
-                "Saving data...",
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
-    Timer(const Duration(seconds: 5), () {
-      if (dialogShown && mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-
-        Future.microtask(() {
-          if (mounted) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (context) => SuccessScreen(
-                  row: row,
-                  userName: userName,
-                  userEmail: userEmail,
-                  region: widget.region,
-                  phase: 'Generative - Audit 2',
-                ),
-              ),
-            );
-          }
-        });
-      }
-    });
-  }
-
-  Future<void> _saveToGoogleSheets(List<String> rowData) async {
-    if (!mounted) return;
+  Future<bool> _saveToGoogleSheets(List<String> rowData) async {
+    if (!mounted) return false;
     setState(() => isLoading = true);
 
-    final gSheetsApi = GoogleSheetsApi(spreadsheetId);
-    await gSheetsApi.init();
-
-    String responseMessage;
     try {
       // 1. Cari tahu di baris mana data akan diperbarui
       final Worksheet? sheet = gSheetsApi.spreadsheet.worksheetByTitle('Generative');
@@ -606,15 +558,15 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
         }
       });
       await _saveToHive(row);
-
-      responseMessage = 'Data successfully saved to Audit Database';
-
+      await _logActivityAfterSave();
       // 5. Kembalikan rumus
       await _restoreGenerativeFormulas(gSheetsApi, sheet, rowIndex);
 
+      return true;
+
     } catch (e) {
       await _logErrorToActivity('Gagal menyimpan data Generative-2: ${e.toString()}');
-      responseMessage = 'Failed to save data. Please try again.';
+      return false;
     } finally {
       if (mounted) {
         setState(() {
@@ -622,9 +574,42 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
         });
       }
     }
+  }
 
-    if (mounted) {
-      _navigateBasedOnResponse(context, responseMessage);
+  Future<void> _logActivityAfterSave() async {
+    try {
+      final String spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
+      final gSheetsApi = GoogleSheetsApi(spreadsheetId);
+      await gSheetsApi.init();
+      final worksheetTitle = 'Aktivitas';
+
+      final Worksheet? sheet = gSheetsApi.spreadsheet.worksheetByTitle(worksheetTitle);
+      if (sheet == null) {
+        debugPrint('Gagal: Worksheet "$worksheetTitle" tidak ditemukan.');
+        return;
+      }
+
+      final String timestamp = DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now());
+      final String fieldNumber = widget.row[2];
+      final String regions = widget.row.length > 18 ? widget.row[18] : '';
+      final String action = 'Update';
+      final String status = 'Success';
+
+      final List<String> rowData = [
+        userEmail,
+        userName,
+        status,
+        regions,
+        action,
+        'Generative - Audit 2', // Phase
+        fieldNumber,
+        timestamp,
+      ];
+
+      await sheet.values.appendRow(rowData, fromColumn: 1);
+    } catch (e) {
+      debugPrint("Gagal mencatat aktivitas: $e");
+      _logErrorToActivity("Gagal mencatat aktivitas: $e");
     }
   }
 
@@ -678,19 +663,67 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
         ],
       ),
     );
-
     if (shouldSave == true) {
-      _showLoadingDialogAndClose();
-      _saveToGoogleSheets(row);
+      await _executeSaveProcess();
+    }
+  }
+
+  Future<void> _executeSaveProcess() async {
+    // 1. Tampilkan dialog loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Lottie.asset('assets/loading.json', width: 150, height: 150),
+              const SizedBox(height: 20),
+              const Text(
+                "Ngrantos sekedap...",
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    // 2. Coba simpan data
+    final bool success = await _saveToGoogleSheets(row);
+
+    // 3. Tutup dialog loading
+    if (mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    // 4. Navigasi berdasarkan hasil
+    if (mounted) {
+      if (success) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => SuccessScreen(
+              row: row,
+              userName: userName,
+              userEmail: userEmail,
+              region: widget.region,
+              phase: 'Generative - Audit 2',
+            ),
+          ),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => const FailedScreen(),
+          ),
+        );
+      }
     }
   }
 
   bool _isDataValid() {
-    // Pastikan _dateAudit2Controller diinisialisasi dengan benar dan merujuk ke row[41] jika itu yang diedit.
-    // Saat ini di initState: _dateAudit2Controller = TextEditingController(text: _convertToDateIfNecessary(row[40]));
-    // Tapi di build: _buildDatePickerField('Date of Audit 2 (dd/MM)', 41, _dateAudit2Controller),
-    // Ini berarti nilai yang divalidasi adalah `_dateAudit2Controller.text` yang akan diisi oleh tanggal dari `row[41]`.
-
     if (areAllAuditFieldsGloballyRequired) {
       // Semua field di Generative2EditScreen menjadi wajib
       return _dateAudit2Controller.text.isNotEmpty &&
@@ -700,13 +733,16 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
           selectedCropUniformityDua != null && selectedCropUniformityDua!.isNotEmpty;
     } else {
       String flaggingAudit3 = (row.length > 63) ? row[63] : '';
-      if (flaggingAudit3 == 'Discard') {
-        // Hanya tanggal audit 2 yang wajib jika flagging AU3 adalah discard
+      String recommendationAudit3 = (row.length > 65) ? row[65] : '';
+      bool isSpecialDiscardCondition = flaggingAudit3 == 'Discard' && recommendationAudit3 == 'Discard';
+
+      if (isSpecialDiscardCondition) {
+        // Sesuai permintaan: Hanya 'Date of Audit 2' yang wajib
         if (_dateAudit2Controller.text.isEmpty) {
           _showErrorSnackBar('Date of Audit 2 is required.');
           return false;
         }
-        return true; // Field lain opsional
+        return true; // Data valid, field lain boleh kosong
       }
 
       // Validasi standar jika flagging AU3 bukan discard
@@ -732,30 +768,6 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
     );
   }
 
-  void _navigateBasedOnResponse(BuildContext context, String response) {
-    if (response == 'Data successfully saved to Audit Database') {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => SuccessScreen(
-            row: row,
-            userName: userName,
-            userEmail: userEmail,
-            region: widget.region,
-            phase: 'Generative - Audit 2',
-          ),
-        ),
-      );
-    } else if (response == 'Failed to save data. Please try again.') {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => FailedScreen(),
-        ),
-      );
-    } else {
-      _showErrorSnackBar('Unknown response: $response');
-    }
-  }
-
   String _convertToDateIfNecessary(String value) {
     try {
       final parsedNumber = double.tryParse(value);
@@ -770,12 +782,12 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
   }
 }
 
-class SuccessScreen extends StatefulWidget {
+class SuccessScreen extends StatelessWidget {
   final List<String> row;
   final String userName;
   final String userEmail;
   final String region;
-  final String phase; // BARU: Parameter untuk menampung nama Phase
+  final String phase;
 
   const SuccessScreen({
     super.key,
@@ -783,121 +795,11 @@ class SuccessScreen extends StatefulWidget {
     required this.userName,
     required this.userEmail,
     required this.region,
-    required this.phase, // BARU: Wajib diisi saat dipanggil
+    required this.phase,
   });
 
   @override
-  State<SuccessScreen> createState() => _SuccessScreenState();
-}
-
-class _SuccessScreenState extends State<SuccessScreen> {
-  bool _isSaving = false;
-
-  void _showErrorSnackBar(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red.shade800,
-      ),
-    );
-  }
-
-  Future<String> _getCurrentLocationForActivity() async {
-    // ... (Fungsi ini tidak berubah, biarkan seperti adanya)
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) _showErrorSnackBar('Location services are disabled.');
-        return 'Location Not Available';
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) _showErrorSnackBar('Location permissions are denied.');
-          return 'Location Not Available';
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) _showErrorSnackBar('Location permissions are permanently denied.');
-        return 'Location Not Available';
-      }
-
-      Position position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      );
-      return '${position.latitude},${position.longitude}';
-    } catch (e) {
-      if (mounted) _showErrorSnackBar('Failed to get location: $e');
-      return 'Location Not Available';
-    }
-  }
-
-  Future<void> _saveBackActivityToGoogleSheets(String region, String location) async {
-    final String spreadsheetId = ConfigManager.getSpreadsheetId(region) ?? 'defaultSpreadsheetId';
-    final String worksheetTitle = 'Aktivitas';
-
-    final gSheetsApi = GoogleSheetsApi(spreadsheetId);
-    await gSheetsApi.init();
-
-    final Worksheet? sheet = gSheetsApi.spreadsheet.worksheetByTitle(worksheetTitle);
-    if (sheet == null) {
-      debugPrint('Gagal: Worksheet "$worksheetTitle" tidak ditemukan.');
-      _showErrorSnackBar('Worksheet "$worksheetTitle" tidak ditemukan.');
-      return;
-    }
-
-    try {
-      // LANGKAH 1A: Cari tahu jumlah baris saat ini untuk menentukan di mana baris baru akan berada.
-      // Kita anggap kolom A selalu ada isinya untuk menghitung baris.
-      final List<String> columnA = await sheet.values.column(1, fromRow: 1);
-      final int nextRow = columnA.length + 1; // Baris baru akan ada di sini
-
-      final String timestamp = DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now());
-      final String fieldNumber = widget.row[2];
-      final String regions = widget.row.length > 18 ? widget.row[18] : '';
-      final String action = 'Update';
-      final String status = 'Success';
-
-      // Siapkan data, tapi kolom ke-10 (kolom J) kita beri placeholder kosong.
-      final List<String> rowData = [
-        widget.userEmail,
-        widget.userName,
-        status,
-        regions,
-        action,
-        widget.phase,
-        fieldNumber,
-        timestamp,
-        location,
-        '', // Placeholder untuk rumus
-      ];
-
-      // LANGKAH 1B: Tambahkan baris dengan data mentah (menggunakan ValueInputOption.RAW default)
-      await sheet.values.appendRow(rowData);
-      debugPrint('Langkah 1 Selesai: Data mentah ditambahkan di baris $nextRow.');
-
-      // LANGKAH 2: Perbarui sel spesifik (kolom 10 atau 'J') di baris baru dengan rumus.
-      if (location != 'Location Not Available' && location.contains(',')) {
-        final String formula = '=HYPERLINK("http://maps.google.com/maps?q=$location"; "Linked")';
-
-        // Perbarui hanya sel J[nextRow] dengan rumus.
-        await sheet.values.insertValue(formula, column: 10, row: nextRow);
-        debugPrint('Langkah 2 Selesai: Rumus disisipkan di sel J$nextRow.');
-      }
-
-    } catch (e) {
-      debugPrint('Gagal dalam proses dua langkah: $e');
-      _showErrorSnackBar('Gagal menyimpan aktivitas (dua langkah): $e');
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // ... (Fungsi build ini tidak berubah, biarkan seperti adanya)
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -919,17 +821,9 @@ class _SuccessScreenState extends State<SuccessScreen> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: _isSaving
-                  ? null
-                  : () async {
-                final navigator = Navigator.of(context);
-                setState(() {
-                  _isSaving = true;
-                });
-                final String currentLocation = await _getCurrentLocationForActivity();
-                await _saveBackActivityToGoogleSheets(widget.region, currentLocation);
-                if (!mounted) return;
-                navigator.pop();
+              onPressed: () {
+                // Langsung kembali ke layar sebelumnya.
+                Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60),
@@ -939,10 +833,8 @@ class _SuccessScreenState extends State<SuccessScreen> {
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
-              child: _isSaving
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text(
-                'Confirm!',
+              child: const Text(
+                'Selesai',
                 style: TextStyle(fontSize: 20),
               ),
             ),

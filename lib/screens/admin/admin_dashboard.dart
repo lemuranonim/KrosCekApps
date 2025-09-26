@@ -356,9 +356,11 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
           onAccountManagement: () => context.go('/accounts'),
           onRegions: () => context.go('/regions'),
           onAbsensi: () => context.go('/absensi'),
-          onAktivitas: () => context.go('/aktivitas'),
+          // onAktivitas: () => context.go('/aktivitas'),
+          onAuditDashboard: () => context.go('/audit_dashboard'),
+          onWorkloadMap: () => context.go('/workload_map'),
           onCrud: () => context.go('/config'),
-          onFilter: () => _showRegionSelector(),
+          onFilter: () => context.go('/filter'),
           onAuditGraph: () => context.go('/audit_graph'),
           onLogout: () => _logout(context),
         ),
@@ -571,12 +573,20 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
             onPressed: _refreshData,
             tooltip: 'Refresh Data',
           ),
+          // IconButton(
+          //   icon: const Icon(Icons.notifications_outlined),
+          //   onPressed: () {
+          //     // Add notification logic here
+          //   },
+          //   tooltip: 'Notifikasi',
+          // ),
           IconButton(
-            icon: const Icon(Icons.notifications_outlined),
+            icon: const Icon(Icons.notifications_active_outlined), // Ikon diubah agar lebih sesuai
             onPressed: () {
-              // Add notification logic here
+              // GANTI LOGIC LAMA DENGAN INI
+              context.go('/notifications_management'); // Menggunakan GoRouter untuk navigasi
             },
-            tooltip: 'Notifikasi',
+            tooltip: 'Kirim Notifikasi',
           ),
           const SizedBox(width: 8),
         ],
@@ -616,9 +626,19 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
             child: TabBarView(
               controller: _tabController,
               children: [
-                DashboardAnalyticsTab(dataService: _dataService, isLoading: _isLoading),
-                DashboardAbsensiTab(dataService: _dataService),
-                DashboardAktivitasTab(dataService: _dataService),
+                DashboardAnalyticsTab(
+                  key: ValueKey<String>(_selectedRegion),
+                  dataService: _dataService, // _dataService sudah di-update dengan region baru
+                  isLoading: _isLoading,
+                ),
+                DashboardAbsensiTab(
+                  key: ValueKey<String>(_selectedRegion),
+                  dataService: _dataService, // _dataService sudah di-update dengan region baru
+                ),
+                DashboardAktivitasTab(
+                  key: ValueKey<String>(_selectedRegion),
+                  dataService: _dataService, // _dataService sudah di-update dengan region baru
+                ),
               ],
             ),
           ),
@@ -716,10 +736,12 @@ class MenuScreen extends StatelessWidget {
   final VoidCallback onAccountManagement;
   final VoidCallback onRegions;
   final VoidCallback onAbsensi;
-  final VoidCallback onAktivitas;
+  // final VoidCallback onAktivitas;
+  final VoidCallback onWorkloadMap;
   final VoidCallback onCrud;
   final VoidCallback onFilter;
   final VoidCallback onAuditGraph;
+  final VoidCallback onAuditDashboard;
 
   const MenuScreen({
     super.key,
@@ -731,10 +753,13 @@ class MenuScreen extends StatelessWidget {
     required this.onAccountManagement,
     required this.onRegions,
     required this.onAbsensi,
-    required this.onAktivitas,
+    // required this.onAktivitas,
+    required this.onWorkloadMap,
     required this.onCrud,
     required this.onFilter,
     required this.onAuditGraph,
+    required this.onAuditDashboard,
+
   });
 
   @override
@@ -883,16 +908,34 @@ class MenuScreen extends StatelessWidget {
                     style: buttonStyle,
                   ),
                   const SizedBox(height: 10),
-                  // aktivitas dashboard
+                  // // aktivitas dashboard
+                  // ElevatedButton.icon(
+                  //   onPressed: onAktivitas,
+                  //   icon: const Icon(
+                  //     Icons.list_alt_outlined,
+                  //     size: 20,
+                  //     color: Colors.green,
+                  //   ),
+                  //   label: const Text(
+                  //     'Aktivitas Dashboard',
+                  //     style: TextStyle(
+                  //       color: Colors.green,
+                  //       fontWeight: FontWeight.bold,
+                  //     ),
+                  //   ),
+                  //   style: buttonStyle,
+                  // ),
+                  // const SizedBox(height: 10),
+                  // Audit Dashboard
                   ElevatedButton.icon(
-                    onPressed: onAktivitas,
+                    onPressed: onAuditDashboard,
                     icon: const Icon(
-                      Icons.list_alt_outlined,
+                      Icons.dashboard_outlined,
                       size: 20,
                       color: Colors.green,
                     ),
                     label: const Text(
-                      'Aktivitas Dashboard',
+                      'Audit Dashboard',
                       style: TextStyle(
                         color: Colors.green,
                         fontWeight: FontWeight.bold,
@@ -901,24 +944,7 @@ class MenuScreen extends StatelessWidget {
                     style: buttonStyle,
                   ),
                   const SizedBox(height: 10),
-                  // pengaturan
-                  ElevatedButton.icon(
-                    onPressed: onCrud,
-                    icon: const Icon(
-                      Icons.settings,
-                      size: 20,
-                      color: Colors.green,
-                    ),
-                    label: const Text(
-                      'Pengaturan',
-                      style: TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    style: buttonStyle,
-                  ),
-                  const SizedBox(height: 10),
+
                   // audit graph
                   ElevatedButton.icon(
                     onPressed: onAuditGraph, // <-- PANGGIL CALLBACK
@@ -937,6 +963,24 @@ class MenuScreen extends StatelessWidget {
                     style: buttonStyle,
                   ),
                   const SizedBox(height: 10),
+                  // workload map
+                  ElevatedButton.icon(
+                    onPressed: onWorkloadMap,
+                    icon: const Icon(
+                      Icons.map_outlined,
+                      size: 20,
+                      color: Colors.green,
+                    ),
+                    label: const Text(
+                      'Workload Map',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: buttonStyle,
+                  ),
+                  const SizedBox(height: 10),
                   // filter region
                   ElevatedButton.icon(
                     onPressed: onFilter,
@@ -947,6 +991,24 @@ class MenuScreen extends StatelessWidget {
                     ),
                     label: const Text(
                       'Filter Region',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: buttonStyle,
+                  ),
+                  const SizedBox(height: 10),
+                  // Pengaturan
+                  ElevatedButton.icon(
+                    onPressed: onCrud,
+                    icon: const Icon(
+                      Icons.settings,
+                      size: 20,
+                      color: Colors.green,
+                    ),
+                    label: const Text(
+                      'Pengaturan',
                       style: TextStyle(
                         color: Colors.green,
                         fontWeight: FontWeight.bold,

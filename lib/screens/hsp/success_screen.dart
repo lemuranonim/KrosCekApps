@@ -55,7 +55,7 @@ class SuccessScreenState extends State<SuccessScreen> {
             children: [
               const Icon(
                 Icons.check_circle_outline,
-                color: Colors.green,
+                color: Colors.amber,
                 size: 100,
               ),
               const SizedBox(height: 20),
@@ -64,7 +64,7 @@ class SuccessScreenState extends State<SuccessScreen> {
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: Colors.green,
+                  color: Colors.amber,
                 ),
                 textAlign: TextAlign.center,
               ),

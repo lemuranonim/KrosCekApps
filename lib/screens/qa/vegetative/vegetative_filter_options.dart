@@ -1186,7 +1186,6 @@ class _VegetativeFilterOptionsState extends State<VegetativeFilterOptions> with 
           setState(() {
             _localShowDiscardedFase = value;
           });
-          widget.onShowDiscardedFaseChanged(value);
         },
         activeColor: Colors.orange.shade600,
         inactiveThumbColor: Colors.grey.shade400,

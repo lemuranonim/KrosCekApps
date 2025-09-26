@@ -37,8 +37,8 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
   String userName = 'Fetching...';
   late String spreadsheetId;
 
-  String? selectedFI;
-  List<String> fiList = [];
+  String? selectedFA;
+  List<String> faList = [];
 
   String? selectedMaleRowsChopping;
   String? selectedCropUniformity;
@@ -47,7 +47,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
 
   final List<String> maleRowsChoppingItems = ['A', 'B'];
   final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
-  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['1', '2', '3', '4', '5'];
   final List<String> recommendationItems = ['Continue', 'Discard'];
 
   bool get areRecommendationFieldsRequired {
@@ -63,6 +63,10 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _fetchSpreadsheetId();
+      await _loadFAList(widget.region);
+    });
     _loadUserCredentials();
     row = List<String>.from(widget.row);
 
@@ -71,7 +75,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
 
     _dateAuditController = TextEditingController(text: _convertToDateIfNecessary(row[30]));
 
-    _loadFIList(widget.region);
+    _loadFAList(widget.region);
 
     selectedMaleRowsChopping = row[32];
     selectedCropHealth = row[34];
@@ -148,26 +152,22 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
     spreadsheetId = ConfigManager.getSpreadsheetId(widget.region) ?? 'defaultSpreadsheetId';
   }
 
-  Future<void> _loadFIList(String region) async {
-    setState(() {
-      isLoading = true;
-    });
+  Future<void> _loadFAList(String region) async {
+    setState(() => isLoading = true);
 
     try {
       final gSheetsApi = GoogleSheetsApi('1cMW79EwaOa-Xqe_7xf89_VPiak1uvp_f54GHfNR7WyA');
       await gSheetsApi.init();
-      final List<String> fetchedFI = await gSheetsApi.fetchFIByRegion('FI', region);
+      final List<String> fetchedFA = await gSheetsApi.fetchFIByRegion('FA', region);
 
       setState(() {
-        fiList = fetchedFI;
-        selectedFI = row[31];
+        faList = fetchedFA;
+        selectedFA = row[14];
       });
     } catch (e) {
       debugPrint('Gagal mengambil data FI: $e');
     } finally {
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
     }
   }
 
@@ -202,7 +202,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
               fontSize: 20,
             )
         ),
-        backgroundColor: Colors.green.shade700,
+        backgroundColor: Colors.amber.shade700,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -211,7 +211,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.green.shade700, Colors.green.shade100],
+            colors: [Colors.amber.shade700, Colors.amber.shade100],
             stops: const [0.0, 0.3],
           ),
         ),
@@ -233,7 +233,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
                       children: [
                         if (isLoading)
                           const LinearProgressIndicator(
-                            backgroundColor: Colors.green,
+                            backgroundColor: Colors.amber,
                             valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
 
@@ -263,14 +263,14 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
 
                         // Audit Information Section
                         _buildSectionHeader('Audit Information'),
-                        _buildFIDropdownField(
-                          'QA FI',
-                          selectedFI,
-                          fiList,
+                        _buildFADropdownField(
+                          'FA',
+                          selectedFA,
+                          faList,
                               (value) {
                             setState(() {
-                              selectedFI = value;
-                              row[29] = value ?? '';
+                              selectedFA = value;
+                              row[14] = value ?? '';
                             });
                           },
                           validator: (value) {
@@ -332,7 +332,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
                               row[34] = value ?? '';
                             });
                           },
-                          helpText: 'A (Low)\nB (Moderate)\nC (High)',
+                          helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                           icon: Icons.health_and_safety,
                         ),
                         const SizedBox(height: 10),
@@ -375,7 +375,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    'When "Discard" is selected, only QA FI and Date of Audit are required. Other fields are optional.',
+                                    'When "Discard" is selected, only HSP FA and Date of Audit are required. Other fields are optional.',
                                     style: TextStyle(
                                       color: Colors.amber.shade800,
                                       fontSize: 14,
@@ -401,7 +401,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
                             },
                             style: ElevatedButton.styleFrom(
                               minimumSize: const Size(220, 60),
-                              backgroundColor: Colors.green.shade700,
+                              backgroundColor: Colors.amber.shade700,
                               foregroundColor: Colors.white,
                               elevation: 5,
                               shape: RoundedRectangleBorder(
@@ -437,7 +437,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
             Text(
               'Coordinates (Lat, Long)',
               style: TextStyle(
-                color: Colors.green.shade800,
+                color: Colors.amber.shade800,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -454,10 +454,10 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
             fontStyle: _isLocationTagged ? FontStyle.normal : FontStyle.italic,
           ),
           decoration: InputDecoration(
-            prefixIcon: Icon(Icons.gps_fixed, color: _isLocationTagged ? Colors.green.shade600 : Colors.red),
+            prefixIcon: Icon(Icons.gps_fixed, color: _isLocationTagged ? Colors.amber.shade600 : Colors.red),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.green.shade200),
+              borderSide: BorderSide(color: Colors.amber.shade200),
             ),
             filled: true,
             fillColor: Colors.grey[200],
@@ -468,7 +468,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
           child: _isGettingLocation
           // MODIFIKASI: Mengubah warna indikator loading
               ? CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade700),
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.amber.shade700),
           )
               : ElevatedButton.icon(
             onPressed: _getCurrentLocation,
@@ -476,7 +476,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
             label: const Text('Tag Current Location'),
             style: ElevatedButton.styleFrom(
               // MODIFIKASI: Mengubah warna tombol agar sesuai tema
-              backgroundColor: Colors.green.shade700,
+              backgroundColor: Colors.amber.shade700,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
@@ -498,10 +498,10 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.green.shade800,
+            color: Colors.amber.shade800,
           ),
         ),
-        const Divider(thickness: 2, color: Colors.green),
+        const Divider(thickness: 2, color: Colors.amber),
         const SizedBox(height: 10),
       ],
     );
@@ -516,7 +516,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
         padding: const EdgeInsets.all(12.0),
         child: Row(
           children: [
-            Icon(icon, color: Colors.green.shade700),
+            Icon(icon, color: Colors.amber.shade700),
             const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,7 +559,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
           Expanded(
             child: Text(
               selectedRecommendation == 'Discard'
-                  ? 'Only QA FI and Date of Audit are required when Recommendation is Discard'
+                  ? 'Only HSP FA and Date of Audit are required when Recommendation is Discard'
                   : 'Fields marked with * are required and must be filled',
               style: TextStyle(
                 color: Colors.amber.shade800,
@@ -598,19 +598,19 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
         maxLines: maxLines,
         decoration: InputDecoration(
           labelText: isRequired ? "$label *" : label, // Add asterisk only if required
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+          labelStyle: TextStyle(color: Colors.amber.shade700),
+          prefixIcon: icon != null ? Icon(icon, color: Colors.amber.shade600) : null,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+            borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -630,7 +630,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
     );
   }
 
-  Widget _buildFIDropdownField(
+  Widget _buildFADropdownField(
       String label,
       String? value,
       List<String> items,
@@ -654,19 +654,19 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
       child: DropdownButtonFormField<String>(
         decoration: InputDecoration(
           labelText: isRequired ? "$label *" : label, // Add asterisk to indicate required field
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: Icon(Icons.person, color: Colors.green.shade600),
+          labelStyle: TextStyle(color: Colors.amber.shade700),
+          prefixIcon: Icon(Icons.person, color: Colors.amber.shade600),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+            borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -694,7 +694,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
           );
         }).toList(),
         dropdownColor: Colors.white,
-        icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+        icon: Icon(Icons.arrow_drop_down, color: Colors.amber.shade700),
         isExpanded: true, // Make dropdown take full width
       ),
     );
@@ -720,20 +720,20 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
         readOnly: true,
         decoration: InputDecoration(
           labelText: isRequired ? "$label *" : label, // Add asterisk to indicate required field
-          labelStyle: TextStyle(color: Colors.green.shade700),
-          prefixIcon: Icon(Icons.calendar_today, color: Colors.green.shade600),
-          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+          labelStyle: TextStyle(color: Colors.amber.shade700),
+          prefixIcon: Icon(Icons.calendar_today, color: Colors.amber.shade600),
+          suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.amber.shade700),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade200),
+            borderSide: BorderSide(color: Colors.amber.shade200),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+            borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -754,7 +754,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
               return Theme(
                 data: Theme.of(context).copyWith(
                   colorScheme: ColorScheme.light(
-                    primary: Colors.green.shade700,
+                    primary: Colors.amber.shade700,
                     onPrimary: Colors.white,
                     onSurface: Colors.black,
                   ),
@@ -810,19 +810,19 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
           child: DropdownButtonFormField<String>(
             decoration: InputDecoration(
               labelText: isRequired ? "$label *" : label, // Add asterisk only if required
-              labelStyle: TextStyle(color: Colors.green.shade700),
-              prefixIcon: icon != null ? Icon(icon, color: Colors.green.shade600) : null,
+              labelStyle: TextStyle(color: Colors.amber.shade700),
+              prefixIcon: icon != null ? Icon(icon, color: Colors.amber.shade600) : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade200),
+                borderSide: BorderSide(color: Colors.amber.shade200),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade200),
+                borderSide: BorderSide(color: Colors.amber.shade200),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+                borderSide: BorderSide(color: Colors.amber.shade700, width: 2),
               ),
               filled: true,
               fillColor: Colors.white,
@@ -843,7 +843,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
               );
             }).toList(),
             dropdownColor: Colors.white,
-            icon: Icon(Icons.arrow_drop_down, color: Colors.green.shade700),
+            icon: Icon(Icons.arrow_drop_down, color: Colors.amber.shade700),
           ),
         ),
         if (helpText != null) ...[
@@ -935,7 +935,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
       // Indeks kolom di gsheets dimulai dari 1, BUKAN 0
       final Map<int, String> updates = {
         18: _locationController.text, // Kolom R: Koordinat
-        30: selectedFI ?? '', // Kolom AD: QA FI
+        15: selectedFA ?? '', // Kolom AD: HSP FA
         31: _dateAuditController.text, // Kolom AE: Date of Audit
         33: selectedMaleRowsChopping ?? '', // Kolom AG: Male rows chopping
         34: selectedCropUniformity ?? '', // Kolom AH: Crop Uniformity
@@ -996,11 +996,11 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
   bool _isDataValid() {
 
     // Base fields that are always required regardless of recommendation
-    bool baseFieldsValid = selectedFI != null && selectedFI!.isNotEmpty &&
+    bool baseFieldsValid = selectedFA != null && selectedFA!.isNotEmpty &&
         _dateAuditController.text.isNotEmpty;
 
     if (!baseFieldsValid) {
-      _showErrorSnackBar('QA FI and Date of Audit are required fields.');
+      _showErrorSnackBar('HSP FA and Date of Audit are required fields.');
       return false;
     }
 
@@ -1036,7 +1036,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
       barrierDismissible: false, // Prevent dismissing by tapping outside
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Confirm Save', style: TextStyle(color: Colors.green.shade800)),
+        title: Text('Confirm Save', style: TextStyle(color: Colors.amber.shade800)),
         content: const Text('Are you sure you want to save the changes? All fields must be filled correctly.'),
         actions: [
           TextButton(
@@ -1046,7 +1046,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade700,
+              backgroundColor: Colors.amber.shade700,
               foregroundColor: Colors.white,
             ),
             child: const Text('Save'),
@@ -1252,13 +1252,13 @@ class _SuccessScreenState extends State<SuccessScreen> {
           'Success',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.green.shade700,
+        backgroundColor: Colors.amber.shade700,
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 100),
+            const Icon(Icons.check_circle, color: Colors.amber, size: 100),
             const SizedBox(height: 20),
             const Text(
               'Data berhasil disimpan!',
@@ -1280,7 +1280,7 @@ class _SuccessScreenState extends State<SuccessScreen> {
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60),
-                backgroundColor: Colors.green.shade700,
+                backgroundColor: Colors.amber.shade700,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),

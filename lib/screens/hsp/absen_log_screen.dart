@@ -33,12 +33,12 @@ class AbsenLogScreenState extends State<AbsenLogScreen> {
   final String _worksheetTitle = 'Absen Log';
 
   // Green color palette
-  final Color _primaryColor = const Color(0xFF2E7D32);
-  final Color _primaryLightColor = const Color(0xFF81C784);
-  final Color _primaryDarkColor = const Color(0xFF1B5E20);
-  final Color _backgroundColor = const Color(0xFFF5F5F6);
+  final Color _primaryColor = const Color(0xFFFFC107);
+  final Color _primaryLightColor = const Color(0xFFFFE589);
+  final Color _primaryDarkColor = const Color(0xFFF57C00);
+  final Color _backgroundColor = const Color(0xFFF5F5F5);
   final Color _cardColor = Colors.white;
-  final Color _textColor = const Color(0xFF263238);
+  final Color _textColor = const Color(0xFF212121);
 
   @override
   void initState() {

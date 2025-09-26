@@ -22,8 +22,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isPasswordHidden = true;
   bool _isAdmin = false;
-  bool _isUser = false;
+  bool _isQa = false;
   bool _isPsp = false;
+  bool _isHsp = false;
   String _errorMessage = '';
   bool _isLoading = false;
   bool _showEmailPasswordFields = false; // Flag to control visibility
@@ -52,7 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    if (!_isAdmin && !_isUser && !_isPsp) {
+    if (!_isAdmin && !_isQa && !_isHsp && !_isPsp) {
       setState(() {
         _errorMessage = "Please select a role before login.";
         _isLoading = false;
@@ -65,7 +66,8 @@ class _LoginScreenState extends State<LoginScreen> {
       String? selectedRole;
       if (_isAdmin) selectedRole = 'admin';
       if (_isPsp) selectedRole = 'psp';
-      if (_isUser) selectedRole = 'user';
+      if (_isQa) selectedRole = 'qa';
+      if (_isHsp) selectedRole = 'hsp';
 
       await _redirectUserBasedOnRole(email, selectedRole!);
     } else {
@@ -82,7 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorMessage = '';
     });
 
-    if (!_isAdmin && !_isUser && !_isPsp) {
+    if (!_isAdmin && !_isQa && !_isHsp && !_isPsp) {
       setState(() {
         _errorMessage = "Please select a role before login.";
         _isLoading = false;
@@ -95,7 +97,8 @@ class _LoginScreenState extends State<LoginScreen> {
       String? selectedRole;
       if (_isAdmin) selectedRole = 'admin';
       if (_isPsp) selectedRole = 'psp';
-      if (_isUser) selectedRole = 'user';
+      if (_isQa) selectedRole = 'qa';
+      if (_isHsp) selectedRole = 'hsp';
 
       await _auth.createUserInFirestoreIfNeeded(user.email, role: selectedRole!);
       await _redirectUserBasedOnRole(user.email, selectedRole);
@@ -163,6 +166,9 @@ class _LoginScreenState extends State<LoginScreen> {
       final userEmails = roleData.docs
           .firstWhere((doc) => doc.id == 'userEmails')
           .data()['emails'] as List<dynamic>;
+      final swcEmails = roleData.docs
+          .firstWhere((doc) => doc.id == 'swcEmails')
+          .data()['emails'] as List<dynamic>;
 
       if (selectedRole == 'admin' && adminEmails.contains(email)) {
         await prefs.setString('userRole', 'admin');
@@ -170,9 +176,12 @@ class _LoginScreenState extends State<LoginScreen> {
       } else if (selectedRole == 'psp' && pspEmails.contains(email)) {
         await prefs.setString('userRole', 'psp');
         if (mounted) context.go('/psp');
-      } else if (selectedRole == 'user' && userEmails.contains(email)) {
-        await prefs.setString('userRole', 'user');
-        if (mounted) context.go('/home');
+      } else if (selectedRole == 'qa' && userEmails.contains(email)) {
+        await prefs.setString('userRole', 'qa');
+        if (mounted) context.go('/qa');
+      } else if (selectedRole == 'hsp' && swcEmails.contains(email)) {
+        await prefs.setString('userRole', 'hsp');
+        if (mounted) context.go('/hsp');
       } else {
         if (mounted) {
           setState(() {
@@ -333,20 +342,36 @@ class _LoginScreenState extends State<LoginScreen> {
             setState(() {
               _isAdmin = value ?? false;
               if (_isAdmin) {
-                _isUser = false;
+                _isQa = false;
                 _isPsp = false;
+                _isHsp = false;
+              }
+            });
+          },
+        ),
+        _buildRoleTile(
+          title: 'User QA',
+          value: _isQa,
+          onChanged: (value) {
+            setState(() {
+              _isQa = value ?? false;
+              if (_isQa) {
+                _isAdmin = false;
+                _isPsp = false;
+                _isHsp = false;
               }
             });
           },
         ),
         _buildRoleTile(
           title: 'User HSP',
-          value: _isUser,
+          value: _isHsp,
           onChanged: (value) {
             setState(() {
-              _isUser = value ?? false;
-              if (_isUser) {
+              _isHsp = value ?? false;
+              if (_isHsp) {
                 _isAdmin = false;
+                _isQa = false;
                 _isPsp = false;
               }
             });
@@ -360,7 +385,8 @@ class _LoginScreenState extends State<LoginScreen> {
               _isPsp = value ?? false;
               if (_isPsp) {
                 _isAdmin = false;
-                _isUser = false;
+                _isQa = false;
+                _isHsp = false;
               }
             });
           },

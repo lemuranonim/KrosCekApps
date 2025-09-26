@@ -41,13 +41,30 @@ class ActivityScreenState extends State<ActivityScreen> {
     final userEmail = prefs.getString('userEmail');
     final userName = prefs.getString('userName');
 
-    await _googleSheetsApi.init();
+    // Panggil init() dan periksa hasilnya
+    final bool initSuccess = await _googleSheetsApi.init();
 
-    if (userEmail != null || userName != null) {
-      await _fetchActivityLogs(userEmail, userName);
+    // Hanya lanjutkan jika inisialisasi berhasil
+    if (initSuccess) {
+      if (userEmail != null || userName != null) {
+        await _fetchActivityLogs(userEmail, userName);
+      }
+    } else {
+      // Jika gagal, tampilkan pesan error ke pengguna
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal terhubung ke server. Periksa koneksi internet Anda.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
 
-    setState(() => _isLoading = false);
+    // Pastikan isLoading di-set ke false apa pun hasilnya
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _fetchActivityLogs(String? userEmail, String? userName) async {

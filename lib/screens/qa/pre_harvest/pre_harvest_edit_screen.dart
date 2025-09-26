@@ -47,7 +47,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
 
   final List<String> maleRowsChoppingItems = ['A', 'B'];
   final List<String> cropUniformityItems = ['1', '2', '3', '4', '5'];
-  final List<String> cropHealthItems = ['A', 'B', 'C'];
+  final List<String> cropHealthItems = ['1', '2', '3', '4', '5'];
   final List<String> recommendationItems = ['Continue', 'Discard'];
 
   bool get areRecommendationFieldsRequired {
@@ -332,7 +332,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
                               row[34] = value ?? '';
                             });
                           },
-                          helpText: 'A (Low)\nB (Moderate)\nC (High)',
+                          helpText: '1 (Very Poor)\n2 (Poor)\n3 (Fair)\n4 (Good)\n5 (Best)',
                           icon: Icons.health_and_safety,
                         ),
                         const SizedBox(height: 10),
