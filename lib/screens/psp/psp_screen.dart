@@ -49,7 +49,9 @@ class PspScreenState extends State<PspScreen>
   String? selectedSpreadsheetId;
   final ZoomDrawerController _drawerController =
       ZoomDrawerController(); // Tambahkan Controller
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['email', 'profile'],
+  );
   String? userPhotoUrl;
   StreamSubscription? _seasonsSubscription;
 
@@ -354,21 +356,30 @@ class PspScreenState extends State<PspScreen>
 
   Future<void> _fetchGoogleUserData() async {
     try {
-      // Login atau ambil data user yang sudah login sebelumnya
-      final GoogleSignInAccount? googleUser =
-          await _googleSignIn.signInSilently();
-      if (googleUser != null) {
+      // FIX: Gunakan signInSilently() yang baru dengan null safety
+      final GoogleSignInAccount? googleUser = _googleSignIn.currentUser;
+
+      GoogleSignInAccount? signedInUser = googleUser;
+      if (signedInUser == null) {
+        try {
+          signedInUser = await _googleSignIn.signInSilently();
+        } catch (e) {
+          debugPrint("Silent sign in failed: $e");
+          return;
+        }
+      }
+
+      if (signedInUser != null) {
         setState(() {
-          userName = googleUser.displayName ?? 'Pengguna'; // Nama pengguna
-          userEmail = googleUser.email; // Email pengguna
-          userPhotoUrl = googleUser.photoUrl;
+          userName = signedInUser!.displayName ?? 'Pengguna';
+          userEmail = signedInUser.email;
+          userPhotoUrl = signedInUser.photoUrl;
         });
 
-        // Simpan data ke SharedPreferences
         SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setString('userName', googleUser.displayName ?? 'Pengguna');
-        await prefs.setString('userEmail', googleUser.email);
-        await prefs.setString('userPhotoUrl', googleUser.photoUrl ?? '');
+        await prefs.setString('userName', signedInUser.displayName ?? 'Pengguna');
+        await prefs.setString('userEmail', signedInUser.email);
+        await prefs.setString('userPhotoUrl', signedInUser.photoUrl ?? '');
       }
     } catch (error) {
       debugPrint("Error mengambil data Google: $error");

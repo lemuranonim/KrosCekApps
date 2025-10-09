@@ -27,12 +27,12 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace 'com.example.kroscek'
 
-    compileSdkVersion 35
+    compileSdkVersion 36
 
     defaultConfig {
         applicationId "com.example.kroscek"
-        minSdkVersion 23
-        targetSdkVersion 35
+        minSdkVersion flutter.minSdkVersion
+        targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
 

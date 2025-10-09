@@ -1,7 +1,10 @@
+// lib/services/google_sign_in_service.dart
+
 import 'package:google_sign_in/google_sign_in.dart';
 import '../services/auth_service.dart';
 
 class GoogleSignInService {
+  // FIX: Menggunakan konstruktor default GoogleSignIn()
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   Future<User?> signInWithGoogle({bool forceSignIn = false}) async {
@@ -36,4 +39,11 @@ class GoogleSignInService {
       // No action required
     }
   }
+}
+
+// Pastikan Anda memiliki class User yang sesuai, contoh:
+class User {
+  final String email;
+  final String role;
+  User({required this.email, required this.role});
 }

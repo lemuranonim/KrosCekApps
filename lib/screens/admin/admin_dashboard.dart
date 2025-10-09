@@ -27,6 +27,7 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
   final _key = GlobalKey<ScaffoldState>();
   bool _isLoading = false;
   final ZoomDrawerController _drawerController = ZoomDrawerController();
+  // FIX: GoogleSignIn constructor dengan parameter
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   String _appVersion = 'Fetching...';
   String userEmail = 'Fetching...';
@@ -129,18 +130,31 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
 
   Future<void> _fetchGoogleUserData() async {
     try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signInSilently();
-      if (googleUser != null) {
+      final GoogleSignInAccount? googleUser = _googleSignIn.currentUser;
+
+      GoogleSignInAccount? signedInUser = googleUser;
+      if (signedInUser == null) {
+        try {
+          signedInUser = await _googleSignIn.signInSilently();
+        } catch (e) {
+          debugPrint("Silent sign in failed: $e");
+          return;
+        }
+      }
+
+      if (signedInUser != null) {
         setState(() {
-          userName = googleUser.displayName ?? 'Pengguna';
-          userEmail = googleUser.email;
-          userPhotoUrl = googleUser.photoUrl;
+          // FIX 2: Menghapus operator '!' yang tidak perlu
+          userName = signedInUser!.displayName ?? 'Pengguna';
+          userEmail = signedInUser.email;
+          userPhotoUrl = signedInUser.photoUrl;
         });
 
         SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setString('userName', googleUser.displayName ?? 'Pengguna');
-        await prefs.setString('userEmail', googleUser.email);
-        await prefs.setString('userPhotoUrl', googleUser.photoUrl ?? '');
+        // FIX 2: Menghapus operator '!' yang tidak perlu
+        await prefs.setString('userName', signedInUser.displayName ?? 'Pengguna');
+        await prefs.setString('userEmail', signedInUser.email);
+        await prefs.setString('userPhotoUrl', signedInUser.photoUrl ?? '');
       }
     } catch (error) {
       debugPrint("Error mengambil data Google: $error");
@@ -148,7 +162,12 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
   }
 
   Future<void> _logoutGoogle() async {
-    await _googleSignIn.signOut();
+    try {
+      await _googleSignIn.signOut();
+      await _googleSignIn.disconnect();
+    } catch (e) {
+      debugPrint("Error during Google sign out: $e");
+    }
   }
 
   Future<void> _refreshData() async {
@@ -449,8 +468,6 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
       ),
     );
   }
-
-
 
   Future<void> _logout(BuildContext context) async {
     final navigator = Navigator.of(context);
@@ -1071,7 +1088,7 @@ class MenuScreen extends StatelessWidget {
               children: [
                 const SizedBox(height: 5),
                 Text(
-                  '© ${DateTime.now().year} Tim Cengoh, Ahli Huru-Hara',
+                  'Â© ${DateTime.now().year} Tim Cengoh, Ahli Huru-Hara',
                   style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 11,
