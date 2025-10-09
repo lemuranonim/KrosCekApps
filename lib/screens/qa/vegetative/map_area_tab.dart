@@ -818,7 +818,7 @@ class MapAreaTabState extends State<MapAreaTab> {
 
   Widget _buildDistrictFilter() {
     return DropdownButtonFormField<String>(
-      value: _selectedDistrict,
+      initialValue: _selectedDistrict,
       decoration: InputDecoration(
         labelText: 'District',
         labelStyle: AppTheme.caption,
@@ -847,7 +847,7 @@ class MapAreaTabState extends State<MapAreaTab> {
 
   Widget _buildKecamatanFilter() {
     return DropdownButtonFormField<String>(
-      value: _selectedKecamatan,
+      initialValue: _selectedKecamatan,
       decoration: InputDecoration(
         labelText: 'Kecamatan',
         labelStyle: AppTheme.caption,
@@ -875,7 +875,7 @@ class MapAreaTabState extends State<MapAreaTab> {
 
   Widget _buildDesaFilter() {
     return DropdownButtonFormField<String>(
-      value: _selectedDesa,
+      initialValue: _selectedDesa,
       decoration: InputDecoration(
         labelText: 'Village',
         labelStyle: AppTheme.caption,

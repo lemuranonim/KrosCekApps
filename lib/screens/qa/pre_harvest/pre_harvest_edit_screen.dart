@@ -671,7 +671,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
           filled: true,
           fillColor: Colors.white,
         ),
-        value: value,
+        initialValue: value,
         hint: const Text('Select Field Inspector'),
         validator: (value) {
           if (isRequired && (value == null || value.isEmpty)) {
@@ -827,7 +827,7 @@ class PreHarvestEditScreenState extends State<PreHarvestEditScreen> {
               filled: true,
               fillColor: Colors.white,
             ),
-            value: value,
+            initialValue: value,
             hint: Text(hint ?? 'Select an option'),
             validator: (value) {
               if (isRequired && (value == null || value.isEmpty)) {

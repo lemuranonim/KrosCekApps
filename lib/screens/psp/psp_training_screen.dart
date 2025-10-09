@@ -363,7 +363,7 @@ class PspTrainingScreenState extends State<PspTrainingScreen> {
         String? Function(String?)? validator,
       }) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       onChanged: onChanged,
       items: items.map((item) {
         return DropdownMenuItem<String>(

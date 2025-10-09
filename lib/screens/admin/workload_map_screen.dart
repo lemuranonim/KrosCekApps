@@ -996,7 +996,7 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
           fillColor: Colors.white,
           filled: true,
         ),
-        value: value,
+        initialValue: value,
         hint: Text(displayHint, style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
         isExpanded: true,
         items: dropdownItems,

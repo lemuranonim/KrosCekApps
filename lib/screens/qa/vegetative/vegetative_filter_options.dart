@@ -1187,7 +1187,8 @@ class _VegetativeFilterOptionsState extends State<VegetativeFilterOptions> with 
             _localShowDiscardedFase = value;
           });
         },
-        activeColor: Colors.orange.shade600,
+        activeThumbColor: Colors.orange.shade600,
+        activeTrackColor: Colors.orange.shade200,
         inactiveThumbColor: Colors.grey.shade400,
         inactiveTrackColor: Colors.grey.shade200,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

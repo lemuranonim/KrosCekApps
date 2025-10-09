@@ -1262,7 +1262,7 @@ class HspScreenState extends State<HspScreen>
                       final regions = snapshot.data ?? [];
 
                       return DropdownButtonFormField<String>(
-                        value: selectedFieldSPV,
+                        initialValue: selectedFieldSPV,
                         hint: const Text("Pilih Regionmu!",
                             style: TextStyle(color: Colors.grey)),
                         items: regions.map((region) {
@@ -1357,7 +1357,7 @@ class HspScreenState extends State<HspScreen>
                         final qaSPVList = snapshot.data ?? [];
 
                         return DropdownButtonFormField<String>(
-                          value: selectedQA,
+                          initialValue: selectedQA,
                           hint: const Text("Pilih HSP SPV!",
                               style: TextStyle(color: Colors.grey)),
                           items: qaSPVList.map((qa) {
@@ -1430,7 +1430,7 @@ class HspScreenState extends State<HspScreen>
                         final districts = snapshot.data ?? [];
 
                         return DropdownButtonFormField<String>(
-                          value: selectedFA,
+                          initialValue: selectedFA,
                           hint: const Text("Pilih District!",
                               style: TextStyle(color: Colors.grey)),
                           items: districts.map((district) {

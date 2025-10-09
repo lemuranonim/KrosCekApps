@@ -600,7 +600,7 @@ class Audit6EditScreenState extends State<Audit6EditScreen> {
               filled: true,
               fillColor: Colors.white,
             ),
-            value: value,
+            initialValue: value,
             hint: Text(hint ?? 'Select an option'),
             onChanged: onChanged,
             items: items.map<DropdownMenuItem<String>>((String item) {

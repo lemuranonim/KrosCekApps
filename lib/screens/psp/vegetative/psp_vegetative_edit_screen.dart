@@ -437,7 +437,7 @@ class PspVegetativeEditScreenState extends State<PspVegetativeEditScreen> {
             labelText: label,
             border: const OutlineInputBorder(),
           ),
-          value: value,
+          initialValue: value,
           hint: Text(hint ?? 'Survey membuktikan!'),
           onChanged: onChanged,
           items: items.map<DropdownMenuItem<String>>((String item) {

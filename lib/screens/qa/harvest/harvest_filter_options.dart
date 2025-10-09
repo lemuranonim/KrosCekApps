@@ -1189,7 +1189,8 @@ class _HarvestFilterOptionsState extends State<HarvestFilterOptions> with Single
           // sehingga parent bisa mengupdate state _showDiscardedFaseItems miliknya saat "Apply" ditekan.
           widget.onShowDiscardedFaseChanged(value); // Ini akan dipanggil saat "Apply"
         },
-        activeColor: Colors.orange.shade600,
+        activeThumbColor: Colors.orange.shade600,
+        activeTrackColor: Colors.orange.shade200,
         inactiveThumbColor: Colors.grey.shade400,
         inactiveTrackColor: Colors.grey.shade200,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

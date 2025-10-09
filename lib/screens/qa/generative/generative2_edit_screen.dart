@@ -488,7 +488,7 @@ class Generative2EditScreenState extends State<Generative2EditScreen> {
               filled: true,
               fillColor: Colors.white,
             ),
-            value: value,
+            initialValue: value,
             hint: Text(hint ?? 'Select an option'),
             validator: (value) {
               if (required && (value == null || value.isEmpty)) {

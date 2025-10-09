@@ -584,7 +584,7 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
           filled: true,
           fillColor: Colors.white,
         ),
-        value: selectedFI,
+        initialValue: selectedFI,
         items: fiList.map((String fi) {
           return DropdownMenuItem<String>(
             value: fi,
@@ -761,7 +761,7 @@ class Audit1EditScreenState extends State<Audit1EditScreen> {
               filled: true,
               fillColor: Colors.white,
             ),
-            value: value,
+            initialValue: value,
             hint: Text(hint ?? 'Select an option'),
             onChanged: onChanged,
             items: items.map<DropdownMenuItem<String>>((String item) {

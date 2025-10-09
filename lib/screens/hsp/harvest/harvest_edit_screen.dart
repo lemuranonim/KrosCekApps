@@ -711,7 +711,7 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
           filled: true,
           fillColor: Colors.white,
         ),
-        value: value,
+        initialValue: value,
         hint: const Text('Select Field Inspector'),
         validator: (value) {
           if (isRequired && (value == null || value.isEmpty)) {
@@ -866,7 +866,7 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
               filled: true,
               fillColor: Colors.white,
             ),
-            value: value,
+            initialValue: value,
             hint: Text(hint ?? 'Select an option'),
             validator: (value) {
               if (isRequired && (value == null || value.isEmpty)) {
@@ -953,7 +953,7 @@ class HarvestEditScreenState extends State<HarvestEditScreen> {
               filled: true,
               fillColor: Colors.white,
             ),
-            value: value,
+            initialValue: value,
             hint: Text(hint ?? 'Select an option'),
             validator: (value) {
               if (isRequired && (value == null || value.isEmpty)) {

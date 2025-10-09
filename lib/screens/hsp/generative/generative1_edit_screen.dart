@@ -628,7 +628,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
           filled: true,
           fillColor: Colors.white,
         ),
-        value: value,
+        initialValue: value,
         hint: const Text('Select Field Inspector'),
         validator: (value) {
           if (isRequired && (value == null || value.isEmpty)) {
@@ -783,7 +783,7 @@ class Generative1EditScreenState extends State<Generative1EditScreen> {
               filled: true,
               fillColor: Colors.white,
             ),
-            value: value,
+            initialValue: value,
             hint: Text(hint ?? 'Select an option'),
             validator: (value) {
               if (required && (value == null || value.isEmpty)) {

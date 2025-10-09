@@ -998,7 +998,7 @@ class _DashboardVisitScreenState extends State<DashboardVisitScreen> {
               filled: true,
               fillColor: AppTheme.cardBackground,
             ),
-            value: _selectedFI,
+            initialValue: _selectedFI,
             items: [
               const DropdownMenuItem<String>(value: null, child: Text("Semua FI")),
               ..._availableFIs.map((fi) => DropdownMenuItem<String>(value: fi, child: Text(fi))),
