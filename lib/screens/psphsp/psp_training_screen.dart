@@ -160,7 +160,7 @@ class PspTrainingScreenState extends State<PspTrainingScreen> {
           ),
         ),
         centerTitle: true,
-        backgroundColor: Colors.redAccent[700], // Changed to redAccent
+        backgroundColor: Colors.orange[700], // Changed to orange
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 4,
         shape: const RoundedRectangleBorder(
@@ -331,7 +331,7 @@ class PspTrainingScreenState extends State<PspTrainingScreen> {
                     }
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent[700], // Changed to redAccent
+                    backgroundColor: Colors.orange[700], // Changed to orange
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -380,7 +380,7 @@ class PspTrainingScreenState extends State<PspTrainingScreen> {
           horizontal: 16,
           vertical: 14,
         ),
-        prefixIcon: const Icon(Icons.map, color: Colors.redAccent), // Changed to redAccent
+        prefixIcon: const Icon(Icons.map, color: Colors.orange), // Changed to orange
       ),
       style: TextStyle(
         color: Colors.grey[800],
@@ -414,7 +414,7 @@ class PspTrainingScreenState extends State<PspTrainingScreen> {
           horizontal: 16,
           vertical: 14,
         ),
-        prefixIcon: Icon(icon, color: Colors.redAccent), // Changed to redAccent
+        prefixIcon: Icon(icon, color: Colors.orange), // Changed to orange
       ),
       style: TextStyle(
         color: Colors.grey[800],
@@ -448,7 +448,7 @@ class PspTrainingScreenState extends State<PspTrainingScreen> {
           horizontal: 16,
           vertical: 14,
         ),
-        prefixIcon: Icon(icon, color: Colors.redAccent),
+        prefixIcon: Icon(icon, color: Colors.orange),
       ),
       style: TextStyle(
         color: Colors.grey[800],
@@ -472,7 +472,7 @@ class PspTrainingScreenState extends State<PspTrainingScreen> {
           horizontal: 16,
           vertical: 14,
         ),
-        prefixIcon: const Icon(Icons.calendar_today, color: Colors.redAccent), // Changed to redAccent
+        prefixIcon: const Icon(Icons.calendar_today, color: Colors.orange), // Changed to orange
         suffixIcon: IconButton(
           icon: const Icon(Icons.date_range),
           onPressed: () => _selectDate(context),
@@ -504,7 +504,7 @@ class PspTrainingScreenState extends State<PspTrainingScreen> {
           horizontal: 16,
           vertical: 14,
         ),
-        prefixIcon: Icon(icon, color: Colors.redAccent), // Changed to redAccent
+        prefixIcon: Icon(icon, color: Colors.orange), // Changed to orange
         filled: true,
         fillColor: Colors.grey[100],
       ),

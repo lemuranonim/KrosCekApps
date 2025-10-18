@@ -43,6 +43,7 @@ class GenerativeScreenState extends State<GenerativeScreen> {
   String? _selectedSeason;
   List<String> _seasonsList = [];
   final List<List<String>> _sheetData = [];
+  final List<List<String>> _vegetativeData = [];
   List<List<String>> _filteredData = [];
   bool _isLoading = true;
   String? selectedRegion;
@@ -86,9 +87,22 @@ class GenerativeScreenState extends State<GenerativeScreen> {
   @override
   void initState() {
     super.initState();
-    final spreadsheetId = ConfigManager.getSpreadsheetId(widget.region ?? "Default Region") ?? '';
+
+    final spreadsheetId = widget.spreadsheetId.isNotEmpty
+        ? widget.spreadsheetId
+        : ConfigManager.getSpreadsheetId(widget.region ?? "Default Region") ?? '';
+
+    if (spreadsheetId.isEmpty) {
+      setState(() {
+        _errorMessage = "Spreadsheet ID tidak ditemukan untuk region ${widget.region}";
+        _isLoading = false;
+      });
+      return;
+    }
+
     selectedRegion = widget.region ?? "Unknown Region";
     _googleSheetsApi = GoogleSheetsApi(spreadsheetId);
+
     _loadSheetData();
     _loadFilterPreferences();
   }
@@ -104,48 +118,36 @@ class GenerativeScreenState extends State<GenerativeScreen> {
       await _googleSheetsApi.init();
       final activityData = await _googleSheetsApi.getSpreadsheetData('Aktivitas');
 
-      // Clear existing counts and timestamps
       _activityCounts.clear();
       _activityTimestamps.clear();
 
-      // Count activities for each field number, but only for Generative sheet
       for (var row in activityData) {
-        if (row.length > 7) { // Ensure we have enough columns
-          final sheetName = row.length > 5 ? row[5] : ''; // Sheet name is in column F (index 5)
+        if (row.length > 7) {
+          final sheetName = row.length > 5 ? row[5] : '';
 
-          // Only process rows related to the Generative sheet
           if (sheetName.toLowerCase().contains('generative')) {
-            final fieldNumber = row[6]; // Field Number is in column G (index 6)
+            final fieldNumber = row[6];
             if (fieldNumber.isNotEmpty) {
-              // Update activity count
               _activityCounts[fieldNumber] = (_activityCounts[fieldNumber] ?? 0) + 1;
 
-              // Extract timestamp from column H (index 7)
               final timestampStr = row[7];
               DateTime? timestamp;
 
               if (timestampStr.isNotEmpty) {
-                // Try to parse the timestamp
                 try {
-                  // First try to parse as Excel numeric date
                   final excelDateValue = double.tryParse(timestampStr);
                   if (excelDateValue != null) {
-                    // Convert Excel date to DateTime
                     final baseDate = DateTime(1899, 12, 30);
                     final days = excelDateValue.floor();
                     final millisInDay = (excelDateValue - days) * 24 * 60 * 60 * 1000;
                     timestamp = baseDate.add(Duration(days: days, milliseconds: millisInDay.round()));
                   } else {
-                    // Try standard date formats
                     try {
-                      // Try dd/MM/yyyy HH:mm:ss format
                       timestamp = DateFormat("dd/MM/yyyy HH:mm:ss").parse(timestampStr);
                     } catch (e) {
-                      // Try standard DateTime.parse
                       try {
                         timestamp = DateTime.parse(timestampStr);
                       } catch (e) {
-                        // Try dd/MM/yyyy format
                         try {
                           final parts = timestampStr.split(' ')[0].split('/');
                           if (parts.length == 3) {
@@ -153,7 +155,6 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                             final day = int.tryParse(parts[1]) ?? 1;
                             final year = int.tryParse(parts[2]) ?? DateTime.now().year;
 
-                            // Try to parse time if available
                             int hour = 0, minute = 0, second = 0;
                             if (timestampStr.contains(' ') && timestampStr.split(' ').length > 1) {
                               final timeParts = timestampStr.split(' ')[1].split(':');
@@ -169,7 +170,7 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                             timestamp = DateTime(year, month, day, hour, minute, second);
                           }
                         } catch (e) {
-                          // Try MM/dd/yyyy format
+                          // Handle parsing error
                         }
                       }
                     }
@@ -179,25 +180,19 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                 }
               }
 
-              // If we successfully parsed a timestamp, add it to the map
               if (timestamp != null) {
                 _activityTimestamps[fieldNumber] ??= [];
                 _activityTimestamps[fieldNumber]!.add(timestamp);
               }
-            } else {
-              // Handle empty field number
             }
           }
         }
       }
 
-      // Sort timestamps for each field (newest first)
       for (var fieldNumber in _activityTimestamps.keys) {
         _activityTimestamps[fieldNumber]!.sort((a, b) => b.compareTo(a));
       }
-      setState(() {
-        // Update state to trigger rebuild with new activity data
-      });
+      setState(() {});
     } catch (e) {
       // Error handling
     }
@@ -213,6 +208,7 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     if (refresh) {
       _currentPage = 1;
       _sheetData.clear();
+      _vegetativeData.clear();
       _totalEffectiveArea = 0.0;
     }
 
@@ -223,22 +219,33 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     });
 
     try {
-      await _googleSheetsApi.init();
+      if (!_googleSheetsApi.isInitialized) {
+        final initSuccess = await _googleSheetsApi.init();
+        if (!initSuccess) {
+          throw Exception('Gagal menginisialisasi koneksi ke Google Sheets');
+        }
+      }
+
       final totalDataCount = 12000;
       final data = await _googleSheetsApi.getSpreadsheetDataWithPagination(
-          _worksheetTitle, (_currentPage - 1) * _rowsPerPage + 1, _rowsPerPage);
+          _worksheetTitle,
+          (_currentPage - 1) * _rowsPerPage + 1,
+          _rowsPerPage
+      );
 
-      // Load activity data
+      final vegetativeData = await _googleSheetsApi.getSpreadsheetData('Vegetative');
+
       await _loadActivityData();
 
       setState(() {
         _sheetData.addAll(data);
+        _vegetativeData.addAll(vegetativeData);
         _filteredData = List.from(_sheetData);
         _isLoading = false;
         _extractUniqueFA();
         _extractUniqueFIs();
-        _extractUniqueSeasons(); // Ekstrak unique seasons
-        _extractUniqueWeeks(); // Ekstrak unique weeks
+        _extractUniqueSeasons();
+        _extractUniqueWeeks();
         _filterData();
         _currentPage++;
         _progress = (_sheetData.length / totalDataCount).clamp(0.0, 1.0);
@@ -263,7 +270,7 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     setState(() {
       _selectedQA = prefs.getString('selectedQA');
     });
-    _filterData(); // Call filter data after preferences are loaded
+    _filterData();
   }
 
   void _extractUniqueFA() {
@@ -281,42 +288,42 @@ class GenerativeScreenState extends State<GenerativeScreen> {
   }
 
   void _extractUniqueFIs() {
-    final fiSet = <String>{}; // Using set to store unique FIs
+    final fiSet = <String>{};
     for (var row in _sheetData) {
-      final fi = getValue(row, 31, '').toLowerCase(); // Change to column AF (index 31)
-      if (fi.isNotEmpty) { // Ensure FI is not empty
+      final fi = getValue(row, 31, '').toLowerCase();
+      if (fi.isNotEmpty) {
         fiSet.add(fi);
       }
     }
     setState(() {
       _fiNames = fiSet.map((fi) => toTitleCase(fi)).toList();
-      _fiNames.sort(); // Sort A to Z
+      _fiNames.sort();
     });
   }
 
   void _extractUniqueSeasons() {
     final seasonsSet = <String>{};
     for (var row in _sheetData) {
-      final season = getValue(row, 1, ''); // Assuming season is in column 1
+      final season = getValue(row, 1, '');
       if (season.isNotEmpty) {
         seasonsSet.add(season);
       }
     }
     setState(() {
-      _seasonsList = seasonsSet.toList()..sort(); // Sort the seasons
+      _seasonsList = seasonsSet.toList()..sort();
     });
   }
 
   void _extractUniqueWeeks() {
     final weeksSet = <String>{};
     for (var row in _sheetData) {
-      final week = getValue(row, 29, ''); // Assuming week is in column 29
+      final week = getValue(row, 28, '');
       if (week.isNotEmpty) {
         weeksSet.add(week);
       }
     }
     setState(() {
-      _weekOfGenerativeList = weeksSet.toList()..sort(); // Sort the weeks
+      _weekOfGenerativeList = weeksSet.toList()..sort();
     });
   }
 
@@ -338,12 +345,9 @@ class GenerativeScreenState extends State<GenerativeScreen> {
         final qaSpv = getValue(row, 30, '');
         final fi = getValue(row, 31, '').toLowerCase();
 
-        // 1. Pecah query pencarian menjadi beberapa kata kunci (keywords)
         final searchKeywords = _searchQuery.toLowerCase().split(' ').where((s) => s.isNotEmpty).toList();
 
-        // 2. Logika pencocokan baru: setiap keyword HARUS ada di dalam baris data
         final bool matchesSearchQuery = searchKeywords.isEmpty || searchKeywords.every((keyword) {
-          // Sebuah keyword dianggap cocok jika ada di SALAH SATU kolom berikut
           return fieldNumber.contains(keyword) ||
               farmerName.contains(keyword) ||
               grower.contains(keyword) ||
@@ -363,11 +367,10 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                 district == widget.selectedDistrict!.toLowerCase();
         bool matchesWeekFilter =
             _selectedWeeks.isEmpty || _selectedWeeks.contains(weekOfGenerative);
-        bool matchesFaseFilter = true; // Defaultnya true (lolos filter)
-        if (!_showDiscardedFaseItems) { // Jika _showDiscardedFaseItems adalah false (default)
-          matchesFaseFilter = fase != 'discard'; // Maka, hanya tampilkan yang BUKAN "discard"
+        bool matchesFaseFilter = true;
+        if (!_showDiscardedFaseItems) {
+          matchesFaseFilter = fase != 'discard';
         }
-
 
         bool matchesFAFilter =
             _selectedFA.isEmpty ||
@@ -376,8 +379,6 @@ class GenerativeScreenState extends State<GenerativeScreen> {
         bool matchesFIFilter =
             _selectedFIs.isEmpty ||
                 _selectedFIs.contains(toTitleCase(fi));
-
-
 
         final status = getGenerativeStatus(
             getValue(row, 72, ""),
@@ -463,7 +464,7 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent, // Keep transparent for rounded corners
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setState) {
@@ -492,28 +493,27 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                 _selectedFIs = selected;
               },
 
-                initialShowDiscardedFase: _showDiscardedFaseItems,
-                onShowDiscardedFaseChanged: (newValue) {
-                  _showDiscardedFaseItems = newValue;
-                },
+              initialShowDiscardedFase: _showDiscardedFaseItems,
+              onShowDiscardedFaseChanged: (newValue) {
+                _showDiscardedFaseItems = newValue;
+              },
 
               onResetAll: () {
-                // Fungsi ini akan dipanggil ketika tombol "Reset All" di dalam modal ditekan
-                setState(() { // Ini adalah setState dari GenerativeScreenState
+                setState(() {
                   _selectedSeason = null;
                   _selectedWeeks.clear();
                   _selectedFA.clear();
                   _selectedFIs.clear();
-                  _showDiscardedFaseItems = false; // Reset ke default
+                  _showDiscardedFaseItems = false;
                   _selectedStatuses.clear();
                 });
-                _filterData(); // Panggil filter data setelah reset
-                Navigator.pop(context); // Tutup modal setelah reset
+                Navigator.pop(context);
+                _filterData();
               },
 
-                onApplyFilters: () {
-                  _filterData();
-                }
+              onApplyFilters: () {
+                _filterData();
+              },
             );
           },
         );
@@ -523,14 +523,12 @@ class GenerativeScreenState extends State<GenerativeScreen> {
 
   Future<bool> _onWillPop() async {
     _navigateBackToHome();
-    return false; // Return false to prevent default back button behavior
+    return false;
   }
 
   void _navigateBackToHome() {
-    // Simpan context dalam variabel lokal
     final currentContext = context;
 
-    // Tampilkan loading overlay sebelum kembali
     showDialog(
       context: currentContext,
       barrierDismissible: false,
@@ -552,230 +550,25 @@ class GenerativeScreenState extends State<GenerativeScreen> {
       },
     );
 
-    // Delay sebentar untuk menampilkan loading
     Timer(const Duration(milliseconds: 600), () {
-      // Navigasi kembali ke HomeScreen
       if (Navigator.canPop(context)) {
-        Navigator.of(context).pop(); // Tutup dialog loading
-        Navigator.of(context).pop(); // Kembali ke HomeScreen
+        Navigator.of(context).pop();
+        Navigator.of(context).pop();
       }
     });
   }
 
-  // Helper widget untuk membuat satu chip filter
-  Widget _buildFilterChip({
-    required String label,
-    required IconData icon,
-    required MaterialColor activeColor, // <<< PERUBAIKAN DI SINI
-    required List<Color> activeGradient,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    // Kode ini sekarang valid karena activeColor adalah MaterialColor
-    final Color inactiveColor = activeColor.shade700;
-    final Color inactiveBorderColor = activeColor.shade200;
-
-    return Expanded(
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: isSelected
-              ? [
-            BoxShadow(
-              color: activeColor.withAlpha(50),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            )
-          ]
-              : null,
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: onTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: isSelected
-                    ? LinearGradient(
-                    colors: activeGradient,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight)
-                    : null,
-                color: isSelected ? null : Colors.white,
-                border: Border.all(
-                  color: isSelected ? Colors.transparent : inactiveBorderColor,
-                  width: 1.5,
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    icon,
-                    color: isSelected ? Colors.white : inactiveColor,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        color: isSelected ? Colors.white : inactiveColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Kontainer untuk semua chip filter status audit
-  Widget _buildFilterChipsContainer() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Colors.green.shade800, Colors.green.shade600.withAlpha(204)],
-        ),
-      ),
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Tombol untuk expand/collapse
-          Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [Colors.green.shade700, Colors.green.shade500],
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: TextButton.icon(
-              onPressed: () {
-                setState(() {
-                  _showFilterChipsContainer = !_showFilterChipsContainer;
-                });
-              },
-              icon: Icon(
-                _showFilterChipsContainer ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                color: Colors.white,
-              ),
-              label: Text(
-                _showFilterChipsContainer ? 'Hide Filter Audit Status' : 'Show Filter Audit Status',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-          // Baris yang berisi chip-chip filter
-          if (_showFilterChipsContainer) ...[
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                _buildFilterChip(
-                  label: "Sampun",
-                  icon: Icons.check_circle_outline,
-                  activeColor: Colors.green,
-                  activeGradient: [Colors.green.shade400, Colors.green.shade500],
-                  isSelected: _selectedStatuses.contains("Sampun"),
-                  onTap: () {
-                    setState(() {
-                      if (_selectedStatuses.contains("Sampun")) {
-                        _selectedStatuses.remove("Sampun");
-                      } else {
-                        _selectedStatuses.add("Sampun");
-                      }
-                      _filterData();
-                    });
-                  },
-                ),
-                const SizedBox(width: 12),
-                _buildFilterChip(
-                  label: "Jangkep", // Disingkat agar muat
-                  icon: Icons.hourglass_empty,
-                  activeColor: Colors.orange,
-                  activeGradient: [Colors.orange.shade400, Colors.orange.shade500],
-                  isSelected: _selectedStatuses.contains("Dereng Jangkep"),
-                  onTap: () {
-                    setState(() {
-                      if (_selectedStatuses.contains("Dereng Jangkep")) {
-                        _selectedStatuses.remove("Dereng Jangkep");
-                      } else {
-                        _selectedStatuses.add("Dereng Jangkep");
-                      }
-                      _filterData();
-                    });
-                  },
-                ),
-                const SizedBox(width: 12),
-                _buildFilterChip(
-                  label: "Blas", // Disingkat agar muat
-                  icon: Icons.cancel_outlined,
-                  activeColor: Colors.red,
-                  activeGradient: [Colors.red.shade400, Colors.red.shade500],
-                  isSelected: _selectedStatuses.contains("Dereng Blas"),
-                  onTap: () {
-                    setState(() {
-                      if (_selectedStatuses.contains("Dereng Blas")) {
-                        _selectedStatuses.remove("Dereng Blas");
-                      } else {
-                        _selectedStatuses.add("Dereng Blas");
-                      }
-                      _filterData();
-                    });
-                  },
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Konstanta untuk mengelola tinggi AppBar yang bisa membesar
-    const double summaryInfoHeight = 60.0;
-    const double filterSectionHeight = 90.0; // Sedikit lebih tinggi untuk 3 chip
-
-    // Hitung tinggi AppBar yang diperluas secara dinamis
-    final double expandedAppBarHeight = 100.0 +
-        summaryInfoHeight +
-        (_showFilterChipsContainer ? filterSectionHeight : 10.0);
-
     // ignore: deprecated_member_use
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
         body: LiquidPullToRefresh(
           onRefresh: () async {
-            // Reset semua filter dan muat ulang data
             setState(() {
               _selectedSeason = null;
-              _selectedWeeks.clear();
+              _selectedWeeks = [];
               _selectedFA.clear();
               _selectedFIs.clear();
               _searchQuery = '';
@@ -791,154 +584,345 @@ class GenerativeScreenState extends State<GenerativeScreen> {
           child: CustomScrollView(
             slivers: [
               SliverAppBar(
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  onPressed: _navigateBackToHome,
-                ),
                 pinned: true,
                 floating: true,
                 elevation: 0,
+                expandedHeight: 220,
                 backgroundColor: Colors.green.shade800,
-                expandedHeight: expandedAppBarHeight,
+
+                // Leading Button
+                leading: Container(
+                  margin: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(51),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                    onPressed: _navigateBackToHome,
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+
+                // Title or Search Bar
                 title: _isSearching
-                    ? TextField(
-                  onChanged: _onSearchChanged,
-                  autofocus: true,
-                  style: const TextStyle(color: Colors.white),
-                  cursorColor: Colors.white,
-                  decoration: const InputDecoration(
-                    hintText: 'Cari lahan, petani...',
-                    hintStyle: TextStyle(color: Colors.white70),
-                    border: InputBorder.none,
+                    ? Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(51),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: TextField(
+                    onChanged: _onSearchChanged,
+                    autofocus: true,
+                    style: const TextStyle(color: Colors.white),
+                    cursorColor: Colors.white,
+                    decoration: const InputDecoration(
+                      hintText: 'Cari lahan, petani...',
+                      hintStyle: TextStyle(color: Colors.white70),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      prefixIcon: Icon(Icons.search_rounded, color: Colors.white70),
+                    ),
                   ),
                 )
-                    : const Text(
-                  'Generative Inspection',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-                centerTitle: true,
-                actions: [
-                  IconButton(
-                    icon: Icon(_isSearching ? Icons.close : Icons.search, color: Colors.white),
-                    onPressed: () => setState(() {
-                      if (_isSearching) _searchQuery = '';
-                      _isSearching = !_isSearching;
-                      _filterData();
-                    }),
-                  ),
-                  if (!_isSearching)
-                    IconButton(
-                      icon: Badge(
-                        isLabelVisible: _selectedSeason != null ||
-                            _selectedWeeks.isNotEmpty ||
-                            _selectedFA.isNotEmpty ||
-                            _showDiscardedFaseItems ||
-                            _selectedFIs.isNotEmpty,
-                        backgroundColor: Colors.red,
-                        child: const Icon(Icons.filter_list_rounded, color: Colors.white),
+                    : Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(51),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      tooltip: 'Filter Options',
-                      onPressed: _showFilterOptions,
+                      child: const Icon(
+                        Icons.agriculture_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                     ),
-                  if (!_isSearching)
-                    IconButton(
-                      icon: Icon(_showMapView ? Icons.view_list : Icons.map_outlined, color: Colors.white),
-                      onPressed: _toggleViewMode,
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Generative',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ),
+                  ],
+                ),
+
+                // Actions
+                actions: [
+                  // Search Button
+                  Container(
+                    margin: const EdgeInsets.only(right: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(51),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      icon: Icon(
+                        _isSearching ? Icons.close_rounded : Icons.search_rounded,
+                        color: Colors.white,
+                      ),
+                      onPressed: () => setState(() {
+                        if (_isSearching) _searchQuery = '';
+                        _isSearching = !_isSearching;
+                        _filterData();
+                      }),
+                    ),
+                  ),
+
+                  // Filter Button with Badge
                   if (!_isSearching)
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert, color: Colors.white),
-                      tooltip: 'More options',
-                      onSelected: (value) {
-                        if (value == 'refresh') {
-                          _loadSheetData(refresh: true);
-                        } else if (value == 'analysis') {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => GenerativeActivityAnalysisScreen(
-                                activityCounts: _activityCounts,
-                                activityTimestamps: _activityTimestamps,
-                                generativeData: _filteredData,
-                                selectedRegion: selectedRegion,
+                    Container(
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(51),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Stack(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.tune_rounded, color: Colors.white),
+                            onPressed: _showFilterOptions,
+                          ),
+                          if (_selectedSeason != null ||
+                              _selectedWeeks.isNotEmpty ||
+                              _selectedFA.isNotEmpty ||
+                              _showDiscardedFaseItems ||
+                              _selectedFIs.isNotEmpty)
+                            Positioned(
+                              right: 8,
+                              top: 8,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [Colors.red.shade400, Colors.red.shade600],
+                                  ),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 2),
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 16,
+                                  minHeight: 16,
+                                ),
+                                child: const Text(
+                                  '!',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
                             ),
-                          );
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(
-                          value: 'refresh',
-                          child: Row(
-                            children: [
-                              Icon(Icons.refresh, color: Colors.green),
-                              SizedBox(width: 8),
-                              Text('Refresh Data'),
-                            ],
-                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Map View Toggle
+                  if (!_isSearching)
+                    Container(
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(51),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: IconButton(
+                        icon: Icon(
+                          _showMapView ? Icons.view_list_rounded : Icons.map_rounded,
+                          color: Colors.white,
                         ),
-                        const PopupMenuItem(
-                          value: 'analysis',
-                          child: Row(
-                            children: [
-                              Icon(Icons.analytics, color: Colors.green),
-                              SizedBox(width: 8),
-                              Text('Analysis Aktivitas'),
-                            ],
-                          ),
+                        onPressed: _toggleViewMode,
+                      ),
+                    ),
+
+                  // More Menu
+                  if (!_isSearching)
+                    Container(
+                      margin: const EdgeInsets.only(right: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(51),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                      ],
+                        onSelected: (value) {
+                          if (value == 'refresh') {
+                            _loadSheetData(refresh: true);
+                          } else if (value == 'analysis') {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => GenerativeActivityAnalysisScreen(
+                                  activityCounts: _activityCounts,
+                                  activityTimestamps: _activityTimestamps,
+                                  generativeData: _filteredData,
+                                  vegetativeData: _vegetativeData,
+                                  selectedRegion: selectedRegion,
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'refresh',
+                            child: Row(
+                              children: [
+                                Icon(Icons.refresh_rounded, color: Colors.green),
+                                SizedBox(width: 12),
+                                Text('Refresh Data'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'analysis',
+                            child: Row(
+                              children: [
+                                Icon(Icons.analytics_rounded, color: Colors.green),
+                                SizedBox(width: 12),
+                                Text('Analysis Aktivitas'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                 ],
+
+                // Progress Indicator
+                bottom: PreferredSize(
+                  preferredSize: const Size.fromHeight(4.0),
+                  child: _isLoading
+                      ? LinearProgressIndicator(
+                    value: _progress > 0 ? _progress : null,
+                    backgroundColor: Colors.white.withAlpha(51),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                  )
+                      : const SizedBox.shrink(),
+                ),
+
+                // Flexible Space with Gradient Background
                 flexibleSpace: FlexibleSpaceBar(
                   background: Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [Colors.green.shade800, Colors.green.shade600],
+                        colors: [
+                          Colors.green.shade700,
+                          Colors.green.shade800,
+                          Colors.green.shade900,
+                        ],
                       ),
                     ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Opacity(
-                          opacity: (1 - (_progress.clamp(0.0, 1.0) * 2)).clamp(0.0, 1.0),
-                          child: Text(
-                            selectedRegion ?? 'Unknown Region',
-                            style: const TextStyle(color: Colors.white70, fontSize: 14),
+                    child: SafeArea(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          const SizedBox(height: 60),
+
+                          // Region Badge
+                          TweenAnimationBuilder(
+                            tween: Tween<double>(begin: 0, end: 1),
+                            duration: const Duration(milliseconds: 600),
+                            curve: Curves.easeOut,
+                            builder: (context, double value, child) {
+                              return Opacity(
+                                opacity: value,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withAlpha(38),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: Colors.white.withAlpha(76),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.location_on_rounded,
+                                        color: Colors.white.withAlpha(229),
+                                        size: 14,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        selectedRegion ?? 'Unknown Region',
+                                        style: TextStyle(
+                                          color: Colors.white.withAlpha(229),
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _buildSummaryInfo(Icons.format_list_numbered, '${_filteredData.length} Lahan'),
-                              _buildSummaryInfo(Icons.crop, 'Σ Area: ${_totalEffectiveArea.toStringAsFixed(1)} Ha'),
-                            ],
+
+                          const SizedBox(height: 16),
+
+                          // Summary Info Cards
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: _buildEnhancedSummaryCard(
+                                    icon: Icons.grid_view_rounded,
+                                    label: 'Total Lahan',
+                                    value: '${_filteredData.length}',
+                                    gradient: [Colors.blue.shade400, Colors.blue.shade600],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildEnhancedSummaryCard(
+                                    icon: Icons.landscape_rounded,
+                                    label: 'Total Area',
+                                    value: '${_totalEffectiveArea.toStringAsFixed(1)} Ha',
+                                    gradient: [Colors.orange.shade400, Colors.orange.shade600],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 15),
-                        // Menggunakan widget container filter yang sudah kita buat
-                        _buildFilterChipsContainer(),
-                      ],
+                          const SizedBox(height: 12),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-                bottom: PreferredSize(
-                  preferredSize: const Size.fromHeight(4.0),
-                  child: _isLoading
-                      ? LinearProgressIndicator(
-                    value: _progress > 0 ? _progress : null,
-                    backgroundColor: Colors.green.shade300.withAlpha(76),
-                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                  )
-                      : const SizedBox.shrink(),
+              ),
+
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _FilterHeaderDelegate(
+                  child: Container(
+                    color: Colors.green.shade800,
+                    child: _buildEnhancedFilterChipsContainer(),
+                  ),
+                  height: _showFilterChipsContainer ? 125.0 : 75.0,
                 ),
               ),
 
-              // === BAGIAN KONTEN UTAMA ===
+              // Rest of the content
               if (_showMapView)
                 SliverFillRemaining(
                   child: GenerativeMapView(
@@ -948,13 +932,12 @@ class GenerativeScreenState extends State<GenerativeScreen> {
                   ),
                 )
               else if (_isLoading)
-                _buildSliverCenteredContent(child: Lottie.asset('assets/loading.json', height: 200))
+                _buildSliverCenteredContent(child: Lottie.asset('assets/loading.json'))
               else if (_errorMessage != null)
                   _buildSliverCenteredContent(child: _buildErrorState())
                 else if (_filteredData.isEmpty)
-                    _buildSliverCenteredContent(child: _buildEmptyState())
+                    _buildSliverCenteredContent(child: _buildEmpty())
                   else
-                  // Menggunakan GenerativeSliverListBuilder
                     GenerativeSliverListBuilder(
                       filteredData: _filteredData,
                       selectedRegion: selectedRegion,
@@ -977,24 +960,60 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     );
   }
 
-  // Helper untuk info ringkasan
-  Widget _buildSummaryInfo(IconData icon, String text) {
+  // Enhanced Summary Card
+  Widget _buildEnhancedSummaryCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required List<Color> gradient,
+  }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withAlpha(51),
-        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(colors: gradient),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: gradient[0].withAlpha(76),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: Colors.white, size: 16),
-          const SizedBox(width: 6),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha(51),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: Colors.white, size: 16),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white.withAlpha(229),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
           Text(
-            text,
+            value,
             style: const TextStyle(
               color: Colors.white,
-              fontWeight: FontWeight.w500,
-              fontSize: 13,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
             ),
           ),
         ],
@@ -1002,15 +1021,223 @@ class GenerativeScreenState extends State<GenerativeScreen> {
     );
   }
 
-  // Helper untuk menempatkan widget di tengah sebagai sliver
+  // Enhanced Filter Chips Container (WITH 3 STATUS FILTERS)
+  Widget _buildEnhancedFilterChipsContainer() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Toggle Button
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(25),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withAlpha(51),
+                width: 1,
+              ),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    _showFilterChipsContainer = !_showFilterChipsContainer;
+                  });
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.verified_user_rounded,
+                        color: Colors.white.withAlpha(229),
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _showFilterChipsContainer
+                              ? 'Sembunyikan Status Audit'
+                              : 'Tampilkan Status Audit',
+                          style: TextStyle(
+                            color: Colors.white.withAlpha(229),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        _showFilterChipsContainer
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: Colors.white.withAlpha(229),
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // FILTER CHIPS - 3 Status Options
+          if (_showFilterChipsContainer) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                // Filter "Sampun" (Fully Audited)
+                Expanded(
+                  child: _buildEnhancedFilterChip(
+                    label: "Sampun",
+                    status: "Sampun",
+                    icon: Icons.check_circle_rounded,
+                    gradient: [Colors.green.shade400, Colors.green.shade600],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Filter "Dereng Jangkep" (Partially Audited)
+                Expanded(
+                  child: _buildEnhancedFilterChip(
+                    label: "Jangkep",
+                    status: "Dereng Jangkep",
+                    icon: Icons.pending_rounded,
+                    gradient: [Colors.orange.shade400, Colors.orange.shade600],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Filter "Dereng Blas" (Not Audited)
+                Expanded(
+                  child: _buildEnhancedFilterChip(
+                    label: "Blas",
+                    status: "Dereng Blas",
+                    icon: Icons.cancel_rounded,
+                    gradient: [Colors.red.shade400, Colors.red.shade600],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Enhanced Filter Chip (INDIVIDUAL CHIP FOR STATUS)
+  Widget _buildEnhancedFilterChip({
+    required String label,
+    required String status,
+    required IconData icon,
+    required List<Color> gradient,
+  }) {
+    final bool isActive = _selectedStatuses.contains(status);
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (isActive) {
+            _selectedStatuses.remove(status);
+          } else {
+            _selectedStatuses.add(status);
+          }
+          _filterData();
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+        decoration: BoxDecoration(
+          gradient: isActive ? LinearGradient(colors: gradient) : null,
+          color: isActive ? null : Colors.white.withAlpha(38),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isActive ? Colors.transparent : Colors.white.withAlpha(76),
+            width: 1.5,
+          ),
+          boxShadow: isActive
+              ? [
+            BoxShadow(
+              color: gradient[0].withAlpha(76),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: isActive ? Colors.white : Colors.white.withAlpha(229),
+              size: 16,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: isActive ? Colors.white : Colors.white.withAlpha(229),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper untuk tampilan data kosong
+  Widget _buildEmpty() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Lottie.asset('assets/empty.json', height: 180),
+        const SizedBox(height: 16),
+        const Text('Data tidak ditemukan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey)),
+        const SizedBox(height: 8),
+        const Text('Coba ubah filter atau kata kunci pencarian.', style: TextStyle(color: Colors.grey)),
+        const SizedBox(height: 24),
+        ElevatedButton.icon(
+          onPressed: () {
+            setState(() {
+              _selectedSeason = null;
+              _selectedWeeks = [];
+              _selectedFA.clear();
+              _selectedFIs.clear();
+              _searchQuery = '';
+              _selectedStatuses.clear();
+              _filterData();
+            });
+          },
+          icon: const Icon(Icons.refresh, color: Colors.white),
+          label: const Text('Reset Filters'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Helper untuk menampilkan widget di tengah sebagai sliver
   Widget _buildSliverCenteredContent({required Widget child}) {
     return SliverFillRemaining(
       hasScrollBody: false,
       child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: child,
-        ),
+        child: child,
       ),
     );
   }
@@ -1024,14 +1251,14 @@ class GenerativeScreenState extends State<GenerativeScreen> {
         const SizedBox(height: 16),
         Text(
           _errorMessage!,
-          style: TextStyle(color: Colors.red.shade700, fontSize: 16),
+          style: TextStyle(color: Colors.red.shade700),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
         ElevatedButton.icon(
           onPressed: () => _loadSheetData(refresh: true),
           icon: const Icon(Icons.refresh),
-          label: const Text('Coba Lagi'),
+          label: const Text('Try Again'),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.green,
             foregroundColor: Colors.white,
@@ -1040,38 +1267,28 @@ class GenerativeScreenState extends State<GenerativeScreen> {
       ],
     );
   }
+}
 
-  // Helper untuk tampilan data kosong
-  Widget _buildEmptyState() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Lottie.asset('assets/empty.json', height: 180),
-        const SizedBox(height: 16),
-        const Text('Data tidak ditemukan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey)),
-        const SizedBox(height: 8),
-        const Text('Coba ubah filter atau kata kunci pencarian.', style: TextStyle(color: Colors.grey), textAlign: TextAlign.center),
-        const SizedBox(height: 24),
-        ElevatedButton.icon(
-          onPressed: () {
-            setState(() {
-              _selectedSeason = null;
-              _selectedWeeks.clear();
-              _selectedFA.clear();
-              _selectedFIs.clear();
-              _searchQuery = '';
-              _selectedStatuses.clear();
-              _filterData();
-            });
-          },
-          icon: const Icon(Icons.refresh, color: Colors.white),
-          label: const Text('Reset Filter'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            foregroundColor: Colors.white,
-          ),
-        ),
-      ],
-    );
+// Filter Header Delegate
+class _FilterHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final double height;
+
+  _FilterHeaderDelegate({required this.child, this.height = 80.0});
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return child;
+  }
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  bool shouldRebuild(SliverPersistentHeaderDelegate oldDelegate) {
+    return true;
   }
 }

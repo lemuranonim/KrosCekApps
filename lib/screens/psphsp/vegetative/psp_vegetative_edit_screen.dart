@@ -124,7 +124,7 @@ class PspVegetativeEditScreenState extends State<PspVegetativeEditScreen> {
       appBar: AppBar(
         title: const Text('Edit Vegetative Field',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.redAccent,
+        backgroundColor: Colors.orange,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Padding(
@@ -344,7 +344,7 @@ class PspVegetativeEditScreenState extends State<PspVegetativeEditScreen> {
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size(200, 60),
                     // Mengatur ukuran tombol (lebar x tinggi)
-                    backgroundColor: Colors.redAccent,
+                    backgroundColor: Colors.orange,
                     // Warna background tombol
                     foregroundColor: Colors.white,
                     // Warna teks tombol
@@ -631,13 +631,13 @@ class PspSuccessScreen extends StatelessWidget {
           'Success',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.redAccent,
+        backgroundColor: Colors.orange,
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle, color: Colors.redAccent, size: 100),
+            const Icon(Icons.check_circle, color: Colors.orange, size: 100),
             const SizedBox(height: 20),
             const Text(
               'Data berhasil disimpan!',
@@ -664,7 +664,7 @@ class PspSuccessScreen extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60),
                 // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.redAccent,
+                backgroundColor: Colors.orange,
                 // Warna background tombol
                 foregroundColor: Colors.white,
                 // Warna teks tombol

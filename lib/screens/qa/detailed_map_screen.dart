@@ -1,10 +1,11 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/google_sheets_api.dart';
+import '../services/config_manager.dart';
 
 // --- AppTheme Class ---
 class AppTheme {
@@ -19,7 +20,7 @@ class AppTheme {
 // --- End AppTheme Class ---
 
 class DetailedMapScreen extends StatefulWidget {
-  final String spreadsheetId; // Diperlukan untuk mengambil data
+  final String spreadsheetId;
   final String initialWorksheetTitle;
   final String? initialRegion;
   final String? initialDistrict;
@@ -52,10 +53,9 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
   String? _selectedGrowingSeasonState;
   String? _selectedWeekState;
 
-  // UBAH: Menambahkan konstanta untuk "Semua Region" dan "Semua Minggu"
-  // Ini membuat kode lebih mudah dibaca dan di-maintain daripada menggunakan string langsung.
   static const String _allRegionsSentinel = "Semua Region";
   static const String _allWeeksSentinel = "Semua Minggu";
+  static const String _allDistrictsSentinel = "Semua District";
 
   List<String> _availableRegions = [];
   List<String> _availableDistricts = [];
@@ -74,14 +74,14 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
   bool _isStreetView = true;
 
   // Definisi kolom
-  final int colGrowingSeason = 1; // B
-  final int colFieldNo = 2; // C
-  final int colEffectiveArea = 8; // I
-  final int colVillage = 11; // L
-  final int colSubDistrict = 12; // M
-  final int colDistrict = 13; // N
-  final int colCoordinate = 17; // R
-  final int colRegion = 18; // S
+  final int colGrowingSeason = 1;
+  final int colFieldNo = 2;
+  final int colEffectiveArea = 8;
+  final int colVillage = 11;
+  final int colSubDistrict = 12;
+  final int colDistrict = 13;
+  final int colCoordinate = 17;
+  final int colRegion = 18;
 
   int get colWeek {
     switch (_selectedWorksheetTitle) {
@@ -101,24 +101,48 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
   final MapController _mapController = MapController();
   List<Polygon> _currentPolygons = [];
 
+  String _extractRegionName(String fullName) {
+    if (fullName.contains(' - ')) {
+      return fullName.split(' - ').first.trim();
+    }
+    return fullName.trim();
+  }
+
+  bool _isRegionMatch(String regionFromSheet, String? selectedRegion) {
+    if (selectedRegion == null || selectedRegion == _allRegionsSentinel) {
+      return true;
+    }
+    if (regionFromSheet.isEmpty) {
+      return false;
+    }
+    final extractedFromSheet = _extractRegionName(regionFromSheet);
+    return extractedFromSheet == selectedRegion;
+  }
+
+  List<String> _getUniqueRegionNames(List<String> fullNames) {
+    final uniqueNames = <String>{};
+    for (final fullName in fullNames) {
+      if (fullName != _allRegionsSentinel) {
+        uniqueNames.add(_extractRegionName(fullName));
+      }
+    }
+    return uniqueNames.toList()..sort();
+  }
+
   @override
   void initState() {
     super.initState();
     _googleSheetsApi = GoogleSheetsApi(widget.spreadsheetId);
     _selectedWorksheetTitle = widget.initialWorksheetTitle;
-
     _selectedRegionState = widget.initialRegion ?? _allRegionsSentinel;
     _selectedDistrictState = widget.initialDistrict;
     _selectedGrowingSeasonState = widget.initialSeason;
     _selectedWeekState = _allWeeksSentinel;
-
-    // UBAH: Panggil fungsi untuk memuat konfigurasi dan data secara berurutan
     _initializeScreen();
   }
 
-  // UBAH: Buat fungsi inisialisasi baru untuk mengatur urutan loading
   Future<void> _initializeScreen() async {
-    await _loadRegionConfig(); // Muat konfigurasi region terlebih dahulu
+    await _loadRegionConfig();
     _initializeGeoJson();
     _fetchDataForWorksheet(_selectedWorksheetTitle);
   }
@@ -130,21 +154,43 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
           .doc('filter')
           .get();
 
+      List<String> uniqueRegionNames = [];
+
       if (configSnapshot.exists) {
         final data = configSnapshot.data();
         if (data != null && data.containsKey('qa') && data['qa'] is List) {
-          final regionsFromConfig = List<String>.from(data['qa']);
-          if (mounted) {
-            setState(() {
-              _availableRegions = [_allRegionsSentinel, ...regionsFromConfig];
-            });
-          }
+          final regionsFullNames = List<String>.from(data['qa']);
+          uniqueRegionNames = _getUniqueRegionNames(regionsFullNames);
+        } else {
+          uniqueRegionNames = _getUniqueRegionNames(ConfigManager.getAllRegionNames());
         }
+      } else {
+        uniqueRegionNames = _getUniqueRegionNames(ConfigManager.getAllRegionNames());
+      }
+
+      if (mounted) {
+        setState(() {
+          _availableRegions = [_allRegionsSentinel, ...uniqueRegionNames];
+          final String? initialRegionValue = widget.initialRegion;
+          if (initialRegionValue != null && initialRegionValue.isNotEmpty) {
+            final String extractedInitialRegion = _extractRegionName(initialRegionValue);
+            if (_availableRegions.contains(extractedInitialRegion)) {
+              _selectedRegionState = extractedInitialRegion;
+            } else {
+              _selectedRegionState = _allRegionsSentinel;
+            }
+          } else {
+            _selectedRegionState = _allRegionsSentinel;
+          }
+        });
       }
     } catch (e) {
-      debugPrint("Error loading region config: $e");
+      debugPrint("[DetailedMap] ❌ Error loading region config: $e");
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal memuat konfigurasi region: $e')));
+        setState(() {
+          _availableRegions = [_allRegionsSentinel];
+          _selectedRegionState = _allRegionsSentinel;
+        });
       }
     }
   }
@@ -155,14 +201,18 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
       final String response = await rootBundle.loadString('assets/gadm41_IDN_3.json');
       final data = json.decode(response);
       if (mounted) {
-        setState(() { _geojsonFeatures = data; _isLoadingGeoJson = false; });
+        setState(() {
+          _geojsonFeatures = data;
+          _isLoadingGeoJson = false;
+        });
         _triggerMapActionsIfNeeded();
       }
     } catch (e) {
-      debugPrint('Error loading GeoJSON: $e');
       if (mounted) {
-        setState(() { _geojsonFeatures = null; _isLoadingGeoJson = false; });
-        if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal memuat data peta: $e')));
+        setState(() {
+          _geojsonFeatures = null;
+          _isLoadingGeoJson = false;
+        });
       }
     }
   }
@@ -172,36 +222,35 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     setState(() {
       _isLoadingData = true;
       _currentSheetData = [];
-
-      // Tidak perlu lagi mereset _availableRegions karena sudah fix dari config
-      if (worksheetName != _selectedWorksheetTitle) {
-        _selectedRegionState = _allRegionsSentinel;
-      }
-      _availableDistricts = []; _selectedDistrictState = null;
-      _availableGrowingSeasons = []; _selectedGrowingSeasonState = null;
-      _availableWeeks = [_allWeeksSentinel]; _selectedWeekState = _allWeeksSentinel;
-      _kecamatanDataPoints.clear(); _selectedKecamatanKey = null; _isDetailPanelVisible = false;
+      _availableDistricts = [];
+      _selectedDistrictState = _allDistrictsSentinel;
+      _availableGrowingSeasons = [];
+      _selectedGrowingSeasonState = null;
+      _availableWeeks = [_allWeeksSentinel];
+      _selectedWeekState = _allWeeksSentinel;
+      _kecamatanDataPoints.clear();
+      _selectedKecamatanKey = null;
+      _isDetailPanelVisible = false;
       _initialZoomDone = false;
     });
 
     try {
-      await _googleSheetsApi.init();
+      if (!_googleSheetsApi.isInitialized) {
+        final initSuccess = await _googleSheetsApi.init();
+        if (!initSuccess) throw Exception('Gagal menginisialisasi GoogleSheetsApi');
+      }
       final data = await _googleSheetsApi.getSpreadsheetData(worksheetName);
-
       if (mounted) {
         setState(() {
           _currentSheetData = data;
           _selectedWorksheetTitle = worksheetName;
           _isLoadingData = false;
         });
-        // UBAH: Nama fungsi diubah agar lebih sesuai
         _extractFiltersFromSheetData();
       }
     } catch (e) {
-      debugPrint("Error loading sheet data for $worksheetName: $e");
       if (mounted) {
         setState(() => _isLoadingData = false);
-        if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal memuat data $worksheetName: $e')));
       }
     }
   }
@@ -210,9 +259,10 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     if (!mounted || _currentSheetData.isEmpty || _currentSheetData.length <= 1) {
       if (mounted) {
         setState(() {
-          _availableRegions = [_allRegionsSentinel]; // UBAH: Pastikan sentinel ada
+          _availableRegions = [_allRegionsSentinel];
           _availableDistricts = [];
-          _availableGrowingSeasons = []; _availableWeeks = [_allWeeksSentinel];
+          _availableGrowingSeasons = [];
+          _availableWeeks = [_allWeeksSentinel];
           if (_availableRegions.isEmpty) _selectedRegionState = null;
           if (_availableDistricts.isEmpty) _selectedDistrictState = null;
           if (_availableGrowingSeasons.isEmpty) _selectedGrowingSeasonState = null;
@@ -222,28 +272,18 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
       }
       return;
     }
-    final dataRows = _currentSheetData.skip(1);
 
-    // final regions = <String>{};
+    final dataRows = _currentSheetData.skip(1);
     final seasons = <String>{};
 
     for (final row in dataRows) {
-      // final regionVal = _getValue(row, colRegion, "");
-      // if (regionVal.isNotEmpty) regions.add(regionVal);
       final seasonVal = _getValue(row, colGrowingSeason, "");
       if (seasonVal.isNotEmpty) seasons.add(seasonVal);
     }
 
     if(mounted){
       setState(() {
-        // UBAH: Tambahkan "Semua Region" ke daftar yang tersedia di dropdown.
-        // _availableRegions = [_allRegionsSentinel, ...regions.toList()..sort()];
         _availableGrowingSeasons = seasons.toList()..sort();
-
-        // UBAH: Atur default ke "Semua Region" jika pilihan sebelumnya tidak valid.
-        // if (_selectedRegionState == null || !_availableRegions.contains(_selectedRegionState)) {
-        //   _selectedRegionState = _allRegionsSentinel;
-        // }
         if (_selectedGrowingSeasonState == null || !_availableGrowingSeasons.contains(_selectedGrowingSeasonState)) {
           _selectedGrowingSeasonState = _availableGrowingSeasons.isNotEmpty ? _availableGrowingSeasons.first : null;
         }
@@ -262,11 +302,10 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     if (_currentSheetData.isNotEmpty) {
       final dataRows = _currentSheetData.skip(1);
       final districtsSet = <String>{};
+
       for (final row in dataRows) {
-        // UBAH: Logika baru untuk menangani "Semua Region".
-        // Jika "Semua Region" terpilih, regionMatch akan selalu true.
-        final bool isAllRegionsSelected = _selectedRegionState == _allRegionsSentinel;
-        final bool regionMatch = isAllRegionsSelected || _getValue(row, colRegion, "") == _selectedRegionState;
+        final String regionFromSheet = _getValue(row, colRegion, "");
+        final bool regionMatch = _isRegionMatch(regionFromSheet, _selectedRegionState);
 
         if (regionMatch) {
           final districtValue = _getValue(row, colDistrict, "");
@@ -276,15 +315,18 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
       newDistricts = districtsSet.toList()..sort();
     }
 
+    final newAvailableDistrictsWithAll = [_allDistrictsSentinel, ...newDistricts];
     String? oldSelectedDistrict = _selectedDistrictState;
-    bool listChanged = _availableDistricts.length != newDistricts.length || !_availableDistricts.every(newDistricts.contains);
+    bool listChanged = _availableDistricts.length != newAvailableDistrictsWithAll.length ||
+        !_listEquals(_availableDistricts, newAvailableDistrictsWithAll);
 
     if (listChanged) {
-      _availableDistricts = newDistricts;
+      _availableDistricts = newAvailableDistrictsWithAll;
     }
 
-    if (_selectedDistrictState == null || !_availableDistricts.contains(_selectedDistrictState)) {
-      _selectedDistrictState = _availableDistricts.isNotEmpty ? _availableDistricts.first : null;
+    if (_selectedDistrictState == null ||
+        !_availableDistricts.contains(_selectedDistrictState)) {
+      _selectedDistrictState = _allDistrictsSentinel;
     }
 
     if (mounted) {
@@ -305,17 +347,21 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     if (_currentSheetData.isNotEmpty) {
       final dataRows = _currentSheetData.skip(1);
       final weeksSet = <String>{};
+
       for (final row in dataRows) {
-        // UBAH: Sesuaikan logika pencocokan region
-        bool regionMatch = _selectedRegionState == _allRegionsSentinel || _selectedRegionState == null || _getValue(row, colRegion, "") == _selectedRegionState;
-        bool districtMatch = _selectedDistrictState == null || _getValue(row, colDistrict, "") == _selectedDistrictState;
-        bool seasonMatch = _selectedGrowingSeasonState == null || _getValue(row, colGrowingSeason, "") == _selectedGrowingSeasonState;
+        final String regionFromSheet = _getValue(row, colRegion, "");
+        bool regionMatch = _isRegionMatch(regionFromSheet, _selectedRegionState);
+        bool districtMatch = _selectedDistrictState == null ||
+            _getValue(row, colDistrict, "") == _selectedDistrictState;
+        bool seasonMatch = _selectedGrowingSeasonState == null ||
+            _getValue(row, colGrowingSeason, "") == _selectedGrowingSeasonState;
 
         if (regionMatch && districtMatch && seasonMatch) {
           final weekVal = _getValue(row, colWeek, "");
           if (weekVal.isNotEmpty) weeksSet.add(weekVal);
         }
       }
+
       newSpecificWeeks = weeksSet.toList()..sort((a, b) {
         int? valA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), ''));
         int? valB = int.tryParse(b.replaceAll(RegExp(r'[^0-9]'), ''));
@@ -326,8 +372,8 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
 
     final newAvailableWeeksWithAll = [_allWeeksSentinel, ...newSpecificWeeks];
     String? oldSelectedWeek = _selectedWeekState;
-    bool listChanged = _availableWeeks.length != newAvailableWeeksWithAll.length || !_listEquals(_availableWeeks, newAvailableWeeksWithAll);
-
+    bool listChanged = _availableWeeks.length != newAvailableWeeksWithAll.length ||
+        !_listEquals(_availableWeeks, newAvailableWeeksWithAll);
 
     _availableWeeks = newAvailableWeeksWithAll;
 
@@ -356,22 +402,49 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     if (!mounted) return;
     setState(() => _isLoadingData = true);
 
-    _filteredMapData = List.from(_currentSheetData.length > 1 ? _currentSheetData.skip(1) : <List<String>>[]);
+    _filteredMapData = List.from(
+        _currentSheetData.length > 1
+            ? _currentSheetData.skip(1)
+            : <List<String>>[]
+    );
 
-    // UBAH: INI BAGIAN PALING PENTING.
-    // Filter region hanya diterapkan jika pilihan BUKAN "Semua Region".
     if (_selectedRegionState != null && _selectedRegionState != _allRegionsSentinel) {
-      _filteredMapData = _filteredMapData.where((row) => _getValue(row, colRegion, "") == _selectedRegionState).toList();
+      _filteredMapData = _filteredMapData.where((row) {
+        final String regionFromSheet = _getValue(row, colRegion, "");
+        final String extractedRegion = _extractRegionName(regionFromSheet);
+        return extractedRegion == _selectedRegionState;
+      }).toList();
     }
-    // Filter lainnya tetap berjalan seperti biasa.
+
     if (_selectedDistrictState != null) {
-      _filteredMapData = _filteredMapData.where((row) => _getValue(row, colDistrict, "") == _selectedDistrictState).toList();
+      if (_selectedDistrictState == _allDistrictsSentinel) {
+        final List<String> actualDistrictOptions = _availableDistricts
+            .where((d) => d != _allDistrictsSentinel)
+            .toList();
+
+        if (actualDistrictOptions.isNotEmpty) {
+          _filteredMapData = _filteredMapData.where((row) {
+            final districtInRow = _getValue(row, colDistrict, "");
+            return actualDistrictOptions.contains(districtInRow);
+          }).toList();
+        }
+      } else {
+        _filteredMapData = _filteredMapData.where((row) =>
+        _getValue(row, colDistrict, "") == _selectedDistrictState
+        ).toList();
+      }
     }
+
     if (_selectedGrowingSeasonState != null) {
-      _filteredMapData = _filteredMapData.where((row) => _getValue(row, colGrowingSeason, "") == _selectedGrowingSeasonState).toList();
+      _filteredMapData = _filteredMapData.where((row) =>
+      _getValue(row, colGrowingSeason, "") == _selectedGrowingSeasonState
+      ).toList();
     }
+
     if (_selectedWeekState != null && _selectedWeekState != _allWeeksSentinel) {
-      _filteredMapData = _filteredMapData.where((row) => _getValue(row, colWeek, "") == _selectedWeekState).toList();
+      _filteredMapData = _filteredMapData.where((row) =>
+      _getValue(row, colWeek, "") == _selectedWeekState
+      ).toList();
     }
 
     _calculateKecamatanWorkloadAndDesa(_filteredMapData);
@@ -380,7 +453,9 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
       setState(() {
         _currentPolygons = _buildPolygons();
         _isLoadingData = false;
-        if (_selectedKecamatanKey != null && !_kecamatanWorkload.containsKey(_selectedKecamatanKey)) {
+
+        if (_selectedKecamatanKey != null &&
+            !_kecamatanWorkload.containsKey(_selectedKecamatanKey)) {
           _selectedKecamatanKey = null;
           _isDetailPanelVisible = false;
           _kecamatanDataPoints.clear();
@@ -519,14 +594,10 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
       final String normalizedGeoKabName = _normalizeName(gideonKabNameRaw);
       final String uniqueGeoKecamatanKey = '${normalizedGeoKabName}_$normalizedGeoKecName';
 
-      // UBAH: Sesuaikan logika pencocokan distrik
       bool isAllDistricts = _selectedDistrictState == null;
       bool isAllRegions = _selectedRegionState == _allRegionsSentinel;
       bool districtMatch = isAllDistricts || normalizedGeoKabName == _normalizeName(_selectedDistrictState!);
 
-      // Tampilkan poligon jika:
-      // 1. Distriknya cocok DAN (Workload ada ATAU Semua distrik dipilih)
-      // 2. ATAU Semua region dipilih DAN workload ada untuk kunci kecamatan tersebut
       bool shouldDisplay = (districtMatch && (_kecamatanWorkload.containsKey(uniqueGeoKecamatanKey) || isAllDistricts)) || (isAllRegions && _kecamatanWorkload.containsKey(uniqueGeoKecamatanKey));
 
       if (shouldDisplay) {
@@ -561,7 +632,6 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
       for(final polygon in _currentPolygons) {
         allPointsInView.addAll(polygon.points);
       }
-      // UBAH: Jangan hanya zoom ke distrik jika "Semua Region" aktif dan tidak ada distrik terpilih
     } else if (_selectedDistrictState != null) {
       final features = _geojsonFeatures!['features'] as List;
       for (final feature in features) {
@@ -630,7 +700,6 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
           );
         }
       } catch (e) {
-        debugPrint("Error centering map on features: $e");
         if (pointsToFit.isNotEmpty) {
           _mapController.move(pointsToFit.first, 10.0);
         } else {
@@ -639,11 +708,6 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
       }
     } else {
       _autoZoomToFilteredArea();
-      if (mounted && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tidak ada fitur untuk dipusatkan pada filter saat ini.'), duration: Duration(seconds: 2)),
-        );
-      }
     }
   }
 
@@ -679,7 +743,7 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     if (kecamatanPoints.isNotEmpty) {
       try {
         _mapController.fitCamera(CameraFit.bounds(bounds: LatLngBounds.fromPoints(kecamatanPoints), padding: const EdgeInsets.all(20.0)));
-      } catch (e) { debugPrint("Error fitting camera to selected kecamatan bounds: $e"); }
+      } catch (e) { /* ignore */ }
     }
   }
 
@@ -823,129 +887,390 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     return (intersectCount % 2) == 1;
   }
 
+  // ✨ ENHANCED FILTER BAR WITH MODERN DESIGN
   Widget _buildFilterBar() {
     return Container(
-        padding: const EdgeInsets.all(8.0),
-        color: AppTheme.primaryLight.withAlpha(25),
-        child: Column(
-          children: [
-            Row(children: [
-              _buildFilterDropdown<String>( labelText: 'Worksheet', value: _selectedWorksheetTitle, items: _worksheetTitles, hintText: "Pilih Worksheet",
-                onChanged: (newValue) {
-                  if (newValue != null && newValue != _selectedWorksheetTitle) {
-                    _fetchDataForWorksheet(newValue);
-                  }
-                },
-              ),
-              const SizedBox(width: 8),
-              _buildFilterDropdown<String>( labelText: 'Musim Tanam', value: _selectedGrowingSeasonState, items: _availableGrowingSeasons, hintText: "Pilih Musim",
-                isLoading: _isLoadingData && _availableGrowingSeasons.isEmpty,
-                onChanged: (newValue) {
-                  if (newValue != _selectedGrowingSeasonState) {
-                    setState(() {
-                      _selectedGrowingSeasonState = newValue;
-                      _selectedKecamatanKey = null; _isDetailPanelVisible = false; _kecamatanDataPoints.clear();
-                      _populateAvailableWeeks();
-                    });
-                  }
-                },
-              ),
-            ]),
-            const SizedBox(height: 8),
-            Row(children: [
-              _buildFilterDropdown<String>( labelText: 'Region', value: _selectedRegionState, items: _availableRegions, hintText: "Pilih Region",
-                isLoading: _isLoadingData && _availableRegions.length <= 1, // UBAH: Cek jika hanya ada sentinel
-                onChanged: (newValue) {
-                  if (newValue != _selectedRegionState) {
-                    setState(() {
-                      _selectedRegionState = newValue;
-                      // UBAH: Saat region diganti, reset district dan week.
-                      // Ini memberikan alur yang lebih logis bagi pengguna.
-                      _selectedDistrictState = null;
-                      _availableDistricts = [];
-                      _selectedWeekState = _allWeeksSentinel;
-                      _availableWeeks = [_allWeeksSentinel];
-                      _selectedKecamatanKey = null; _isDetailPanelVisible = false; _kecamatanDataPoints.clear();
-                      // UBAH: Reset zoom agar peta bisa menyesuaikan dengan area baru.
-                      _initialZoomDone = false;
-                    });
-                    _populateAvailableDistricts();
-                  }
-                },
-              ),
-              const SizedBox(width: 8),
-              _buildFilterDropdown<String>( labelText: 'District', value: _selectedDistrictState, items: _availableDistricts, hintText: "Pilih District",
-                isLoading: _isLoadingData && _availableDistricts.isEmpty, // UBAH: Kondisi loading disederhanakan
-                onChanged: (newValue) {
-                  if (newValue != _selectedDistrictState) {
-                    setState(() {
-                      _selectedDistrictState = newValue;
-                      // UBAH: Reset week dan peta saat district diganti.
-                      _selectedWeekState = _allWeeksSentinel;
-                      _availableWeeks = [_allWeeksSentinel];
-                      _selectedKecamatanKey = null; _isDetailPanelVisible = false; _kecamatanDataPoints.clear();
-                      _initialZoomDone = false;
-                    });
-                    _populateAvailableWeeks();
-                  }
-                },
-              ),
-            ]),
-            const SizedBox(height: 8),
-            Row(children: [
-              _buildFilterDropdown<String>( labelText: 'Minggu Ke-', value: _selectedWeekState, items: _availableWeeks, hintText: "Filter Minggu",
-                isLoading: _isLoadingData && _availableWeeks.length <= 1, // UBAH: Kondisi loading disederhanakan
-                onChanged: (newValue) {
-                  if (newValue != _selectedWeekState) {
-                    setState(() {
-                      _selectedWeekState = newValue ?? _allWeeksSentinel;
-                      _selectedKecamatanKey = null; _isDetailPanelVisible = false; _kecamatanDataPoints.clear();
-                    });
-                    _applyAllFiltersAndBuildMap();
-                  }
-                },
-              ),
-              Expanded(child: Container()),
-            ])
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white,
+            Colors.green.shade50.withAlpha(100),
           ],
-        )
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withAlpha(20),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Header Section
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.green.shade400, Colors.green.shade600],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.green.withAlpha(76),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.tune_rounded, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'FILTER PETA',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Filter Row 1
+          Row(
+            children: [
+              Expanded(
+                child: _buildEnhancedFilterDropdown<String>(
+                  labelText: 'Worksheet',
+                  value: _selectedWorksheetTitle,
+                  items: _worksheetTitles,
+                  hintText: "Pilih Worksheet",
+                  icon: Icons.description_rounded,
+                  iconColor: Colors.blue.shade600,
+                  onChanged: (newValue) {
+                    if (newValue != null && newValue != _selectedWorksheetTitle) {
+                      HapticFeedback.lightImpact();
+                      _fetchDataForWorksheet(newValue);
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildEnhancedFilterDropdown<String>(
+                  labelText: 'Musim Tanam',
+                  value: _selectedGrowingSeasonState,
+                  items: _availableGrowingSeasons,
+                  hintText: "Pilih Musim",
+                  icon: Icons.eco_rounded,
+                  iconColor: Colors.teal.shade600,
+                  isLoading: _isLoadingData && _availableGrowingSeasons.isEmpty,
+                  onChanged: (newValue) {
+                    if (newValue != _selectedGrowingSeasonState) {
+                      HapticFeedback.lightImpact();
+                      setState(() {
+                        _selectedGrowingSeasonState = newValue;
+                        _selectedKecamatanKey = null;
+                        _isDetailPanelVisible = false;
+                        _kecamatanDataPoints.clear();
+                        _populateAvailableWeeks();
+                      });
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Filter Row 2
+          Row(
+            children: [
+              Expanded(
+                child: _buildEnhancedFilterDropdown<String>(
+                  labelText: 'Region',
+                  value: _selectedRegionState,
+                  items: _availableRegions,
+                  hintText: "Pilih Region",
+                  icon: Icons.location_city_rounded,
+                  iconColor: Colors.purple.shade600,
+                  isLoading: _isLoadingData && _availableRegions.length <= 1,
+                  isEnabled: widget.initialRegion == null,
+                  onChanged: (newValue) {
+                    if (newValue != _selectedRegionState) {
+                      HapticFeedback.lightImpact();
+                      setState(() {
+                        _selectedRegionState = newValue;
+                        _selectedDistrictState = null;
+                        _availableDistricts = [];
+                        _selectedWeekState = _allWeeksSentinel;
+                        _availableWeeks = [_allWeeksSentinel];
+                        _selectedKecamatanKey = null;
+                        _isDetailPanelVisible = false;
+                        _kecamatanDataPoints.clear();
+                        _initialZoomDone = false;
+                      });
+                      _populateAvailableDistricts();
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildEnhancedFilterDropdown<String>(
+                  labelText: 'District',
+                  value: _selectedDistrictState,
+                  items: _availableDistricts,
+                  hintText: "Pilih District",
+                  icon: Icons.location_on_rounded,
+                  iconColor: Colors.orange.shade600,
+                  isLoading: _isLoadingData && _availableDistricts.length <= 1,
+                  onChanged: (newValue) {
+                    if (newValue != _selectedDistrictState) {
+                      HapticFeedback.lightImpact();
+                      setState(() {
+                        _selectedDistrictState = newValue;
+                        _selectedWeekState = _allWeeksSentinel;
+                        _availableWeeks = [_allWeeksSentinel];
+                        _selectedKecamatanKey = null;
+                        _isDetailPanelVisible = false;
+                        _kecamatanDataPoints.clear();
+                      });
+                      _populateAvailableWeeks();
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Filter Row 3
+          Row(
+            children: [
+              Expanded(
+                child: _buildEnhancedFilterDropdown<String>(
+                  labelText: 'Minggu Ke-',
+                  value: _selectedWeekState,
+                  items: _availableWeeks,
+                  hintText: "Filter Minggu",
+                  icon: Icons.calendar_today_rounded,
+                  iconColor: Colors.indigo.shade600,
+                  isLoading: _isLoadingData && _availableWeeks.length <= 1,
+                  onChanged: (newValue) {
+                    if (newValue != _selectedWeekState) {
+                      HapticFeedback.lightImpact();
+                      setState(() {
+                        _selectedWeekState = newValue ?? _allWeeksSentinel;
+                        _selectedKecamatanKey = null;
+                        _isDetailPanelVisible = false;
+                        _kecamatanDataPoints.clear();
+                      });
+                      _applyAllFiltersAndBuildMap();
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Container()),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildFilterDropdown<T>({
+  // ✨ ENHANCED FILTER DROPDOWN WITH MODERN DESIGN
+  Widget _buildEnhancedFilterDropdown<T>({
     required String labelText,
     required T? value,
     required List<T> items,
     required Function(T?) onChanged,
     required String hintText,
+    required IconData icon,
+    required Color iconColor,
     bool isLoading = false,
+    bool isEnabled = true,
   }) {
-    String displayHint = isLoading ? "Loading..." : (items.isEmpty && value == null ? "Tidak ada data" : hintText);
+    String displayHint = isLoading
+        ? "Loading..."
+        : (items.isEmpty && value == null ? "Tidak ada data" : hintText);
 
-    return Expanded(
-      child: DropdownButtonFormField<T>(
-        decoration: InputDecoration(
-          labelText: labelText,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          isDense: true,
-          fillColor: Colors.white,
-          filled: true,
-        ),
-        initialValue: value,
-        hint: Text(displayHint, style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
-        isExpanded: true,
-        items: items.map((T itemValue) {
-          return DropdownMenuItem<T>(
-            value: itemValue,
-            child: Text(itemValue.toString(), style: TextStyle(fontSize: 14, color: AppTheme.textDark), overflow: TextOverflow.ellipsis),
-          );
-        }).toList(),
-        onChanged: isLoading || (items.isEmpty && value == null && !items.contains(value)) ? null : onChanged, // UBAH: Penyesuaian kondisi disabled
-        style: TextStyle(color: AppTheme.textDark, fontSize: 14),
-        dropdownColor: Colors.white,
-        icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primary),
-      ),
+    final hasValue = value != null && items.contains(value);
+
+    return TweenAnimationBuilder(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 300),
+      builder: (context, double animValue, child) {
+        return Transform.scale(
+          scale: 0.95 + (animValue * 0.05),
+          child: Opacity(
+            opacity: animValue,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: isEnabled && hasValue
+                        ? iconColor.withAlpha(30)
+                        : Colors.grey.withAlpha(20),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  decoration: BoxDecoration(
+                    // Gunakan warna solid putih untuk background agar text terlihat
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isEnabled && hasValue
+                          ? iconColor.withAlpha(150)
+                          : Colors.grey.shade300,
+                      width: 2,
+                    ),
+                  ),
+                  child: DropdownButtonFormField<T>(
+                    decoration: InputDecoration(
+                      labelText: labelText,
+                      labelStyle: TextStyle(
+                        color: isEnabled && hasValue ? iconColor : Colors.grey.shade700,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                        letterSpacing: 0.3,
+                      ),
+                      floatingLabelStyle: TextStyle(
+                        color: iconColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                      prefixIcon: Container(
+                        margin: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isEnabled && hasValue
+                              ? iconColor.withAlpha(40)
+                              : Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          icon,
+                          color: isEnabled && hasValue ? iconColor : Colors.grey.shade600,
+                          size: 20,
+                        ),
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                      isDense: true,
+                    ),
+                    initialValue: hasValue ? value : null,
+                    hint: Text(
+                      displayHint,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    isExpanded: true,
+                    icon: Icon(
+                      Icons.arrow_drop_down_rounded,
+                      color: isEnabled ? iconColor : Colors.grey.shade400,
+                      size: 28,
+                    ),
+                    items: items.map((T itemValue) {
+                      final isItemSelected = itemValue == value;
+                      return DropdownMenuItem<T>(
+                        value: itemValue,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              if (isItemSelected)
+                                Container(
+                                  margin: const EdgeInsets.only(right: 8),
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: iconColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                    size: 14,
+                                  ),
+                                ),
+                              Expanded(
+                                child: Text(
+                                  itemValue.toString(),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: isItemSelected ? iconColor : Colors.black87,
+                                    fontWeight: isItemSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: !isEnabled || isLoading || (items.isEmpty && value == null && !items.contains(value))
+                        ? null
+                        : onChanged,
+                    selectedItemBuilder: (BuildContext context) {
+                      // Builder untuk item yang terpilih (tampil di dropdown)
+                      return items.map<Widget>((T item) {
+                        return Container(
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.only(left: 0),
+                          child: Text(
+                            item.toString(),
+                            style: TextStyle(
+                              color: Colors.black87, // Warna text yang terlihat jelas
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.3,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList();
+                    },
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    dropdownColor: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    elevation: 8,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -955,43 +1280,102 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
       right: 10,
       child: Column(
         children: [
-          FloatingActionButton(
-              heroTag: "zoomInDMS",
-              mini: true,
-              backgroundColor: Colors.white,
-              onPressed: () {
-                if(_isMapReady) _mapController.move(_mapController.camera.center, _mapController.camera.zoom + 0.5);
-              },
-              child: const Icon(Icons.add, color: AppTheme.primaryDark)
+          _buildMapControlButton(
+            heroTag: "zoomInDMS",
+            icon: Icons.add_rounded,
+            tooltip: 'Zoom In',
+            onPressed: () {
+              if(_isMapReady) {
+                HapticFeedback.lightImpact();
+                _mapController.move(_mapController.camera.center, _mapController.camera.zoom + 0.5);
+              }
+            },
           ),
           const SizedBox(height: 8),
-          FloatingActionButton(
-              heroTag: "zoomOutDMS",
-              mini: true,
-              backgroundColor: Colors.white,
-              onPressed: () {
-                if(_isMapReady) _mapController.move(_mapController.camera.center, _mapController.camera.zoom - 0.5);
-              },
-              child: const Icon(Icons.remove, color: AppTheme.primaryDark)
+          _buildMapControlButton(
+            heroTag: "zoomOutDMS",
+            icon: Icons.remove_rounded,
+            tooltip: 'Zoom Out',
+            onPressed: () {
+              if(_isMapReady) {
+                HapticFeedback.lightImpact();
+                _mapController.move(_mapController.camera.center, _mapController.camera.zoom - 0.5);
+              }
+            },
           ),
           const SizedBox(height: 8),
-          FloatingActionButton(
-              heroTag: "centerFeaturesDMS",
-              mini: true,
-              backgroundColor: Colors.white,
-              tooltip: 'Pusatkan Peta ke Fitur',
-              onPressed: _centerMapOnCurrentFeatures,
-              child: const Icon(Icons.center_focus_strong, color: AppTheme.primaryDark)
+          _buildMapControlButton(
+            heroTag: "centerFeaturesDMS",
+            icon: Icons.center_focus_strong_rounded,
+            tooltip: 'Pusatkan Peta',
+            onPressed: () {
+              HapticFeedback.mediumImpact();
+              _centerMapOnCurrentFeatures();
+            },
           ),
           const SizedBox(height: 8),
-          FloatingActionButton(
-              heroTag: "layerToggleDMS",
-              mini: true,
-              backgroundColor: Colors.white,
-              onPressed: () => setState(() => _isStreetView = !_isStreetView),
-              child: Icon(_isStreetView ? Icons.satellite_alt : Icons.map, color: AppTheme.primaryDark)
+          _buildMapControlButton(
+            heroTag: "layerToggleDMS",
+            icon: _isStreetView ? Icons.satellite_alt_rounded : Icons.map_rounded,
+            tooltip: _isStreetView ? 'Satelit' : 'Jalan',
+            onPressed: () {
+              HapticFeedback.mediumImpact();
+              setState(() => _isStreetView = !_isStreetView);
+            },
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMapControlButton({
+    required String heroTag,
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withAlpha(40),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white,
+                  Colors.green.shade50,
+                ],
+              ),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.green.shade200,
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: AppTheme.primary,
+              size: 24,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1003,17 +1387,76 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: Text('Workload Map - ${_selectedWorksheetTitle.isNotEmpty ? _selectedWorksheetTitle : "..."}', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-        backgroundColor: AppTheme.primary,
-        iconTheme: IconThemeData(color: Colors.white),
-        elevation: 2,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(51),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.map_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Workload Map - ${_selectedWorksheetTitle.isNotEmpty ? _selectedWorksheetTitle : "..."}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.3,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.green.shade700,
+                Colors.green.shade600,
+                Colors.green.shade800,
+              ],
+            ),
+          ),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
       ),
       body: Column(
         children: [
           _buildFilterBar(),
           Expanded(
             child: showOverallLoading
-                ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+                ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    color: AppTheme.primary,
+                    strokeWidth: 3,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Memuat data peta...',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            )
                 : Stack(
               children: [
                 FlutterMap(
@@ -1029,7 +1472,6 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
                     },
                     onTap: (tapPosition, latLng) {
                       String? tappedKey;
-                      // Balik urutan poligon agar poligon yang lebih kecil/di atas bisa diketuk
                       for (final polygon in _currentPolygons.reversed) {
                         if (polygon.points.isNotEmpty && isPointInPolygon(latLng, polygon.points)) {
                           tappedKey = polygon.label;
@@ -1055,29 +1497,74 @@ class _DetailedMapScreenState extends State<DetailedMapScreen> {
                           ? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
                           : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
                       subdomains: _isStreetView ? const ['a', 'b', 'c'] : const [],
-                      userAgentPackageName: 'com.example.app',
+                      userAgentPackageName: 'com.kroscek.detailed_map_screen',
                     ),
                     if (_currentPolygons.isNotEmpty) PolygonLayer(polygons: _currentPolygons),
                   ],
                 ),
                 if (_isDetailPanelVisible && _selectedKecamatanKey != null)
                   Positioned(
-                    bottom: 10, left: 10,
-                    child: _buildDetailPanel(), // UBAH: Hapus right: 10 agar panel tidak stretch
+                    bottom: 10,
+                    left: 10,
+                    child: TweenAnimationBuilder(
+                      tween: Tween<double>(begin: 0, end: 1),
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, double value, child) {
+                        return Transform.translate(
+                          offset: Offset(0, 20 * (1 - value)),
+                          child: Opacity(
+                            opacity: value,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: _buildDetailPanel(),
+                    ),
                   ),
                 _buildMapControls(),
               ],
             ),
           ),
-          if (_isLoadingData && !showOverallLoading) // UBAH: Tampilkan loading bar saat filter
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8.0),
+          if (_isLoadingData && !showOverallLoading)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.green.shade50,
+                    Colors.white,
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green.withAlpha(20),
+                    blurRadius: 5,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(width: 8),
-                  Text("Memproses data peta...", style: TextStyle(color: AppTheme.textMedium, fontSize: 12)),
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade600),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    "Memproses data peta...",
+                    style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
                 ],
               ),
             ),

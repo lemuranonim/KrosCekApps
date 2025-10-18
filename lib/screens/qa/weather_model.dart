@@ -12,6 +12,13 @@ class WeatherData {
   final String locationName;
   final DateTime? lastFetchTime;
   final int weatherCode;
+  final double gdu; // Growing Degree Units
+  final double chu; // Crop Heat Units
+  final int humidity; // Humidity percentage
+  final double uvIndex; // UV Index
+  final String feelsLike; // Feels like temperature
+  final String growingCondition; // Growing condition rating
+  final String? alert; // Agricultural alert (frost/heat stress)
 
   WeatherData({
     this.temperature = '--',
@@ -24,6 +31,13 @@ class WeatherData {
     this.locationName = '',
     this.lastFetchTime,
     this.weatherCode = 0,
+    this.gdu = 0.0,
+    this.chu = 0.0,
+    this.humidity = 0,
+    this.uvIndex = 0.0,
+    this.feelsLike = '--',
+    this.growingCondition = 'Fair',
+    this.alert,
   });
 
   factory WeatherData.fromJson(Map<String, dynamic> json) {
@@ -40,6 +54,13 @@ class WeatherData {
           ? DateTime.parse(json['lastFetchTime'])
           : null,
       weatherCode: json['weatherCode'] ?? 0,
+      gdu: json['gdu']?.toDouble() ?? 0.0,
+      chu: json['chu']?.toDouble() ?? 0.0,
+      humidity: json['humidity'] ?? 0,
+      uvIndex: json['uvIndex']?.toDouble() ?? 0.0,
+      feelsLike: json['feelsLike'] ?? '--',
+      growingCondition: json['growingCondition'] ?? 'Fair',
+      alert: json['alert'],
     );
   }
 
@@ -55,6 +76,13 @@ class WeatherData {
       'locationName': locationName,
       'lastFetchTime': lastFetchTime?.toIso8601String(),
       'weatherCode': weatherCode,
+      'gdu': gdu,
+      'chu': chu,
+      'humidity': humidity,
+      'uvIndex': uvIndex,
+      'feelsLike': feelsLike,
+      'growingCondition': growingCondition,
+      'alert': alert,
     };
   }
 
@@ -105,12 +133,16 @@ class WeatherData {
 
 class ForecastPeriod {
   final String temp;
-  final String tempRange; // Properti baru untuk rentang suhu
+  final String tempRange;
   final String condition;
   final IconData icon;
   final Color color;
-  final double rainAmount; // Properti baru untuk jumlah hujan
-  final String date; // Properti baru untuk tanggal
+  final double rainAmount;
+  final String date;
+  final double gdu; // Growing Degree Units for the day
+  final double chu; // Crop Heat Units for the day
+  final double maxTemp; // For calculations
+  final double minTemp; // For calculations
 
   ForecastPeriod({
     this.temp = '--',
@@ -120,6 +152,10 @@ class ForecastPeriod {
     this.color = Colors.amber,
     this.rainAmount = 0.0,
     this.date = '',
+    this.gdu = 0.0,
+    this.chu = 0.0,
+    this.maxTemp = 0.0,
+    this.minTemp = 0.0,
   });
 
   factory ForecastPeriod.fromJson(Map<String, dynamic>? data) {
@@ -134,6 +170,10 @@ class ForecastPeriod {
       color: WeatherData._parseColor(data['color'] ?? 'amber'),
       rainAmount: data['rainAmount']?.toDouble() ?? 0.0,
       date: data['date'] ?? '',
+      gdu: data['gdu']?.toDouble() ?? 0.0,
+      chu: data['chu']?.toDouble() ?? 0.0,
+      maxTemp: data['maxTemp']?.toDouble() ?? 0.0,
+      minTemp: data['minTemp']?.toDouble() ?? 0.0,
     );
   }
 
@@ -146,6 +186,10 @@ class ForecastPeriod {
       'color': WeatherData._getColorName(color),
       'rainAmount': rainAmount,
       'date': date,
+      'gdu': gdu,
+      'chu': chu,
+      'maxTemp': maxTemp,
+      'minTemp': minTemp,
     };
   }
 }
@@ -154,19 +198,23 @@ class ForecastData {
   final Map<String, ForecastPeriod> dailyForecasts;
   final DateTime? lastFetchTime;
   final String forecastTitle;
+  final double totalGdu; // Accumulated GDU
+  final double totalChu; // Accumulated CHU
 
   ForecastData({
     required this.dailyForecasts,
     this.lastFetchTime,
-    this.forecastTitle = 'Perkiraan Cuaca',
+    this.forecastTitle = 'Weather Forecast',
+    this.totalGdu = 0.0,
+    this.totalChu = 0.0,
   });
 
   factory ForecastData.empty() {
     return ForecastData(
       dailyForecasts: {
-        'besok': ForecastPeriod(),
-        'lusa': ForecastPeriod(),
-        'hari3': ForecastPeriod(),
+        'day1': ForecastPeriod(),
+        'day2': ForecastPeriod(),
+        'day3': ForecastPeriod(),
       },
     );
   }
@@ -179,11 +227,10 @@ class ForecastData {
         dailyForecasts[key] = ForecastPeriod.fromJson(value);
       });
     } else {
-      // Backward compatibility with old format
       dailyForecasts = {
-        'besok': ForecastPeriod(),
-        'lusa': ForecastPeriod(),
-        'hari3': ForecastPeriod(),
+        'day1': ForecastPeriod(),
+        'day2': ForecastPeriod(),
+        'day3': ForecastPeriod(),
       };
     }
 
@@ -192,7 +239,9 @@ class ForecastData {
       lastFetchTime: json['lastFetchTime'] != null
           ? DateTime.parse(json['lastFetchTime'])
           : null,
-      forecastTitle: json['forecastTitle'] ?? 'Perkiraan Cuaca',
+      forecastTitle: json['forecastTitle'] ?? 'Weather Forecast',
+      totalGdu: json['totalGdu']?.toDouble() ?? 0.0,
+      totalChu: json['totalChu']?.toDouble() ?? 0.0,
     );
   }
 
@@ -201,6 +250,8 @@ class ForecastData {
       'dailyForecasts': dailyForecasts.map((key, value) => MapEntry(key, value.toJson())),
       'lastFetchTime': lastFetchTime?.toIso8601String(),
       'forecastTitle': forecastTitle,
+      'totalGdu': totalGdu,
+      'totalChu': totalChu,
     };
   }
 }

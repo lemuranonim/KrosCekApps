@@ -102,7 +102,7 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
               fontWeight: FontWeight.bold,
               fontSize: 20,
             )),
-        backgroundColor: Colors.redAccent.shade700,
+        backgroundColor: Colors.orange.shade700,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -111,7 +111,7 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.redAccent.shade700, Colors.redAccent.shade100],
+            colors: [Colors.orange.shade700, Colors.orange.shade100],
             stops: const [0.0, 0.3],
           ),
         ),
@@ -133,7 +133,7 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
                       children: [
                         if (isLoading)
                           const LinearProgressIndicator(
-                            backgroundColor: Colors.redAccent,
+                            backgroundColor: Colors.orange,
                             valueColor:
                                 AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
@@ -207,7 +207,7 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
                             },
                             style: ElevatedButton.styleFrom(
                               minimumSize: const Size(220, 60),
-                              backgroundColor: Colors.redAccent.shade700,
+                              backgroundColor: Colors.orange.shade700,
                               foregroundColor: Colors.white,
                               elevation: 5,
                               shape: RoundedRectangleBorder(
@@ -255,20 +255,20 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
         maxLines: maxLines,
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: TextStyle(color: Colors.redAccent.shade700),
+          labelStyle: TextStyle(color: Colors.orange.shade700),
           prefixIcon:
-              icon != null ? Icon(icon, color: Colors.red.shade600) : null,
+              icon != null ? Icon(icon, color: Colors.orange.shade600) : null,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.redAccent.shade200),
+            borderSide: BorderSide(color: Colors.orange.shade200),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.redAccent.shade200),
+            borderSide: BorderSide(color: Colors.orange.shade200),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.redAccent.shade700, width: 2),
+            borderSide: BorderSide(color: Colors.orange.shade700, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -288,19 +288,19 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
       children: [
         Row(
           children: [
-            Icon(icon, color: Colors.red.shade800, size: 24),
+            Icon(icon, color: Colors.orange.shade800, size: 24),
             const SizedBox(width: 8),
             Text(
               title,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Colors.red.shade800,
+                color: Colors.orange.shade800,
               ),
             ),
           ],
         ),
-        const Divider(thickness: 2, color: Colors.redAccent),
+        const Divider(thickness: 2, color: Colors.orange),
         const SizedBox(height: 10),
       ],
     );
@@ -316,7 +316,7 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
         padding: const EdgeInsets.all(12.0),
         child: Row(
           children: [
-            Icon(icon, color: Colors.redAccent.shade700),
+            Icon(icon, color: Colors.orange.shade700),
             const SizedBox(width: 10),
             Expanded(
               // Menambahkan Expanded untuk menghindari overflow
@@ -370,21 +370,21 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
         readOnly: true,
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: TextStyle(color: Colors.redAccent.shade700),
-          prefixIcon: Icon(Icons.calendar_today, color: Colors.red.shade600),
+          labelStyle: TextStyle(color: Colors.orange.shade700),
+          prefixIcon: Icon(Icons.calendar_today, color: Colors.orange.shade600),
           suffixIcon:
-              Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
+              Icon(Icons.arrow_drop_down, color: Colors.orange.shade700),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.redAccent.shade200),
+            borderSide: BorderSide(color: Colors.orange.shade200),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.redAccent.shade200),
+            borderSide: BorderSide(color: Colors.orange.shade200),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.redAccent.shade700, width: 2),
+            borderSide: BorderSide(color: Colors.orange.shade700, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -399,7 +399,7 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
               return Theme(
                 data: Theme.of(context).copyWith(
                   colorScheme: ColorScheme.light(
-                    primary: Colors.redAccent.shade700,
+                    primary: Colors.orange.shade700,
                     onPrimary: Colors.white,
                     onSurface: Colors.black,
                   ),
@@ -454,21 +454,21 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
           child: DropdownButtonFormField<String>(
             decoration: InputDecoration(
               labelText: label,
-              labelStyle: TextStyle(color: Colors.redAccent.shade700),
+              labelStyle: TextStyle(color: Colors.orange.shade700),
               prefixIcon:
-                  icon != null ? Icon(icon, color: Colors.red.shade600) : null,
+                  icon != null ? Icon(icon, color: Colors.orange.shade600) : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.redAccent.shade200),
+                borderSide: BorderSide(color: Colors.orange.shade200),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.redAccent.shade200),
+                borderSide: BorderSide(color: Colors.orange.shade200),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide:
-                    BorderSide(color: Colors.redAccent.shade700, width: 2),
+                    BorderSide(color: Colors.orange.shade700, width: 2),
               ),
               filled: true,
               fillColor: Colors.white,
@@ -483,7 +483,7 @@ class AuditMaturityEditScreenState extends State<AuditMaturityEditScreen> {
               );
             }).toList(),
             dropdownColor: Colors.white,
-            icon: Icon(Icons.arrow_drop_down, color: Colors.redAccent.shade700),
+            icon: Icon(Icons.arrow_drop_down, color: Colors.orange.shade700),
           ),
         ),
         if (helpText != null) ...[
@@ -711,13 +711,13 @@ class PspSuccessScreen extends StatelessWidget {
           'Success',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.redAccent,
+        backgroundColor: Colors.orange,
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle, color: Colors.redAccent, size: 100),
+            const Icon(Icons.check_circle, color: Colors.orange, size: 100),
             const SizedBox(height: 20),
             const Text(
               'Data berhasil disimpan!',
@@ -735,7 +735,7 @@ class PspSuccessScreen extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60),
                 // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.redAccent,
+                backgroundColor: Colors.orange,
                 // Warna background tombol
                 foregroundColor: Colors.white,
                 // Warna teks tombol
@@ -825,7 +825,7 @@ class PspFailedScreen extends StatelessWidget {
           'Failed',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.red.shade700,
+        backgroundColor: Colors.orange.shade700,
       ),
       body: Center(
         child: Column(
@@ -845,7 +845,7 @@ class PspFailedScreen extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 60),
                 // Mengatur ukuran tombol (lebar x tinggi)
-                backgroundColor: Colors.red.shade700,
+                backgroundColor: Colors.orange.shade700,
                 // Warna background tombol
                 foregroundColor: Colors.white,
                 // Warna teks tombol

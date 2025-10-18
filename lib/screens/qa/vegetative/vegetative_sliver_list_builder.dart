@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'vegetative_detail_screen.dart';
+import '../../gdu/premium_gdu_screen.dart';
+import '../../gdu/heat_unit_service.dart';
 
-class VegetativeSliverListBuilder extends StatelessWidget {
+class VegetativeSliverListBuilder extends StatefulWidget {
   final List<List<String>> filteredData;
   final String? selectedRegion;
   final Function(String) onItemTap;
@@ -16,6 +18,18 @@ class VegetativeSliverListBuilder extends StatelessWidget {
     this.activityCounts = const {},
   });
 
+  @override
+  State<VegetativeSliverListBuilder> createState() => _VegetativeSliverListBuilderState();
+}
+
+class _VegetativeSliverListBuilderState extends State<VegetativeSliverListBuilder> {
+  final HeatUnitService _heatUnitService = HeatUnitService();
+  final Map<String, HeatUnitData> _heatUnitCache = {};
+
+  // ============================================================================
+  // HELPER METHODS
+  // ============================================================================
+
   String getValue(List<String> row, int index, String defaultValue) {
     if (index < row.length) {
       return row[index];
@@ -25,14 +39,24 @@ class VegetativeSliverListBuilder extends StatelessWidget {
 
   int _calculateDAP(List<String> row) {
     try {
-      final plantingDate = getValue(row, 9, ''); // Get planting date from column 9
+      final plantingDate = getValue(row, 9, '');
       if (plantingDate.isEmpty) return 0;
 
       final parsedDate = DateFormat('dd/MM/yyyy').parse(_convertToDateIfNecessary(plantingDate));
       final today = DateTime.now();
-      return today.difference(parsedDate).inDays; // Calculate the difference in days
+      return today.difference(parsedDate).inDays;
     } catch (e) {
-      return 0; // Return 0 if there's an error in parsing
+      return 0;
+    }
+  }
+
+  DateTime? _getPlantingDateTime(List<String> row) {
+    try {
+      final plantingDate = getValue(row, 9, '');
+      if (plantingDate.isEmpty) return null;
+      return DateFormat('dd/MM/yyyy').parse(_convertToDateIfNecessary(plantingDate));
+    } catch (e) {
+      return null;
     }
   }
 
@@ -54,10 +78,10 @@ class VegetativeSliverListBuilder extends StatelessWidget {
       final parsedNumber = double.tryParse(dateStr);
       if (parsedNumber != null) {
         final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
-        return DateFormat('dd MMM yyyy').format(date); // Format as "01 Jan 2023"
+        return DateFormat('dd MMM yyyy').format(date);
       }
       final parsedDate = DateFormat('dd/MM/yyyy').parse(dateStr);
-      return DateFormat('dd MMM yyyy').format(parsedDate); // Format as "01 Jan 2023"
+      return DateFormat('dd MMM yyyy').format(parsedDate);
     } catch (e) {
       return dateStr;
     }
@@ -77,11 +101,274 @@ class VegetativeSliverListBuilder extends StatelessWidget {
     }
   }
 
+  Map<String, double?>? _parseCoordinate(String coordinateString) {
+    if (coordinateString.isEmpty) return null;
+
+    try {
+      final parts = coordinateString.split(',');
+      if (parts.length < 2) return null;
+
+      final lat = double.tryParse(parts[0].trim());
+      final lon = double.tryParse(parts[1].trim());
+
+      if (lat == null || lon == null) return null;
+      if (lat < -90 || lat > 90) return null;
+      if (lon < -180 || lon > 180) return null;
+
+      return {'latitude': lat, 'longitude': lon};
+    } catch (e) {
+      debugPrint('Error parsing coordinate: $coordinateString - $e');
+      return null;
+    }
+  }
+
+  String getVegetativeStatus(String isAuditedValue) {
+    return isAuditedValue.toLowerCase() == "audited" ? "Sampun" : "Dereng";
+  }
+
+  Color getStatusColor(String status) {
+    switch (status) {
+      case "Sampun":
+        return Colors.green;
+      case "Dereng":
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  List<Color> getStatusGradient(String status) {
+    switch (status) {
+      case "Sampun":
+        return [Colors.green.shade400, Colors.green.shade600];
+      case "Dereng":
+        return [Colors.red.shade400, Colors.red.shade600];
+      default:
+        return [Colors.grey.shade400, Colors.grey.shade600];
+    }
+  }
+
+  Color getStatusLightColor(String status) {
+    switch (status) {
+      case "Sampun":
+        return Colors.green.shade50;
+      case "Dereng":
+        return Colors.red.shade50;
+      default:
+        return Colors.grey.shade50;
+    }
+  }
+
+  IconData getStatusIcon(String status) {
+    switch (status) {
+      case "Sampun":
+        return Icons.check_circle;
+      case "Dereng":
+        return Icons.cancel;
+      default:
+        return Icons.help_outline;
+    }
+  }
+
+  // ============================================================================
+  // 🆕 FUNGSI CEK FASE BERDASARKAN GDU
+  // ============================================================================
+
+  /// Dapatkan nama fase saat ini berdasarkan GDU
+  String _getCurrentMainPhase(double gdu) {
+    if (gdu < 555.6) {
+      return 'Vegetative';
+    } else if (gdu < 922.2) {
+      return 'Generative';
+    } else if (gdu < 1500.0) {
+      return 'Pre-Harvest';
+    } else {
+      return 'Harvest';
+    }
+  }
+
+  /// Cek apakah fase saat ini sesuai dengan screen Vegetative
+  bool _isCorrectPhase(double gdu) {
+    return gdu < 555.6;
+  }
+
+  // ============================================================================
+  // UI COMPONENTS
+  // ============================================================================
+
+  /// 🆕 Widget notifikasi fase sudah lewat
+  Widget _buildPhaseWarningBanner(String currentPhase, double currentGDU) {
+    if (currentPhase == 'Vegetative') {
+      return const SizedBox.shrink(); // Tidak perlu notif jika masih di fase vegetative
+    }
+
+    IconData icon;
+    Color color;
+    String message;
+
+    switch (currentPhase) {
+      case 'Generative':
+        icon = Icons.energy_savings_leaf;
+        color = Colors.amber.shade700;
+        message = '⚠️ Tanaman sudah memasuki Fase Generative! Pertimbangkan untuk memindahkan ke monitoring Generative.';
+        break;
+      case 'Pre-Harvest':
+        icon = Icons.grain;
+        color = Colors.orange.shade700;
+        message = '⚠️ Tanaman sudah memasuki Fase Pre-Harvest! Segera pindahkan monitoring ke fase Pre-Harvest.';
+        break;
+      case 'Harvest':
+        icon = Icons.agriculture;
+        color = Colors.brown.shade700;
+        message = '🎉 Tanaman sudah siap panen! Pindahkan ke monitoring Harvest untuk tracking panen.';
+        break;
+      default:
+        return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color.withAlpha(51), color.withAlpha(25)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withAlpha(102), width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: color.withAlpha(38),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withAlpha(51),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Fase: $currentPhase',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: color.withAlpha(229),
+                    fontSize: 11,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHarvestEstimateWidget(DateTime? estimatedHarvestDate) {
+    if (estimatedHarvestDate == null) {
+      return const SizedBox.shrink();
+    }
+
+    final today = DateUtils.dateOnly(DateTime.now());
+    final harvestDay = DateUtils.dateOnly(estimatedHarvestDate);
+
+    final bool hasHarvestPassed = harvestDay.isBefore(today);
+    final int daysDifference = harvestDay.difference(today).inDays;
+    final String formattedDate = DateFormat('dd MMM yyyy').format(estimatedHarvestDate);
+
+    String title;
+    String subtitle;
+    Color color;
+    Color lightColor;
+    IconData icon;
+
+    if (hasHarvestPassed) {
+      title = 'Seharusnya Panen';
+      subtitle = '${daysDifference.abs()} hari yang lalu';
+      color = Colors.brown.shade800;
+      lightColor = Colors.brown.shade50;
+      icon = Icons.agriculture;
+    } else {
+      title = 'Estimasi Panen';
+      color = Colors.green.shade800;
+      lightColor = Colors.green.shade50;
+      icon = Icons.event_available;
+
+      if (daysDifference == 0) {
+        subtitle = 'Hari ini!';
+      } else if (daysDifference == 1) {
+        subtitle = 'Besok!';
+      } else {
+        subtitle = 'Dalam $daysDifference hari';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: lightColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withAlpha(102)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$title: $formattedDate',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: color.withAlpha(204),
+                    fontWeight: FontWeight.w500,
+                  ),
+                )
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInfoRow({
     required IconData icon,
     required String label,
     required String value,
-    required Color iconColor
+    required Color iconColor,
   }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -115,13 +402,466 @@ class VegetativeSliverListBuilder extends StatelessWidget {
     );
   }
 
+  // ============================================================================
+  // HEAT UNIT WIDGET
+  // ============================================================================
+
+  Widget _buildHeatUnitMetrics(
+      String fieldNumber,
+      double? latitude,
+      double? longitude,
+      DateTime? plantingDate,
+      ) {
+    final int dap = plantingDate != null
+        ? DateTime.now().difference(plantingDate).inDays
+        : 0;
+    return FutureBuilder<HeatUnitData>(
+      future: _fetchHeatUnitData(fieldNumber, dap, latitude, longitude, plantingDate),
+      builder: (context, snapshot) {
+        final heatUnitData = snapshot.data ?? HeatUnitData.empty();
+        final gduStatus = heatUnitData.gduStatus;
+        final chuStatus = heatUnitData.chuStatus;
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+
+        // 🆕 Cek fase saat ini
+        final currentMainPhase = _getCurrentMainPhase(heatUnitData.gdu);
+        final isCorrectPhase = _isCorrectPhase(heatUnitData.gdu);
+        final isOutOfPhase = !isCorrectPhase;
+
+        return Column(
+          children: [
+            // 🆕 Tampilkan banner warning jika sudah keluar dari fase vegetative
+            if (isOutOfPhase && !isLoading)
+              _buildPhaseWarningBanner(currentMainPhase, heatUnitData.gdu),
+
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.purple.shade50, Colors.blue.shade50],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.purple.shade200,
+                  width: 1.5,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    children: [
+                      Icon(Icons.wb_sunny, color: Colors.orange.shade700, size: 18),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          heatUnitData.isEstimated ? 'Heat Unit (Estimasi)' : 'Heat Unit (Real-time)',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                      if (isLoading)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 🆕 Tampilkan badge fase saat ini
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isOutOfPhase ? Colors.orange.shade100 : Colors.green.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isOutOfPhase ? Colors.orange.shade300 : Colors.green.shade300,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isOutOfPhase ? Icons.warning_amber : Icons.eco,
+                          size: 14,
+                          color: isOutOfPhase ? Colors.orange.shade700 : Colors.green.shade700,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Fase: $currentMainPhase',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: isOutOfPhase ? Colors.orange.shade700 : Colors.green.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // GDU & CHU Display
+                  Row(
+                    children: [
+                      // GDU Box
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: (gduStatus['color'] as Color).withAlpha(102),
+                              width: 2,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.thermostat, color: gduStatus['color'], size: 16),
+                                  const SizedBox(width: 4),
+                                  const Text(
+                                    'GDU',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                heatUnitData.gdu.toStringAsFixed(0),
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: gduStatus['color'],
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Icon(gduStatus['icon'], size: 12, color: gduStatus['color']),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      gduStatus['status'],
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: gduStatus['color'],
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      // CHU Box
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: (chuStatus['color'] as Color).withAlpha(102),
+                              width: 2,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.wb_incandescent, color: chuStatus['color'], size: 16),
+                                  const SizedBox(width: 4),
+                                  const Text(
+                                    'CHU',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                heatUnitData.chu.toStringAsFixed(0),
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: chuStatus['color'],
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 30,
+                                    height: 6,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade200,
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: FractionallySizedBox(
+                                      alignment: Alignment.centerLeft,
+                                      widthFactor: (chuStatus['percentage'] / 100).clamp(0.0, 1.0),
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: chuStatus['color'],
+                                          borderRadius: BorderRadius.circular(3),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      chuStatus['status'],
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: chuStatus['color'],
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // Info Text atau Alert
+                  if (heatUnitData.alert != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, size: 14, color: Colors.red.shade700),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              heatUnitData.alert!,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.red.shade700,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 12, color: Colors.blue.shade700),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              gduStatus['description'],
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.blue.shade700,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  // Harvest Estimate
+                  const SizedBox(height: 8),
+                  _buildHarvestEstimateWidget(heatUnitData.estimatedHarvestDate),
+
+                  // Tombol "LIHAT DETAIL GDU PREMIUM"
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.purple.shade400, Colors.blue.shade500],
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.purple.withAlpha(76),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () {
+                          if (latitude != null && longitude != null && plantingDate != null) {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => GDUMonitoringPage(
+                                  latitude: latitude,
+                                  longitude: longitude,
+                                  plantingDate: plantingDate,
+                                ),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(
+                                  children: [
+                                    Icon(Icons.warning_amber, color: Colors.white),
+                                    SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        'Data koordinat atau tanggal tanam tidak tersedia',
+                                        style: TextStyle(fontWeight: FontWeight.w500),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                backgroundColor: Colors.orange.shade700,
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.analytics, color: Colors.white, size: 16),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Lihat Detail GDU & CHU',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 14),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ============================================================================
+  // FETCH HEAT UNIT DATA
+  // ============================================================================
+
+  Future<HeatUnitData> _fetchHeatUnitData(
+      String fieldNumber,
+      int dap,
+      double? latitude,
+      double? longitude,
+      DateTime? plantingDate,
+      ) async {
+    if (_heatUnitCache.containsKey(fieldNumber)) {
+      return _heatUnitCache[fieldNumber]!;
+    }
+
+    if (plantingDate == null) {
+      return HeatUnitData.empty();
+    }
+
+    final int dap = DateTime.now().difference(plantingDate).inDays;
+
+    try {
+      final result = await _heatUnitService.fetchHistoricalHeatUnits(
+        latitude: latitude ?? 0.0,
+        longitude: longitude ?? 0.0,
+        plantingDate: plantingDate,
+      );
+
+      final gdu = result['gdu'] ?? 0.0;
+      final chu = result['chu'] ?? 0.0;
+
+      final heatUnitData = HeatUnitData(
+        gdu: gdu,
+        chu: chu,
+        gduStatus: _heatUnitService.getGDUStatus(gdu, dap),
+        chuStatus: _heatUnitService.getCHUStatus(chu, dap),
+        alert: _heatUnitService.checkHeatUnitAlert(gdu, chu, dap),
+        estimatedHarvestDate: _heatUnitService.estimateHarvestDate(plantingDate, gdu, dap),
+      );
+
+      _heatUnitCache[fieldNumber] = heatUnitData;
+      return heatUnitData;
+
+    } catch (e) {
+      debugPrint("Error tak terduga di builder saat fetch heat unit: $e");
+      return HeatUnitData.empty();
+    }
+  }
+
+  // ============================================================================
+  // BUILD METHOD (Tetap sama seperti sebelumnya)
+  // ============================================================================
+
   @override
   Widget build(BuildContext context) {
-    // Diubah dari ListView.builder menjadi SliverList
     return SliverList(
       delegate: SliverChildBuilderDelegate(
             (context, index) {
-          final row = filteredData[index];
+          final row = widget.filteredData[index];
           final dap = _calculateDAP(row);
           final fieldNumber = getValue(row, 2, "Unknown");
           final farmerName = getValue(row, 3, "Unknown");
@@ -130,6 +870,7 @@ class VegetativeSliverListBuilder extends StatelessWidget {
           final effectiveArea = getValue(row, 8, "0");
           final rawPlantingDate = getValue(row, 9, "Unknown");
           final plantingDate = _formatPlantingDate(rawPlantingDate);
+          final plantingDateTime = _getPlantingDateTime(row);
           final desa = getValue(row, 11, "Unknown");
           final kecamatan = getValue(row, 12, "Unknown");
           final kabupaten = getValue(row, 13, "Unknown");
@@ -137,36 +878,40 @@ class VegetativeSliverListBuilder extends StatelessWidget {
           final fieldSpv = getValue(row, 15, "Unknown");
           final weekOfVegetative = getValue(row, 29, "Unknown");
           final fi = getValue(row, 31, "Unknown");
-          final isAudited = getValue(row, 55, "NOT Audited") == "Audited";
-          final activityCount = activityCounts[fieldNumber] ?? 0;
+          final rawAuditStatus = getValue(row, 55, "NOT Audited");
+          final status = getVegetativeStatus(rawAuditStatus);
+          final activityCount = widget.activityCounts[fieldNumber] ?? 0;
 
-          // Semua UI Kartu di bawah ini tetap sama persis
+          final coordinateString = getValue(row, 16, '');
+          final coordinate = _parseCoordinate(coordinateString);
+          final latitude = coordinate?['latitude'];
+          final longitude = coordinate?['longitude'];
+
+          final statusColor = getStatusColor(status);
+          final statusGradient = getStatusGradient(status);
+          final statusLightColor = getStatusLightColor(status);
+          final statusIcon = getStatusIcon(status);
+
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: isAudited
-                      ? [Colors.white, Colors.green.shade50]
-                      : [Colors.white, Colors.red.shade50],
+                  colors: [Colors.white, statusLightColor],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: isAudited
-                        ? Colors.green.withAlpha(25)
-                        : Colors.red.withAlpha(25),
+                    color: statusColor.withAlpha(25),
                     blurRadius: 8,
                     spreadRadius: 1,
                     offset: const Offset(0, 3),
                   ),
                 ],
                 border: Border.all(
-                  color: isAudited
-                      ? Colors.green.withAlpha(102)
-                      : Colors.red.withAlpha(102),
+                  color: statusColor.withAlpha(102),
                   width: 1.5,
                 ),
               ),
@@ -180,7 +925,7 @@ class VegetativeSliverListBuilder extends StatelessWidget {
                       MaterialPageRoute(
                         builder: (context) => VegetativeDetailScreen(
                           fieldNumber: fieldNumber,
-                          region: selectedRegion ?? 'Unknown Region',
+                          region: widget.selectedRegion ?? 'Unknown Region',
                         ),
                       ),
                     );
@@ -190,10 +935,8 @@ class VegetativeSliverListBuilder extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Header Row with Field Number and Status
                         Row(
                           children: [
-                            // Left side with image and DAP
                             Container(
                               width: 70,
                               height: 70,
@@ -260,18 +1003,14 @@ class VegetativeSliverListBuilder extends StatelessWidget {
                                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                         decoration: BoxDecoration(
                                           gradient: LinearGradient(
-                                            colors: isAudited
-                                                ? [Colors.green.shade400, Colors.green.shade600]
-                                                : [Colors.red.shade400, Colors.red.shade600],
+                                            colors: statusGradient,
                                             begin: Alignment.topLeft,
                                             end: Alignment.bottomRight,
                                           ),
                                           borderRadius: BorderRadius.circular(12),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: isAudited
-                                                  ? Colors.green.withAlpha(60)
-                                                  : Colors.red.withAlpha(60),
+                                              color: statusColor.withAlpha(60),
                                               blurRadius: 4,
                                               offset: const Offset(0, 2),
                                             ),
@@ -281,15 +1020,13 @@ class VegetativeSliverListBuilder extends StatelessWidget {
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             Icon(
-                                              isAudited
-                                                  ? Icons.check_circle
-                                                  : Icons.pending,
+                                              statusIcon,
                                               color: Colors.white,
                                               size: 14,
                                             ),
                                             const SizedBox(width: 4),
                                             Text(
-                                              isAudited ? "Sampun" : "Dereng",
+                                              status,
                                               style: const TextStyle(
                                                 fontFamily: 'Manrope',
                                                 color: Colors.white,
@@ -303,25 +1040,17 @@ class VegetativeSliverListBuilder extends StatelessWidget {
                                     ],
                                   ),
                                   const SizedBox(height: 4),
-
-                                  // Farmer and Grower info
                                   Row(
                                     children: [
                                       Expanded(
                                         child: RichText(
                                           overflow: TextOverflow.ellipsis,
                                           text: TextSpan(
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              color: Colors.black87,
-                                            ),
+                                            style: const TextStyle(fontSize: 13, color: Colors.black87),
                                             children: [
                                               const TextSpan(
                                                 text: 'Farmer: ',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.black54,
-                                                ),
+                                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54),
                                               ),
                                               TextSpan(text: farmerName),
                                             ],
@@ -333,17 +1062,11 @@ class VegetativeSliverListBuilder extends StatelessWidget {
                                         child: RichText(
                                           overflow: TextOverflow.ellipsis,
                                           text: TextSpan(
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              color: Colors.black87,
-                                            ),
+                                            style: const TextStyle(fontSize: 13, color: Colors.black87),
                                             children: [
                                               const TextSpan(
                                                 text: 'Grower: ',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.black54,
-                                                ),
+                                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54),
                                               ),
                                               TextSpan(text: growerName),
                                             ],
@@ -352,25 +1075,17 @@ class VegetativeSliverListBuilder extends StatelessWidget {
                                       ),
                                     ],
                                   ),
-
-                                  // Hybrid and Area info
                                   Row(
                                     children: [
                                       Expanded(
                                         child: RichText(
                                           overflow: TextOverflow.ellipsis,
                                           text: TextSpan(
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              color: Colors.black87,
-                                            ),
+                                            style: const TextStyle(fontSize: 13, color: Colors.black87),
                                             children: [
                                               const TextSpan(
                                                 text: 'Hybrid: ',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.black54,
-                                                ),
+                                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54),
                                               ),
                                               TextSpan(text: hybrid),
                                             ],
@@ -382,17 +1097,11 @@ class VegetativeSliverListBuilder extends StatelessWidget {
                                         child: RichText(
                                           overflow: TextOverflow.ellipsis,
                                           text: TextSpan(
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              color: Colors.black87,
-                                            ),
+                                            style: const TextStyle(fontSize: 13, color: Colors.black87),
                                             children: [
                                               const TextSpan(
                                                 text: 'Area: ',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.black54,
-                                                ),
+                                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54),
                                               ),
                                               TextSpan(text: '$effectiveArea Ha'),
                                             ],
@@ -409,21 +1118,22 @@ class VegetativeSliverListBuilder extends StatelessWidget {
 
                         const SizedBox(height: 12),
 
-                        // Divider
-                        Container(
-                          height: 1,
-                          color: isAudited
-                              ? Colors.green.withAlpha(51)
-                              : Colors.red.withAlpha(51),
+                        _buildHeatUnitMetrics(
+                          fieldNumber,
+                          latitude,
+                          longitude,
+                          plantingDateTime,
                         ),
 
                         const SizedBox(height: 12),
 
-                        // Location and Personnel info in a grid
+                        Container(height: 1, color: statusColor.withAlpha(51)),
+
+                        const SizedBox(height: 12),
+
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Location info
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -467,8 +1177,6 @@ class VegetativeSliverListBuilder extends StatelessWidget {
                                 ],
                               ),
                             ),
-
-                            // Personnel info
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -517,93 +1225,66 @@ class VegetativeSliverListBuilder extends StatelessWidget {
 
                         const SizedBox(height: 8),
 
-                        // Bottom row with Activity Count and View Details Button
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            // Enhanced Activity Count Badge with last visit info
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: activityCount == 0
                                       ? [Colors.red.shade50, Colors.red.shade100]
-                                      : (activityCount < 2
+                                      : (activityCount < 3
                                       ? [Colors.orange.shade50, Colors.orange.shade100]
                                       : [Colors.green.shade50, Colors.green.shade100]),
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                 ),
                                 borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: activityCount == 0
-                                        ? Colors.red.withAlpha(25)
-                                        : (activityCount < 2 ? Colors.orange.withAlpha(25) : Colors.green.withAlpha(25)),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
                                 border: Border.all(
                                   color: activityCount == 0
                                       ? Colors.red.shade200
-                                      : (activityCount < 2 ? Colors.orange.shade200 : Colors.green.shade200),
+                                      : (activityCount < 3 ? Colors.orange.shade200 : Colors.green.shade200),
                                   width: 1.0,
                                 ),
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                              child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        activityCount == 0
-                                            ? Icons.history_toggle_off
-                                            : (activityCount < 2 ? Icons.history : Icons.history_edu),
-                                        color: activityCount == 0
-                                            ? Colors.red.shade700
-                                            : (activityCount < 2 ? Colors.orange.shade700 : Colors.green.shade700),
-                                        size: 16,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        activityCount == 0
-                                            ? 'Not Visited'
-                                            : (activityCount == 1
-                                            ? 'Visited 1 kali'
-                                            : 'Visited $activityCount kali'),
-                                        style: TextStyle(
-                                          color: activityCount == 0
-                                              ? Colors.red.shade700
-                                              : (activityCount < 2 ? Colors.orange.shade700 : Colors.green.shade700),
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
+                                  Icon(
+                                    activityCount == 0
+                                        ? Icons.history_toggle_off
+                                        : (activityCount < 3 ? Icons.history : Icons.history_edu),
+                                    color: activityCount == 0
+                                        ? Colors.red.shade700
+                                        : (activityCount < 3 ? Colors.orange.shade700 : Colors.green.shade700),
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    activityCount == 0 ? 'Not Visited' : 'Visited $activityCount kali',
+                                    style: TextStyle(
+                                      color: activityCount == 0
+                                          ? Colors.red.shade700
+                                          : (activityCount < 3 ? Colors.orange.shade700 : Colors.green.shade700),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
-
-                            // View Details Button
                             Container(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
-                                  colors: isAudited
-                                      ? [Colors.green.shade400, Colors.green.shade600]
-                                      : [Colors.red.shade400, Colors.red.shade600],
+                                  colors: statusGradient,
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                 ),
                                 borderRadius: BorderRadius.circular(12),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: isAudited
-                                        ? Colors.green.withAlpha(60)
-                                        : Colors.red.withAlpha(60),
+                                    color: statusColor.withAlpha(60),
                                     blurRadius: 4,
                                     offset: const Offset(0, 2),
                                   ),
@@ -614,14 +1295,7 @@ class VegetativeSliverListBuilder extends StatelessWidget {
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(12),
                                   onTap: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (context) => VegetativeDetailScreen(
-                                          fieldNumber: fieldNumber,
-                                          region: selectedRegion ?? 'Unknown Region',
-                                        ),
-                                      ),
-                                    );
+                                    widget.onItemTap(fieldNumber);
                                   },
                                   child: const Padding(
                                     padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -654,8 +1328,14 @@ class VegetativeSliverListBuilder extends StatelessWidget {
             ),
           );
         },
-        childCount: filteredData.length,
+        childCount: widget.filteredData.length,
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _heatUnitCache.clear();
+    super.dispose();
   }
 }

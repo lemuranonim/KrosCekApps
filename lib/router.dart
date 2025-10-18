@@ -17,6 +17,8 @@ import 'screens/hsp/hsp_screen.dart';
 import 'screens/login_screen.dart';
 // PSP
 import 'screens/psp/psp_screen.dart';
+// PSP HSP
+import 'screens/psphsp/psp_hsp_screen.dart';
 // Splash
 import 'screens/splash_screen.dart';
 // Audit Graph
@@ -57,6 +59,11 @@ final router = GoRouter(
     GoRoute(
       path: '/hsp',
       builder: (context, state) => const HspScreen(),
+    ),
+    // PSP HSP
+    GoRoute(
+      path: '/psphsp',
+      builder: (context, state) => const PspHspScreen(),
     ),
     GoRoute(
       path: '/accounts',

@@ -123,7 +123,7 @@ class PspVegetativeListViewBuilder extends StatelessWidget {
       case "Dereng Jangkep":
         return [Colors.orange.shade400, Colors.orange.shade600];
       case "Dereng Blas":
-        return [Colors.red.shade400, Colors.red.shade600];
+        return [Colors.orange.shade400, Colors.orange.shade600];
       default:
         return [Colors.grey.shade400, Colors.grey.shade600];
     }
@@ -137,7 +137,7 @@ class PspVegetativeListViewBuilder extends StatelessWidget {
       case "Dereng Jangkep":
         return Colors.orange.shade50;
       case "Dereng Blas":
-        return Colors.red.shade50;
+        return Colors.orange.shade50;
       default:
         return Colors.grey.shade50;
     }
@@ -516,28 +516,28 @@ class PspVegetativeListViewBuilder extends StatelessWidget {
                                   icon: Icons.calendar_today,
                                   label: 'Planted',
                                   value: plantingDate,
-                                  iconColor: Colors.redAccent,
+                                  iconColor: Colors.orange,
                                 ),
                                 const SizedBox(height: 2),
                                 _buildInfoRow(
                                   icon: Icons.location_on,
                                   label: 'Desa',
                                   value: desa,
-                                  iconColor: Colors.redAccent,
+                                  iconColor: Colors.orange,
                                 ),
                                 const SizedBox(height: 2),
                                 _buildInfoRow(
                                   icon: Icons.location_city,
                                   label: 'Kec',
                                   value: kecamatan,
-                                  iconColor: Colors.redAccent,
+                                  iconColor: Colors.orange,
                                 ),
                                 const SizedBox(height: 2),
                                 _buildInfoRow(
                                   icon: Icons.map,
                                   label: 'Kab',
                                   value: kabupaten,
-                                  iconColor: Colors.redAccent,
+                                  iconColor: Colors.orange,
                                 ),
                               ],
                             ),

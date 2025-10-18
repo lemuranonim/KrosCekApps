@@ -404,7 +404,7 @@ class _PspGenerativeMapViewState extends State<PspGenerativeMapView> with Automa
       case "Dereng Jangkep":
         return [Colors.orange.shade400, Colors.orange.shade600];
       case "Dereng Blas":
-        return [Colors.red.shade400, Colors.red.shade600];
+        return [Colors.orange.shade400, Colors.orange.shade600];
       default:
         return [Colors.grey.shade400, Colors.grey.shade600];
     }
@@ -800,7 +800,7 @@ class _PspGenerativeMapViewState extends State<PspGenerativeMapView> with Automa
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: activityCount == 0
-                            ? [Colors.red.shade50, Colors.red.shade100]
+                            ? [Colors.orange.shade50, Colors.orange.shade100]
                             : (activityCount < 3
                             ? [Colors.orange.shade50, Colors.orange.shade100]
                             : [Colors.green.shade50, Colors.green.shade100]),
@@ -811,7 +811,7 @@ class _PspGenerativeMapViewState extends State<PspGenerativeMapView> with Automa
                       boxShadow: [
                         BoxShadow(
                           color: activityCount == 0
-                              ? Colors.red.withAlpha(25)
+                              ? Colors.orange.withAlpha(25)
                               : (activityCount < 3 ? Colors.orange.withAlpha(25) : Colors.green.withAlpha(25)),
                           blurRadius: 4,
                           offset: const Offset(0, 2),
@@ -819,7 +819,7 @@ class _PspGenerativeMapViewState extends State<PspGenerativeMapView> with Automa
                       ],
                       border: Border.all(
                         color: activityCount == 0
-                            ? Colors.red.shade200
+                            ? Colors.orange.shade200
                             : (activityCount < 3 ? Colors.orange.shade200 : Colors.green.shade200),
                         width: 1.0,
                       ),
@@ -832,7 +832,7 @@ class _PspGenerativeMapViewState extends State<PspGenerativeMapView> with Automa
                               ? Icons.history_toggle_off
                               : (activityCount < 3 ? Icons.history : Icons.history_edu),
                           color: activityCount == 0
-                              ? Colors.red.shade700
+                              ? Colors.orange.shade700
                               : (activityCount < 3 ? Colors.orange.shade700 : Colors.green.shade700),
                           size: 16,
                         ),
@@ -845,7 +845,7 @@ class _PspGenerativeMapViewState extends State<PspGenerativeMapView> with Automa
                               : 'Visited $activityCount kali'),
                           style: TextStyle(
                             color: activityCount == 0
-                                ? Colors.red.shade700
+                                ? Colors.orange.shade700
                                 : (activityCount < 3 ? Colors.orange.shade700 : Colors.green.shade700),
                             fontWeight: FontWeight.bold,
                             fontSize: 12,

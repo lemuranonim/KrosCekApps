@@ -29,7 +29,6 @@ class _PspWeatherWidgetState extends State<PspWeatherWidget> {
   bool _isLoading = true;
   String _errorMessage = '';
 
-  // Flip card controller
   final GlobalKey<FlipCardState> cardKey = GlobalKey<FlipCardState>();
 
   @override
@@ -50,7 +49,8 @@ class _PspWeatherWidgetState extends State<PspWeatherWidget> {
 
   Future<void> _loadCachedData() async {
     try {
-      final cachedWeather = await _pspWeatherService.loadCachedPspWeatherData();
+      final cachedWeather =
+      await _pspWeatherService.loadCachedPspWeatherData();
       final cachedForecast = await _pspWeatherService.loadCachedForecastData();
 
       setState(() {
@@ -83,14 +83,14 @@ class _PspWeatherWidgetState extends State<PspWeatherWidget> {
       final position = await _pspWeatherService.getCurrentPosition();
 
       String locationName = _pspWeatherData.locationName;
-      if (locationName.isEmpty || _pspWeatherService.hasPositionChangedSignificantly(position)) {
+      if (locationName.isEmpty ||
+          _pspWeatherService.hasPositionChangedSignificantly(position)) {
         locationName = await _pspWeatherService.getLocationName(position);
       }
 
-      // Fetch current weather
-      final pspWeatherData = await _pspWeatherService.fetchCurrentWeather(position, locationName);
+      final pspWeatherData =
+      await _pspWeatherService.fetchCurrentWeather(position, locationName);
 
-      // Fetch forecast
       final forecastData = await _pspWeatherService.fetchForecast(position);
 
       setState(() {
@@ -110,485 +110,1139 @@ class _PspWeatherWidgetState extends State<PspWeatherWidget> {
   Widget build(BuildContext context) {
     return FlipCard(
       key: cardKey,
-      front: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.red.shade50,
-              Colors.red.shade100,
-            ],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.red.withAlpha(25),
-              blurRadius: 10,
-              spreadRadius: 1,
-              offset: const Offset(0, 4),
-            ),
+      front: _buildFrontCard(),
+      back: _buildBackCard(),
+    );
+  }
+
+  // ============================================================================
+  // FRONT CARD - CURRENT WEATHER
+  // ============================================================================
+
+  Widget _buildFrontCard() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white,
+            Colors.orange.shade50.withAlpha(178),
+            Colors.orange.shade100.withAlpha(102),
           ],
         ),
-        child: _isLoading
-            ? Center(
-          child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.red.shade700),
-            ),
-          ),
-        )
-            : _errorMessage.isNotEmpty
-            ? Center(
-          child: Text(
-            _errorMessage,
-            style: TextStyle(color: Colors.red[300], fontSize: 12),
-            textAlign: TextAlign.center,
-          ),
-        )
-            : Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_pspWeatherData.locationName.isNotEmpty) ...[
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.red.withAlpha(15),
-                      blurRadius: 4,
-                      spreadRadius: 1,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.location_on,
-                      size: 14,
-                      color: Colors.red.shade700,
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        _pspWeatherData.locationName,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.red.shade700,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Cuaca Saat Ini',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.red.shade700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _pspWeatherData.temperature,
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.red.shade900,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _pspWeatherData.weatherCondition,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.red.shade800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.red.withAlpha(25),
-                        blurRadius: 8,
-                        spreadRadius: 1,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: BoxedIcon(
-                    _pspWeatherData.weatherIcon,
-                    color: _pspWeatherData.iconColor,
-                    size: 32,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // Replace the Row with SingleChildScrollView to make it scrollable horizontally
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.red.withAlpha(15),
-                          blurRadius: 4,
-                          spreadRadius: 1,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        BoxedIcon(
-                          WeatherIcons.strong_wind,
-                          size: 16,
-                          color: Colors.red.shade700,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _pspWeatherData.windSpeed,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.red.shade700,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.red.withAlpha(15),
-                          blurRadius: 4,
-                          spreadRadius: 1,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        BoxedIcon(
-                          WeatherIcons.wind_direction,
-                          size: 16,
-                          color: Colors.red.shade700,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _pspWeatherData.windDirection,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.red.shade700,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade700,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.red.withAlpha(15),
-                          blurRadius: 4,
-                          spreadRadius: 1,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          "Prakira ->",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: Text(
-                _pspWeatherData.lastFetchTime != null
-                    ? 'Diperbarui: ${_pspWeatherService.formatLastUpdateTime(_pspWeatherData.lastFetchTime!)}'
-                    : 'Pembaruan setiap 15 menit',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontStyle: FontStyle.italic,
-                  color: Colors.red.shade700.withAlpha(178),
-                ),
-              ),
-            ),
-          ],
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.orange.shade200,
+          width: 2,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withAlpha(30),
+            blurRadius: 15,
+            spreadRadius: 2,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
-      back: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.red.shade50,
-              Colors.red.shade100,
-            ],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.red.withAlpha(25),
-              blurRadius: 10,
-              spreadRadius: 1,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: _isLoading
-            ? Center(
-          child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.red.shade700),
-            ),
-          ),
-        )
-            : _errorMessage.isNotEmpty
-            ? Center(
-          child: Text(
-            _errorMessage,
-            style: TextStyle(color: Colors.red[300], fontSize: 12),
-            textAlign: TextAlign.center,
-          ),
-        )
-            : Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Stack(
           children: [
-            Text(
-              _forecastData.forecastTitle,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.red.shade900,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Table header
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-              decoration: BoxDecoration(
-                color: Colors.red.shade200.withAlpha(76),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      'Hari',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: Colors.red.shade800,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      'Kondisi',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: Colors.red.shade800,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      'Suhu (°C)',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: Colors.red.shade800,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      'Hujan (mm)',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: Colors.red.shade800,
-                      ),
-                      textAlign: TextAlign.end,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Table rows
-            for (var entry in _getDayLabels().entries)
-              if (_forecastData.dailyForecasts.containsKey(entry.key))
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Colors.red.shade100,
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              entry.value,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red.shade800,
-                              ),
-                            ),
-                            if (_forecastData.dailyForecasts[entry.key]?.date.isNotEmpty ?? false)
-                              Text(
-                                _forecastData.dailyForecasts[entry.key]!.date.split(',')[0],
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.red.shade600,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        flex: 3,
-                        child: Row(
-                          children: [
-                            BoxedIcon(
-                              _forecastData.dailyForecasts[entry.key]?.icon ?? WeatherIcons.na,
-                              color: _forecastData.dailyForecasts[entry.key]?.color ?? Colors.grey,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                _forecastData.dailyForecasts[entry.key]?.condition ?? '--',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.red.shade800,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          _forecastData.dailyForecasts[entry.key]?.tempRange ?? '-- → --',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.red.shade800,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          _forecastData.dailyForecasts[entry.key]?.rainAmount.toString() ?? '0.0',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: (_forecastData.dailyForecasts[entry.key]?.rainAmount ?? 0) > 0
-                                ? Colors.red.shade700
-                                : Colors.red.shade800,
-                            fontWeight: (_forecastData.dailyForecasts[entry.key]?.rainAmount ?? 0) > 0
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                          ),
-                          textAlign: TextAlign.end,
-                        ),
-                      ),
-                    ],
-                  ),
+            // Decorative circles
+            Positioned(
+              top: -20,
+              right: -20,
+              child: Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.orange.shade100.withAlpha(51),
                 ),
+              ),
+            ),
+            Positioned(
+              bottom: -30,
+              left: -30,
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.orange.shade100.withAlpha(38),
+                ),
+              ),
+            ),
+
+            // Main content
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: _isLoading
+                  ? _buildLoadingState()
+                  : _errorMessage.isNotEmpty
+                  ? _buildErrorState()
+                  : _buildFrontContent(),
+            ),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 32,
+            height: 32,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Colors.orange.shade700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Loading weather...',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.orange.shade700,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.error_outline_rounded,
+            color: Colors.red.shade400,
+            size: 32,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _errorMessage,
+            style: TextStyle(
+              color: Colors.red[400],
+              fontSize: 12,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFrontContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Location Badge
+        if (_pspWeatherData.locationName.isNotEmpty)
+          _buildLocationBadge(),
+
+        // Main Weather Info
+        _buildMainWeatherInfo(),
+        const SizedBox(height: 16),
+
+        // GDU and CHU Row
+        _buildGduChuRow(),
+        const SizedBox(height: 12),
+
+        // Weather Details (Humidity, UV, Feels Like)
+        _buildWeatherDetailsCard(),
+        const SizedBox(height: 12),
+
+        // Growing Condition & Alert
+        _buildConditionAndAlert(),
+        const SizedBox(height: 12),
+
+        // Last Update Info
+        _buildLastUpdateInfo(),
+      ],
+    );
+  }
+
+  Widget _buildLocationBadge() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.white,
+            Colors.orange.shade50,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(
+          color: Colors.orange.shade200,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withAlpha(15),
+            blurRadius: 6,
+            spreadRadius: 1,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade700,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.location_on,
+              size: 12,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              _pspWeatherData.locationName,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.orange.shade800,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainWeatherInfo() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Current Weather',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.orange.shade600,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _pspWeatherData.temperature,
+                style: TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.orange.shade900,
+                  height: 1.0,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _pspWeatherData.weatherCondition,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.orange.shade800,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Weather Icon with Animation
+        TweenAnimationBuilder(
+          tween: Tween<double>(begin: 0.8, end: 1.0),
+          duration: const Duration(milliseconds: 1500),
+          curve: Curves.easeInOut,
+          builder: (context, double value, child) {
+            return Transform.scale(
+              scale: value,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white,
+                      Colors.orange.shade50,
+                    ],
+                  ),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.orange.shade200,
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _pspWeatherData.iconColor.withAlpha(40),
+                      blurRadius: 12,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: BoxedIcon(
+                  _pspWeatherData.weatherIcon,
+                  color: _pspWeatherData.iconColor,
+                  size: 40,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGduChuRow() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _buildWeatherInfoChip(
+            icon: Icons.thermostat,
+            label: 'GDU: ${_pspWeatherData.gdu.toStringAsFixed(1)}',
+            color: Colors.green.shade600,
+          ),
+          const SizedBox(width: 10),
+          _buildWeatherInfoChip(
+            icon: Icons.wb_sunny,
+            label: 'CHU: ${_pspWeatherData.chu.toStringAsFixed(1)}',
+            color: Colors.amber.shade700,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWeatherDetailsCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.white,
+            Colors.orange.shade50,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.orange.shade200,
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildWeatherDetail(
+            icon: WeatherIcons.humidity,
+            label: 'Humidity',
+            value: '${_pspWeatherData.humidity}%',
+            color: Colors.blue.shade600,
+          ),
+          Container(
+            width: 1,
+            height: 40,
+            color: Colors.orange.shade200,
+          ),
+          _buildWeatherDetail(
+            icon: WeatherIcons.day_sunny,
+            label: 'UV Index',
+            value: _pspWeatherData.uvIndex.toStringAsFixed(1),
+            color: Colors.deepOrange.shade600,
+          ),
+          Container(
+            width: 1,
+            height: 40,
+            color: Colors.orange.shade200,
+          ),
+          _buildWeatherDetail(
+            icon: WeatherIcons.thermometer,
+            label: 'Feels Like',
+            value: _pspWeatherData.feelsLike,
+            color: Colors.purple.shade600,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWeatherDetail({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Column(
+      children: [
+        BoxedIcon(
+          icon,
+          size: 20,
+          color: color,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            color: Colors.orange.shade700,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            color: color,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildConditionAndAlert() {
+    return Row(
+      children: [
+        // Growing Condition
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 8,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  _getConditionColor(_pspWeatherData.growingCondition)
+                      .withAlpha(51),
+                  _getConditionColor(_pspWeatherData.growingCondition)
+                      .withAlpha(25),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: _getConditionColor(_pspWeatherData.growingCondition),
+                width: 1.5,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.eco,
+                  size: 16,
+                  color: _getConditionColor(_pspWeatherData.growingCondition),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    _pspWeatherData.growingCondition,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color:
+                      _getConditionColor(_pspWeatherData.growingCondition),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Alert (if exists)
+        if (_pspWeatherData.alert != null) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.red.shade100,
+                    Colors.red.shade50,
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: Colors.red.shade400,
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _pspWeatherData.alert == 'Frost Risk'
+                        ? WeatherIcons.snowflake_cold
+                        : WeatherIcons.hot,
+                    size: 16,
+                    color: Colors.red.shade700,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      _pspWeatherData.alert!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red.shade700,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildLastUpdateInfo() {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 6,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.orange.shade200,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.update_rounded,
+              size: 12,
+              color: Colors.orange.shade700,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              _pspWeatherData.lastFetchTime != null
+                  ? 'Updated: ${_pspWeatherService.formatLastUpdateTime(_pspWeatherData.lastFetchTime!)}'
+                  : 'Updates every 15 minutes',
+              style: TextStyle(
+                fontSize: 10,
+                fontStyle: FontStyle.italic,
+                color: Colors.orange.shade700,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================================
+  // BACK CARD - FORECAST
+  // ============================================================================
+
+  Widget _buildBackCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.orange.shade50,
+            Colors.orange.shade100,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withAlpha(25),
+            blurRadius: 10,
+            spreadRadius: 1,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: _isLoading
+          ? Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(
+                Colors.orange.shade700),
+          ),
+        ),
+      )
+          : _errorMessage.isNotEmpty
+          ? Center(
+        child: Text(
+          _errorMessage,
+          style: TextStyle(color: Colors.red[300], fontSize: 12),
+          textAlign: TextAlign.center,
+        ),
+      )
+          : _buildBackContent(),
+    );
+  }
+
+  Widget _buildBackContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Title with Badge
+        _buildForecastTitle(),
+        const SizedBox(height: 8),
+
+        // Total GDU and CHU Summary
+        _buildTotalSummary(),
+        const SizedBox(height: 8),
+
+        // GDU Progress Bar
+        _buildGduRating(),
+        const SizedBox(height: 12),
+
+        // Table header
+        _buildTableHeader(),
+
+        // Table rows
+        ..._buildTableRows(),
+
+        const SizedBox(height: 8),
+
+        // Info note
+        _buildInfoNote(),
+      ],
+    );
+  }
+
+  Widget _buildForecastTitle() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Text(
+            _forecastData.forecastTitle,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: Colors.orange.shade900,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 4,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.orange.shade200.withAlpha(100),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            '3-Day Total',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Colors.orange.shade800,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTotalSummary() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.white,
+            Colors.orange.shade50,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.orange.shade200,
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          Column(
+            children: [
+              Icon(
+                Icons.thermostat,
+                color: Colors.green.shade600,
+                size: 20,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Total GDU',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.orange.shade700,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                _forecastData.totalGdu.toStringAsFixed(1),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.green.shade700,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          Container(
+            width: 1,
+            height: 50,
+            color: Colors.orange.shade200,
+          ),
+          Column(
+            children: [
+              Icon(
+                Icons.wb_sunny,
+                color: Colors.amber.shade700,
+                size: 20,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Total CHU',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.orange.shade700,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                _forecastData.totalChu.toStringAsFixed(1),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.amber.shade800,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade200.withAlpha(76),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              'Day',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 11,
+                color: Colors.orange.shade800,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'Temp (°C)',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 11,
+                color: Colors.orange.shade800,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'GDU',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 11,
+                color: Colors.orange.shade800,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'CHU',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 11,
+                color: Colors.orange.shade800,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildTableRows() {
+    List<Widget> rows = [];
+    final dayLabels = _getDayLabels();
+
+    for (var entry in dayLabels.entries) {
+      if (_forecastData.dailyForecasts.containsKey(entry.key)) {
+        rows.add(_buildTableRow(entry.key, entry.value));
+      }
+    }
+
+    return rows;
+  }
+
+  Widget _buildTableRow(String key, String label) {
+    final forecast = _forecastData.dailyForecasts[key]!;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.orange.shade100,
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,  // Ubah dari 2 ke 3
+            child: Row(
+              children: [
+                // Tambahkan icon cuaca
+                BoxedIcon(
+                  forecast.icon,
+                  size: 16,
+                  color: forecast.color,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange.shade800,
+                        ),
+                      ),
+                      if (forecast.date.isNotEmpty)
+                        Text(
+                          forecast.date.split(',')[0],
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Colors.orange.shade600,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              forecast.tempRange,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.orange.shade800,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 4,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                forecast.gdu.toStringAsFixed(1),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.green.shade700,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            flex: 2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 4,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                forecast.chu.toStringAsFixed(1),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.amber.shade800,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGduRating() {
+    final avgDailyGdu = _forecastData.totalGdu / 3;
+    String rating;
+    Color ratingColor;
+    IconData ratingIcon;
+
+    if (avgDailyGdu >= 15) {
+      rating = 'Excellent Growing Weather';
+      ratingColor = Colors.green.shade700;
+      ratingIcon = Icons.local_fire_department;
+    } else if (avgDailyGdu >= 10) {
+      rating = 'Good Growing Weather';
+      ratingColor = Colors.lightGreen.shade600;
+      ratingIcon = Icons.wb_sunny;
+    } else if (avgDailyGdu >= 5) {
+      rating = 'Moderate Growing Weather';
+      ratingColor = Colors.orange.shade600;
+      ratingIcon = Icons.cloud;
+    } else {
+      rating = 'Slow Growing Weather';
+      ratingColor = Colors.red.shade600;
+      ratingIcon = Icons.ac_unit;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            ratingColor.withAlpha(51),
+            ratingColor.withAlpha(25),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: ratingColor,
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(ratingIcon, color: ratingColor, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  rating,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: ratingColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Avg ${avgDailyGdu.toStringAsFixed(1)} GDU/day over 3 days',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: ratingColor.withAlpha(200),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoNote() {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.blue.shade200,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 14,
+            color: Colors.blue.shade700,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'GDU: Growing Degree Units (Base 10°C)\nCHU: Crop Heat Units for crop development',
+              style: TextStyle(
+                fontSize: 9,
+                color: Colors.blue.shade700,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================================
+  // HELPER METHODS
+  // ============================================================================
+
   Map<String, String> _getDayLabels() {
     return {
-      'besok': 'Besok',
-      'lusa': 'Lusa',
-      'hari3': 'Hari ke-3',
+      'day1': 'Tomorrow',
+      'day2': 'Day 2',
+      'day3': 'Day 3',
     };
+  }
+
+  Color _getConditionColor(String condition) {
+    switch (condition) {
+      case 'Excellent':
+        return Colors.green.shade700;
+      case 'Good':
+        return Colors.lightGreen.shade600;
+      case 'Fair':
+        return Colors.orange.shade600;
+      case 'Poor':
+        return Colors.red.shade600;
+      default:
+        return Colors.grey.shade600;
+    }
+  }
+
+  Widget _buildWeatherInfoChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.white,
+            color.withAlpha(25),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withAlpha(76),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withAlpha(20),
+            blurRadius: 6,
+            spreadRadius: 1,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

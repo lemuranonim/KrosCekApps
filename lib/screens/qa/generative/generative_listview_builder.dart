@@ -25,11 +25,11 @@ class GenerativeListViewBuilder extends StatelessWidget {
 
   int _calculateDAP(List<String> row) {
     try {
-      final plantingDate = getValue(row, 9, ''); // Get planting date from column 9
-      if (plantingDate.isEmpty) return 0;
+      final plantingDateRev = getValue(row, 22, ''); // Get planting date rev from column 22
+      if (plantingDateRev.isEmpty) return 0;
 
       // Convert the planting date string to a DateTime object
-      final parsedDate = DateFormat('dd/MM/yyyy').parse(_convertToDateIfNecessary(plantingDate));
+      final parsedDate = DateFormat('dd/MM/yyyy').parse(_convertToDateIfNecessary(plantingDateRev));
       final today = DateTime.now();
       return today.difference(parsedDate).inDays; // Calculate the difference in days
     } catch (e) {
@@ -51,7 +51,7 @@ class GenerativeListViewBuilder extends StatelessWidget {
     return value;
   }
 
-  String _formatPlantingDate(String dateStr) {
+  String _formatPlantingDateRev(String dateStr) {
     try {
       // First check if it's an Excel date number
       final parsedNumber = double.tryParse(dateStr);
@@ -203,8 +203,8 @@ class GenerativeListViewBuilder extends StatelessWidget {
         final growerName = getValue(row, 4, "Unknown");
         final hybrid = getValue(row, 5, "Unknown");
         final effectiveArea = getValue(row, 8, "0");
-        final rawPlantingDate = getValue(row, 9, "Unknown");
-        final plantingDate = _formatPlantingDate(rawPlantingDate);
+        final rawPlantingDateRev = getValue(row, 22, "Unknown");
+        final plantingDateRev = _formatPlantingDateRev(rawPlantingDateRev);
         final desa = getValue(row, 11, "Unknown");
         final kecamatan = getValue(row, 12, "Unknown");
         final kabupaten = getValue(row, 13, "Unknown");
@@ -508,7 +508,7 @@ class GenerativeListViewBuilder extends StatelessWidget {
                                 _buildInfoRow(
                                   icon: Icons.calendar_today,
                                   label: 'Planted',
-                                  value: plantingDate,
+                                  value: plantingDateRev,
                                   iconColor: Colors.green,
                                 ),
                                 const SizedBox(height: 2),

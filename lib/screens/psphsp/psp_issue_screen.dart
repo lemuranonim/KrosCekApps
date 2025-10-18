@@ -102,7 +102,7 @@ class PspIssueScreenState extends State<PspIssueScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: Colors.red.shade800,
+        backgroundColor: Colors.orange.shade800,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
@@ -123,7 +123,7 @@ class PspIssueScreenState extends State<PspIssueScreen> {
             fontSize: 20,
           ),
         ),
-        backgroundColor: Colors.redAccent.shade700,
+        backgroundColor: Colors.orange.shade700,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         shape: const RoundedRectangleBorder(
@@ -137,7 +137,7 @@ class PspIssueScreenState extends State<PspIssueScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.red.shade50, Colors.white],
+            colors: [Colors.orange.shade50, Colors.white],
           ),
         ),
         child: Padding(
@@ -215,7 +215,7 @@ class PspIssueScreenState extends State<PspIssueScreen> {
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: TextStyle(color: Colors.grey.shade400),
-              prefixIcon: Icon(icon, color: Colors.redAccent),
+              prefixIcon: Icon(icon, color: Colors.orange),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
@@ -316,7 +316,7 @@ class PspIssueScreenState extends State<PspIssueScreen> {
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: TextStyle(color: Colors.grey.shade400),
-              prefixIcon: Icon(icon, color: Colors.redAccent),
+              prefixIcon: Icon(icon, color: Colors.orange),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
@@ -332,7 +332,7 @@ class PspIssueScreenState extends State<PspIssueScreen> {
     return ElevatedButton(
       onPressed: _isLoading ? null : _submitData,
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.redAccent,
+        backgroundColor: Colors.orange,
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(

@@ -221,7 +221,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
             fontSize: 20,
           ),
         ),
-        backgroundColor: Colors.redAccent.shade700,
+        backgroundColor: Colors.orange.shade700,
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 4,
         shape: const RoundedRectangleBorder(
@@ -290,7 +290,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                       effect: WormEffect(
                         dotHeight: 10,
                         dotWidth: 10,
-                        activeDotColor: Colors.redAccent,
+                        activeDotColor: Colors.orange,
                         dotColor: Colors.grey,
                       ),
                     ),
@@ -366,7 +366,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
           title: const Text(
             'Info Mase!',
             style: TextStyle(
-              color: Colors.redAccent,
+              color: Colors.orange,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -421,7 +421,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                     message: 'Lokasi: ${latitude!.toStringAsFixed(5)}, ${longitude!.toStringAsFixed(5)}',
                     child: Icon(
                       Icons.location_pin,
-                      color: Colors.red.shade700,
+                      color: Colors.orange.shade700,
                       size: 40.0,
                     ),
                   ),
@@ -438,11 +438,11 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
       margin: const EdgeInsets.symmetric(vertical: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.red.shade50,
+        color: Colors.orange.shade50,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.redAccent.withAlpha(25),
+            color: Colors.orange.withAlpha(25),
             blurRadius: 6,
             offset: const Offset(0, 3),
           ),
@@ -455,7 +455,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
         style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w700,
-          color: latitude != null && longitude != null ? Colors.red.shade800 : Colors.grey,
+          color: latitude != null && longitude != null ? Colors.orange.shade800 : Colors.grey,
         ),
         textAlign: TextAlign.center,
       ),
@@ -467,7 +467,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
       elevation: 8,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.redAccent.shade100, width: 1.0),
+        side: BorderSide(color: Colors.orange.shade100, width: 1.0),
       ),
       margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       child: Container(
@@ -476,7 +476,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Colors.white, Colors.red.shade50],
+            colors: [Colors.white, Colors.orange.shade50],
             stops: const [0.7, 1.0],
           ),
         ),
@@ -490,14 +490,14 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Colors.red.shade600, Colors.red.shade800],
+                    colors: [Colors.orange.shade600, Colors.orange.shade800],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.redAccent.withAlpha(76),
+                      color: Colors.orange.withAlpha(76),
                       blurRadius: 6,
                       offset: const Offset(0, 3),
                     ),
@@ -514,7 +514,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                 ),
               ),
               const Divider(
-                color: Colors.redAccent,
+                color: Colors.orange,
                 thickness: 0.8,
                 height: 20,
               ),
@@ -540,7 +540,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
           color: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: Colors.redAccent.shade200, width: 1.5),
+            side: BorderSide(color: Colors.orange.shade200, width: 1.5),
           ),
           margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50),
           child: Padding(
@@ -552,14 +552,14 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.redAccent.shade400, Colors.redAccent.shade700],
+                      colors: [Colors.orange.shade400, Colors.orange.shade700],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(15),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.redAccent.withAlpha(76),
+                        color: Colors.orange.withAlpha(76),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),
@@ -606,7 +606,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
             decoration: BoxDecoration(
               boxShadow: [
                 BoxShadow(
-                  color: Colors.redAccent.withAlpha(102),
+                  color: Colors.orange.withAlpha(102),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -619,7 +619,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                 // data sudah di-update melalui callback onSave.
                 // Cukup panggil _fetchData jika ingin sinkronisasi paksa dari server.
               },
-              backgroundColor: Colors.red.shade600,
+              backgroundColor: Colors.orange.shade600,
               elevation: 8,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -642,7 +642,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
           color: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: Colors.redAccent.shade200, width: 1.5),
+            side: BorderSide(color: Colors.orange.shade200, width: 1.5),
           ),
           margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50),
           child: Padding(
@@ -654,14 +654,14 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.redAccent.shade400, Colors.redAccent.shade700],
+                      colors: [Colors.orange.shade400, Colors.orange.shade700],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(15),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.redAccent.withAlpha(76),
+                        color: Colors.orange.withAlpha(76),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),
@@ -708,7 +708,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
             decoration: BoxDecoration(
               boxShadow: [
                 BoxShadow(
-                  color: Colors.redAccent.withAlpha(102),
+                  color: Colors.orange.withAlpha(102),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -718,7 +718,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
               onPressed: () async {
                 await _navigateToAudit6EditScreen(context);
               },
-              backgroundColor: Colors.red.shade600,
+              backgroundColor: Colors.orange.shade600,
               elevation: 8,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -741,7 +741,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
           color: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: Colors.redAccent.shade200, width: 1.5),
+            side: BorderSide(color: Colors.orange.shade200, width: 1.5),
           ),
           margin: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 50),
           child: Padding(
@@ -753,14 +753,14 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.redAccent.shade400, Colors.redAccent.shade700],
+                      colors: [Colors.orange.shade400, Colors.orange.shade700],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(15),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.redAccent.withAlpha(76),
+                        color: Colors.orange.withAlpha(76),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),
@@ -807,7 +807,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
             decoration: BoxDecoration(
               boxShadow: [
                 BoxShadow(
-                  color: Colors.redAccent.withAlpha(102),
+                  color: Colors.orange.withAlpha(102),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -817,7 +817,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
               onPressed: () async {
                 await _navigateToAuditMaturityEditScreen(context);
               },
-              backgroundColor: Colors.red.shade600,
+              backgroundColor: Colors.orange.shade600,
               elevation: 8,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -857,7 +857,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                   height: 18,
                   width: 4,
                   decoration: BoxDecoration(
-                    color: Colors.red.shade600,
+                    color: Colors.orange.shade600,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -910,19 +910,19 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.red.shade50, Colors.white],
+          colors: [Colors.orange.shade50, Colors.white],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.redAccent.withAlpha(25),
+            color: Colors.orange.withAlpha(25),
             blurRadius: 6,
             offset: const Offset(0, 3),
           ),
         ],
-        border: Border.all(color: Colors.redAccent.shade200, width: 1.5),
+        border: Border.all(color: Colors.orange.shade200, width: 1.5),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -933,7 +933,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
               children: [
                 Icon(
                   Icons.arrow_right,
-                  color: Colors.redAccent.shade700,
+                  color: Colors.orange.shade700,
                   size: 24,
                 ),
                 const SizedBox(width: 4),
@@ -943,7 +943,7 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Colors.red.shade800,
+                      color: Colors.orange.shade800,
                       letterSpacing: 0.3,
                       height: 1.3,
                     ),
@@ -962,12 +962,12 @@ class PspGenerativeDetailScreenState extends State<PspGenerativeDetailScreen> {
                 borderRadius: BorderRadius.circular(10),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.redAccent.withAlpha(25),
+                    color: Colors.orange.withAlpha(25),
                     blurRadius: 4,
                     offset: const Offset(0, 2),
                   ),
                 ],
-                border: Border.all(color: Colors.red.shade300),
+                border: Border.all(color: Colors.orange.shade300),
               ),
               child: Text(
                 value.isNotEmpty ? value : 'Kosong Lur...',

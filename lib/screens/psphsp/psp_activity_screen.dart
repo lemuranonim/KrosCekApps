@@ -158,7 +158,7 @@ class PspActivityScreenState extends State<PspActivityScreen> {
       )
           : LiquidPullToRefresh(
         onRefresh: _loadUserDataAndFetchLogs,
-        color: Colors.redAccent[700],
+        color: Colors.orange[700],
         height: 100,
         backgroundColor: Colors.white,
         animSpeedFactor: 2,

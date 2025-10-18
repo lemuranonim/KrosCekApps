@@ -57,7 +57,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
   final List<String> isolationTypeItems = ['A', 'B'];
   final List<String> isolationDistanceItems = ['A', 'B'];
   final List<String> nickingObservationItems = ['YES', 'NO'];
-  final List<String> flaggingItems = ['GF', 'OF', 'RF'];
+  final List<String> flaggingItems = ['GF', 'OF', 'RF', 'Discard'];
 
   bool isLoading = false;
 
@@ -366,7 +366,7 @@ class Audit5EditScreenState extends State<Audit5EditScreen> {
                               row[43] = value ?? '';
                             });
                           },
-                          helpText: 'Flagging (GF/OF/RF)',
+                          helpText: 'Flagging (GF/OF/RF/Discard)',
                           icon: Icons.flag_rounded,
                           validator: (value) =>
                           (value == null || value.isEmpty)

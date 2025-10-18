@@ -23,10 +23,10 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
 
     <application
-        android:label="-"
+        android:label="KC"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher"
+        android:icon="@mipmap/launcher_icon"
+        android:roundIcon="@mipmap/launcher_icon"
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true"
         android:requestLegacyExternalStorage="true">

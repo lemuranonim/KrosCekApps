@@ -182,7 +182,7 @@ class PspKalkulatorTKDPageState extends State<PspKalkulatorTKDPage> {
               _fnSearchController.text = '';
             });
           },
-          selectedColor: Colors.redAccent[200],
+          selectedColor: Colors.orange[200],
           backgroundColor: Colors.white,
           side: BorderSide(color: lightRed),
           shape: RoundedRectangleBorder(
@@ -208,7 +208,7 @@ class PspKalkulatorTKDPageState extends State<PspKalkulatorTKDPage> {
               _fnSearchController.text = '';
             });
           },
-          selectedColor: Colors.redAccent[200],
+          selectedColor: Colors.orange[200],
           backgroundColor: Colors.white,
           side: BorderSide(color: lightRed),
           shape: RoundedRectangleBorder(
