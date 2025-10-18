@@ -12,6 +12,7 @@ import 'router.dart';
 import 'services/notification_service.dart';
 import 'screens/services/config_manager.dart';
 import 'services/firebase_options.dart';
+import 'screens/services/region_mapper_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -73,9 +74,8 @@ class MyApp extends StatelessWidget {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    // Muat konfigurasi & data lokal
-    await ConfigManager.loadConfig();
-    await initializeDateFormatting('id_ID', null);
+    // ✅ URUTAN PENTING: Inisialisasi Firebase DULU sebelum yang lain
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
     // Inisialisasi Hive
     await Hive.initFlutter();
@@ -86,8 +86,13 @@ void main() async {
     await Hive.openBox('pspVegetativeData');
     await Hive.openBox('pspGenerativeData');
 
-    // Inisialisasi Firebase & Notifikasi
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    // ✅ SETELAH Firebase siap, baru load config
+    await ConfigManager.loadConfig();
+    await RegionMapperService.loadMappings(); // Tambahkan ini jika belum ada
+
+    await initializeDateFormatting('id_ID', null);
+
+    // Inisialisasi Notifikasi
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     await NotificationService().init();
 
@@ -99,8 +104,9 @@ void main() async {
 
     runApp(const MyApp());
 
-  } catch (e) {
+  } catch (e, stackTrace) {
     debugPrint("Initialization error: $e");
+    debugPrint("Stack trace: $stackTrace");
     runApp(ErrorApp(errorMessage: e.toString()));
   }
 }

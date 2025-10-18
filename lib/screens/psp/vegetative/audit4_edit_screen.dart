@@ -50,7 +50,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
   final List<String> isolationAudit4Items = ['A', 'B'];
   final List<String> isolationTypeItems = ['A', 'B'];
   final List<String> isolationDistanceItems = ['A', 'B'];
-  final List<String> flaggingItems = ['GF', 'OF', 'RF'];
+  final List<String> flaggingItems = ['GF', 'OF', 'RF', 'Discard'];
   final List<String> recommendationItems = ['Continue to Next Process', 'Discard'];
 
   bool isLoading = false;
@@ -273,7 +273,7 @@ class Audit4EditScreenState extends State<Audit4EditScreen> {
                               row[72] = value ?? '';
                             });
                           },
-                          helpText: 'Flagging (GF/OF/RF)',
+                          helpText: 'Flagging (GF/OF/RF/Discard)',
                           icon: Icons.flag,
                           validator: (value) => (value == null || value.isEmpty) ? 'Flagging wajib dipilih' : null,
                         ),

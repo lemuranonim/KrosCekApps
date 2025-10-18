@@ -193,13 +193,13 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.red.shade600, Colors.red.shade800],
+          colors: [Colors.orange.shade600, Colors.orange.shade800],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.redAccent.withAlpha(76),
+            color: Colors.orange.withAlpha(76),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -279,10 +279,10 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: count > 0 ? Colors.red.shade50 : Colors.grey.shade50,
+        color: count > 0 ? Colors.orange.shade50 : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: count > 0 ? Colors.red.shade300 : Colors.grey.shade300,
+          color: count > 0 ? Colors.orange.shade300 : Colors.grey.shade300,
           width: 1.5,
         ),
       ),
@@ -290,7 +290,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
         children: [
           Icon(
             count > 0 ? Icons.filter_list_alt : Icons.filter_alt_off,
-            color: count > 0 ? Colors.red.shade700 : Colors.grey.shade700,
+            color: count > 0 ? Colors.orange.shade700 : Colors.grey.shade700,
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -302,7 +302,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: count > 0 ? Colors.red.shade700 : Colors.grey.shade700,
+                color: count > 0 ? Colors.orange.shade700 : Colors.grey.shade700,
               ),
             ),
           ),
@@ -319,7 +319,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
               child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: Colors.red.shade100,
+                  color: Colors.orange.shade100,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -327,7 +327,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: Colors.red.shade700,
+                    color: Colors.orange.shade700,
                   ),
                 ),
               ),
@@ -357,7 +357,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.red.shade800,
+            color: Colors.orange.shade800,
           ),
         ),
         const SizedBox(height: 4),
@@ -402,13 +402,13 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
         gradient: LinearGradient(
           colors: [
             Colors.white,
-            _selectedWeeks.isNotEmpty ? Colors.red.shade50 : Colors.grey.shade50
+            _selectedWeeks.isNotEmpty ? Colors.orange.shade50 : Colors.grey.shade50
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         border: Border.all(
-          color: _selectedWeeks.isNotEmpty ? Colors.red.shade300 : Colors.grey.shade300,
+          color: _selectedWeeks.isNotEmpty ? Colors.orange.shade300 : Colors.grey.shade300,
           width: 1.5,
         ),
       ),
@@ -422,7 +422,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
             children: [
               Icon(
                 Icons.date_range,
-                color: _selectedWeeks.isNotEmpty ? Colors.red.shade700 : Colors.grey.shade600,
+                color: _selectedWeeks.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade600,
                 size: 20,
               ),
               const SizedBox(width: 12),
@@ -434,7 +434,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: _selectedWeeks.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
-                    color: _selectedWeeks.isNotEmpty ? Colors.red.shade700 : Colors.grey.shade700,
+                    color: _selectedWeeks.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade700,
                   ),
                 ),
               ),
@@ -443,12 +443,12 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
           trailing: Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: _selectedWeeks.isNotEmpty ? Colors.red.shade100 : Colors.grey.shade200,
+              color: _selectedWeeks.isNotEmpty ? Colors.orange.shade100 : Colors.grey.shade200,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               Icons.expand_more,
-              color: _selectedWeeks.isNotEmpty ? Colors.red.shade700 : Colors.grey.shade700,
+              color: _selectedWeeks.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade700,
               size: 16,
             ),
           ),
@@ -492,11 +492,11 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? Colors.red.shade700 : Colors.black87,
+                                color: isSelected ? Colors.orange.shade700 : Colors.black87,
                               ),
                             ),
                             value: isSelected,
-                            activeColor: Colors.red.shade600,
+                            activeColor: Colors.orange.shade600,
                             checkColor: Colors.white,
                             onChanged: (bool? value) {
                               setState(() {
@@ -510,7 +510,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                             controlAffinity: ListTileControlAffinity.leading,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                             visualDensity: VisualDensity.compact,
-                            tileColor: isSelected ? Colors.red.withAlpha(15) : null,
+                            tileColor: isSelected ? Colors.orange.withAlpha(15) : null,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -539,11 +539,11 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                               _selectedWeeks = List.from(widget.weekOfPspGenerativeList);
                             });
                           },
-                          icon: Icon(Icons.select_all, color: Colors.red.shade700, size: 16),
+                          icon: Icon(Icons.select_all, color: Colors.orange.shade700, size: 16),
                           label: Text(
                             'Select All',
                             style: TextStyle(
-                              color: Colors.red.shade700,
+                              color: Colors.orange.shade700,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
@@ -561,11 +561,11 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                               _selectedWeeks.clear();
                             });
                           },
-                          icon: Icon(Icons.deselect, color: Colors.red.shade700, size: 16),
+                          icon: Icon(Icons.deselect, color: Colors.orange.shade700, size: 16),
                           label: Text(
                             'Clear All',
                             style: TextStyle(
-                              color: Colors.red.shade700,
+                              color: Colors.orange.shade700,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
@@ -607,12 +607,12 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
           ),
         ],
         gradient: LinearGradient(
-          colors: [Colors.white, value != null ? Colors.red.shade50 : Colors.grey.shade50],
+          colors: [Colors.white, value != null ? Colors.orange.shade50 : Colors.grey.shade50],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         border: Border.all(
-          color: value != null ? Colors.red.shade300 : Colors.grey.shade300,
+          color: value != null ? Colors.orange.shade300 : Colors.grey.shade300,
           width: 1.5,
         ),
       ),
@@ -646,12 +646,12 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
             icon: Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: value != null ? Colors.red.shade100 : Colors.grey.shade200,
+                color: value != null ? Colors.orange.shade100 : Colors.grey.shade200,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 Icons.expand_more,
-                color: value != null ? Colors.red.shade700 : Colors.grey.shade700,
+                color: value != null ? Colors.orange.shade700 : Colors.grey.shade700,
                 size: 16,
               ),
             ),
@@ -680,9 +680,9 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
             selectedMenuItemBuilder: (context, child) {
               return Container(
                 decoration: BoxDecoration(
-                  color: Colors.red.shade50,
+                  color: Colors.orange.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.shade200),
+                  border: Border.all(color: Colors.orange.shade200),
                 ),
                 child: child,
               );
@@ -694,7 +694,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
               children: [
                 Icon(
                   icon,
-                  color: value == item ? Colors.red.shade700 : Colors.grey.shade700,
+                  color: value == item ? Colors.orange.shade700 : Colors.grey.shade700,
                   size: 18,
                 ),
                 const SizedBox(width: 12),
@@ -704,12 +704,12 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: value == item ? FontWeight.bold : FontWeight.normal,
-                      color: value == item ? Colors.red.shade700 : Colors.black87,
+                      color: value == item ? Colors.orange.shade700 : Colors.black87,
                     ),
                   ),
                 ),
                 if (value == item)
-                  Icon(Icons.check_circle, color: Colors.red.shade600, size: 18),
+                  Icon(Icons.check_circle, color: Colors.orange.shade600, size: 18),
               ],
             ),
           )).toList(),
@@ -733,13 +733,13 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
         gradient: LinearGradient(
           colors: [
             Colors.white,
-            _selectedFA.isNotEmpty ? Colors.red.shade50 : Colors.grey.shade50
+            _selectedFA.isNotEmpty ? Colors.orange.shade50 : Colors.grey.shade50
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         border: Border.all(
-          color: _selectedFA.isNotEmpty ? Colors.red.shade300 : Colors.grey.shade300,
+          color: _selectedFA.isNotEmpty ? Colors.orange.shade300 : Colors.grey.shade300,
           width: 1.5,
         ),
       ),
@@ -753,7 +753,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
             children: [
               Icon(
                 Icons.group,
-                color: _selectedFA.isNotEmpty ? Colors.red.shade700 : Colors.grey.shade600,
+                color: _selectedFA.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade600,
                 size: 20,
               ),
               const SizedBox(width: 12),
@@ -765,7 +765,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: _selectedFA.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
-                    color: _selectedFA.isNotEmpty ? Colors.red.shade700 : Colors.grey.shade700,
+                    color: _selectedFA.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade700,
                   ),
                 ),
               ),
@@ -774,12 +774,12 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
           trailing: Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: _selectedFA.isNotEmpty ? Colors.red.shade100 : Colors.grey.shade200,
+              color: _selectedFA.isNotEmpty ? Colors.orange.shade100 : Colors.grey.shade200,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               Icons.expand_more,
-              color: _selectedFA.isNotEmpty ? Colors.red.shade700 : Colors.grey.shade700,
+              color: _selectedFA.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade700,
               size: 16,
             ),
           ),
@@ -823,11 +823,11 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? Colors.red.shade700 : Colors.black87,
+                                color: isSelected ? Colors.orange.shade700 : Colors.black87,
                               ),
                             ),
                             value: isSelected,
-                            activeColor: Colors.red.shade600,
+                            activeColor: Colors.orange.shade600,
                             checkColor: Colors.white,
                             onChanged: (bool? value) {
                               setState(() {
@@ -841,7 +841,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                             controlAffinity: ListTileControlAffinity.leading,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                             visualDensity: VisualDensity.compact,
-                            tileColor: isSelected ? Colors.red.withAlpha(15) : null,
+                            tileColor: isSelected ? Colors.orange.withAlpha(15) : null,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -870,11 +870,11 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                               _selectedFA = List.from(widget.faNames);
                             });
                           },
-                          icon: Icon(Icons.select_all, color: Colors.red.shade700, size: 16),
+                          icon: Icon(Icons.select_all, color: Colors.orange.shade700, size: 16),
                           label: Text(
                             'Select All',
                             style: TextStyle(
-                              color: Colors.red.shade700,
+                              color: Colors.orange.shade700,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
@@ -892,11 +892,11 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                               _selectedFA.clear();
                             });
                           },
-                          icon: Icon(Icons.deselect, color: Colors.red.shade700, size: 16),
+                          icon: Icon(Icons.deselect, color: Colors.orange.shade700, size: 16),
                           label: Text(
                             'Clear All',
                             style: TextStyle(
-                              color: Colors.red.shade700,
+                              color: Colors.orange.shade700,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
@@ -934,13 +934,13 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
         gradient: LinearGradient(
           colors: [
             Colors.white,
-            _selectedFIs.isNotEmpty ? Colors.red.shade50 : Colors.grey.shade50
+            _selectedFIs.isNotEmpty ? Colors.orange.shade50 : Colors.grey.shade50
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         border: Border.all(
-          color: _selectedFIs.isNotEmpty ? Colors.red.shade300 : Colors.grey.shade300,
+          color: _selectedFIs.isNotEmpty ? Colors.orange.shade300 : Colors.grey.shade300,
           width: 1.5,
         ),
       ),
@@ -954,7 +954,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
             children: [
               Icon(
                 Icons.check_circle,
-                color: _selectedFIs.isNotEmpty ? Colors.redAccent.shade700 : Colors.grey.shade600,
+                color: _selectedFIs.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade600,
                 size: 20,
               ),
               const SizedBox(width: 12),
@@ -966,7 +966,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: _selectedFIs.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
-                    color: _selectedFIs.isNotEmpty ? Colors.redAccent.shade700 : Colors.grey.shade700,
+                    color: _selectedFIs.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade700,
                   ),
                 ),
               ),
@@ -975,12 +975,12 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
           trailing: Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: _selectedFIs.isNotEmpty ? Colors.redAccent.shade100 : Colors.grey.shade200,
+              color: _selectedFIs.isNotEmpty ? Colors.orange.shade100 : Colors.grey.shade200,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               Icons.expand_more,
-              color: _selectedFIs.isNotEmpty ? Colors.redAccent.shade700 : Colors.grey.shade700,
+              color: _selectedFIs.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade700,
               size: 16,
             ),
           ),
@@ -1024,11 +1024,11 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? Colors.redAccent.shade700 : Colors.black87,
+                                color: isSelected ? Colors.orange.shade700 : Colors.black87,
                               ),
                             ),
                             value: isSelected,
-                            activeColor: Colors.red.shade600,
+                            activeColor: Colors.orange.shade600,
                             checkColor: Colors.white,
                             onChanged: (bool? value) {
                               setState(() {
@@ -1042,7 +1042,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                             controlAffinity: ListTileControlAffinity.leading,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                             visualDensity: VisualDensity.compact,
-                            tileColor: isSelected ? Colors.redAccent.withAlpha(15) : null,
+                            tileColor: isSelected ? Colors.orange.withAlpha(15) : null,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -1071,11 +1071,11 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                               _selectedFIs = List.from(widget.fiNames);
                             });
                           },
-                          icon: Icon(Icons.select_all, color: Colors.redAccent.shade700, size: 16),
+                          icon: Icon(Icons.select_all, color: Colors.orange.shade700, size: 16),
                           label: Text(
                             'Select All',
                             style: TextStyle(
-                              color: Colors.redAccent.shade700,
+                              color: Colors.orange.shade700,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
@@ -1093,11 +1093,11 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                               _selectedFIs.clear();
                             });
                           },
-                          icon: Icon(Icons.deselect, color: Colors.red.shade700, size: 16),
+                          icon: Icon(Icons.deselect, color: Colors.orange.shade700, size: 16),
                           label: Text(
                             'Clear All',
                             style: TextStyle(
-                              color: Colors.red.shade700,
+                              color: Colors.orange.shade700,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
@@ -1146,8 +1146,8 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                 Navigator.pop(context); // Just close without applying
               },
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.red.shade700,
-                side: BorderSide(color: Colors.red.shade700, width: 1.5),
+                foregroundColor: Colors.orange.shade700,
+                side: BorderSide(color: Colors.orange.shade700, width: 1.5),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1175,7 +1175,7 @@ class _PspGenerativeFilterOptionsState extends State<PspGenerativeFilterOptions>
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade700,
+                backgroundColor: Colors.orange.shade700,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 elevation: 0,

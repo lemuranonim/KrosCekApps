@@ -134,7 +134,7 @@ class PspGenerativeListViewBuilder extends StatelessWidget {
       case "Dereng Jangkep":
         return [Colors.orange.shade400, Colors.orange.shade600];
       case "Dereng Blas":
-        return [Colors.red.shade400, Colors.red.shade600];
+        return [Colors.orange.shade400, Colors.orange.shade600];
       default:
         return [Colors.grey.shade400, Colors.grey.shade600];
     }
@@ -148,7 +148,7 @@ class PspGenerativeListViewBuilder extends StatelessWidget {
       case "Dereng Jangkep":
         return Colors.orange.shade50;
       case "Dereng Blas":
-        return Colors.red.shade50;
+        return Colors.orange.shade50;
       default:
         return Colors.grey.shade50;
     }
@@ -530,28 +530,28 @@ class PspGenerativeListViewBuilder extends StatelessWidget {
                                   icon: Icons.calendar_today,
                                   label: 'Planted',
                                   value: plantingDate,
-                                  iconColor: Colors.redAccent,
+                                  iconColor: Colors.orange,
                                 ),
                                 const SizedBox(height: 2),
                                 _buildInfoRow(
                                   icon: Icons.location_on,
                                   label: 'Desa',
                                   value: desa,
-                                  iconColor: Colors.redAccent,
+                                  iconColor: Colors.orange,
                                 ),
                                 const SizedBox(height: 2),
                                 _buildInfoRow(
                                   icon: Icons.location_city,
                                   label: 'Kec',
                                   value: kecamatan,
-                                  iconColor: Colors.redAccent,
+                                  iconColor: Colors.orange,
                                 ),
                                 const SizedBox(height: 2),
                                 _buildInfoRow(
                                   icon: Icons.map,
                                   label: 'Kab',
                                   value: kabupaten,
-                                  iconColor: Colors.redAccent,
+                                  iconColor: Colors.orange,
                                 ),
                               ],
                             ),
@@ -614,7 +614,7 @@ class PspGenerativeListViewBuilder extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
-                              color: isMaturityDone ? Colors.green.shade100 : Colors.red.shade100,
+                              color: isMaturityDone ? Colors.green.shade100 : Colors.orange.shade100,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: isMaturityDone ? Colors.green : Colors.red,
@@ -633,7 +633,7 @@ class PspGenerativeListViewBuilder extends StatelessWidget {
                                 Text(
                                   'Maturity',
                                   style: TextStyle(
-                                    color: isMaturityDone ? Colors.green.shade800 : Colors.red.shade800,
+                                    color: isMaturityDone ? Colors.green.shade800 : Colors.orange.shade800,
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
                                   ),

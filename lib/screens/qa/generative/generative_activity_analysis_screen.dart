@@ -80,6 +80,7 @@ class GenerativeActivityAnalysisScreen extends StatefulWidget {
   final Map<String, int> activityCounts;
   final Map<String, List<DateTime>> activityTimestamps;
   final List<List<String>> generativeData;
+  final List<List<String>> vegetativeData;
   final String? selectedRegion;
 
   const GenerativeActivityAnalysisScreen({
@@ -87,6 +88,7 @@ class GenerativeActivityAnalysisScreen extends StatefulWidget {
     required this.activityCounts,
     required this.activityTimestamps,
     required this.generativeData,
+    required this.vegetativeData,
     this.selectedRegion,
   });
 
@@ -155,6 +157,7 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
   Set<String> _selectedGrowers = {};
 
   List<String> _availableCoordinators = [];
+  Map<String, String> _fieldToCoordinator = {};
 
   @override
   void initState() {
@@ -182,14 +185,51 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
     _availableGrowers = growerSet.toList()..sort();
     _selectedGrowers = Set<String>.from(_availableGrowers);
 
-    final coordinatorSet = <String>{};
-    for (var row in widget.generativeData) {
-      final coordinator = getValue(row, 113, "").trim().toLowerCase();
-      if (coordinator.isNotEmpty && coordinator != "0") {
-        coordinatorSet.add(coordinator);
+    // BARU: Buat Map untuk mapping Field Number ke Coordinator
+    final Map<String, String> fieldToCoordinator = {};
+
+    debugPrint('=== DEBUG CO-DET MAPPING ===');
+    debugPrint('Generative rows: ${widget.generativeData.length}');
+    debugPrint('Vegetative rows: ${widget.vegetativeData.length}');
+
+    // Mapping dari vegetativeData: Lewati baris pertama (header) dengan .skip(1)
+    for (var row in widget.vegetativeData.skip(1)) { // <-- PERUBAHAN KUNCI DI SINI
+      final fieldNumber = getValue(row, 2, "").trim(); // Field Number di kolom C
+      final coordinator = getValue(row, 32, "").trim().toLowerCase(); // Coordinator di kolom AG
+
+      // Karena header sudah dilewati, pengecekan "coordinator detasseling" bisa dihapus
+      if (fieldNumber.isNotEmpty &&
+          coordinator.isNotEmpty &&
+          coordinator != "0") {
+        fieldToCoordinator[fieldNumber] = coordinator;
       }
     }
+
+    debugPrint('Total field-to-coordinator mappings: ${fieldToCoordinator.length}');
+
+    // Ambil unique coordinators dari mapping
+    final coordinatorSet = fieldToCoordinator.values.toSet();
     _availableCoordinators = coordinatorSet.toList()..sort();
+
+    debugPrint('=== RESULT ===');
+    debugPrint('Total unique coordinators: ${_availableCoordinators.length}');
+    if (_availableCoordinators.isNotEmpty) {
+      debugPrint('Coordinators: $_availableCoordinators');
+      debugPrint('Sample mappings:');
+      int count = 0;
+      for (var entry in fieldToCoordinator.entries) {
+        if (count < 5) {
+          debugPrint('  ${entry.key} → ${entry.value}');
+          count++;
+        }
+      }
+    } else {
+      debugPrint('WARNING: No coordinators found!');
+    }
+    debugPrint('==================');
+
+    // SIMPAN MAPPING SEBAGAI VARIABEL INSTANCE
+    _fieldToCoordinator = fieldToCoordinator;
 
     // Simulate loading delay
     Future.delayed(const Duration(milliseconds: 500), () {
@@ -587,6 +627,7 @@ class _GenerativeActivityAnalysisScreenState extends State<GenerativeActivityAna
             efektivitasAreaTidakEfektif: efektivitasAreaTidakEfektif,
             availableGrowers: _availableGrowers,
             availableCoordinators: _availableCoordinators,
+            fieldToCoordinator: _fieldToCoordinator,
             getKetersediaanStatus: getKetersediaanStatus,
             getEffectivenessStatus: getEffectivenessStatus,
           ),

@@ -453,12 +453,12 @@ class _PspDetailedMapScreenState extends State<PspDetailedMapScreen> {
     }
     // --- 🔴 Kategori Merah (Kritis: > 20.0) ---
     else if (workload <= 25.0) {
-      return Colors.red.shade200.withAlpha(alphaValue); // Kritis
+      return Colors.orange.shade200.withAlpha(alphaValue); // Kritis
     } else if (workload <= 30.0) {
-      return Colors.red.shade500.withAlpha(alphaValue); // Sangat Kritis
+      return Colors.orange.shade500.withAlpha(alphaValue); // Sangat Kritis
     } else {
       // Untuk nilai di atas 30.0
-      return Colors.red.shade900.withAlpha(alphaValue); // Bahaya / Overload
+      return Colors.orange.shade900.withAlpha(alphaValue); // Bahaya / Overload
     }
   }
 

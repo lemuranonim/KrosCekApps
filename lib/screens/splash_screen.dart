@@ -19,22 +19,17 @@ import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
-// LANGKAH 1: Pindahkan downloadCallback ke luar kelas (menjadi top-level function).
-// Anotasi @pragma('vm:entry-point') penting agar Flutter tahu fungsi ini bisa dijalankan di background.
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
   debugPrint("DOWNLOAD_CALLBACK: Task id=$id, status=$status, progress=$progress%");
 
-  // Cari port komunikasi yang sudah kita daftarkan di main isolate.
   final SendPort? send = IsolateNameServer.lookupPortByName('downloader_send_port');
   if (send != null) {
-    // Kirim data (id, status, progress) kembali ke main isolate.
     send.send([id, status, progress]);
   } else {
     debugPrint("DOWNLOAD_CALLBACK_ERROR: Port 'downloader_send_port' tidak ditemukan!");
   }
 }
-
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -69,35 +64,34 @@ class SplashScreenState extends State<SplashScreen>
     super.initState();
 
     _controller = AnimationController(
-      duration: const Duration(seconds: 4),
+      duration: const Duration(milliseconds: 2500),
       vsync: this,
     );
 
     _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: Curves.easeInOut,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeInOut),
       ),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
+    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: Curves.elasticOut,
+        curve: const Interval(0.0, 0.7, curve: Curves.elasticOut),
       ),
     );
 
     _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.2),
+      begin: const Offset(0, 0.3),
       end: Offset.zero,
     ).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: Curves.decelerate,
+        curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
       ),
     );
 
-    // LANGKAH 2: Panggil fungsi inisialisasi yang sudah digabungkan.
     _initializeAndSetupDownloader();
 
     _controller.forward();
@@ -105,30 +99,22 @@ class SplashScreenState extends State<SplashScreen>
 
     _checkForUpdate().then((_) {
       if (!_updateRequired && mounted) {
-        Timer(const Duration(seconds: 4), () {
+        Timer(const Duration(milliseconds: 3500), () {
           if (mounted) _checkLoginStatus();
         });
       }
     });
   }
 
-  // LANGKAH 3: Gabungkan _initializeDownloader dan _setupPortListener menjadi satu fungsi.
   Future<void> _initializeAndSetupDownloader() async {
     try {
-      // 1. Inisialisasi FlutterDownloader
-      // `ignoreSsl: true` berguna saat development jika server download
-      // tidak memiliki sertifikat SSL yang valid. Hati-hati saat production.
       await FlutterDownloader.initialize(debug: true, ignoreSsl: true);
-
-      // 2. Daftarkan callback top-level kita.
       FlutterDownloader.registerCallback(downloadCallback);
 
-      // 3. Siapkan port untuk komunikasi antar isolate (hanya jika belum diinisialisasi).
       if (!_isPortInitialized) {
         IsolateNameServer.registerPortWithName(_port.sendPort, 'downloader_send_port');
         _isPortInitialized = true;
 
-        // 4. Dengarkan data yang dikirim dari `downloadCallback`.
         _port.listen((dynamic data) {
           if (data is List && data.length >= 3) {
             String id = data[0] as String;
@@ -137,7 +123,6 @@ class SplashScreenState extends State<SplashScreen>
 
             debugPrint('NOTIFIER CALLBACK: id=$id, status=$status, progress=$progress');
 
-            // Pastikan update UI hanya untuk task download yang sedang aktif.
             if (mounted && id == _downloadTaskId) {
               if (status == DownloadTaskStatus.running) {
                 _downloadProgressNotifier.value = progress / 100.0;
@@ -170,10 +155,10 @@ class SplashScreenState extends State<SplashScreen>
     try {
       final packageInfo = await PackageInfo.fromPlatform();
       if (mounted) {
-        setState(() => _version = 'Updated Version ${packageInfo.version}');
+        setState(() => _version = packageInfo.version);
       }
     } catch (e) {
-      if (mounted) setState(() => _version = 'Development Version');
+      if (mounted) setState(() => _version = 'Dev');
     }
   }
 
@@ -208,12 +193,8 @@ class SplashScreenState extends State<SplashScreen>
       final forceUpdate = data['force_update'] as bool?;
       final downloadUrl = data['download_url'] as String?;
 
-      if (latestVersion == null) {
-        debugPrint("current_version not found in Firestore");
-        return;
-      }
-      if (downloadUrl == null) {
-        debugPrint("download_url not found in Firestore, cannot update.");
+      if (latestVersion == null || downloadUrl == null) {
+        debugPrint("Version or download URL not found");
         return;
       }
 
@@ -222,8 +203,6 @@ class SplashScreenState extends State<SplashScreen>
 
       debugPrint("Current version: $currentVersion");
       debugPrint("Latest version: $latestVersion");
-      debugPrint("Force update: ${forceUpdate ?? false}");
-      debugPrint("Download URL: $downloadUrl");
 
       if (currentVersion != latestVersion) {
         _updateRequired = true;
@@ -297,16 +276,11 @@ class SplashScreenState extends State<SplashScreen>
     }
   }
 
-  // Sisa kode di bawah ini tetap sama, tidak perlu diubah.
-  // ... (sisa kode dari _requestPermissions hingga akhir file tidak berubah)
-  // ...
-
   Future<bool> _requestPermissions() async {
     final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
     final AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
     final int sdkVersion = androidInfo.version.sdkInt;
 
-    // Request install permission
     var installPermissionStatus = await Permission.requestInstallPackages.status;
     if (!installPermissionStatus.isGranted) {
       installPermissionStatus = await Permission.requestInstallPackages.request();
@@ -316,7 +290,6 @@ class SplashScreenState extends State<SplashScreen>
       return false;
     }
 
-    // Storage permission for older Android versions
     if (sdkVersion < 30) {
       var storagePermissionStatus = await Permission.storage.status;
       if (!storagePermissionStatus.isGranted) {
@@ -327,18 +300,13 @@ class SplashScreenState extends State<SplashScreen>
         return false;
       }
     }
-    // For Android 13+ (API 33), Notification permission might be needed for downloader notification
+
     if (sdkVersion >= 33) {
       var notificationPermission = await Permission.notification.status;
       if (!notificationPermission.isGranted) {
         notificationPermission = await Permission.notification.request();
       }
-      // Not strictly required for download/install logic, but good for UX
-      if (!notificationPermission.isGranted) {
-        debugPrint("Notification permission denied (optional).");
-      }
     }
-
 
     return true;
   }
@@ -351,15 +319,12 @@ class SplashScreenState extends State<SplashScreen>
 
       String path;
       if (sdkVersion >= 30) {
-        // For Android 11+, use app-specific directory
         final directory = await getExternalStorageDirectory();
         path = directory?.path ?? (await getApplicationDocumentsDirectory()).path;
       } else {
-        // For older versions, use Downloads directory
         try {
           path = await AndroidPathProvider.downloadsPath;
         } catch (e) {
-          // Fallback to app's external storage
           final directory = await getExternalStorageDirectory();
           path = directory?.path ?? (await getApplicationDocumentsDirectory()).path;
         }
@@ -499,91 +464,112 @@ class SplashScreenState extends State<SplashScreen>
             return PopScope(
               canPop: !forceUpdate && !_isDownloading && !_installationInitiated,
               onPopInvokedWithResult: (bool didPop, dynamic result) {
-                debugPrint("Update Dialog PopScope: didPop=$didPop, canPop=${!forceUpdate && !_isDownloading && !_installationInitiated}");
+                debugPrint("Update Dialog PopScope: didPop=$didPop");
                 if (didPop && !forceUpdate) {
                   debugPrint("Dialog popped (non-forced), proceeding with app flow.");
                   _checkLoginStatus();
                 }
               },
-              child: Dialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20.0),
-                ),
-                elevation: 0,
-                backgroundColor: Colors.transparent,
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.rectangle,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 10.0,
-                        offset: Offset(0.0, 10.0),
-                      ),
-                    ],
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Dialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24.0),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _isDownloading || _installationInitiated
-                          ? _buildProgressHeader(dialogSetState)
-                          : _buildUpdateHeader(),
-
-                      const SizedBox(height: 20),
-
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade100,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          "Version $newVersion",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.green.shade800,
-                          ),
-                        ),
+                  elevation: 0,
+                  backgroundColor: Colors.transparent,
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white,
+                          Colors.green.shade50,
+                        ],
                       ),
-                      const SizedBox(height: 20),
-
-                      if (!_isDownloading && !_installationInitiated)
-                        Text(
-                          forceUpdate
-                              ? "You need to update the app to continue."
-                              : "A new version is available. Update now?",
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: Colors.black87,
-                          ),
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.green.withAlpha(60),
+                          blurRadius: 30,
+                          spreadRadius: 0,
+                          offset: const Offset(0, 10),
                         ),
-
-                      if (_isDownloading || _installationInitiated) ...[
-                        const SizedBox(height: 25),
-                        _buildProgressIndicator(),
                       ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _isDownloading || _installationInitiated
+                            ? _buildProgressHeader(dialogSetState)
+                            : _buildUpdateHeader(),
 
-                      const SizedBox(height: 25),
+                        const SizedBox(height: 20),
 
-                      if (!_isDownloading && !_installationInitiated) ...[
-                        _buildActionButtons(forceUpdate, apkUrl, dialogSetState, handleNonForcedUpdateContinuation),
-                      ],
-
-                      if (_installationInitiated)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 15.0),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Colors.green.shade400, Colors.green.shade600],
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.green.withAlpha(60),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
                           child: Text(
-                            "Follow system prompts to complete the installation. The app might close automatically after update.",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 14, color: Colors.blueGrey.shade700),
+                            "Version $newVersion",
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                         ),
-                    ],
+                        const SizedBox(height: 20),
+
+                        if (!_isDownloading && !_installationInitiated)
+                          Text(
+                            forceUpdate
+                                ? "Pembaruan diperlukan untuk melanjutkan"
+                                : "Versi baru tersedia. Update sekarang?",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey.shade800,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+
+                        if (_isDownloading || _installationInitiated) ...[
+                          const SizedBox(height: 25),
+                          _buildProgressIndicator(),
+                        ],
+
+                        const SizedBox(height: 25),
+
+                        if (!_isDownloading && !_installationInitiated) ...[
+                          _buildActionButtons(forceUpdate, apkUrl, dialogSetState, handleNonForcedUpdateContinuation),
+                        ],
+
+                        if (_installationInitiated)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 15.0),
+                            child: Text(
+                              "Ikuti petunjuk sistem untuk menyelesaikan instalasi",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -594,7 +580,6 @@ class SplashScreenState extends State<SplashScreen>
     ).then((_) {
       debugPrint("Update dialog closed.");
       if (!forceUpdate && mounted && !_isDownloading && !_installationInitiated) {
-        debugPrint("Dialog closed callback: Proceeding with app flow if needed.");
         _checkLoginStatus();
       }
     }).catchError((error) {
@@ -607,44 +592,60 @@ class SplashScreenState extends State<SplashScreen>
 
   Widget _buildUpdateHeader() {
     return Container(
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.green.shade50,
+        gradient: LinearGradient(
+          colors: [Colors.green.shade400, Colors.green.shade600],
+        ),
         shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withAlpha(100),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
-      child: Icon(
-        Icons.system_update,
-        color: Colors.green.shade700,
-        size: 40,
+      child: const Icon(
+        Icons.system_update_rounded,
+        color: Colors.white,
+        size: 48,
       ),
     );
   }
 
   Widget _buildProgressHeader(StateSetter setState) {
     IconData icon;
-    Color color;
+    List<Color> colors;
 
     if (_installationInitiated) {
-      icon = Icons.android;
-      color = Colors.green.shade700;
+      icon = Icons.android_rounded;
+      colors = [Colors.green.shade400, Colors.green.shade600];
     } else if (_downloadProgress >= 1.0) {
-      icon = Icons.check_circle;
-      color = Colors.green.shade700;
+      icon = Icons.check_circle_rounded;
+      colors = [Colors.green.shade400, Colors.green.shade600];
     } else {
-      icon = Icons.download;
-      color = Colors.blue.shade700;
+      icon = Icons.download_rounded;
+      colors = [Colors.blue.shade400, Colors.blue.shade600];
     }
 
     return Container(
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withAlpha(25),
+        gradient: LinearGradient(colors: colors),
         shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: colors[0].withAlpha(100),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       child: Icon(
         icon,
-        color: color,
-        size: 40,
+        color: Colors.white,
+        size: 48,
       ),
     );
   }
@@ -663,50 +664,76 @@ class SplashScreenState extends State<SplashScreen>
                     alignment: Alignment.center,
                     children: [
                       SizedBox(
-                        height: 80,
-                        width: 80,
+                        height: 100,
+                        width: 100,
                         child: CircularProgressIndicator(
                           value: progress,
                           backgroundColor: Colors.grey.shade200,
                           valueColor: AlwaysStoppedAnimation<Color>(
                               progress >= 1.0 ? Colors.green.shade600 : Colors.blue.shade600
                           ),
-                          strokeWidth: 8,
+                          strokeWidth: 10,
                         ),
                       ),
-                      Text(
-                        "${(progress * 100).toInt()}%",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: progress >= 1.0 ? Colors.green.shade800 : Colors.blue.shade800,
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(25),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          "${(progress * 100).toInt()}%",
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: progress >= 1.0 ? Colors.green.shade800 : Colors.blue.shade800,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                 ],
 
-                Padding(
-                  padding: const EdgeInsets.only(top: 10.0, left: 16.0, right: 16.0),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.blue.shade200,
+                      width: 1,
+                    ),
+                  ),
                   child: Text(
-                    "Proses download sedang berlangsung, cek di bilah notifikasi...\n*Jika download selesai, cek apk di folder download(file manager).",
+                    "Proses download sedang berlangsung, cek di bilah notifikasi.\n*Jika download selesai, cek apk di folder download (file manager).",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 8,
-                      color: Colors.blueGrey.shade600,
+                      fontSize: 11,
+                      color: Colors.blue.shade800,
                       fontStyle: FontStyle.italic,
+                      height: 1.4,
                     ),
                   ),
                 ),
-                const SizedBox(height: 25),
+                const SizedBox(height: 20),
 
                 if (message.isNotEmpty)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
                       color: _getStatusColor(message).withAlpha(25),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _getStatusColor(message).withAlpha(76),
+                        width: 1.5,
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -714,16 +741,16 @@ class SplashScreenState extends State<SplashScreen>
                         Icon(
                           _getStatusIcon(message),
                           color: _getStatusColor(message),
-                          size: 20,
+                          size: 22,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
                         Flexible(
                           child: Text(
                             message,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: FontWeight.w600,
                               color: _getStatusColor(message),
                             ),
                           ),
@@ -753,15 +780,15 @@ class SplashScreenState extends State<SplashScreen>
 
   IconData _getStatusIcon(String message) {
     if (message.contains("failed") || message.contains("Error") || message.contains("Gagal")) {
-      return Icons.error_outline;
+      return Icons.error_outline_rounded;
     } else if (message.contains("complete") || message.contains("Installation started")) {
-      return Icons.check_circle_outline;
+      return Icons.check_circle_outline_rounded;
     } else if (message.contains("paused")) {
-      return Icons.pause_circle_outline;
+      return Icons.pause_circle_outline_rounded;
     } else if (message.contains("Preparing")) {
-      return Icons.settings;
+      return Icons.settings_rounded;
     } else {
-      return Icons.info_outline;
+      return Icons.info_outline_rounded;
     }
   }
 
@@ -771,23 +798,36 @@ class SplashScreenState extends State<SplashScreen>
       children: [
         if (!forceUpdate)
           Expanded(
-            child: TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  side: BorderSide(color: Colors.grey.shade300),
-                ),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withAlpha(40),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-              child: const Text(
-                "Later",
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                  fontWeight: FontWeight.w600,
+              child: OutlinedButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: BorderSide(color: Colors.grey.shade300, width: 2),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  backgroundColor: Colors.white,
+                ),
+                child: Text(
+                  "Nanti",
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
@@ -795,26 +835,43 @@ class SplashScreenState extends State<SplashScreen>
         if (!forceUpdate) const SizedBox(width: 15),
 
         Expanded(
-          child: ElevatedButton(
-            onPressed: () {
-              _downloadAndInstallUpdate(apkUrl, setState, onCancelCallback);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade600,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              gradient: LinearGradient(
+                colors: [Colors.green.shade400, Colors.green.shade600],
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.green.withAlpha(80),
+                  blurRadius: 12,
+                  offset: const Offset(0, 5),
+                ),
+              ],
             ),
-            child: Text(
-              _downloadMessage.contains("failed") || _downloadMessage.contains("Error") || _downloadMessage.contains("Gagal")
-                  ? "Retry Download"
-                  : "Update Now",
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+            child: ElevatedButton(
+              onPressed: () {
+                _downloadAndInstallUpdate(apkUrl, setState, onCancelCallback);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                elevation: 0,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                _downloadMessage.contains("failed") || _downloadMessage.contains("Error") || _downloadMessage.contains("Gagal")
+                    ? "Coba Lagi"
+                    : "Update Sekarang",
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
               ),
             ),
           ),
@@ -822,7 +879,6 @@ class SplashScreenState extends State<SplashScreen>
       ],
     );
   }
-
 
   Future<void> _checkLoginStatus() async {
     if (_isDownloading || _installationInitiated) {
@@ -849,6 +905,9 @@ class SplashScreenState extends State<SplashScreen>
         case 'hsp':
           context.go('/hsp');
           break;
+        case 'psphsp':
+          context.go('/psphsp');
+          break;
         default:
           context.go('/qa');
           break;
@@ -872,61 +931,313 @@ class SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final theme = Theme.of(context);
-    final white200 = Colors.white.withAlpha(200);
-    final white150 = Colors.white.withAlpha(150);
 
     return Scaffold(
-      backgroundColor: Colors.green,
-      body: Center(
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Opacity(
-              opacity: _opacityAnimation.value,
-              child: Transform.scale(
-                scale: _scaleAnimation.value,
-                child: SlideTransition(
-                  position: _slideAnimation,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const SizedBox(height: 35),
-                      Text(
-                        'Crop Inspection\nand Check Result',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 24,
-                        ),
-                      ),
-                      SizedBox(height: size.height * 0.1),
-                      Column(
-                        children: [
-                          Text(
-                            '© ${DateTime.now().year} Tim Cengoh, Ahli Huru-Hara',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: white200,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _version,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: white150,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+      body: Container(
+        width: size.width,
+        height: size.height,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.green.shade700,
+              Colors.green.shade800,
+              Colors.green.shade900,
+            ],
+          ),
+        ),
+        child: Stack(
+          children: [
+            // Decorative Background Circles
+            Positioned(
+              top: -100,
+              right: -100,
+              child: Container(
+                width: 300,
+                height: 300,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withAlpha(12),
                 ),
               ),
-            );
-          },
+            ),
+            Positioned(
+              bottom: -150,
+              left: -120,
+              child: Container(
+                width: 350,
+                height: 350,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withAlpha(7),
+                ),
+              ),
+            ),
+            Positioned(
+              top: size.height * 0.3,
+              right: -80,
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withAlpha(5),
+                ),
+              ),
+            ),
+
+            // Main Content
+            Center(
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  return Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Logo dengan Multiple Animations
+                      Opacity(
+                        opacity: _opacityAnimation.value,
+                        child: Transform.scale(
+                          scale: _scaleAnimation.value,
+                          child: SlideTransition(
+                            position: _slideAnimation,
+                            child: Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Colors.white.withAlpha(76),
+                                    Colors.white.withAlpha(25),
+                                  ],
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withAlpha(76),
+                                    blurRadius: 30,
+                                    spreadRadius: 5,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
+                              ),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white,
+                                ),
+                                child: CircleAvatar(
+                                  radius: 70,
+                                  backgroundColor: Colors.green.shade100,
+                                  backgroundImage: const AssetImage('assets/logo.png'),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      SizedBox(height: size.height * 0.05),
+
+                      // App Title dengan Gradient Text Effect
+                      Opacity(
+                        opacity: _opacityAnimation.value,
+                        child: SlideTransition(
+                          position: _slideAnimation,
+                          child: ShaderMask(
+                            shaderCallback: (bounds) => LinearGradient(
+                              colors: [
+                                Colors.white,
+                                Colors.white.withAlpha(229),
+                              ],
+                            ).createShader(bounds),
+                            child: const Text(
+                              'Crop Inspection',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 32,
+                                letterSpacing: 1.2,
+                                shadows: [
+                                  Shadow(
+                                    color: Colors.black26,
+                                    blurRadius: 10,
+                                    offset: Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      // Subtitle
+                      Opacity(
+                        opacity: _opacityAnimation.value,
+                        child: SlideTransition(
+                          position: _slideAnimation,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withAlpha(38),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withAlpha(76),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              'and Check Result',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white.withAlpha(229),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 18,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      SizedBox(height: size.height * 0.15),
+
+                      // Loading Indicator dengan Premium Style
+                      Opacity(
+                        opacity: _opacityAnimation.value,
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withAlpha(25),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withAlpha(51),
+                                    blurRadius: 20,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                              child: SizedBox(
+                                width: 32,
+                                height: 32,
+                                child: CircularProgressIndicator(
+                                  valueColor: const AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                  strokeWidth: 3,
+                                  backgroundColor: Colors.white.withAlpha(76),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            Text(
+                              'Ngrantos sekedap...',
+                              style: TextStyle(
+                                color: Colors.white.withAlpha(204),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      SizedBox(height: size.height * 0.08),
+
+                      // Footer Information
+                      Opacity(
+                        opacity: _opacityAnimation.value,
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 180,
+                              height: 1,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.white.withAlpha(102),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '© ${DateTime.now().year} Tim Cengoh',
+                              style: TextStyle(
+                                color: Colors.white.withAlpha(204),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Ahli Huru-Hara',
+                              style: TextStyle(
+                                color: Colors.white.withAlpha(153),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withAlpha(25),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Colors.white.withAlpha(51),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.info_outline_rounded,
+                                    size: 14,
+                                    color: Colors.white.withAlpha(204),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Version $_version',
+                                    style: TextStyle(
+                                      color: Colors.white.withAlpha(204),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );

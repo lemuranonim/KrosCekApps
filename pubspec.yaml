@@ -104,7 +104,7 @@ dependencies:
 
   # App Info and Icons
   package_info_plus: ^8.0.0
-  flutter_launcher_icons: ^0.14.1
+#  flutter_launcher_icons: ^0.14.1
   icons_launcher: ^3.0.0
 
   # Miscellaneous
@@ -137,6 +137,7 @@ dev_dependencies:
   hive_generator: ^2.0.1
   build_runner: ^2.4.13
   mockito: ^5.4.4
+  flutter_launcher_icons: ^0.14.1
 
 flutter:
   uses-material-design: true
@@ -144,6 +145,7 @@ flutter:
   assets:
     - assets/logo.png
     - assets/icon.png
+    - assets/icon_foreground.png
     - assets/login_background.png
     - assets/google_logo.svg
     - assets/credentials.json
@@ -158,17 +160,22 @@ flutter:
     - assets/gadm41_IDN_3.json
     - assets/gadm41_IDN_4.json
 
-flutter_icons:
+# Letakkan ini di bagian paling bawah file pubspec.yaml Anda
+flutter_launcher_icons:
+  # --- Konfigurasi Android ---
   android: true
-  ios: true
   image_path: "assets/icon.png"
-  adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/icon.png"
+  adaptive_icon_background: "#0d3a62" # Warna biru tua dari logo Anda
+  adaptive_icon_foreground: "assets/icon_foreground.png" # PASTIKAN INI PATH KE LOGO TRANSPARAN
 
-icons_launcher:
-  image_path: 'assets/icon.png'
-  platforms:
-    android:
-      enable: true
-    ios:
-      enable: true
+  # --- Konfigurasi iOS ---
+  ios: true
+  remove_alpha_ios: true
+
+  # --- Nonaktifkan Platform Lain untuk Menghindari Error ---
+  web:
+    generate: false
+  windows:
+    generate: false
+  macos:
+    generate: false

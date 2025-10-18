@@ -1605,7 +1605,7 @@ class _PspGenerativeActivityAnalysisScreenState extends State<PspGenerativeActiv
                       _buildLegendItem(Colors.green.shade300, '2 visited'),
                       _buildLegendItem(Colors.amber.shade300, '3 visited'),
                       _buildLegendItem(Colors.orange.shade400, '4-5 visited'),
-                      _buildLegendItem(Colors.red.shade500, '6+ visited'),
+                      _buildLegendItem(Colors.orange.shade500, '6+ visited'),
                     ],
                   ),
                 ),
@@ -1713,7 +1713,7 @@ class _PspGenerativeActivityAnalysisScreenState extends State<PspGenerativeActiv
     if (count == 2) return Colors.green.shade300;
     if (count == 3) return Colors.amber.shade300;
     if (count <= 5) return Colors.orange.shade400;
-    return Colors.red.shade500;
+    return Colors.orange.shade500;
   }
 
   Color _getActivityCountColor(int count) {
@@ -1722,7 +1722,7 @@ class _PspGenerativeActivityAnalysisScreenState extends State<PspGenerativeActiv
     if (count == 2) return Colors.green.shade400;
     if (count == 3) return Colors.amber.shade400;
     if (count <= 5) return Colors.orange.shade500;
-    return Colors.red.shade500;
+    return Colors.orange.shade500;
   }
 
   String _formatPercentage(int part, int total) {

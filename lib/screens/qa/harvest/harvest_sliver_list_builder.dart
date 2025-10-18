@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'generative_detail_screen.dart';
+import 'harvest_detail_screen.dart';
 import '../../gdu/heat_unit_service.dart';
 import '../../gdu/premium_gdu_screen.dart';
 
-class GenerativeSliverListBuilder extends StatefulWidget {
+class HarvestSliverListBuilder extends StatefulWidget {
   final List<List<String>> filteredData;
   final String? selectedRegion;
   final Function(String) onItemTap;
   final Map<String, int> activityCounts;
 
-  const GenerativeSliverListBuilder({
+  const HarvestSliverListBuilder({
     super.key,
     required this.filteredData,
     this.selectedRegion,
@@ -19,10 +19,10 @@ class GenerativeSliverListBuilder extends StatefulWidget {
   });
 
   @override
-  State<GenerativeSliverListBuilder> createState() => _GenerativeSliverListBuilderState();
+  State<HarvestSliverListBuilder> createState() => _HarvestSliverListBuilderState();
 }
 
-class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilder> {
+class _HarvestSliverListBuilderState extends State<HarvestSliverListBuilder> {
   final HeatUnitService _heatUnitService = HeatUnitService();
   final Map<String, HeatUnitData> _heatUnitCache = {};
 
@@ -68,7 +68,7 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
         return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
-      // Ignore error
+      // Ignore parsing errors
     }
     return value;
   }
@@ -80,6 +80,7 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
         final date = DateTime(1899, 12, 30).add(Duration(days: parsedNumber.toInt()));
         return DateFormat('dd MMM yyyy').format(date);
       }
+
       final parsedDate = DateFormat('dd/MM/yyyy').parse(dateStr);
       return DateFormat('dd MMM yyyy').format(parsedDate);
     } catch (e) {
@@ -88,11 +89,17 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
   }
 
   Color _getDapColor(int dap) {
-    if (dap <= 70) return Colors.lightGreen;
-    if (dap <= 80) return Colors.lime;
-    if (dap <= 90) return Colors.amber;
-    if (dap <= 100) return Colors.orange;
-    return Colors.red;
+    if (dap <= 40) {
+      return Colors.lightGreen;
+    } else if (dap <= 46) {
+      return Colors.lime;
+    } else if (dap <= 70) {
+      return Colors.amber;
+    } else if (dap <= 100) {
+      return Colors.orange;
+    } else {
+      return Colors.red;
+    }
   }
 
   Map<String, double?>? _parseCoordinate(String coordinateString) {
@@ -117,75 +124,7 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
   }
 
   // ============================================================================
-  // STATUS METHODS
-  // ============================================================================
-
-  String getGenerativeStatus(String cekResult, String cekProses) {
-    if (cekResult.toLowerCase() == "audited" && cekProses.toLowerCase() == "audited") {
-      return "Sampun";
-    } else if ((cekResult.toLowerCase() == "audited" && cekProses.toLowerCase() == "not audited") ||
-        (cekResult.toLowerCase() == "not audited" && cekProses.toLowerCase() == "audited")) {
-      return "Dereng Jangkep";
-    } else if (cekResult.toLowerCase() == "not audited" && cekProses.toLowerCase() == "not audited") {
-      return "Dereng Blas";
-    }
-    return "Unknown";
-  }
-
-  Color getStatusColor(String status) {
-    switch (status) {
-      case "Sampun":
-        return Colors.green;
-      case "Dereng Jangkep":
-        return Colors.orange;
-      case "Dereng Blas":
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  List<Color> getStatusGradient(String status) {
-    switch (status) {
-      case "Sampun":
-        return [Colors.green.shade400, Colors.green.shade600];
-      case "Dereng Jangkep":
-        return [Colors.orange.shade400, Colors.orange.shade600];
-      case "Dereng Blas":
-        return [Colors.red.shade400, Colors.red.shade600];
-      default:
-        return [Colors.grey.shade400, Colors.grey.shade600];
-    }
-  }
-
-  Color getStatusLightColor(String status) {
-    switch (status) {
-      case "Sampun":
-        return Colors.green.shade50;
-      case "Dereng Jangkep":
-        return Colors.orange.shade50;
-      case "Dereng Blas":
-        return Colors.red.shade50;
-      default:
-        return Colors.grey.shade50;
-    }
-  }
-
-  IconData getStatusIcon(String status) {
-    switch (status) {
-      case "Sampun":
-        return Icons.check_circle;
-      case "Dereng Jangkep":
-        return Icons.hourglass_empty;
-      case "Dereng Blas":
-        return Icons.cancel;
-      default:
-        return Icons.help_outline;
-    }
-  }
-
-  // ============================================================================
-  // 🆕 FUNGSI CEK FASE BERDASARKAN GDU (UNTUK GENERATIVE)
+  // 🆕 FUNGSI CEK FASE BERDASARKAN GDU (UNTUK HARVEST)
   // ============================================================================
 
   /// Dapatkan nama fase saat ini berdasarkan GDU
@@ -201,9 +140,9 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
     }
   }
 
-  /// Cek apakah fase saat ini sesuai dengan screen Generative
+  /// Cek apakah fase saat ini sesuai dengan screen Harvest
   bool _isCorrectPhase(double gdu) {
-    return gdu >= 555.6 && gdu < 922.2;
+    return gdu >= 1500.0;
   }
 
   // ============================================================================
@@ -212,8 +151,8 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
 
   /// 🆕 Widget notifikasi fase yang tidak sesuai
   Widget _buildPhaseWarningBanner(String currentPhase, double currentGDU) {
-    // Jika masih di fase Generative yang sesuai, tidak perlu notif
-    if (currentPhase == 'Generative') {
+    // Jika sudah di fase Harvest yang sesuai, tidak perlu notif
+    if (currentPhase == 'Harvest') {
       return const SizedBox.shrink();
     }
 
@@ -221,21 +160,19 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
     Color color;
     String message;
 
-    // Cek apakah masih di fase sebelumnya (Vegetative)
+    // Masih di fase sebelumnya
     if (currentPhase == 'Vegetative') {
       icon = Icons.eco;
       color = Colors.green.shade700;
-      message = 'ℹ️ Tanaman masih dalam Fase Vegetative. Pertimbangkan untuk memindahkan ke monitoring Vegetative terlebih dahulu.';
-    }
-    // Atau sudah melewati fase Generative
-    else if (currentPhase == 'Pre-Harvest') {
+      message = 'ℹ️ Tanaman masih dalam Fase Vegetative. Tanaman belum siap panen, pertimbangkan untuk memindahkan ke monitoring Vegetative.';
+    } else if (currentPhase == 'Generative') {
+      icon = Icons.local_florist;
+      color = Colors.amber.shade700;
+      message = 'ℹ️ Tanaman masih dalam Fase Generative. Tanaman belum siap panen, pertimbangkan untuk memindahkan ke monitoring Generative.';
+    } else if (currentPhase == 'Pre-Harvest') {
       icon = Icons.grain;
       color = Colors.orange.shade700;
-      message = '⚠️ Tanaman sudah memasuki Fase Pre-Harvest! Segera pindahkan monitoring ke fase Pre-Harvest.';
-    } else if (currentPhase == 'Harvest') {
-      icon = Icons.agriculture;
-      color = Colors.brown.shade700;
-      message = '🎉 Tanaman sudah siap panen! Pindahkan ke monitoring Harvest untuk tracking panen.';
+      message = 'ℹ️ Tanaman masih dalam Fase Pre-Harvest. Tanaman hampir siap panen, pertimbangkan untuk memindahkan ke monitoring Pre-Harvest.';
     } else {
       return const SizedBox.shrink();
     }
@@ -299,7 +236,59 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
     );
   }
 
-  Widget _buildHarvestEstimateWidget(DateTime? estimatedHarvestDate) {
+  Widget _buildHarvestStatusWidget(DateTime? estimatedHarvestDate, double currentGDU) {
+    // Jika GDU sudah > 1500, tampilkan status panen
+    if (currentGDU >= 1500.0) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.green.shade700, Colors.green.shade800],
+          ),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.green.shade900),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.green.withAlpha(76),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.celebration, size: 20, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Status: Siap Panen',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Tanaman telah mencapai masak fisiologis (R6)',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.white.withAlpha(229),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  )
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Jika belum, tampilkan estimasi panen seperti biasa
     if (estimatedHarvestDate == null) {
       return const SizedBox.shrink();
     }
@@ -325,8 +314,8 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
       icon = Icons.agriculture;
     } else {
       title = 'Estimasi Panen';
-      color = Colors.green.shade800;
-      lightColor = Colors.green.shade50;
+      color = Colors.amber.shade800;
+      lightColor = Colors.amber.shade50;
       icon = Icons.event_available;
 
       if (daysDifference == 0) {
@@ -382,7 +371,7 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
     required IconData icon,
     required String label,
     required String value,
-    required Color iconColor,
+    required Color iconColor
   }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -444,7 +433,7 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
 
         return Column(
           children: [
-            // 🆕 Tampilkan banner warning jika tidak sesuai fase Generative
+            // 🆕 Tampilkan banner warning jika belum siap panen
             if (isWrongPhase && !isLoading)
               _buildPhaseWarningBanner(currentMainPhase, heatUnitData.gdu),
 
@@ -452,13 +441,13 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.purple.shade50, Colors.blue.shade50],
+                  colors: [Colors.brown.shade50, Colors.amber.shade50],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Colors.purple.shade200,
+                  color: Colors.brown.shade200,
                   width: 1.5,
                 ),
               ),
@@ -494,19 +483,19 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: isWrongPhase ? Colors.orange.shade100 : Colors.amber.shade100,
+                      color: isWrongPhase ? Colors.orange.shade100 : Colors.brown.shade100,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: isWrongPhase ? Colors.orange.shade300 : Colors.amber.shade300,
+                        color: isWrongPhase ? Colors.orange.shade300 : Colors.brown.shade300,
                       ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          isWrongPhase ? Icons.warning_amber : Icons.local_florist,
+                          isWrongPhase ? Icons.warning_amber : Icons.agriculture,
                           size: 14,
-                          color: isWrongPhase ? Colors.orange.shade700 : Colors.amber.shade700,
+                          color: isWrongPhase ? Colors.orange.shade700 : Colors.brown.shade700,
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -514,7 +503,7 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
-                            color: isWrongPhase ? Colors.orange.shade700 : Colors.amber.shade700,
+                            color: isWrongPhase ? Colors.orange.shade700 : Colors.brown.shade700,
                           ),
                         ),
                       ],
@@ -724,9 +713,9 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                     ),
                   ],
 
-                  // Harvest Estimate
+                  // Harvest Status
                   const SizedBox(height: 8),
-                  _buildHarvestEstimateWidget(heatUnitData.estimatedHarvestDate),
+                  _buildHarvestStatusWidget(heatUnitData.estimatedHarvestDate, heatUnitData.gdu),
 
                   // Tombol "LIHAT DETAIL GDU PREMIUM"
                   const SizedBox(height: 10),
@@ -734,12 +723,12 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                     width: double.infinity,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Colors.purple.shade400, Colors.blue.shade500],
+                        colors: [Colors.brown.shade400, Colors.amber.shade600],
                       ),
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.purple.withAlpha(76),
+                          color: Colors.brown.withAlpha(76),
                           blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
@@ -876,8 +865,7 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
       delegate: SliverChildBuilderDelegate(
             (context, index) {
           final row = widget.filteredData[index];
-
-          final status = getGenerativeStatus(getValue(row, 72, ""), getValue(row, 73, ""));
+          final isAudited = getValue(row, 43, "NOT Audited") == "Audited";
           final dap = _calculateDAP(row);
           final fieldNumber = getValue(row, 2, "Unknown");
           final farmerName = getValue(row, 3, "Unknown");
@@ -892,40 +880,42 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
           final kabupaten = getValue(row, 13, "Unknown");
           final fa = getValue(row, 14, "Unknown");
           final fieldSpv = getValue(row, 15, "Unknown");
-          final weekOfGenerative = getValue(row, 29, "Unknown");
-          final fi = getValue(row, 31, "Unknown");
-          final activityCount = widget.activityCounts[fieldNumber] ?? 0;
+          final weekOfHarvest = getValue(row, 27, "Unknown");
+          final fi = getValue(row, 29, "Unknown");
 
           final coordinateString = getValue(row, 16, '');
           final coordinate = _parseCoordinate(coordinateString);
           final latitude = coordinate?['latitude'];
           final longitude = coordinate?['longitude'];
 
-          final statusColor = getStatusColor(status);
-          final statusGradient = getStatusGradient(status);
-          final statusLightColor = getStatusLightColor(status);
-          final statusIcon = getStatusIcon(status);
+          final activityCount = widget.activityCounts[fieldNumber] ?? 0;
 
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.white, statusLightColor],
+                  colors: isAudited
+                      ? [Colors.white, Colors.green.shade50]
+                      : [Colors.white, Colors.red.shade50],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: statusColor.withAlpha(25),
+                    color: isAudited
+                        ? Colors.green.withAlpha(25)
+                        : Colors.red.withAlpha(25),
                     blurRadius: 8,
                     spreadRadius: 1,
                     offset: const Offset(0, 3),
                   ),
                 ],
                 border: Border.all(
-                  color: statusColor.withAlpha(102),
+                  color: isAudited
+                      ? Colors.green.withAlpha(102)
+                      : Colors.red.withAlpha(102),
                   width: 1.5,
                 ),
               ),
@@ -937,7 +927,7 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (context) => GenerativeDetailScreen(
+                        builder: (context) => HarvestDetailScreen(
                           fieldNumber: fieldNumber,
                           region: widget.selectedRegion ?? 'Unknown Region',
                         ),
@@ -949,8 +939,10 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Header Row with Field Number and Status
                         Row(
                           children: [
+                            // Left side with image and DAP
                             Container(
                               width: 70,
                               height: 70,
@@ -969,9 +961,9 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Hero(
-                                    tag: 'generative_$fieldNumber',
+                                    tag: 'harvest_$fieldNumber',
                                     child: Image.asset(
-                                      'assets/generative.png',
+                                      'assets/harvest.png',
                                       height: 40,
                                       width: 40,
                                       fit: BoxFit.contain,
@@ -997,7 +989,6 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                               ),
                             ),
                             const SizedBox(width: 12),
-
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1018,14 +1009,18 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                         decoration: BoxDecoration(
                                           gradient: LinearGradient(
-                                            colors: statusGradient,
+                                            colors: isAudited
+                                                ? [Colors.green.shade400, Colors.green.shade600]
+                                                : [Colors.red.shade400, Colors.red.shade600],
                                             begin: Alignment.topLeft,
                                             end: Alignment.bottomRight,
                                           ),
                                           borderRadius: BorderRadius.circular(12),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: statusColor.withAlpha(60),
+                                              color: isAudited
+                                                  ? Colors.green.withAlpha(60)
+                                                  : Colors.red.withAlpha(60),
                                               blurRadius: 4,
                                               offset: const Offset(0, 2),
                                             ),
@@ -1034,12 +1029,17 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Icon(statusIcon, color: Colors.white, size: 14),
+                                            Icon(
+                                              isAudited
+                                                  ? Icons.check_circle
+                                                  : Icons.pending,
+                                              color: Colors.white,
+                                              size: 14,
+                                            ),
                                             const SizedBox(width: 4),
                                             Text(
-                                              status,
+                                              isAudited ? "Sampun" : "Dereng",
                                               style: const TextStyle(
-                                                fontFamily: 'Manrope',
                                                 color: Colors.white,
                                                 fontWeight: FontWeight.bold,
                                                 fontSize: 12,
@@ -1052,17 +1052,24 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                                   ),
                                   const SizedBox(height: 4),
 
+                                  // Farmer and Grower info
                                   Row(
                                     children: [
                                       Expanded(
                                         child: RichText(
                                           overflow: TextOverflow.ellipsis,
                                           text: TextSpan(
-                                            style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.black87,
+                                            ),
                                             children: [
                                               const TextSpan(
                                                 text: 'Farmer: ',
-                                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54),
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black54,
+                                                ),
                                               ),
                                               TextSpan(text: farmerName),
                                             ],
@@ -1074,11 +1081,17 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                                         child: RichText(
                                           overflow: TextOverflow.ellipsis,
                                           text: TextSpan(
-                                            style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.black87,
+                                            ),
                                             children: [
                                               const TextSpan(
                                                 text: 'Grower: ',
-                                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54),
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black54,
+                                                ),
                                               ),
                                               TextSpan(text: growerName),
                                             ],
@@ -1088,17 +1101,24 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                                     ],
                                   ),
 
+                                  // Hybrid and Area info
                                   Row(
                                     children: [
                                       Expanded(
                                         child: RichText(
                                           overflow: TextOverflow.ellipsis,
                                           text: TextSpan(
-                                            style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.black87,
+                                            ),
                                             children: [
                                               const TextSpan(
                                                 text: 'Hybrid: ',
-                                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54),
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black54,
+                                                ),
                                               ),
                                               TextSpan(text: hybrid),
                                             ],
@@ -1110,11 +1130,17 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                                         child: RichText(
                                           overflow: TextOverflow.ellipsis,
                                           text: TextSpan(
-                                            style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.black87,
+                                            ),
                                             children: [
                                               const TextSpan(
                                                 text: 'Area: ',
-                                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54),
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black54,
+                                                ),
                                               ),
                                               TextSpan(text: '$effectiveArea Ha'),
                                             ],
@@ -1131,6 +1157,7 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
 
                         const SizedBox(height: 12),
 
+                        // GDU & CHU METRICS
                         _buildHeatUnitMetrics(
                           fieldNumber,
                           latitude,
@@ -1140,13 +1167,21 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
 
                         const SizedBox(height: 12),
 
-                        Container(height: 1, color: statusColor.withAlpha(51)),
+                        // Divider
+                        Container(
+                          height: 1,
+                          color: isAudited
+                              ? Colors.green.withAlpha(51)
+                              : Colors.red.withAlpha(51),
+                        ),
 
                         const SizedBox(height: 12),
 
+                        // Location and Personnel info in a grid
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Location info
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1191,6 +1226,7 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                               ),
                             ),
 
+                            // Personnel info
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1228,7 +1264,7 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                                   _buildInfoRow(
                                     icon: Icons.calendar_month,
                                     label: 'Week',
-                                    value: weekOfGenerative,
+                                    value: weekOfHarvest,
                                     iconColor: Colors.blue,
                                   ),
                                 ],
@@ -1239,16 +1275,18 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
 
                         const SizedBox(height: 8),
 
+                        // Bottom row with Activity Count and View Details Button
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
+                            // Activity Count Badge
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: activityCount == 0
                                       ? [Colors.red.shade50, Colors.red.shade100]
-                                      : (activityCount < 3
+                                      : (activityCount < 2
                                       ? [Colors.orange.shade50, Colors.orange.shade100]
                                       : [Colors.green.shade50, Colors.green.shade100]),
                                   begin: Alignment.topLeft,
@@ -1258,7 +1296,7 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                                 border: Border.all(
                                   color: activityCount == 0
                                       ? Colors.red.shade200
-                                      : (activityCount < 3 ? Colors.orange.shade200 : Colors.green.shade200),
+                                      : (activityCount < 2 ? Colors.orange.shade200 : Colors.green.shade200),
                                   width: 1.0,
                                 ),
                               ),
@@ -1268,19 +1306,23 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                                   Icon(
                                     activityCount == 0
                                         ? Icons.history_toggle_off
-                                        : (activityCount < 3 ? Icons.history : Icons.history_edu),
+                                        : (activityCount < 2 ? Icons.history : Icons.history_edu),
                                     color: activityCount == 0
                                         ? Colors.red.shade700
-                                        : (activityCount < 3 ? Colors.orange.shade700 : Colors.green.shade700),
+                                        : (activityCount < 2 ? Colors.orange.shade700 : Colors.green.shade700),
                                     size: 16,
                                   ),
                                   const SizedBox(width: 6),
                                   Text(
-                                    activityCount == 0 ? 'Not Visited' : 'Visited $activityCount kali',
+                                    activityCount == 0
+                                        ? 'Not Visited'
+                                        : (activityCount == 1
+                                        ? 'Visited 1 kali'
+                                        : 'Visited $activityCount kali'),
                                     style: TextStyle(
                                       color: activityCount == 0
                                           ? Colors.red.shade700
-                                          : (activityCount < 3 ? Colors.orange.shade700 : Colors.green.shade700),
+                                          : (activityCount < 2 ? Colors.orange.shade700 : Colors.green.shade700),
                                       fontWeight: FontWeight.bold,
                                       fontSize: 12,
                                     ),
@@ -1289,17 +1331,22 @@ class _GenerativeSliverListBuilderState extends State<GenerativeSliverListBuilde
                               ),
                             ),
 
+                            // View Details Button
                             Container(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
-                                  colors: statusGradient,
+                                  colors: isAudited
+                                      ? [Colors.green.shade400, Colors.green.shade600]
+                                      : [Colors.red.shade400, Colors.red.shade600],
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                 ),
                                 borderRadius: BorderRadius.circular(12),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: statusColor.withAlpha(60),
+                                    color: isAudited
+                                        ? Colors.green.withAlpha(60)
+                                        : Colors.red.withAlpha(60),
                                     blurRadius: 4,
                                     offset: const Offset(0, 2),
                                   ),

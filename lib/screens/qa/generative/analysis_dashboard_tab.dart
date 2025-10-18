@@ -32,6 +32,7 @@ class AnalysisDashboardTab extends StatelessWidget {
   final List<String> availableCoordinators;
   final Function getKetersediaanStatus;
   final Function getEffectivenessStatus;
+  final Map<String, String> fieldToCoordinator;
 
   const AnalysisDashboardTab({
     super.key,
@@ -65,6 +66,7 @@ class AnalysisDashboardTab extends StatelessWidget {
     required this.availableCoordinators,
     required this.getKetersediaanStatus,
     required this.getEffectivenessStatus,
+    required this.fieldToCoordinator,
   });
 
   @override
@@ -184,6 +186,7 @@ class AnalysisDashboardTab extends StatelessWidget {
             allFilteredData: filteredData,
             availableCoordinators: availableCoordinators,
             getKetersediaanStatus: getKetersediaanStatus,
+            fieldToCoordinator: fieldToCoordinator,
           ),
 
           const SizedBox(height: 24),
@@ -197,6 +200,7 @@ class AnalysisDashboardTab extends StatelessWidget {
             allFilteredData: filteredData,
             availableCoordinators: availableCoordinators,
             getEffectivenessStatus: getEffectivenessStatus,
+            fieldToCoordinator: fieldToCoordinator,
           ),
         ],
       ),
@@ -889,150 +893,20 @@ class AnalysisDashboardTab extends StatelessWidget {
 }
 
 // ===================================================================
-// CLASS WIDGET BARU UNTUK DONUT CHART (DARI OPSI 2)
-// LETAKKAN INI DI LUAR CLASS AnalysisDashboardTab, TAPI MASIH DALAM FILE YANG SAMA
-// ===================================================================
-class DonutChartCard extends StatefulWidget {
-  final String title;
-  final IconData icon;
-  final double totalValue;
-  final List<Map<String, dynamic>> chartData;
-
-  const DonutChartCard({
-    super.key,
-    required this.title,
-    required this.icon,
-    required this.totalValue,
-    required this.chartData,
-  });
-
-  @override
-  State<DonutChartCard> createState() => _DonutChartCardState();
-}
-
-class _DonutChartCardState extends State<DonutChartCard> {
-  int touchedIndex = -1;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: AppTheme.cardDecoration,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Bagian Header Kartu (tetap sama)
-          Row(
-            children: [
-              Icon(widget.icon, color: AppTheme.primary),
-              const SizedBox(width: 8),
-              Text(widget.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // LayoutBuilder untuk Tampilan Responsif
-          LayoutBuilder(
-            builder: (context, constraints) {
-              // Tentukan breakpoint. Jika lebar kurang dari 350, ganti ke Column.
-              // Anda bisa menyesuaikan nilai 350 ini jika perlu.
-              const double breakpoint = 350.0;
-
-              // --- Definisikan Widget Chart ---
-              final pieChart = PieChart(
-                PieChartData(
-                  pieTouchData: PieTouchData(
-                    touchCallback: (FlTouchEvent event, pieTouchResponse) {
-                      setState(() {
-                        if (!event.isInterestedForInteractions || pieTouchResponse == null || pieTouchResponse.touchedSection == null) {
-                          touchedIndex = -1;
-                          return;
-                        }
-                        touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
-                      });
-                    },
-                  ),
-                  borderData: FlBorderData(show: false),
-                  sectionsSpace: 4,
-                  centerSpaceRadius: 40,
-                  sections: List.generate(widget.chartData.length, (i) {
-                    final isTouched = i == touchedIndex;
-                    final radius = isTouched ? 60.0 : 50.0;
-                    final data = widget.chartData[i];
-                    return PieChartSectionData(
-                      color: data['color'],
-                      value: data['value'],
-                      title: '${data['percentage']}%',
-                      radius: radius,
-                      titleStyle: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold, color: Colors.white, shadows: [Shadow(color: Colors.black, blurRadius: 2)]),
-                    );
-                  }),
-                ),
-              );
-
-              // --- Definisikan Widget Legenda ---
-              final legend = Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: widget.chartData.map((data) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6.0),
-                    child: Row(
-                      children: [
-                        Container(width: 12, height: 12, decoration: BoxDecoration(color: data['color'], borderRadius: BorderRadius.circular(2))),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text('${data['title']} (${data['value'].toStringAsFixed(2)} Ha)', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              );
-
-              // Tampilkan layout berdasarkan lebar yang tersedia
-              if (constraints.maxWidth < breakpoint) {
-                // TAMPILAN SEMPIT (Ponsel Potret)
-                return Column(
-                  children: [
-                    SizedBox(height: 180, child: pieChart), // Chart di atas
-                    const SizedBox(height: 24),
-                    legend, // Legenda di bawah
-                  ],
-                );
-              } else {
-                // TAMPILAN LEBAR (Tablet / Ponsel Lanskap)
-                return Row(
-                  children: [
-                    Expanded(flex: 2, child: AspectRatio(aspectRatio: 1, child: pieChart)), // Chart di kiri
-                    const SizedBox(width: 20),
-                    Expanded(flex: 3, child: legend), // Legenda di kanan
-                  ],
-                );
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// analysis_dashboard_tab.dart
-
-// ===================================================================
-// KARTU BARU UNTUK ANALISIS KETERSEDIAAN (STATEFUL)
+// KARTU BARU UNTUK ANALISIS KETERSEDIAAN (STATEFUL) - TELAH DIPERBARUI
 // ===================================================================
 class KetersediaanCard extends StatefulWidget {
   final List<List<String>> allFilteredData;
   final List<String> availableCoordinators;
   final Function getKetersediaanStatus;
+  final Map<String, String> fieldToCoordinator;
 
   const KetersediaanCard({
     super.key,
     required this.allFilteredData,
     required this.availableCoordinators,
     required this.getKetersediaanStatus,
+    required this.fieldToCoordinator,
   });
 
   @override
@@ -1042,7 +916,6 @@ class KetersediaanCard extends StatefulWidget {
 class _KetersediaanCardState extends State<KetersediaanCard> {
   String? _selectedCoordinator;
 
-  // Helper untuk mengambil nilai dari baris data
   String _getValue(List<String> row, int index, String defaultValue) {
     if (row.isEmpty || index >= row.length) return defaultValue;
     return row[index];
@@ -1050,14 +923,13 @@ class _KetersediaanCardState extends State<KetersediaanCard> {
 
   @override
   Widget build(BuildContext context) {
-    // Saring data secara lokal berdasarkan dropdown koordinator
     final localFilteredData = widget.allFilteredData.where((row) {
-      if (_selectedCoordinator == null) return true; // Tampilkan semua jika tidak ada yang dipilih
-      // Filter berdasarkan Koordinator dari kolom DJ (indeks 113)
-      return _getValue(row, 113, "").trim().toLowerCase() == _selectedCoordinator;
+      if (_selectedCoordinator == null) return true;
+      final fieldNumber = _getValue(row, 2, "").trim();
+      final coordinator = widget.fieldToCoordinator[fieldNumber]?.toLowerCase() ?? "";
+      return coordinator == _selectedCoordinator;
     }).toList();
 
-    // Lakukan kalkulasi berdasarkan data yang sudah difilter secara lokal
     double ketersediaanAreaA = 0.0;
     double ketersediaanAreaB = 0.0;
     double ketersediaanAreaC = 0.0;
@@ -1085,14 +957,23 @@ class _KetersediaanCardState extends State<KetersediaanCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.people, color: AppTheme.accent),
-              const SizedBox(width: 8),
-              const Text('Ketersediaan Tenaga Kerja', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const Spacer(),
-              _buildCoordinatorDropdown(),
+              Icon(Icons.people, color: AppTheme.accent),
+              SizedBox(width: 8),
+              Text('Ketersediaan TKD', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ],
+          ),
+          const SizedBox(height: 16),
+          // --- DROPDOWN BARU DENGAN FITUR PENCARIAN ---
+          _SearchableDropdown(
+            selectedValue: _selectedCoordinator,
+            items: widget.availableCoordinators,
+            onChanged: (newValue) {
+              setState(() {
+                _selectedCoordinator = newValue;
+              });
+            },
           ),
           const Divider(height: 24),
           _buildProgressRow(title: 'A (100%)', valueHa: ketersediaanAreaA.toStringAsFixed(2), percentage: _formatPercentageDouble(ketersediaanAreaA, totalArea), color: Colors.green.shade700, progress: totalArea > 0 ? ketersediaanAreaA / totalArea : 0.0),
@@ -1107,44 +988,6 @@ class _KetersediaanCardState extends State<KetersediaanCard> {
       ),
     );
   }
-
-  Widget _buildCoordinatorDropdown() {
-    return Container(
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: _selectedCoordinator,
-          hint: const Text('All Co-Det', style: TextStyle(fontSize: 12)),
-          icon: const Icon(Icons.arrow_drop_down, size: 20),
-          style: const TextStyle(color: AppTheme.textDark, fontSize: 12),
-          onChanged: (String? newValue) {
-            setState(() {
-              _selectedCoordinator = newValue;
-            });
-          },
-          items: [
-            const DropdownMenuItem<String>(
-              value: null,
-              child: Text('All Co-Det'),
-            ),
-            ...widget.availableCoordinators.map((String value) {
-              return DropdownMenuItem<String>(
-                value: value,
-                child: Text(value.toTitleCase(), overflow: TextOverflow.ellipsis),
-              );
-            })
-          ],
-        ),
-      ),
-    );
-  }
-
-
 
   Widget _buildProgressRow({
     required String title,
@@ -1197,30 +1040,51 @@ class _KetersediaanCardState extends State<KetersediaanCard> {
   }
 }
 
-// analysis_dashboard_tab.dart
-
 // ===================================================================
-// KARTU BARU UNTUK ANALISIS EFEKTIVITAS (STATEFUL)
+// KARTU BARU UNTUK ANALISIS EFEKTIVITAS (STATEFUL) - TELAH DIPERBARUI
 // ===================================================================
 class EffectivenessCard extends StatefulWidget {
   final List<List<String>> allFilteredData;
   final List<String> availableCoordinators;
   final Function getEffectivenessStatus;
+  final Map<String, String> fieldToCoordinator;
 
   const EffectivenessCard({
     super.key,
     required this.allFilteredData,
     required this.availableCoordinators,
     required this.getEffectivenessStatus,
+    required this.fieldToCoordinator,
   });
 
   @override
   State<EffectivenessCard> createState() => _EffectivenessCardState();
 }
 
-class _EffectivenessCardState extends State<EffectivenessCard> {
+class _EffectivenessCardState extends State<EffectivenessCard> with SingleTickerProviderStateMixin {
   String? _selectedCoordinator;
-  int touchedIndex = -1;
+  late AnimationController _animationController;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    _animation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOutCubic,
+    );
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
 
   String _getValue(List<String> row, int index, String defaultValue) {
     if (row.isEmpty || index >= row.length) return defaultValue;
@@ -1229,14 +1093,13 @@ class _EffectivenessCardState extends State<EffectivenessCard> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Saring data secara lokal berdasarkan dropdown
     final localFilteredData = widget.allFilteredData.where((row) {
       if (_selectedCoordinator == null) return true;
-      // Filter berdasarkan Koordinator dari kolom DJ (indeks 113)
-      return _getValue(row, 113, "").trim().toLowerCase() == _selectedCoordinator;
+      final fieldNumber = _getValue(row, 2, "").trim();
+      final coordinator = widget.fieldToCoordinator[fieldNumber]?.toLowerCase() ?? "";
+      return coordinator == _selectedCoordinator;
     }).toList();
 
-    // 2. Lakukan kalkulasi berdasarkan data yang sudah difilter
     double efektivitasAreaEfektif = 0.0;
     double efektivitasAreaTidakEfektif = 0.0;
 
@@ -1253,35 +1116,569 @@ class _EffectivenessCardState extends State<EffectivenessCard> {
     }
 
     final totalArea = efektivitasAreaEfektif + efektivitasAreaTidakEfektif;
-    final List<Map<String, dynamic>> chartData = [
-      {'title': 'Efektif', 'value': efektivitasAreaEfektif, 'percentage': _formatPercentageDouble(efektivitasAreaEfektif, totalArea), 'color': AppTheme.success},
-      {'title': 'Tidak Efektif', 'value': efektivitasAreaTidakEfektif, 'percentage': _formatPercentageDouble(efektivitasAreaTidakEfektif, totalArea), 'color': AppTheme.error},
-    ];
 
-    // 3. Bangun UI lengkap dengan Donut Chart dan Legenda
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: AppTheme.cardDecoration,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Kartu dengan Dropdown
           Row(
             children: [
-              const Icon(Icons.task_alt, color: AppTheme.primary),
-              const SizedBox(width: 8),
-              const Text('Efektivitas Tenaga Kerja', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const Spacer(),
-              _buildCoordinatorDropdown(),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withAlpha(25),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.task_alt, color: AppTheme.primary, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Text('Efektivitas TKD', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 16),
+          // --- DROPDOWN BARU DENGAN FITUR PENCARIAN ---
+          _SearchableDropdown(
+            selectedValue: _selectedCoordinator,
+            items: widget.availableCoordinators,
+            onChanged: (newValue) {
+              setState(() {
+                _selectedCoordinator = newValue;
+                _animationController.reset();
+                _animationController.forward();
+              });
+            },
+          ),
+          const SizedBox(height: 24),
+          AnimatedBuilder(
+            animation: _animation,
+            builder: (context, child) {
+              return _buildAnimatedStackedBar(
+                efektivitasAreaEfektif,
+                efektivitasAreaTidakEfektif,
+                totalArea,
+                _animation.value,
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatCard(
+                  title: 'Efektif',
+                  value: efektivitasAreaEfektif.toStringAsFixed(2),
+                  percentage: _formatPercentageDouble(efektivitasAreaEfektif, totalArea),
+                  color: AppTheme.success,
+                  icon: Icons.check_circle_outline,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildStatCard(
+                  title: 'Tidak Efektif',
+                  value: efektivitasAreaTidakEfektif.toStringAsFixed(2),
+                  percentage: _formatPercentageDouble(efektivitasAreaTidakEfektif, totalArea),
+                  color: AppTheme.error,
+                  icon: Icons.cancel_outlined,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppTheme.accent.withAlpha(25), AppTheme.accentLight.withAlpha(25)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.accent.withAlpha(51)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.analytics, color: AppTheme.accent, size: 20),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Total Area',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textDark),
+                    ),
+                  ],
+                ),
+                Text(
+                  '${totalArea.toStringAsFixed(2)} Ha',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.accent),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-          // LayoutBuilder untuk Tampilan Responsif (Chart & Legenda)
+  Widget _buildAnimatedStackedBar(double efektif, double tidakEfektif, double total, double animationValue) {
+    final efektifPercent = total > 0 ? (efektif / total) : 0.0;
+    final tidakEfektifPercent = total > 0 ? (tidakEfektif / total) : 0.0;
+
+    return Column(
+      children: [
+        Container(
+          height: 60,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(25),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: Stack(
+              children: [
+                Container(color: Colors.grey.shade200),
+                FractionallySizedBox(
+                  widthFactor: efektifPercent * animationValue,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [AppTheme.success, AppTheme.success.withAlpha(204)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: Center(
+                      child: animationValue > 0.5 && efektifPercent > 0.15
+                          ? Text(
+                        '${_formatPercentageDouble(efektif, total)}%',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      )
+                          : null,
+                    ),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FractionallySizedBox(
+                    widthFactor: tidakEfektifPercent * animationValue,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppTheme.error.withAlpha(204), AppTheme.error],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: Center(
+                        child: animationValue > 0.5 && tidakEfektifPercent > 0.15
+                            ? Text(
+                          '${_formatPercentageDouble(tidakEfektif, total)}%',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        )
+                            : null,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: AppTheme.success,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Text('Efektif', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+              ],
+            ),
+            Row(
+              children: [
+                const Text('Tidak Efektif', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                const SizedBox(width: 6),
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: AppTheme.error,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatCard({
+    required String title,
+    required String value,
+    required String percentage,
+    required Color color,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withAlpha(25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withAlpha(51)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$value Ha',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$percentage%',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatPercentageDouble(double part, double total) {
+    if (total == 0) return '0.0';
+    return ((part / total) * 100).toStringAsFixed(1);
+  }
+}
+
+// ===================================================================
+// WIDGET BARU UNTUK DROPDOWN DENGAN FITUR PENCARIAN
+// Letakkan kode ini di dalam file yang sama (analysis_dashboard_tab.dart)
+// ===================================================================
+
+class _SearchableDropdown extends StatelessWidget {
+  final String? selectedValue;
+  final List<String> items;
+  final Function(String?) onChanged;
+
+  const _SearchableDropdown({
+    required this.selectedValue,
+    required this.items,
+    required this.onChanged,
+  });
+
+  void _showSearchableModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _SearchableModalContent(
+          selectedValue: selectedValue,
+          items: items,
+          onChanged: onChanged,
+          hintText: 'All Co-Det',
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _showSearchableModal(context),
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.textLight.withAlpha(128)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(15),
+              blurRadius: 5,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.person_search, color: AppTheme.accent),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                selectedValue?.toTitleCase() ?? 'All Co-Det',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.textDark,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.textMedium),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchableModalContent extends StatefulWidget {
+  final String? selectedValue;
+  final List<String> items;
+  final Function(String?) onChanged;
+  final String hintText;
+
+  const _SearchableModalContent({
+    required this.selectedValue,
+    required this.items,
+    required this.onChanged,
+    required this.hintText,
+  });
+
+  @override
+  _SearchableModalContentState createState() => _SearchableModalContentState();
+}
+
+class _SearchableModalContentState extends State<_SearchableModalContent> {
+  final TextEditingController _searchController = TextEditingController();
+  List<String> _filteredItems = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredItems = widget.items;
+    _searchController.addListener(_filterItems);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_filterItems);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _filterItems() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredItems = widget.items.where((item) {
+        return item.toLowerCase().contains(query);
+      }).toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).pop(),
+      child: Container(
+        color: Colors.black.withAlpha((0.5 * 255).toInt()),
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          builder: (_, controller) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Pilih Koordinator',
+                          style: AppTheme.heading3,
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: 'Cari koordinator...',
+                            prefixIcon: const Icon(Icons.search),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[100],
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: controller,
+                      itemCount: _filteredItems.length + 1, // +1 untuk opsi "All"
+                      itemBuilder: (context, index) {
+                        if (index == 0) {
+                          // Opsi "All Co-Det"
+                          final isSelected = widget.selectedValue == null;
+                          return ListTile(
+                            leading: Icon(
+                              Icons.groups_rounded,
+                              color: isSelected ? AppTheme.accent : AppTheme.textMedium,
+                            ),
+                            title: Text(
+                              widget.hintText,
+                              style: TextStyle(
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                color: isSelected ? AppTheme.accent : AppTheme.textDark,
+                              ),
+                            ),
+                            trailing: isSelected ? const Icon(Icons.check, color: AppTheme.accent) : null,
+                            onTap: () {
+                              widget.onChanged(null);
+                              Navigator.of(context).pop();
+                            },
+                          );
+                        }
+
+                        final item = _filteredItems[index - 1];
+                        final isSelected = widget.selectedValue == item;
+                        return ListTile(
+                          leading: Icon(
+                            Icons.person,
+                            color: isSelected ? AppTheme.accent : AppTheme.textMedium,
+                          ),
+                          title: Text(
+                            item.toTitleCase(),
+                            style: TextStyle(
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              color: isSelected ? AppTheme.accent : AppTheme.textDark,
+                            ),
+                          ),
+                          trailing: isSelected ? const Icon(Icons.check, color: AppTheme.accent) : null,
+                          onTap: () {
+                            widget.onChanged(item);
+                            Navigator.of(context).pop();
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// ===================================================================
+// KELAS-KELAS LAINNYA (TETAP SAMA)
+// ===================================================================
+class DonutChartCard extends StatefulWidget {
+  final String title;
+  final IconData icon;
+  final double totalValue;
+  final List<Map<String, dynamic>> chartData;
+
+  const DonutChartCard({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.totalValue,
+    required this.chartData,
+  });
+
+  @override
+  State<DonutChartCard> createState() => _DonutChartCardState();
+}
+
+class _DonutChartCardState extends State<DonutChartCard> {
+  int touchedIndex = -1;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(widget.icon, color: AppTheme.primary),
+              const SizedBox(width: 8),
+              Text(widget.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 16),
           LayoutBuilder(
             builder: (context, constraints) {
               const double breakpoint = 350.0;
-
               final pieChart = PieChart(
                 PieChartData(
                   pieTouchData: PieTouchData(
@@ -1298,13 +1695,13 @@ class _EffectivenessCardState extends State<EffectivenessCard> {
                   borderData: FlBorderData(show: false),
                   sectionsSpace: 4,
                   centerSpaceRadius: 40,
-                  sections: List.generate(chartData.length, (i) {
+                  sections: List.generate(widget.chartData.length, (i) {
                     final isTouched = i == touchedIndex;
                     final radius = isTouched ? 60.0 : 50.0;
-                    final data = chartData[i];
+                    final data = widget.chartData[i];
                     return PieChartSectionData(
                       color: data['color'],
-                      value: data['value'] as double,
+                      value: data['value'],
                       title: '${data['percentage']}%',
                       radius: radius,
                       titleStyle: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold, color: Colors.white, shadows: [Shadow(color: Colors.black, blurRadius: 2)]),
@@ -1312,26 +1709,24 @@ class _EffectivenessCardState extends State<EffectivenessCard> {
                   }),
                 ),
               );
-
               final legend = Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: chartData.map((data) {
+                children: widget.chartData.map((data) {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6.0),
                     child: Row(
                       children: [
-                        Container(width: 12, height: 12, decoration: BoxDecoration(color: data['color'] as Color, borderRadius: BorderRadius.circular(2))),
+                        Container(width: 12, height: 12, decoration: BoxDecoration(color: data['color'], borderRadius: BorderRadius.circular(2))),
                         const SizedBox(width: 8),
                         Flexible(
-                          child: Text('${data['title']} (${(data['value'] as double).toStringAsFixed(2)} Ha)', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                          child: Text('${data['title']} (${data['value'].toStringAsFixed(2)} Ha)', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
                         ),
                       ],
                     ),
                   );
                 }).toList(),
               );
-
               if (constraints.maxWidth < breakpoint) {
                 return Column(
                   children: [
@@ -1355,50 +1750,8 @@ class _EffectivenessCardState extends State<EffectivenessCard> {
       ),
     );
   }
-
-  Widget _buildCoordinatorDropdown() {
-    return Container(
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: _selectedCoordinator,
-          hint: const Text('All Co-Det', style: TextStyle(fontSize: 12)),
-          icon: const Icon(Icons.arrow_drop_down, size: 20),
-          style: const TextStyle(color: AppTheme.textDark, fontSize: 12),
-          onChanged: (String? newValue) {
-            setState(() {
-              _selectedCoordinator = newValue;
-            });
-          },
-          items: [
-            const DropdownMenuItem<String>(
-              value: null,
-              child: Text('All Co-Det'),
-            ),
-            ...widget.availableCoordinators.map((String value) {
-              return DropdownMenuItem<String>(
-                value: value,
-                child: Text(value.toTitleCase(), overflow: TextOverflow.ellipsis),
-              );
-            })
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _formatPercentageDouble(double part, double total) {
-    if (total == 0) return '0.0';
-    return ((part / total) * 100).toStringAsFixed(1);
-  }
 }
 
-// AppTheme class for the dashboard tab
 class AppTheme {
   // Primary colors
   static const Color primaryDark = Color(0xFF1B5E20);

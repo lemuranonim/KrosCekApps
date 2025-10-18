@@ -561,7 +561,7 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Colors.red.shade800, Colors.red.shade600],
+                colors: [Colors.orange.shade800, Colors.orange.shade600],
               ),
             ),
           ),
@@ -742,7 +742,7 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Colors.red.shade800, Colors.red.shade600],
+                  colors: [Colors.orange.shade800, Colors.orange.shade600],
                 ),
               ),
               child: Column(
@@ -750,7 +750,7 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                   _isLoading
                       ? LinearProgressIndicator(
                     value: _progress,
-                    backgroundColor: Colors.red.shade300.withAlpha(76),
+                    backgroundColor: Colors.orange.shade300.withAlpha(76),
                     valueColor:
                     AlwaysStoppedAnimation<Color>(Colors.white),
                   )
@@ -823,7 +823,7 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Colors.red.shade800, Colors.red.shade600],
+                  colors: [Colors.orange.shade800, Colors.orange.shade600],
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -844,7 +844,7 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                       gradient: LinearGradient(
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
-                        colors: [Colors.red.shade700, Colors.red.shade500],
+                        colors: [Colors.orange.shade700, Colors.orange.shade500],
                       ),
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -1071,14 +1071,14 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                                     borderRadius: BorderRadius.circular(12),
                                     gradient: _selectedStatuses.contains("Dereng Blas")
                                         ? LinearGradient(
-                                      colors: [Colors.red.shade400, Colors.red.shade500],
+                                      colors: [Colors.orange.shade400, Colors.orange.shade500],
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
                                     )
                                         : null,
                                     color: _selectedStatuses.contains("Dereng Blas") ? null : Colors.white,
                                     border: Border.all(
-                                      color: _selectedStatuses.contains("Dereng Blas") ? Colors.transparent : Colors.red.shade200,
+                                      color: _selectedStatuses.contains("Dereng Blas") ? Colors.transparent : Colors.orange.shade200,
                                       width: 1.5,
                                     ),
                                   ),
@@ -1087,7 +1087,7 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                                     children: [
                                       Icon(
                                         Icons.cancel,
-                                        color: _selectedStatuses.contains("Dereng Blas") ? Colors.white : Colors.red.shade600,
+                                        color: _selectedStatuses.contains("Dereng Blas") ? Colors.white : Colors.orange.shade600,
                                         size: 18,
                                       ),
                                       const SizedBox(width: 8),
@@ -1095,7 +1095,7 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                                         child: Text(
                                           'Dereng Blas',
                                           style: TextStyle(
-                                            color: _selectedStatuses.contains("Dereng Blas") ? Colors.white : Colors.red.shade600,
+                                            color: _selectedStatuses.contains("Dereng Blas") ? Colors.white : Colors.orange.shade600,
                                             fontWeight: FontWeight.bold,
                                             fontSize: 14,
                                           ),
@@ -1137,7 +1137,7 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                     });
                     await _loadSheetData(refresh: true);
                   },
-                  color: Colors.redAccent,
+                  color: Colors.orange,
                   backgroundColor: Colors.white,
                   height: 150,
                   showChildOpacityTransition: false,
@@ -1149,12 +1149,12 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.error_outline,
-                            size: 60, color: Colors.red.shade300),
+                            size: 60, color: Colors.orange.shade300),
                         const SizedBox(height: 16),
                         Text(
                           _errorMessage!,
                           style:
-                          TextStyle(color: Colors.red.shade700),
+                          TextStyle(color: Colors.orange.shade700),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 24),
@@ -1174,7 +1174,7 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                           icon: const Icon(Icons.refresh),
                           label: const Text('Try Again'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.redAccent,
+                            backgroundColor: Colors.orange,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 24, vertical: 12),
@@ -1225,7 +1225,7 @@ class PspGenerativeScreenState extends State<PspGenerativeScreen> {
                               color: Colors.white),
                           label: const Text('Reset Filters'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.redAccent,
+                            backgroundColor: Colors.orange,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 24, vertical: 12),

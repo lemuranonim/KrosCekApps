@@ -75,9 +75,23 @@ class VegetativeScreenState extends State<VegetativeScreen> {
   @override
   void initState() {
     super.initState();
-    final spreadsheetId = ConfigManager.getSpreadsheetId(widget.region ?? "Default Region") ?? '';
+
+    final spreadsheetId = widget.spreadsheetId.isNotEmpty
+        ? widget.spreadsheetId
+        : ConfigManager.getSpreadsheetId(widget.region ?? "Default Region") ?? '';
+
+    if (spreadsheetId.isEmpty) {
+
+      setState(() {
+        _errorMessage = "Spreadsheet ID tidak ditemukan untuk region ${widget.region}";
+        _isLoading = false;
+      });
+      return;
+    }
+
     selectedRegion = widget.region ?? "Unknown Region";
     _googleSheetsApi = GoogleSheetsApi(spreadsheetId);
+
     _loadSheetData();
     _loadFilterPreferences();
   }
@@ -212,13 +226,36 @@ class VegetativeScreenState extends State<VegetativeScreen> {
     });
 
     try {
-      await _googleSheetsApi.init();
+      if (!_googleSheetsApi.isInitialized) {
+        final initSuccess = await _googleSheetsApi.init();
+
+        if (!initSuccess) {
+          throw Exception('Gagal menginisialisasi koneksi ke Google Sheets');
+        }
+
+        debugPrint("✅ Inisialisasi berhasil!");
+      } else {
+        debugPrint("✅ GoogleSheetsApi sudah diinisialisasi sebelumnya");
+      }
+
+      // ✅ Lanjutkan dengan fetching data
+      debugPrint("\n📥 Mengambil data dari Google Sheets...");
+      debugPrint("   Start row: ${(_currentPage - 1) * _rowsPerPage + 1}");
+      debugPrint("   Rows per page: $_rowsPerPage");
+
       final totalDataCount = 12000;
       final data = await _googleSheetsApi.getSpreadsheetDataWithPagination(
-          _worksheetTitle, (_currentPage - 1) * _rowsPerPage + 1, _rowsPerPage);
+          _worksheetTitle,
+          (_currentPage - 1) * _rowsPerPage + 1,
+          _rowsPerPage
+      );
+
+      debugPrint("✅ Data berhasil diambil: ${data.length} baris");
 
       // Load activity data
+      debugPrint("\n📊 Memuat data aktivitas...");
       await _loadActivityData();
+      debugPrint("✅ Data aktivitas berhasil dimuat");
 
       setState(() {
         _sheetData.addAll(data);
@@ -545,177 +582,8 @@ class VegetativeScreenState extends State<VegetativeScreen> {
     });
   }
 
-  // Widget Helper untuk filter audit status
-  Widget _buildFilterChipsContainer() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Colors.green.shade800, Colors.green.shade600.withAlpha(204)],
-        ),
-      ),
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [Colors.green.shade700, Colors.green.shade500],
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: TextButton.icon(
-              onPressed: () {
-                setState(() {
-                  _showFilterChipsContainer = !_showFilterChipsContainer;
-                });
-              },
-              icon: Icon(
-                _showFilterChipsContainer
-                    ? Icons.keyboard_arrow_up
-                    : Icons.keyboard_arrow_down,
-                color: Colors.white,
-              ),
-              label: Text(
-                _showFilterChipsContainer
-                    ? 'Hide Filter Audit Status'
-                    : 'Show Filter Audit Status',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                backgroundColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
-          ),
-          if (_showFilterChipsContainer) ...[
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(child: _buildFilterChip(isAudited: true)),
-                const SizedBox(width: 12),
-                Expanded(child: _buildFilterChip(isAudited: false)),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // Widget Helper untuk chip filter individual
-  Widget _buildFilterChip({required bool isAudited}) {
-    final bool isActive = isAudited ? _showAuditedOnly : _showNotAuditedOnly;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: isActive
-            ? [
-          BoxShadow(
-            color: Colors.black.withAlpha(38),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          )
-        ]
-            : null,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () {
-            setState(() {
-              if (isAudited) {
-                _showAuditedOnly = !_showAuditedOnly;
-                if (_showAuditedOnly) _showNotAuditedOnly = false;
-              } else {
-                _showNotAuditedOnly = !_showNotAuditedOnly;
-                if (_showNotAuditedOnly) _showAuditedOnly = false;
-              }
-              _filterData();
-            });
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              gradient: isActive
-                  ? LinearGradient(
-                colors: isAudited
-                    ? [Colors.green.shade400, Colors.green.shade500]
-                    : [Colors.red.shade400, Colors.red.shade600],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              )
-                  : null,
-              color: isActive ? null : Colors.white,
-              border: Border.all(
-                color: isActive
-                    ? Colors.transparent
-                    : (isAudited ? Colors.green.shade200 : Colors.red.shade200),
-                width: 1.5,
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  isAudited
-                      ? Icons.check_circle_outline
-                      : Icons.pending_outlined,
-                  color: isActive
-                      ? Colors.white
-                      : (isAudited ? Colors.green.shade700 : Colors.red.shade600),
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  isAudited ? 'Sampun' : 'Dereng',
-                  style: TextStyle(
-                    color: isActive
-                        ? Colors.white
-                        : (isAudited ? Colors.green.shade700 : Colors.red.shade600),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Konstanta untuk mengelola tinggi AppBar
-    const double baseAppBarHeight = 100.0;
-    // PERUBAIKAN 1: Menambah tinggi area ringkasan untuk memberi ruang vertikal ekstra.
-    const double summaryInfoHeight = 60.0; // Dinaikkan dari 60.0
-    const double filterSectionHeight = 90.0;
-
-    // Hitung tinggi AppBar yang diperluas secara dinamis dengan nilai baru
-    final double expandedAppBarHeight = baseAppBarHeight +
-        summaryInfoHeight +
-        (_showFilterChipsContainer ? filterSectionHeight : 10.0);
-
     // ignore: deprecated_member_use
     return WillPopScope(
       onWillPop: _onWillPop,
@@ -741,164 +609,345 @@ class VegetativeScreenState extends State<VegetativeScreen> {
           child: CustomScrollView(
             slivers: [
               SliverAppBar(
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  onPressed: _navigateBackToHome,
-                ),
                 pinned: true,
                 floating: true,
                 elevation: 0,
+                expandedHeight: 220,
+                backgroundColor: Colors.green.shade800,
+
+                // Leading Button
+                leading: Container(
+                  margin: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(51),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                    onPressed: _navigateBackToHome,
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+
+                // Title or Search Bar
                 title: _isSearching
-                    ? TextField(
-                  onChanged: _onSearchChanged,
-                  autofocus: true,
-                  style: const TextStyle(color: Colors.white),
-                  cursorColor: Colors.white,
-                  decoration: const InputDecoration(
-                    hintText: 'Cari lahan, petani...',
-                    hintStyle: TextStyle(color: Colors.white70),
-                    border: InputBorder.none,
+                    ? Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(51),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: TextField(
+                    onChanged: _onSearchChanged,
+                    autofocus: true,
+                    style: const TextStyle(color: Colors.white),
+                    cursorColor: Colors.white,
+                    decoration: const InputDecoration(
+                      hintText: 'Cari lahan, petani...',
+                      hintStyle: TextStyle(color: Colors.white70),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      prefixIcon: Icon(Icons.search_rounded, color: Colors.white70),
+                    ),
                   ),
                 )
-                    : const Text('Vegetative Inspection',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    : Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(51),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.spa_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Vegetative',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                centerTitle: true,
 
+                // Actions
+                actions: [
+                  // Search Button
+                  Container(
+                    margin: const EdgeInsets.only(right: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(51),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      icon: Icon(
+                        _isSearching ? Icons.close_rounded : Icons.search_rounded,
+                        color: Colors.white,
+                      ),
+                      onPressed: () => setState(() {
+                        if (_isSearching) _searchQuery = '';
+                        _isSearching = !_isSearching;
+                        _filterData();
+                      }),
+                    ),
+                  ),
+
+                  // Filter Button with Badge
+                  if (!_isSearching)
+                    Container(
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(51),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Stack(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.tune_rounded, color: Colors.white),
+                            onPressed: _showFilterOptions,
+                          ),
+                          if (_selectedSeason != null ||
+                              _selectedWeeks.isNotEmpty ||
+                              _selectedFA.isNotEmpty ||
+                              _showDiscardedFaseItems ||
+                              _selectedFIs.isNotEmpty)
+                            Positioned(
+                              right: 8,
+                              top: 8,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [Colors.red.shade400, Colors.red.shade600],
+                                  ),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 2),
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 16,
+                                  minHeight: 16,
+                                ),
+                                child: const Text(
+                                  '!',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+
+                  // Map View Toggle
+                  if (!_isSearching)
+                    Container(
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(51),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: IconButton(
+                        icon: Icon(
+                          _showMapView ? Icons.view_list_rounded : Icons.map_rounded,
+                          color: Colors.white,
+                        ),
+                        onPressed: _toggleViewMode,
+                      ),
+                    ),
+
+                  // More Menu
+                  if (!_isSearching)
+                    Container(
+                      margin: const EdgeInsets.only(right: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(51),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        onSelected: (value) {
+                          if (value == 'refresh') {
+                            _loadSheetData(refresh: true);
+                          } else if (value == 'analysis') {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => VegetativeActivityAnalysisScreen(
+                                  activityCounts: _activityCounts,
+                                  activityTimestamps: _activityTimestamps,
+                                  vegetativeData: _filteredData,
+                                  selectedRegion: selectedRegion,
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'refresh',
+                            child: Row(
+                              children: [
+                                Icon(Icons.refresh_rounded, color: Colors.green),
+                                SizedBox(width: 12),
+                                Text('Refresh Data'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'analysis',
+                            child: Row(
+                              children: [
+                                Icon(Icons.analytics_rounded, color: Colors.green),
+                                SizedBox(width: 12),
+                                Text('Analysis Aktivitas'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+
+                // Progress Indicator
                 bottom: PreferredSize(
                   preferredSize: const Size.fromHeight(4.0),
                   child: _isLoading
                       ? LinearProgressIndicator(
                     value: _progress > 0 ? _progress : null,
-                    backgroundColor: Colors.green.shade300.withAlpha(76),
+                    backgroundColor: Colors.white.withAlpha(51),
                     valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
                   )
                       : const SizedBox.shrink(),
                 ),
-                expandedHeight: expandedAppBarHeight,
-                backgroundColor: Colors.green.shade800,
 
+                // Flexible Space with Gradient Background
                 flexibleSpace: FlexibleSpaceBar(
                   background: Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [Colors.green.shade800, Colors.green.shade600],
+                        colors: [
+                          Colors.green.shade700,
+                          Colors.green.shade800,
+                          Colors.green.shade900,
+                        ],
                       ),
                     ),
+                    child: SafeArea(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          const SizedBox(height: 60), // Space for AppBar
 
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Opacity(
-                          opacity: (1 - (_progress.clamp(0.0, 1.0) * 2)).clamp(0.0, 1.0),
-                          child: Text(
-                            selectedRegion ?? 'Unknown Region',
-                            style: const TextStyle(color: Colors.white70, fontSize: 14),
+                          // Region Badge
+                          TweenAnimationBuilder(
+                            tween: Tween<double>(begin: 0, end: 1),
+                            duration: const Duration(milliseconds: 600),
+                            curve: Curves.easeOut,
+                            builder: (context, double value, child) {
+                              return Opacity(
+                                opacity: value,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withAlpha(38),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: Colors.white.withAlpha(76),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.location_on_rounded,
+                                        color: Colors.white.withAlpha(229),
+                                        size: 14,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        selectedRegion ?? 'Unknown Region',
+                                        style: TextStyle(
+                                          color: Colors.white.withAlpha(229),
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
                           ),
-                        ),
 
-                        // PERUBAIKAN 2: Menambah jarak vertikal untuk mendorong ringkasan info ke bawah.
-                        const SizedBox(height: 20),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _buildSummaryInfo(Icons.format_list_numbered, '${_filteredData.length} Lahan'),
-                              _buildSummaryInfo(Icons.crop, 'Σ Area: ${_totalEffectiveArea.toStringAsFixed(1)} Ha'),
-                            ],
+                          const SizedBox(height: 16),
+
+                          // Summary Info Cards
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: _buildEnhancedSummaryCard(
+                                    icon: Icons.grid_view_rounded,
+                                    label: 'Total Lahan',
+                                    value: '${_filteredData.length}',
+                                    gradient: [Colors.blue.shade400, Colors.blue.shade600],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildEnhancedSummaryCard(
+                                    icon: Icons.landscape_rounded,
+                                    label: 'Total Area',
+                                    value: '${_totalEffectiveArea.toStringAsFixed(1)} Ha',
+                                    gradient: [Colors.orange.shade400, Colors.orange.shade600],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-
-                        const SizedBox(height: 15),
-
-                        _buildFilterChipsContainer(),
-                      ],
+                          const SizedBox(height: 12),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-                actions: [
-                  IconButton(
-                    icon: Icon(_isSearching ? Icons.close : Icons.search, color: Colors.white),
-                    onPressed: () => setState(() {
-                      if (_isSearching) _searchQuery = '';
-                      _isSearching = !_isSearching;
-                      _filterData();
-                    }),
-                  ),
-                  if (!_isSearching)
-                    IconButton(
-                      icon: Badge(
-                        isLabelVisible: _selectedSeason != null ||
-                            _selectedWeeks.isNotEmpty ||
-                            _selectedFA.isNotEmpty ||
-                            _showDiscardedFaseItems ||
-                            _selectedFIs.isNotEmpty,
-                        backgroundColor: Colors.red,
-                        child: const Icon(Icons.filter_list_rounded, color: Colors.white),
-                      ),
-                      tooltip: 'Filter Options',
-                      onPressed: _showFilterOptions,
-                    ),
-                    // IconButton(
-                    //   icon: const Icon(Icons.filter_list_rounded, color: Colors.white),
-                    //   onPressed: _showFilterOptions,
-                    // ),
-                  if (!_isSearching)
-                    IconButton(
-                      icon: Icon(_showMapView ? Icons.view_list : Icons.map_outlined, color: Colors.white),
-                      onPressed: _toggleViewMode,
-                    ),
-                  if (!_isSearching)
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert, color: Colors.white),
-                      tooltip: 'More options',
-                      onSelected: (value) {
-                        if (value == 'refresh') {
-                          _loadSheetData(refresh: true);
-                        } else if (value == 'analysis') {
-                          // Navigate to analysis screen
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => VegetativeActivityAnalysisScreen(
-                                activityCounts: _activityCounts,
-                                activityTimestamps: _activityTimestamps,
-                                vegetativeData: _filteredData,
-                                selectedRegion: selectedRegion,
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(
-                          value: 'refresh',
-                          child: Row(
-                            children: [
-                              Icon(Icons.refresh, color: Colors.green),
-                              SizedBox(width: 8),
-                              Text('Refresh Data'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'analysis',
-                          child: Row(
-                            children: [
-                              Icon(Icons.analytics, color: Colors.green),
-                              SizedBox(width: 8),
-                              Text('Analysis Aktivitas'),
-                            ],
-                          ),
-                        ),
-                      ],
-                    )
-                ],
               ),
 
-              // Konten lainnya tidak berubah
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _FilterHeaderDelegate(
+                  child: Container(
+                    // SAMAKAN DENGAN WARNA SLIVERAPPBAR
+                    color: Colors.green.shade800,
+                    child: _buildEnhancedFilterChipsContainer(),
+                  ),
+                  height: _showFilterChipsContainer ? 125.0 : 75.0,
+                ),
+              ),
+
+              // Rest of the content (keep the existing code)
               if (_showMapView)
                 SliverFillRemaining(
                   child: VegetativeMapView(
@@ -930,7 +979,237 @@ class VegetativeScreenState extends State<VegetativeScreen> {
                       },
                     ),
             ],
+          )
+        ),
+      ),
+    );
+  }
+
+  // 1. Enhanced Summary Card
+  Widget _buildEnhancedSummaryCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required List<Color> gradient,
+  }) {
+    return Container(
+      // DIUBAH: Padding vertikal dikurangi agar lebih ramping
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: gradient),
+        // DIUBAH: Radius sudut disesuaikan agar terlihat lebih pas
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: gradient[0].withAlpha(76),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                // DIUBAH: Padding ikon diperkecil
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha(51),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                // DIUBAH: Ukuran ikon tetap kecil, sudah pas
+                child: Icon(icon, color: Colors.white, size: 16),
+              ),
+              // DIUBAH: Jarak antara ikon dan label dikurangi
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white.withAlpha(229),
+                    // DIUBAH: Ukuran font label tetap, sudah cukup kecil
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          // DIUBAH: Jarak antara baris atas dan teks nilai dikurangi
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              // DIUBAH: Ukuran font nilai diperkecil, ini perubahan paling signifikan
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+// 2. Enhanced Filter Chips Container (WITH AUDIT STATUS FILTER)
+  Widget _buildEnhancedFilterChipsContainer() {
+    // Container terluar dihapus, sekarang langsung Column
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Toggle Button
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(25),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withAlpha(51),
+                width: 1,
+              ),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    _showFilterChipsContainer = !_showFilterChipsContainer;
+                  });
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.verified_user_rounded,
+                        color: Colors.white.withAlpha(229),
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _showFilterChipsContainer
+                              ? 'Sembunyikan Status Audit'
+                              : 'Tampilkan Status Audit',
+                          style: TextStyle(
+                            color: Colors.white.withAlpha(229),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        _showFilterChipsContainer
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: Colors.white.withAlpha(229),
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ✅ FILTER CHIPS - TAMPIL SAAT _showFilterChipsContainer = true
+          if (_showFilterChipsContainer) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                // Filter "Sampun" (Audited)
+                Expanded(
+                  child: _buildEnhancedFilterChip(isAudited: true),
+                ),
+                const SizedBox(width: 12),
+                // Filter "Dereng" (Not Audited)
+                Expanded(
+                  child: _buildEnhancedFilterChip(isAudited: false),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+// 3. Enhanced Filter Chip (INDIVIDUAL CHIP)
+  Widget _buildEnhancedFilterChip({required bool isAudited}) {
+    final bool isActive = isAudited ? _showAuditedOnly : _showNotAuditedOnly;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (isAudited) {
+            // Toggle "Sampun" filter
+            _showAuditedOnly = !_showAuditedOnly;
+            if (_showAuditedOnly) _showNotAuditedOnly = false;
+          } else {
+            // Toggle "Dereng" filter
+            _showNotAuditedOnly = !_showNotAuditedOnly;
+            if (_showNotAuditedOnly) _showAuditedOnly = false;
+          }
+          _filterData(); // Apply filter
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(
+          gradient: isActive
+              ? LinearGradient(
+            colors: isAudited
+                ? [Colors.green.shade400, Colors.green.shade600]
+                : [Colors.red.shade400, Colors.red.shade600],
+          )
+              : null,
+          color: isActive ? null : Colors.white.withAlpha(38),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isActive
+                ? Colors.transparent
+                : Colors.white.withAlpha(76),
+            width: 1.5,
+          ),
+          boxShadow: isActive
+              ? [
+            BoxShadow(
+              color: (isAudited ? Colors.green : Colors.red).withAlpha(76),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isAudited ? Icons.check_circle_rounded : Icons.pending_rounded,
+              color: isActive ? Colors.white : Colors.white.withAlpha(229),
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              isAudited ? 'Sampun' : 'Dereng',
+              style: TextStyle(
+                color: isActive ? Colors.white : Colors.white.withAlpha(229),
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -971,31 +1250,6 @@ class VegetativeScreenState extends State<VegetativeScreen> {
     );
   }
 
-  // Helper widget untuk ringkasan data
-  Widget _buildSummaryInfo(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(51),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.white, size: 16),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w500,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // Helper untuk menampilkan widget di tengah sebagai sliver
   Widget _buildSliverCenteredContent({required Widget child}) {
     return SliverFillRemaining(
@@ -1030,5 +1284,29 @@ class VegetativeScreenState extends State<VegetativeScreen> {
         ),
       ],
     );
+  }
+}
+
+// LETAKKAN CLASS INI DI LUAR CLASS LAINNYA, DI BAGIAN BAWAH FILE
+class _FilterHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final double height;
+
+  _FilterHeaderDelegate({required this.child, this.height = 80.0});
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return child;
+  }
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  bool shouldRebuild(SliverPersistentHeaderDelegate oldDelegate) {
+    return true;
   }
 }
