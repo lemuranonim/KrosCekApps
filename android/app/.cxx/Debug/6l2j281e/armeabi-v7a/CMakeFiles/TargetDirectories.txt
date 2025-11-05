@@ -1,0 +1,2 @@
+C:/Users/user/StudioProjects/KrosCekApps/android/app/.cxx/Debug/6l2j281e/armeabi-v7a/CMakeFiles/edit_cache.dir
+C:/Users/user/StudioProjects/KrosCekApps/android/app/.cxx/Debug/6l2j281e/armeabi-v7a/CMakeFiles/rebuild_cache.dir

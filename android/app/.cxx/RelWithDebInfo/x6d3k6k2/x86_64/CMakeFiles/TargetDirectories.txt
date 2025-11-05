@@ -1,0 +1,2 @@
+C:/Users/user/StudioProjects/KrosCekApps/android/app/.cxx/RelWithDebInfo/x6d3k6k2/x86_64/CMakeFiles/edit_cache.dir
+C:/Users/user/StudioProjects/KrosCekApps/android/app/.cxx/RelWithDebInfo/x6d3k6k2/x86_64/CMakeFiles/rebuild_cache.dir
