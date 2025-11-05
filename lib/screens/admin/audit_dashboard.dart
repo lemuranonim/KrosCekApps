@@ -9,7 +9,7 @@ import 'package:dropdown_button2/dropdown_button2.dart';
 // Ganti path ini sesuai dengan struktur proyek Anda
 import '../services/config_manager.dart';
 import '../services/google_sheets_api.dart';
-// import 'generative_detail_screen.dart'; // TODO: AKTIFKAN KEMBALI DAN SESUAIKAN PATH INI
+// import 'generative_detail_screen.dart'; //
 import 'dashboard_widgets.dart'; // Pastikan file ini ada dan berisi CustomCard
 
 class AuditDashboard extends StatefulWidget {
