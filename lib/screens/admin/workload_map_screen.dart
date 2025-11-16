@@ -1,11 +1,13 @@
+// ignore_for_file: deprecated_member_use
+
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show rootBundle, HapticFeedback;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/config_manager.dart';
+import '../services/google_sheets_api.dart';
 
 class AppTheme {
   static const Color primaryDark = Color(0xFF1B5E20);
@@ -111,6 +113,16 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
     }
   }
 
+  // Cache untuk menyimpan data yang sudah di-fetch
+  static final Map<String, Map<String, List<Map<String, dynamic>>>> _dataCache = {};
+  static DateTime? _lastCacheTime;
+  static const Duration _cacheDuration = Duration(minutes: 30);
+
+  bool _isCacheValid() {
+    if (_lastCacheTime == null) return false;
+    return DateTime.now().difference(_lastCacheTime!) < _cacheDuration;
+  }
+
   Future<void> _onRegionChanged(String? newRegion) async {
     if (newRegion == null) return;
 
@@ -136,34 +148,134 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
 
   Future<void> _fetchDataFromFirestore(String worksheetName) async {
     try {
-      Query query = FirebaseFirestore.instance
-          .collection('workload_data')
-          .where('worksheet', isEqualTo: worksheetName);
+      debugPrint('🔍 [Fetch] Fetching data for worksheet: $worksheetName');
+      debugPrint('🔍 [Fetch] Selected region: $_selectedRegion');
 
-      if (_selectedRegion != null && _selectedRegion != _allRegionsSentinel) {
-        query = query.where('region', isEqualTo: _selectedRegion);
-      }
+      final List<Map<String, dynamic>> allData = [];
 
-      final querySnapshot = await query.get().timeout(const Duration(seconds: 30));
+      // Jika "Semua Region" dipilih, fetch dari semua spreadsheet
+      if (_selectedRegion == _allRegionsSentinel) {
+        // Check cache first
+        if (_isCacheValid() && _dataCache.containsKey(worksheetName)) {
+          debugPrint('⚡ [Cache] Using cached data for $worksheetName');
+          if (mounted) {
+            setState(() {
+              _currentSheetData = List.from(_dataCache[worksheetName]!.values.expand((x) => x));
+              _isLoading = false;
+            });
+          }
+          return;
+        }
 
-      final List<Map<String, dynamic>> data = [];
-      for (final doc in querySnapshot.docs) {
-        final docData = doc.data() as Map<String, dynamic>;
-        // Filter data yang valid
-        if (docData['growingSeason'] != null &&
-            !docData['growingSeason'].toString().startsWith('#')) {
-          data.add(docData);
+        debugPrint('📋 [Fetch] Fetching ALL regions data in parallel...');
+
+        final regions = ConfigManager.regions;
+        debugPrint('📋 [Fetch] Total regions to fetch: ${regions.length}');
+
+        // ✨ PARALLEL FETCHING - Fetch semua region sekaligus!
+        final List<Future<Map<String, dynamic>>> fetchFutures = [];
+
+        for (final entry in regions.entries) {
+          final regionName = entry.key;
+          final spreadsheetId = entry.value;
+
+          fetchFutures.add(_fetchSingleRegionData(regionName, spreadsheetId, worksheetName));
+        }
+
+        // Wait for ALL regions to complete (with timeout)
+        final results = await Future.wait(
+          fetchFutures,
+          eagerError: false, // Continue even if some fail
+        ).timeout(
+          const Duration(seconds: 45),
+          onTimeout: () {
+            debugPrint('⏱️ [Fetch] Timeout reached, using partial results');
+            return fetchFutures.map((f) => f.then((v) => v).catchError((e) => <String, dynamic>{})).toList() as List<Map<String, dynamic>>;
+          },
+        );
+
+        // Collect all data
+        final Map<String, List<Map<String, dynamic>>> regionDataMap = {};
+        int successCount = 0;
+
+        for (final result in results) {
+          if (result.isNotEmpty && result.containsKey('regionName')) {
+            final regionName = result['regionName'] as String;
+            final data = result['data'] as List<Map<String, dynamic>>;
+
+            if (data.isNotEmpty) {
+              regionDataMap[regionName] = data;
+              allData.addAll(data);
+              successCount++;
+              debugPrint('✅ [Fetch] Region: $regionName - ${data.length} rows');
+            }
+          }
+        }
+
+        // Save to cache
+        _dataCache[worksheetName] = regionDataMap;
+        _lastCacheTime = DateTime.now();
+
+        debugPrint('🎉 [Fetch] Parallel fetch completed!');
+        debugPrint('✅ [Fetch] Success: $successCount/${regions.length} regions');
+        debugPrint('📦 [Fetch] Total rows collected: ${allData.length}');
+
+      } else {
+        // Fetch dari satu region saja (dengan cache)
+
+        if (_isCacheValid() &&
+            _dataCache.containsKey(worksheetName) &&
+            _dataCache[worksheetName]!.containsKey(_selectedRegion)) {
+          debugPrint('⚡ [Cache] Using cached data for $_selectedRegion - $worksheetName');
+          if (mounted) {
+            setState(() {
+              _currentSheetData = List.from(_dataCache[worksheetName]![_selectedRegion]!);
+              _isLoading = false;
+            });
+          }
+          return;
+        }
+
+        final spreadsheetId = ConfigManager.getSpreadsheetId(_selectedRegion ?? '');
+
+        if (spreadsheetId == null) {
+          debugPrint('❌ [Fetch] No spreadsheet ID found for region: $_selectedRegion');
+          if (mounted) {
+            setState(() {
+              _currentSheetData = [];
+              _isLoading = false;
+            });
+          }
+          return;
+        }
+
+        debugPrint('📋 [Fetch] Using spreadsheet ID: $spreadsheetId');
+
+        final result = await _fetchSingleRegionData(_selectedRegion!, spreadsheetId, worksheetName);
+
+        if (result.containsKey('data')) {
+          allData.addAll(result['data'] as List<Map<String, dynamic>>);
+
+          // Save to cache
+          if (!_dataCache.containsKey(worksheetName)) {
+            _dataCache[worksheetName] = {};
+          }
+          _dataCache[worksheetName]![_selectedRegion!] = allData;
+          _lastCacheTime = DateTime.now();
         }
       }
 
+      debugPrint('✅ [Fetch] Valid data after filter: ${allData.length}');
+
       if (mounted) {
         setState(() {
-          _currentSheetData = data;
+          _currentSheetData = allData;
           _isLoading = false;
         });
       }
-    } catch (e) {
-      debugPrint('Error fetching from Firestore: $e');
+    } catch (e, stackTrace) {
+      debugPrint('❌ [Fetch] Error fetching data: $e');
+      debugPrint('❌ [Fetch] Stack trace: $stackTrace');
       if (mounted) {
         setState(() {
           _currentSheetData = [];
@@ -172,6 +284,246 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
       }
       rethrow;
     }
+  }
+
+  // ✨ NEW: Fetch single region data (untuk parallel execution)
+  Future<Map<String, dynamic>> _fetchSingleRegionData(
+      String regionName,
+      String spreadsheetId,
+      String worksheetName
+      ) async {
+    try {
+      final googleSheetsApi = GoogleSheetsApi(spreadsheetId);
+      final initSuccess = await googleSheetsApi.init();
+
+      if (!initSuccess) {
+        debugPrint('⚠️  [Fetch] Failed to init for $regionName');
+        return {};
+      }
+
+      final rows = await googleSheetsApi.getSpreadsheetData(worksheetName);
+
+      if (rows.isEmpty || rows.length <= 1) {
+        debugPrint('⚠️  [Fetch] No data in $worksheetName for $regionName');
+        return {};
+      }
+
+      final List<Map<String, dynamic>> data = [];
+      final dataRows = rows.skip(1);
+
+      for (final row in dataRows) {
+        final growingSeason = _getValue(row, 1, '');
+
+        if (growingSeason.isEmpty || growingSeason.startsWith('#')) {
+          continue;
+        }
+
+        int weekCol;
+        switch (worksheetName) {
+          case 'Vegetative':
+          case 'Generative':
+            weekCol = 29;
+            break;
+          case 'Pre Harvest':
+          case 'Harvest':
+            weekCol = 27;
+            break;
+          default:
+            weekCol = 29;
+        }
+
+        final rowData = {
+          'worksheet': worksheetName,
+          'region': regionName,
+          'growingSeason': growingSeason,
+          'fieldNo': _getValue(row, 2, ''),
+          'effectiveArea': _getValue(row, 8, '0'),
+          'village': _getValue(row, 11, ''),
+          'subDistrict': _getValue(row, 12, ''),
+          'district': _getValue(row, 13, ''),
+          'coordinate': _getValue(row, 17, ''),
+          'week': _getValue(row, weekCol, ''),
+        };
+
+        data.add(rowData);
+      }
+
+      return {
+        'regionName': regionName,
+        'data': data,
+      };
+
+    } catch (e) {
+      debugPrint('❌ [Fetch] Error fetching $regionName: $e');
+      return {};
+    }
+  }
+
+  String _getValue(List<String> row, int index, String defaultValue) {
+    return row.isNotEmpty && index >= 0 && index < row.length
+        ? row[index]
+        : defaultValue;
+  }
+
+  void _showRegionSelectionBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppTheme.primary, AppTheme.primaryDark],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.location_on_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Pilih Region',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Region list
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _regionOptions.length,
+                  itemBuilder: (context, index) {
+                    final region = _regionOptions[index];
+                    final isSelected = _selectedRegion == region;
+                    final isAllRegions = region == _allRegionsSentinel;
+
+                    return InkWell(
+                      onTap: () {
+                        Navigator.pop(context);
+                        if (region != _selectedRegion) {
+                          HapticFeedback.lightImpact();
+                          _onRegionChanged(region);
+                        }
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppTheme.primary.withOpacity(0.1)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected
+                                ? AppTheme.primary
+                                : Colors.grey.shade200,
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: isAllRegions
+                                    ? Colors.amber.withOpacity(0.2)
+                                    : Colors.blue.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                isAllRegions
+                                    ? Icons.public_rounded
+                                    : Icons.location_on_rounded,
+                                size: 20,
+                                color: isAllRegions
+                                    ? Colors.amber.shade700
+                                    : Colors.blue.shade700,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                region,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.w500,
+                                  color: isSelected
+                                      ? AppTheme.primary
+                                      : AppTheme.textDark,
+                                ),
+                              ),
+                            ),
+                            if (isSelected)
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.check_rounded,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _resetSubFilters() {
@@ -205,7 +557,10 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
   }
 
   void _extractFiltersFromSheetData() {
+    debugPrint('🔍 [Filter] Extracting filters from ${_currentSheetData.length} records');
+
     if (!mounted || _currentSheetData.isEmpty) {
+      debugPrint('⚠️ [Filter] No data to extract filters from');
       setState(() {
         _availableGrowingSeasons.clear();
         _availableDistricts.clear();
@@ -224,6 +579,8 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
       }
     }
 
+    debugPrint('📊 [Filter] Found ${seasons.length} unique seasons: $seasons');
+
     if (mounted) {
       setState(() {
         _availableGrowingSeasons = seasons.toList()..sort();
@@ -233,6 +590,7 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
               ? _availableGrowingSeasons.first
               : null;
         }
+        debugPrint('✅ [Filter] Selected season: $_selectedGrowingSeasonState');
       });
       _populateAvailableDistricts();
     }
@@ -241,11 +599,12 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
   void _populateAvailableDistricts() {
     if (!mounted) return;
 
+    debugPrint('🔍 [Filter] Populating districts for season: $_selectedGrowingSeasonState');
     final districtsSet = <String>{};
 
     for (final row in _currentSheetData) {
-      final bool isAllRegionsSelected = _selectedRegion == _allRegionsSentinel;
-      final bool regionMatch = isAllRegionsSelected ||
+      // Untuk "Semua Region", tidak perlu filter region
+      final bool regionMatch = _selectedRegion == _allRegionsSentinel ||
           row['region']?.toString() == _selectedRegion;
 
       final bool seasonMatch = _selectedGrowingSeasonState == null ||
@@ -259,12 +618,15 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
       }
     }
 
+    debugPrint('📊 [Filter] Found ${districtsSet.length} districts: $districtsSet');
+
     setState(() {
       _availableDistricts = districtsSet.toList()..sort();
       if (_selectedDistrictState == null ||
           !_availableDistricts.contains(_selectedDistrictState)) {
         _selectedDistrictState = null;
       }
+      debugPrint('✅ [Filter] Selected district: $_selectedDistrictState');
     });
 
     _populateAvailableWeeks();
@@ -273,6 +635,7 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
   void _populateAvailableWeeks() {
     if (!mounted) return;
 
+    debugPrint('🔍 [Filter] Populating weeks for season: $_selectedGrowingSeasonState, district: $_selectedDistrictState');
     final weeksSet = <String>{};
 
     for (final row in _currentSheetData) {
@@ -291,6 +654,8 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
       }
     }
 
+    debugPrint('📊 [Filter] Found ${weeksSet.length} weeks: $weeksSet');
+
     final newSpecificWeeks = weeksSet.toList()
       ..sort((a, b) {
         int? valA = int.tryParse(a.replaceAll(RegExp(r'[^0-9]'), ''));
@@ -302,6 +667,7 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
     setState(() {
       _availableWeeks = newSpecificWeeks;
       _selectedWeeksState.removeWhere((week) => !_availableWeeks.contains(week));
+      debugPrint('✅ [Filter] Available weeks updated');
     });
 
     _applyAllFiltersAndBuildMap();
@@ -313,11 +679,13 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
 
     _filteredMapData = List.from(_currentSheetData);
 
+    // Filter region - skip jika "Semua Region"
     if (_selectedRegion != null && _selectedRegion != _allRegionsSentinel) {
       _filteredMapData = _filteredMapData
           .where((row) => row['region']?.toString() == _selectedRegion)
           .toList();
     }
+
     if (_selectedDistrictState != null) {
       _filteredMapData = _filteredMapData
           .where((row) => row['district']?.toString() == _selectedDistrictState)
@@ -335,6 +703,8 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
           _selectedWeeksState.contains(row['week']?.toString().trim() ?? ''))
           .toList();
     }
+
+    debugPrint('📊 [Filter] Filtered data: ${_filteredMapData.length} records');
 
     _calculateKecamatanWorkloadAndDesa(_filteredMapData);
 
@@ -757,104 +1127,476 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
     final totalWorkloadKecamatan =
         _kecamatanWorkload[_selectedKecamatanKey!] ?? 0.0;
 
-    return Container(
-      width: 300,
-      constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.4),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(25),
-            spreadRadius: 2,
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  "Kec. $displayName",
-                  style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.primaryDark),
-                  overflow: TextOverflow.ellipsis,
+    // Sort desa by workload descending
+    final sortedDesaEntries = desaData.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return TweenAnimationBuilder(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+      builder: (context, double value, child) {
+        return Transform.translate(
+          offset: Offset(0, 30 * (1 - value)),
+          child: Opacity(
+            opacity: value,
+            child: Container(
+              width: 340,
+              constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.5),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white,
+                    Colors.green.shade50.withOpacity(0.3),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green.withOpacity(0.2),
+                    spreadRadius: 0,
+                    blurRadius: 30,
+                    offset: const Offset(0, 10),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    spreadRadius: 0,
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+                border: Border.all(
+                  color: Colors.green.shade200.withOpacity(0.5),
+                  width: 1,
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.close,
-                    size: 24, color: AppTheme.textMedium),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                onPressed: () {
-                  setState(() {
-                    _selectedKecamatanKey = null;
-                    _isDetailPanelVisible = false;
-                    _kecamatanDataPoints.clear();
-                    _currentPolygons = _buildPolygons();
-                  });
-                },
-              ),
-            ],
-          ),
-          Text("Kab./Kota: $displayDistrictName",
-              style: const TextStyle(fontSize: 14, color: AppTheme.textMedium)),
-          const SizedBox(height: 8),
-          Text(
-              "Total Area Efektif: ${totalWorkloadKecamatan.toStringAsFixed(2)} Ha",
-              style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.accent)),
-          const Divider(height: 20, thickness: 1),
-          Text("Desa/Kelurahan (${desaData.length}):",
-              style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark)),
-          const SizedBox(height: 8),
-          Expanded(
-            child: desaData.isEmpty
-                ? const Center(
-                child: Text("Tidak ada data desa.",
-                    style: TextStyle(
-                        color: AppTheme.textMedium, fontSize: 14)))
-                : ListView.builder(
-              shrinkWrap: true,
-              itemCount: desaData.length,
-              itemBuilder: (context, index) {
-                String desaName = desaData.keys.elementAt(index);
-                double workload = desaData[desaName] ?? 0.0;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(desaName,
-                            style: const TextStyle(fontSize: 14)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header dengan gradient
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          AppTheme.primary,
+                          AppTheme.primaryDark,
+                        ],
                       ),
-                      Text("${workload.toStringAsFixed(2)} Ha",
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w500, fontSize: 14)),
-                    ],
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(24),
+                        topRight: Radius.circular(24),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.location_on_rounded,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "Kecamatan",
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.white.withOpacity(0.8),
+                                      fontWeight: FontWeight.w500,
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    displayName,
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                      letterSpacing: 0.5,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: IconButton(
+                                icon: const Icon(Icons.close_rounded,
+                                    size: 24, color: Colors.white),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () {
+                                  setState(() {
+                                    _selectedKecamatanKey = null;
+                                    _isDetailPanelVisible = false;
+                                    _kecamatanDataPoints.clear();
+                                    _currentPolygons = _buildPolygons();
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Icon(Icons.map_outlined,
+                                size: 14, color: Colors.white.withOpacity(0.8)),
+                            const SizedBox(width: 6),
+                            Text(
+                              "Kab./Kota $displayDistrictName",
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white.withOpacity(0.9),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                );
-              },
+
+                  // Total Area Card
+                  Container(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          AppTheme.accent.withOpacity(0.1),
+                          AppTheme.primary.withOpacity(0.05),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: AppTheme.accent.withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                AppTheme.accent,
+                                AppTheme.accent.withOpacity(0.8),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.accent.withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.agriculture_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Total Area Efektif",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.textMedium,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    totalWorkloadKecamatan.toStringAsFixed(2),
+                                    style: TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.accent,
+                                      height: 1,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 4),
+                                    child: Text(
+                                      "Ha",
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.textMedium,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Desa List Header
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.location_city_rounded,
+                            size: 18,
+                            color: AppTheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          "Desa/Kelurahan",
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textDark,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                AppTheme.primary,
+                                AppTheme.primaryDark,
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.primary.withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            "${desaData.length}",
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Desa List
+                  Expanded(
+                    child: desaData.isEmpty
+                        ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 48,
+                              color: AppTheme.textMedium.withOpacity(0.5)),
+                          const SizedBox(height: 12),
+                          Text(
+                            "Tidak ada data desa",
+                            style: TextStyle(
+                              color: AppTheme.textMedium,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                        : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      itemCount: sortedDesaEntries.length,
+                      itemBuilder: (context, index) {
+                        final entry = sortedDesaEntries[index];
+                        String desaName = entry.key;
+                        double workload = entry.value;
+
+                        // Calculate percentage
+                        double percentage = (workload / totalWorkloadKecamatan) * 100;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: AppTheme.primary.withOpacity(0.1),
+                              width: 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.03),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            AppTheme.primary,
+                                            AppTheme.accent,
+                                          ],
+                                        ),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        desaName,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.textDark,
+                                          letterSpacing: 0.2,
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 5),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            AppTheme.accent.withOpacity(0.15),
+                                            AppTheme.primary.withOpacity(0.15),
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        "${workload.toStringAsFixed(2)} Ha",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: AppTheme.accent,
+                                          letterSpacing: 0.3,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                // Progress bar
+                                Stack(
+                                  children: [
+                                    Container(
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade200,
+                                        borderRadius: BorderRadius.circular(3),
+                                      ),
+                                    ),
+                                    FractionallySizedBox(
+                                      widthFactor: percentage / 100,
+                                      child: Container(
+                                        height: 6,
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              AppTheme.primary,
+                                              AppTheme.accent,
+                                            ],
+                                          ),
+                                          borderRadius: BorderRadius.circular(3),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: AppTheme.primary.withOpacity(0.3),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 1),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  "${percentage.toStringAsFixed(1)}% dari total area",
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.textMedium,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1131,7 +1873,7 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
           fillColor: Colors.white,
           filled: true,
         ),
-        value: (value != null && items.contains(value)) ? value : null,
+        initialValue: (value != null && items.contains(value)) ? value : null,
         hint: Text(displayHint,
             style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
         isExpanded: true,
@@ -1238,37 +1980,263 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => context.go('/admin'),
+        leading: Container(
+          margin: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+            onPressed: () => context.go('/admin'),
+            padding: EdgeInsets.zero,
+          ),
         ),
-        title: DropdownButton<String>(
-          value: _selectedRegion,
-          hint: const Text("Pilih Region",
-              style: TextStyle(color: Colors.white70)),
-          dropdownColor: AppTheme.primaryDark,
-          style: const TextStyle(
-              color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-          icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
-          underline: Container(),
-          items: _regionOptions.map<DropdownMenuItem<String>>((String value) {
-            return DropdownMenuItem<String>(
-              value: value,
-              child: Text(value),
-            );
-          }).toList(),
-          onChanged: _isLoading ? null : _onRegionChanged,
+        title: GestureDetector(
+          onTap: _isLoading ? null : _showRegionSelectionBottomSheet,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+                width: 1.5,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _selectedRegion == _allRegionsSentinel
+                      ? Icons.public_rounded
+                      : Icons.location_on_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    _selectedRegion ?? 'Pilih Region',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.unfold_more_rounded,
+                  color: Colors.white.withOpacity(0.9),
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
         ),
-        backgroundColor: AppTheme.primary,
-        iconTheme: const IconThemeData(color: Colors.white),
-        elevation: 2,
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppTheme.primary,
+                AppTheme.primaryDark,
+              ],
+            ),
+          ),
+        ),
+        elevation: 4,
+        shadowColor: Colors.black.withOpacity(0.3),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _selectedRegion == null
-                ? null
-                : () => _onRegionChanged(_selectedRegion),
-          )
+          // Cache indicator
+          if (_isCacheValid())
+            TweenAnimationBuilder(
+              tween: Tween<double>(begin: 0, end: 1),
+              duration: const Duration(milliseconds: 400),
+              builder: (context, double value, child) {
+                return Transform.scale(
+                  scale: 0.8 + (value * 0.2),
+                  child: Opacity(
+                    opacity: value,
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 4),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.amber.shade400,
+                            Colors.orange.shade400,
+                          ],
+                        ),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.amber.withOpacity(0.4),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.offline_bolt_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+
+          // Menu button
+          Container(
+            margin: const EdgeInsets.only(right: 8, top: 8, bottom: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 22),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              color: Colors.white,
+              elevation: 8,
+              offset: const Offset(0, 50),
+              onSelected: (value) {
+                if (value == 'clear_cache') {
+                  HapticFeedback.mediumImpact();
+                  setState(() {
+                    _dataCache.clear();
+                    _lastCacheTime = null;
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.check_circle,
+                                color: Colors.green, size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Cache berhasil dihapus',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: Colors.white,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      margin: const EdgeInsets.all(16),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                } else if (value == 'refresh') {
+                  HapticFeedback.mediumImpact();
+                  if (_selectedRegion != null) {
+                    _dataCache.clear();
+                    _lastCacheTime = null;
+                    _onRegionChanged(_selectedRegion);
+                  }
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'refresh',
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Colors.blue.shade400, Colors.blue.shade600],
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.blue.withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(Icons.refresh_rounded,
+                              size: 20, color: Colors.white),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Refresh Data',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            Text('Muat ulang data terbaru',
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_isCacheValid())
+                  PopupMenuItem(
+                    value: 'clear_cache',
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [Colors.orange.shade400, Colors.deepOrange.shade500],
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.orange.withOpacity(0.3),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(Icons.delete_sweep_rounded,
+                                size: 20, color: Colors.white),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Hapus Cache',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                              Text('Bersihkan data tersimpan',
+                                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
       body: Column(
@@ -1276,15 +2244,80 @@ class _WorkloadMapScreenState extends State<WorkloadMapScreen> {
           if (_selectedRegion != null) _buildFilterBar(),
           Expanded(
             child: _isLoading
-                ? const Center(
-                child: CircularProgressIndicator(color: AppTheme.primary))
+                ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 80,
+                        height: 80,
+                        child: CircularProgressIndicator(
+                          color: AppTheme.primary,
+                          strokeWidth: 4,
+                        ),
+                      ),
+                      Icon(
+                        _selectedRegion == _allRegionsSentinel
+                            ? Icons.public
+                            : Icons.location_on,
+                        color: AppTheme.primary.withOpacity(0.5),
+                        size: 40,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    _selectedRegion == _allRegionsSentinel
+                        ? 'Memuat data dari semua region...'
+                        : 'Memuat data peta...',
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (_selectedRegion == _allRegionsSentinel) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Ini mungkin memakan waktu beberapa saat',
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            )
                 : _error != null
                 ? Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Text("Error: $_error",
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.red)),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline,
+                          size: 64, color: Colors.red.shade300),
+                      const SizedBox(height: 16),
+                      Text(
+                        "Terjadi Kesalahan",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ],
+                  ),
                 ))
                 : _selectedRegion == null
                 ? _buildInitialPrompt()

@@ -6,9 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../services/config_manager.dart';
+import '../services/google_sheets_api.dart';
 
 class AbsensiDashboard extends StatefulWidget {
   const AbsensiDashboard({super.key});
@@ -25,6 +25,12 @@ class _AbsensiDashboardState extends State<AbsensiDashboard> {
   bool _isLoading = false;
 
   final List<String> _filterOptions = ['Semua', 'Hari Ini', 'Minggu Ini', 'Bulan Ini'];
+  static const String _allRegionsSentinel = "Semua Region";
+
+  // Cache system
+  static final Map<String, Map<String, List<AbsensiData>>> _dataCache = {};
+  static DateTime? _lastCacheTime;
+  static const Duration _cacheDuration = Duration(minutes: 30);
 
   @override
   void initState() {
@@ -52,86 +58,248 @@ class _AbsensiDashboardState extends State<AbsensiDashboard> {
     await ConfigManager.loadConfig();
   }
 
-  // Fetch data dari Firestore untuk satu region
-  Future<List<AbsensiData>> _fetchSingleRegionData(String region) async {
+  bool _isCacheValid() {
+    if (_lastCacheTime == null) return false;
+    return DateTime.now().difference(_lastCacheTime!) < _cacheDuration;
+  }
+
+  // Fetch data dari Google Sheets untuk satu region
+  Future<Map<String, dynamic>> _fetchSingleRegionData(
+      String regionName, String spreadsheetId) async {
     try {
+      debugPrint('📋 [Fetch] Fetching data for $regionName from spreadsheet: $spreadsheetId');
+
+      final googleSheetsApi = GoogleSheetsApi(spreadsheetId);
+      final initSuccess = await googleSheetsApi.init();
+
+      if (!initSuccess) {
+        debugPrint('⚠️ [Fetch] Failed to init GoogleSheetsApi for $regionName');
+        return {
+          'regionName': regionName,
+          'data': <AbsensiData>[],
+        };
+      }
+
+      final rows = await googleSheetsApi.getSpreadsheetData('Absen Log');
+
+      if (rows.isEmpty || rows.length <= 1) {
+        debugPrint('⚠️ [Fetch] No data in Absen Log for $regionName');
+        return {
+          'regionName': regionName,
+          'data': <AbsensiData>[],
+        };
+      }
+
+      final absensiList = <AbsensiData>[];
+      final dataRows = rows.skip(1);
       final now = DateTime.now();
       final startDate = _getStartDateByFilter();
 
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('absen_logs')
-          .where('region', isEqualTo: region)
-          .where('timestamp', isGreaterThanOrEqualTo: startDate)
-          .where('timestamp', isLessThan: DateTime(now.year, now.month, now.day + 1))
-          .orderBy('timestamp', descending: true)
-          .get()
-          .timeout(const Duration(seconds: 20));
+      for (final row in dataRows) {
+        if (row.isEmpty) continue;
 
-      final absensiList = <AbsensiData>[];
-      for (final doc in querySnapshot.docs) {
         try {
-          final data = doc.data();
-          final timestamp = (data['timestamp'] as Timestamp).toDate();
+          // Parse data dari row
+          final timestampStr = _getValue(row, 0, ''); // Kolom Timestamp
+          final userName = _getValue(row, 1, ''); // Kolom User Name
+          final location = _getValue(row, 2, ''); // Kolom Location
+
+          if (timestampStr.isEmpty || userName.isEmpty) continue;
+
+          // Parse timestamp dengan berbagai format
+          DateTime timestamp;
+          try {
+            // Coba format standar ISO 8601
+            timestamp = DateTime.parse(timestampStr);
+          } catch (e) {
+            try {
+              // Coba format Indonesia: dd/MM/yyyy HH:mm:ss
+              final formatter = DateFormat('dd/MM/yyyy HH:mm:ss');
+              timestamp = formatter.parse(timestampStr);
+            } catch (e2) {
+              try {
+                // Coba format alternatif: dd-MM-yyyy HH:mm:ss
+                final formatter = DateFormat('dd-MM-yyyy HH:mm:ss');
+                timestamp = formatter.parse(timestampStr);
+              } catch (e3) {
+                try {
+                  // Coba format tanpa detik: dd/MM/yyyy HH:mm
+                  final formatter = DateFormat('dd/MM/yyyy HH:mm');
+                  timestamp = formatter.parse(timestampStr);
+                } catch (e4) {
+                  debugPrint('⚠️ [Parse] Invalid timestamp format: $timestampStr');
+                  debugPrint('Tried formats: ISO 8601, dd/MM/yyyy HH:mm:ss, dd-MM-yyyy HH:mm:ss, dd/MM/yyyy HH:mm');
+                  continue;
+                }
+              }
+            }
+          }
+
+          // Filter by date range
+          if (timestamp.isBefore(startDate) ||
+              timestamp.isAfter(DateTime(now.year, now.month, now.day + 1))) {
+            continue;
+          }
 
           absensiList.add(AbsensiData(
-            name: data['userName'] ?? '',
+            name: userName,
             date: timestamp,
             time: TimeOfDay(hour: timestamp.hour, minute: timestamp.minute),
-            location: data['location'] ?? '',
-            region: region,
+            location: location,
+            region: regionName,
           ));
         } catch (e) {
-          debugPrint('Error parsing document for region $region: $e');
+          debugPrint('⚠️ [Parse] Error parsing row in $regionName: $e');
+          continue;
         }
       }
-      return absensiList;
-    } catch (e) {
-      debugPrint('Error fetching data for region $region: $e');
-      return [];
+
+      debugPrint('✅ [Fetch] $regionName: ${absensiList.length} records');
+
+      return {
+        'regionName': regionName,
+        'data': absensiList,
+      };
+    } catch (e, stackTrace) {
+      debugPrint('❌ [Fetch] Error fetching $regionName: $e');
+      debugPrint('Stack trace: $stackTrace');
+      return {
+        'regionName': regionName,
+        'data': <AbsensiData>[],
+      };
     }
   }
 
-  // Fetch data dari Firestore untuk semua region
+  String _getValue(List<String> row, int index, String defaultValue) {
+    return row.isNotEmpty && index >= 0 && index < row.length
+        ? row[index]
+        : defaultValue;
+  }
+
+  // Fetch data dari Google Sheets untuk semua region (PARALLEL)
   Future<void> _fetchAllRegionsData() async {
     try {
-      final now = DateTime.now();
-      final startDate = _getStartDateByFilter();
+      final filterKey = _selectedFilter;
 
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('absen_logs')
-          .where('timestamp', isGreaterThanOrEqualTo: startDate)
-          .where('timestamp', isLessThan: DateTime(now.year, now.month, now.day + 1))
-          .orderBy('timestamp', descending: true)
-          .get()
-          .timeout(const Duration(seconds: 30));
+      // Check cache first
+      if (_isCacheValid() && _dataCache.containsKey(filterKey)) {
+        debugPrint('⚡ [Cache] Using cached data for $filterKey');
+        if (mounted) {
+          setState(() {
+            _absensiData = List.from(_dataCache[filterKey]!.values.expand((x) => x));
+            _filterData();
+          });
+        }
+        return;
+      }
 
-      final absensiList = <AbsensiData>[];
-      for (final doc in querySnapshot.docs) {
-        try {
-          final data = doc.data();
-          final timestamp = (data['timestamp'] as Timestamp).toDate();
+      debugPrint('📋 [Fetch] Fetching ALL regions data in parallel...');
 
-          absensiList.add(AbsensiData(
-            name: data['userName'] ?? '',
-            date: timestamp,
-            time: TimeOfDay(hour: timestamp.hour, minute: timestamp.minute),
-            location: data['location'] ?? '',
-            region: data['region'] ?? 'Unknown',
-          ));
-        } catch (e) {
-          debugPrint('Error parsing document: $e');
+      final regions = ConfigManager.regions;
+      debugPrint('📋 [Fetch] Total regions to fetch: ${regions.length}');
+
+      // ✨ PARALLEL FETCHING
+      final List<Future<Map<String, dynamic>>> fetchFutures = [];
+
+      for (final entry in regions.entries) {
+        final regionName = entry.key;
+        final spreadsheetId = entry.value;
+        fetchFutures.add(_fetchSingleRegionData(regionName, spreadsheetId));
+      }
+
+      // Wait for ALL regions
+      final results = await Future.wait(
+        fetchFutures,
+        eagerError: false,
+      ).timeout(
+        const Duration(seconds: 45),
+        onTimeout: () {
+          debugPrint('⏱️ [Fetch] Timeout reached, using partial results');
+          return fetchFutures.map((f) => f.then((v) => v).catchError((e) => <String, dynamic>{})).toList() as List<Map<String, dynamic>>;
+        },
+      );
+
+      // Collect all data
+      final allData = <AbsensiData>[];
+      final Map<String, List<AbsensiData>> regionDataMap = {};
+      int successCount = 0;
+
+      for (final result in results) {
+        if (result.isNotEmpty && result.containsKey('regionName')) {
+          final regionName = result['regionName'] as String;
+          final data = result['data'] as List<AbsensiData>;
+
+          if (data.isNotEmpty) {
+            regionDataMap[regionName] = data;
+            allData.addAll(data);
+            successCount++;
+            debugPrint('✅ [Fetch] Region: $regionName - ${data.length} rows');
+          }
         }
       }
 
+      // Save to cache
+      _dataCache[filterKey] = regionDataMap;
+      _lastCacheTime = DateTime.now();
+
+      debugPrint('🎉 [Fetch] Parallel fetch completed!');
+      debugPrint('✅ [Fetch] Success: $successCount/${regions.length} regions');
+      debugPrint('📦 [Fetch] Total rows collected: ${allData.length}');
+
       if (mounted) {
         setState(() {
-          _absensiData = absensiList;
+          _absensiData = allData;
           _filterData();
         });
       }
     } catch (e) {
-      debugPrint('Error fetching all regions data: $e');
+      debugPrint('❌ [Fetch] Error fetching all regions data: $e');
       _showErrorMessage('Gagal memuat data: ${e.toString()}');
+    }
+  }
+
+  // Fetch single region dengan cache
+  Future<void> _fetchSingleRegionDataWithCache(String region) async {
+    final filterKey = _selectedFilter;
+
+    // Check cache
+    if (_isCacheValid() &&
+        _dataCache.containsKey(filterKey) &&
+        _dataCache[filterKey]!.containsKey(region)) {
+      debugPrint('⚡ [Cache] Using cached data for $region - $filterKey');
+      if (mounted) {
+        setState(() {
+          _absensiData = List.from(_dataCache[filterKey]![region]!);
+          _filterData();
+        });
+      }
+      return;
+    }
+
+    // Get spreadsheet ID
+    final spreadsheetId = ConfigManager.getSpreadsheetId(region);
+    if (spreadsheetId == null) {
+      debugPrint('❌ [Fetch] No spreadsheet ID found for region: $region');
+      _showErrorMessage('Spreadsheet ID tidak ditemukan untuk region: $region');
+      return;
+    }
+
+    // Fetch new data
+    final result = await _fetchSingleRegionData(region, spreadsheetId);
+    final data = result['data'] as List<AbsensiData>;
+
+    // Save to cache
+    if (!_dataCache.containsKey(filterKey)) {
+      _dataCache[filterKey] = {};
+    }
+    _dataCache[filterKey]![region] = data;
+    _lastCacheTime = DateTime.now();
+
+    if (mounted) {
+      setState(() {
+        _absensiData = data;
+        _filterData();
+      });
     }
   }
 
@@ -144,7 +312,6 @@ class _AbsensiDashboardState extends State<AbsensiDashboard> {
     } else if (_selectedFilter == 'Bulan Ini') {
       return DateTime(now.year, now.month, 1);
     }
-    // Default: 3 bulan terakhir untuk 'Semua'
     return DateTime(now.year, now.month - 3, now.day);
   }
 
@@ -187,11 +354,66 @@ class _AbsensiDashboardState extends State<AbsensiDashboard> {
           ),
           backgroundColor: Colors.green,
           actions: [
+            // Cache indicator
+            if (_isCacheValid())
+              Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade400,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.offline_bolt_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+              ),
             if (_selectedRegion.isNotEmpty)
-              IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.white),
-                onPressed: _handleRefresh,
-              )
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Colors.white),
+                onSelected: (value) {
+                  if (value == 'refresh') {
+                    _dataCache.clear();
+                    _lastCacheTime = null;
+                    _handleRefresh();
+                  } else if (value == 'clear_cache') {
+                    setState(() {
+                      _dataCache.clear();
+                      _lastCacheTime = null;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Cache berhasil dihapus'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'refresh',
+                    child: Row(
+                      children: [
+                        Icon(Icons.refresh),
+                        SizedBox(width: 8),
+                        Text('Refresh Data'),
+                      ],
+                    ),
+                  ),
+                  if (_isCacheValid())
+                    const PopupMenuItem(
+                      value: 'clear_cache',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_sweep),
+                          SizedBox(width: 8),
+                          Text('Hapus Cache'),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
           ],
         ),
         body: Column(
@@ -203,7 +425,21 @@ class _AbsensiDashboardState extends State<AbsensiDashboard> {
             const SizedBox(height: 10),
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CircularProgressIndicator(color: Colors.green),
+                    const SizedBox(height: 16),
+                    Text(
+                      _selectedRegion == _allRegionsSentinel
+                          ? 'Memuat data dari semua region...'
+                          : 'Memuat data absensi...',
+                      style: TextStyle(color: Colors.grey.shade700),
+                    ),
+                  ],
+                ),
+              )
                   : _buildContent(),
             ),
           ],
@@ -247,7 +483,7 @@ class _AbsensiDashboardState extends State<AbsensiDashboard> {
     if (chartData.isEmpty) return const SizedBox.shrink();
 
     String chartTitle;
-    if (_selectedRegion == 'Semua Region') {
+    if (_selectedRegion == _allRegionsSentinel) {
       chartTitle = 'Analisis Waktu Absensi per Region';
     } else {
       chartTitle = 'Analisis Waktu Absensi Region $_selectedRegion';
@@ -312,7 +548,10 @@ class _AbsensiDashboardState extends State<AbsensiDashboard> {
   }
 
   Widget _buildRegionDropdown() {
-    final List<String> regionItems = ['Semua Region', ...ConfigManager.regions.keys];
+    final List<String> regionItems = [
+      _allRegionsSentinel,
+      ...ConfigManager.regions.keys.toList()..sort()
+    ];
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -333,7 +572,19 @@ class _AbsensiDashboardState extends State<AbsensiDashboard> {
           items: regionItems.map((String region) {
             return DropdownMenuItem<String>(
               value: region,
-              child: Text(region),
+              child: Row(
+                children: [
+                  Icon(
+                    region == _allRegionsSentinel
+                        ? Icons.public_rounded
+                        : Icons.location_on_rounded,
+                    size: 18,
+                    color: Colors.green,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(region),
+                ],
+              ),
             );
           }).toList(),
           onChanged: _handleRegionChange,
@@ -353,16 +604,10 @@ class _AbsensiDashboardState extends State<AbsensiDashboard> {
     });
 
     try {
-      if (value == 'Semua Region') {
+      if (value == _allRegionsSentinel) {
         await _fetchAllRegionsData();
       } else {
-        final data = await _fetchSingleRegionData(value);
-        if (mounted) {
-          setState(() {
-            _absensiData = data;
-            _filterData();
-          });
-        }
+        await _fetchSingleRegionDataWithCache(value);
       }
     } catch (e) {
       _showErrorMessage('Gagal memuat data: ${e.toString()}');
@@ -408,7 +653,6 @@ class _AbsensiDashboardState extends State<AbsensiDashboard> {
                         _selectedFilter = value;
                         _isLoading = true;
                       });
-                      // Re-fetch dengan filter baru
                       _handleRegionChange(_selectedRegion);
                     }
                   },
@@ -424,7 +668,7 @@ class _AbsensiDashboardState extends State<AbsensiDashboard> {
   List<_BoxPlotChartData> _prepareChartData() {
     if (_filteredData.isEmpty) return [];
 
-    if (_selectedRegion == 'Semua Region') {
+    if (_selectedRegion == _allRegionsSentinel) {
       final groupedByRegion = groupBy(_filteredData, (AbsensiData data) => data.region);
       final chartData = groupedByRegion.entries.map((entry) {
         final regionName = entry.key;
