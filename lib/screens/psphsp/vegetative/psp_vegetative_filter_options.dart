@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 
@@ -49,22 +51,23 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
   late Animation<Offset> _slideAnimation;
 
   String? _selectedSeason;
-  // Changed from String? to List<String> to support multiple selections
   List<String> _selectedWeeks = [];
   List<String> _selectedFA = [];
   List<String> _selectedFIs = [];
+
+  // --- Theme Colors ---
+  final Color _primaryPurple = Colors.purple.shade800;
+  final Color _secondaryPurple = Colors.purple.shade600;
 
   @override
   void initState() {
     super.initState();
 
-    // Initialize with current values
     _selectedSeason = widget.selectedSeason;
     _selectedWeeks = List.from(widget.selectedWeekOfPspVegetative);
     _selectedFA = List.from(widget.selectedFA);
     _selectedFIs = List.from(widget.selectedFI);
 
-    // Set up animations
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -100,12 +103,12 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
         position: _slideAnimation,
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Colors.grey.shade50, // Light background
             borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withAlpha(51),
-                blurRadius: 15,
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
                 spreadRadius: 5,
               ),
             ],
@@ -119,16 +122,16 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
                 width: 40,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
               const SizedBox(height: 16),
 
-              // Header with animation
+              // Header
               _buildHeader(),
 
-              // Filter content
+              // Content
               Flexible(
                 child: SingleChildScrollView(
                   padding: EdgeInsets.only(
@@ -140,35 +143,26 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Filter count
                       _buildFilterCount(),
                       const SizedBox(height: 24),
-
-                      // Season filter
                       _buildFilterSection(
                         title: 'Season',
                         subtitle: 'Select growing season',
                         child: _buildSeasonFilter(),
                       ),
-                      const SizedBox(height: 32),
-
-                      // Week filter
+                      const SizedBox(height: 24),
                       _buildFilterSection(
                         title: 'Week of Psp Vegetative',
                         subtitle: 'Filter by specific weeks',
                         child: _buildWeekFilter(),
                       ),
-                      const SizedBox(height: 32),
-
-                      // FA filter
+                      const SizedBox(height: 24),
                       _buildFilterSection(
                         title: 'Field Assistant (FA)',
                         subtitle: 'Filter by field personnel',
                         child: _buildFAFilter(),
                       ),
-                      const SizedBox(height: 32),
-
-                      // FI filter
+                      const SizedBox(height: 24),
                       _buildFilterSection(
                         title: 'Field Inspector (FI)',
                         subtitle: 'Filter by Field Inspector',
@@ -180,7 +174,6 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
                 ),
               ),
 
-              // Action buttons
               _buildActionButtons(),
             ],
           ),
@@ -193,13 +186,13 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.orange.shade600, Colors.orange.shade800],
+          colors: [_primaryPurple, _secondaryPurple],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.orange.withAlpha(76),
+            color: _primaryPurple.withOpacity(0.3),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -211,11 +204,11 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withAlpha(51),
+              color: Colors.white.withOpacity(0.2),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
-              Icons.filter_alt_rounded,
+              Icons.tune_rounded,
               color: Colors.white,
             ),
           ),
@@ -241,8 +234,8 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
                         ? 'Active filters applied'
                         : 'No filters currently active',
                     style: TextStyle(
-                      color: Colors.white.withAlpha(204),
-                      fontSize: 14,
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 13,
                     ),
                   ),
                 ),
@@ -254,13 +247,10 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.white.withAlpha(51),
+                color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(
-                Icons.close,
-                color: Colors.white,
-              ),
+              child: const Icon(Icons.close_rounded, color: Colors.white),
             ),
           ),
         ],
@@ -279,18 +269,25 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: count > 0 ? Colors.orange.shade50 : Colors.grey.shade50,
+        color: count > 0 ? Colors.purple.shade50 : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: count > 0 ? Colors.orange.shade300 : Colors.grey.shade300,
-          width: 1.5,
+          color: count > 0 ? _secondaryPurple.withOpacity(0.5) : Colors.grey.shade300,
+          width: 1.0,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.05),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          )
+        ],
       ),
       child: Row(
         children: [
           Icon(
-            count > 0 ? Icons.filter_list_alt : Icons.filter_alt_off,
-            color: count > 0 ? Colors.orange.shade700 : Colors.grey.shade700,
+            count > 0 ? Icons.filter_list_alt : Icons.filter_alt_off_rounded,
+            color: count > 0 ? _primaryPurple : Colors.grey.shade500,
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -301,8 +298,8 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
                   : 'No filters active',
               style: TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: count > 0 ? Colors.orange.shade700 : Colors.grey.shade700,
+                fontWeight: FontWeight.w600,
+                color: count > 0 ? _primaryPurple : Colors.grey.shade700,
               ),
             ),
           ),
@@ -317,9 +314,9 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
                 });
               },
               child: Container(
-                padding: const EdgeInsets.all(4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.orange.shade100,
+                  color: _primaryPurple.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -327,7 +324,7 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: Colors.orange.shade700,
+                    color: _primaryPurple,
                   ),
                 ),
               ),
@@ -355,20 +352,20 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
         Text(
           title,
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: Colors.orange.shade800,
+            color: Colors.grey.shade800,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           subtitle,
           style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey.shade600,
+            fontSize: 13,
+            color: Colors.grey.shade500,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         child,
       ],
     );
@@ -378,7 +375,7 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
     return _buildDropdownFilter(
       value: _selectedSeason,
       items: ['All'] + widget.seasonsList,
-      icon: Icons.calendar_today,
+      icon: Icons.calendar_today_rounded,
       hintText: 'Select Growing Season',
       onChanged: (value) {
         setState(() {
@@ -389,102 +386,116 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
   }
 
   Widget _buildWeekFilter() {
+    return _buildMultiSelectFilter(
+      title: 'Weeks',
+      selectedItems: _selectedWeeks,
+      allItems: widget.weekOfPspVegetativeList,
+      onChanged: (selected) {
+        setState(() => _selectedWeeks = selected);
+      },
+      icon: Icons.date_range_rounded,
+    );
+  }
+
+  Widget _buildFAFilter() {
+    return _buildMultiSelectFilter(
+      title: 'Field Assistants',
+      selectedItems: _selectedFA,
+      allItems: widget.faNames,
+      onChanged: (selected) {
+        setState(() => _selectedFA = selected);
+      },
+      icon: Icons.supervisor_account_rounded,
+    );
+  }
+
+  Widget _buildFIFilter() {
+    return _buildMultiSelectFilter(
+      title: 'Field Inspectors',
+      selectedItems: _selectedFIs,
+      allItems: widget.fiNames,
+      onChanged: (selected) {
+        setState(() => _selectedFIs = selected);
+      },
+      icon: Icons.fact_check_rounded,
+    );
+  }
+
+  Widget _buildMultiSelectFilter({
+    required String title,
+    required List<String> selectedItems,
+    required List<String> allItems,
+    required Function(List<String>) onChanged,
+    required IconData icon,
+  }) {
+    bool isActive = selectedItems.isNotEmpty;
+
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(12),
+            color: Colors.grey.withOpacity(0.08),
             blurRadius: 10,
-            spreadRadius: 1,
+            spreadRadius: 0,
+            offset: const Offset(0, 2),
           ),
         ],
-        gradient: LinearGradient(
-          colors: [
-            Colors.white,
-            _selectedWeeks.isNotEmpty ? Colors.orange.shade50 : Colors.grey.shade50
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
         border: Border.all(
-          color: _selectedWeeks.isNotEmpty ? Colors.orange.shade300 : Colors.grey.shade300,
-          width: 1.5,
+          color: isActive ? _secondaryPurple.withOpacity(0.5) : Colors.grey.shade300,
+          width: 1.0,
         ),
       ),
       child: Theme(
-        data: Theme.of(context).copyWith(
-          dividerColor: Colors.transparent,
-        ),
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           title: Row(
             children: [
               Icon(
-                Icons.date_range,
-                color: _selectedWeeks.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade600,
+                icon,
+                color: isActive ? _primaryPurple : Colors.grey.shade600,
                 size: 20,
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  _selectedWeeks.isEmpty
-                      ? 'Select Weeks of Psp Vegetative'
-                      : '${_selectedWeeks.length} Week${_selectedWeeks.length > 1 ? 's' : ''} selected',
+                  isActive
+                      ? '${selectedItems.length} Selected'
+                      : 'Select $title',
                   style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: _selectedWeeks.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
-                    color: _selectedWeeks.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade700,
+                    fontSize: 15,
+                    fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                    color: isActive ? _primaryPurple : Colors.grey.shade700,
                   ),
                 ),
               ),
             ],
           ),
-          trailing: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: _selectedWeeks.isNotEmpty ? Colors.orange.shade100 : Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              Icons.expand_more,
-              color: _selectedWeeks.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade700,
-              size: 16,
-            ),
-          ),
+          iconColor: _primaryPurple,
+          collapsedIconColor: Colors.grey.shade500,
           children: [
             Container(
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.of(context).size.height * 0.3,
               ),
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(12),
-                    blurRadius: 4,
-                    spreadRadius: 1,
-                  ),
-                ],
+                border: Border(top: BorderSide(color: Colors.grey.shade200)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Week list with scrollbar
                   Flexible(
                     child: Scrollbar(
                       thumbVisibility: true,
-                      radius: const Radius.circular(8),
-                      child: ListView.separated(
-                        padding: const EdgeInsets.all(8),
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
                         shrinkWrap: true,
-                        itemCount: widget.weekOfPspVegetativeList.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1),
+                        itemCount: allItems.length,
                         itemBuilder: (context, index) {
-                          final item = widget.weekOfPspVegetativeList[index];
-                          final isSelected = _selectedWeeks.contains(item);
+                          final item = allItems[index];
+                          final isSelected = selectedItems.contains(item);
 
                           return CheckboxListTile(
                             title: Text(
@@ -492,90 +503,43 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? Colors.orange.shade700 : Colors.black87,
+                                color: isSelected ? _primaryPurple : Colors.black87,
                               ),
                             ),
                             value: isSelected,
-                            activeColor: Colors.orange.shade600,
+                            activeColor: _primaryPurple,
                             checkColor: Colors.white,
+                            dense: true,
                             onChanged: (bool? value) {
-                              setState(() {
-                                if (value == true) {
-                                  _selectedWeeks.add(item);
-                                } else {
-                                  _selectedWeeks.remove(item);
-                                }
-                              });
+                              List<String> newSelection = List.from(selectedItems);
+                              if (value == true) {
+                                newSelection.add(item);
+                              } else {
+                                newSelection.remove(item);
+                              }
+                              onChanged(newSelection);
                             },
-                            controlAffinity: ListTileControlAffinity.leading,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                            visualDensity: VisualDensity.compact,
-                            tileColor: isSelected ? Colors.orange.withAlpha(15) : null,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
                           );
                         },
                       ),
                     ),
                   ),
-
-                  // Quick selection buttons
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: Colors.grey.shade50,
-                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
-                      border: Border(
-                        top: BorderSide(color: Colors.grey.shade200),
-                      ),
+                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        TextButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _selectedWeeks = List.from(widget.weekOfPspVegetativeList);
-                            });
-                          },
-                          icon: Icon(Icons.select_all, color: Colors.orange.shade700, size: 16),
-                          label: Text(
-                            'Select All',
-                            style: TextStyle(
-                              color: Colors.orange.shade700,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
+                        TextButton(
+                          onPressed: () => onChanged(List.from(allItems)),
+                          child: Text('Select All', style: TextStyle(color: _secondaryPurple)),
                         ),
-                        TextButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _selectedWeeks.clear();
-                            });
-                          },
-                          icon: Icon(Icons.deselect, color: Colors.orange.shade700, size: 16),
-                          label: Text(
-                            'Clear All',
-                            style: TextStyle(
-                              color: Colors.orange.shade700,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
+                        TextButton(
+                          onPressed: () => onChanged([]),
+                          child: Text('Clear', style: TextStyle(color: Colors.red.shade400)),
                         ),
                       ],
                     ),
@@ -588,6 +552,7 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
       ),
     );
   }
+
 
   Widget _buildDropdownFilter({
     required String? value,
@@ -599,21 +564,18 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(12),
+            color: Colors.grey.withOpacity(0.08),
             blurRadius: 10,
-            spreadRadius: 1,
+            spreadRadius: 0,
+            offset: const Offset(0, 2),
           ),
         ],
-        gradient: LinearGradient(
-          colors: [Colors.white, value != null ? Colors.orange.shade50 : Colors.grey.shade50],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
         border: Border.all(
-          color: value != null ? Colors.orange.shade300 : Colors.grey.shade300,
-          width: 1.5,
+          color: value != null ? _secondaryPurple.withOpacity(0.5) : Colors.grey.shade300,
+          width: 1.0,
         ),
       ),
       child: DropdownButtonHideUnderline(
@@ -623,15 +585,9 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
             children: [
               Icon(icon, color: Colors.grey.shade600, size: 20),
               const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  hintText,
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
-                    fontSize: 16,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
+              Text(
+                hintText,
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
               ),
             ],
           ),
@@ -642,19 +598,8 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
               borderRadius: BorderRadius.circular(16),
             ),
           ),
-          iconStyleData: IconStyleData(
-            icon: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: value != null ? Colors.orange.shade100 : Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                Icons.expand_more,
-                color: value != null ? Colors.orange.shade700 : Colors.grey.shade700,
-                size: 16,
-              ),
-            ),
+          iconStyleData: const IconStyleData(
+            icon: Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey),
           ),
           dropdownStyleData: DropdownStyleData(
             decoration: BoxDecoration(
@@ -662,27 +607,20 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withAlpha(25),
-                  blurRadius: 8,
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
               ],
             ),
-            offset: const Offset(0, -10),
-            scrollbarTheme: ScrollbarThemeData(
-              radius: const Radius.circular(8),
-              thickness: WidgetStateProperty.all(6),
-              thumbVisibility: WidgetStateProperty.all(true),
-            ),
+            offset: const Offset(0, -4),
           ),
           menuItemStyleData: MenuItemStyleData(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             selectedMenuItemBuilder: (context, child) {
               return Container(
                 decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
+                  color: Colors.purple.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.shade200),
                 ),
                 child: child,
               );
@@ -690,432 +628,16 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
           ),
           items: items.map((item) => DropdownMenuItem<String>(
             value: item,
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  color: value == item ? Colors.orange.shade700 : Colors.grey.shade700,
-                  size: 18,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    item,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: value == item ? FontWeight.bold : FontWeight.normal,
-                      color: value == item ? Colors.orange.shade700 : Colors.black87,
-                    ),
-                  ),
-                ),
-                if (value == item)
-                  Icon(Icons.check_circle, color: Colors.orange.shade600, size: 18),
-              ],
+            child: Text(
+              item,
+              style: TextStyle(
+                fontSize: 14,
+                color: value == item ? _primaryPurple : Colors.black87,
+                fontWeight: value == item ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
           )).toList(),
           onChanged: onChanged,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFAFilter() {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(12),
-            blurRadius: 10,
-            spreadRadius: 1,
-          ),
-        ],
-        gradient: LinearGradient(
-          colors: [
-            Colors.white,
-            _selectedFA.isNotEmpty ? Colors.orange.shade50 : Colors.grey.shade50
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-        border: Border.all(
-          color: _selectedFA.isNotEmpty ? Colors.orange.shade300 : Colors.grey.shade300,
-          width: 1.5,
-        ),
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(
-          dividerColor: Colors.transparent,
-        ),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          title: Row(
-            children: [
-              Icon(
-                Icons.group,
-                color: _selectedFA.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade600,
-                size: 20,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _selectedFA.isEmpty
-                      ? 'Select Field Assistants'
-                      : '${_selectedFA.length} FA${_selectedFA.length > 1 ? 's' : ''} selected',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: _selectedFA.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
-                    color: _selectedFA.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          trailing: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: _selectedFA.isNotEmpty ? Colors.orange.shade100 : Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              Icons.expand_more,
-              color: _selectedFA.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade700,
-              size: 16,
-            ),
-          ),
-          children: [
-            Container(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.3,
-              ),
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(12),
-                    blurRadius: 4,
-                    spreadRadius: 1,
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // FA list with scrollbar
-                  Flexible(
-                    child: Scrollbar(
-                      thumbVisibility: true,
-                      radius: const Radius.circular(8),
-                      child: ListView.separated(
-                        padding: const EdgeInsets.all(8),
-                        shrinkWrap: true,
-                        itemCount: widget.faNames.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final item = widget.faNames[index];
-                          final isSelected = _selectedFA.contains(item);
-
-                          return CheckboxListTile(
-                            title: Text(
-                              item,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? Colors.orange.shade700 : Colors.black87,
-                              ),
-                            ),
-                            value: isSelected,
-                            activeColor: Colors.orange.shade600,
-                            checkColor: Colors.white,
-                            onChanged: (bool? value) {
-                              setState(() {
-                                if (value == true) {
-                                  _selectedFA.add(item);
-                                } else {
-                                  _selectedFA.remove(item);
-                                }
-                              });
-                            },
-                            controlAffinity: ListTileControlAffinity.leading,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                            visualDensity: VisualDensity.compact,
-                            tileColor: isSelected ? Colors.orange.withAlpha(15) : null,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-
-                  // Quick selection buttons
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
-                      border: Border(
-                        top: BorderSide(color: Colors.grey.shade200),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _selectedFA = List.from(widget.faNames);
-                            });
-                          },
-                          icon: Icon(Icons.select_all, color: Colors.orange.shade700, size: 16),
-                          label: Text(
-                            'Select All',
-                            style: TextStyle(
-                              color: Colors.orange.shade700,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _selectedFA.clear();
-                            });
-                          },
-                          icon: Icon(Icons.deselect, color: Colors.orange.shade700, size: 16),
-                          label: Text(
-                            'Clear All',
-                            style: TextStyle(
-                              color: Colors.orange.shade700,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFIFilter() {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(12),
-            blurRadius: 10,
-            spreadRadius: 1,
-          ),
-        ],
-        gradient: LinearGradient(
-          colors: [
-            Colors.white,
-            _selectedFIs.isNotEmpty ? Colors.orange.shade50 : Colors.grey.shade50
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-        border: Border.all(
-          color: _selectedFIs.isNotEmpty ? Colors.orange.shade300 : Colors.grey.shade300,
-          width: 1.5,
-        ),
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(
-          dividerColor: Colors.transparent,
-        ),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          title: Row(
-            children: [
-              Icon(
-                Icons.check_circle,
-                color: _selectedFIs.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade600,
-                size: 20,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _selectedFIs.isEmpty
-                      ? 'Select Field Inspector'
-                      : '${_selectedFIs.length} FI${_selectedFIs.length > 1 ? 's' : ''} selected',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: _selectedFIs.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
-                    color: _selectedFIs.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          trailing: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: _selectedFIs.isNotEmpty ? Colors.orange.shade100 : Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              Icons.expand_more,
-              color: _selectedFIs.isNotEmpty ? Colors.orange.shade700 : Colors.grey.shade700,
-              size: 16,
-            ),
-          ),
-          children: [
-            Container(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.3,
-              ),
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(12),
-                    blurRadius: 4,
-                    spreadRadius: 1,
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // FI list with scrollbar
-                  Flexible(
-                    child: Scrollbar(
-                      thumbVisibility: true,
-                      radius: const Radius.circular(8),
-                      child: ListView.separated(
-                        padding: const EdgeInsets.all(8),
-                        shrinkWrap: true,
-                        itemCount: widget.fiNames.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final item = widget.fiNames[index];
-                          final isSelected = _selectedFIs.contains(item);
-
-                          return CheckboxListTile(
-                            title: Text(
-                              item,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? Colors.orange.shade700 : Colors.black87,
-                              ),
-                            ),
-                            value: isSelected,
-                            activeColor: Colors.orange.shade600,
-                            checkColor: Colors.white,
-                            onChanged: (bool? value) {
-                              setState(() {
-                                if (value == true) {
-                                  _selectedFIs.add(item);
-                                } else {
-                                  _selectedFIs.remove(item);
-                                }
-                              });
-                            },
-                            controlAffinity: ListTileControlAffinity.leading,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                            visualDensity: VisualDensity.compact,
-                            tileColor: isSelected ? Colors.orange.withAlpha(15) : null,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-
-                  // Quick selection buttons
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
-                      border: Border(
-                        top: BorderSide(color: Colors.grey.shade200),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _selectedFIs = List.from(widget.fiNames);
-                            });
-                          },
-                          icon: Icon(Icons.select_all, color: Colors.orange.shade700, size: 16),
-                          label: Text(
-                            'Select All',
-                            style: TextStyle(
-                              color: Colors.orange.shade700,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _selectedFIs.clear();
-                            });
-                          },
-                          icon: Icon(Icons.deselect, color: Colors.orange.shade700, size: 16),
-                          label: Text(
-                            'Clear All',
-                            style: TextStyle(
-                              color: Colors.orange.shade700,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -1128,77 +650,53 @@ class _PspVegetativeFilterOptionsState extends State<PspVegetativeFilterOptions>
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(12),
+            color: Colors.grey.withOpacity(0.1),
             blurRadius: 10,
             offset: const Offset(0, -4),
           ),
         ],
-        border: Border(
-          top: BorderSide(color: Colors.grey.shade200),
-        ),
       ),
       child: Row(
         children: [
-          // Cancel button
           Expanded(
             child: OutlinedButton(
-              onPressed: () {
-                Navigator.pop(context); // Just close without applying
-              },
+              onPressed: () => Navigator.pop(context),
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.orange.shade700,
-                side: BorderSide(color: Colors.orange.shade700, width: 1.5),
+                foregroundColor: _primaryPurple,
+                side: BorderSide(color: _primaryPurple.withOpacity(0.5)),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              child: const Text(
-                'Cancel',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+              child: const Text('Cancel'),
             ),
           ),
           const SizedBox(width: 16),
-
-          // Apply button
           Expanded(
             flex: 2,
             child: ElevatedButton(
               onPressed: () {
                 widget.onSeasonChanged(_selectedSeason);
                 widget.onWeekOfPspVegetativeChanged(_selectedWeeks);
-                widget.onApplyFilters();
                 widget.onFAChanged(_selectedFA);
                 widget.onFIChanged(_selectedFIs);
                 widget.onApplyFilters();
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange.shade700,
+                backgroundColor: _primaryPurple,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                elevation: 0,
+                elevation: 4,
+                shadowColor: _primaryPurple.withOpacity(0.3),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    _hasActiveFilters() ? Icons.filter_list_alt : Icons.done,
-                    size: 18, color: Colors.white,
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Apply Filters',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
+              child: const Text(
+                'Apply Filters',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ),
           ),

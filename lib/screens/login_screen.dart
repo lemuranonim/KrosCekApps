@@ -26,6 +26,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   bool _isPsp = false;
   bool _isHsp = false;
   bool _isPspHsp = false;
+  bool _isPi = false;
   String _errorMessage = '';
   bool _isLoading = false;
   bool _showEmailPasswordFields = false;
@@ -71,7 +72,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       return;
     }
 
-    if (!_isAdmin && !_isQa && !_isHsp && !_isPsp && !_isPspHsp) {
+    if (!_isAdmin && !_isQa && !_isHsp && !_isPsp && !_isPspHsp && !_isPi) {
       setState(() {
         _errorMessage = "Please select a role before login.";
         _isLoading = false;
@@ -87,6 +88,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       if (_isQa) selectedRole = 'qa';
       if (_isHsp) selectedRole = 'hsp';
       if (_isPspHsp) selectedRole = 'psphsp';
+      if (_isPi) selectedRole = 'pi';
 
       await _redirectUserBasedOnRole(email, selectedRole!);
     } else {
@@ -103,7 +105,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       _errorMessage = '';
     });
 
-    if (!_isAdmin && !_isQa && !_isHsp && !_isPsp && !_isPspHsp) {
+    if (!_isAdmin && !_isQa && !_isHsp && !_isPsp && !_isPspHsp && !_isPi) {
       setState(() {
         _errorMessage = "Please select a role before login.";
         _isLoading = false;
@@ -119,6 +121,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       if (_isQa) selectedRole = 'qa';
       if (_isHsp) selectedRole = 'hsp';
       if (_isPspHsp) selectedRole = 'psphsp';
+      if (_isPi) selectedRole = 'pi';
 
       await _auth.createUserInFirestoreIfNeeded(user.email, role: selectedRole!);
       await _redirectUserBasedOnRole(user.email, selectedRole);
@@ -194,6 +197,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       final pspHspEmails = roleData.docs
           .firstWhere((doc) => doc.id == 'pspHspEmails')
           .data()['emails'] as List<dynamic>;
+      final piEmails = roleData.docs
+          .firstWhere((doc) => doc.id == 'piEmails')
+          .data()['emails'] as List<dynamic>;
 
       if (selectedRole == 'admin' && adminEmails.contains(email)) {
         await prefs.setString('userRole', 'admin');
@@ -210,6 +216,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       } else if (selectedRole == 'psphsp' && pspHspEmails.contains(email)) {
         await prefs.setString('userRole', 'psphsp');
         if (mounted) context.go('/psphsp');
+      } else if (selectedRole == 'pi' && piEmails.contains(email)) {
+        await prefs.setString('userRole', 'pi');
+        if (mounted) context.go('/pi');
       } else {
         if (mounted) {
           setState(() {
@@ -460,6 +469,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 _isPsp = false;
                 _isHsp = false;
                 _isPspHsp = false;
+                _isPi = false;
               }
             });
           },
@@ -477,6 +487,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 _isPsp = false;
                 _isHsp = false;
                 _isPspHsp = false;
+                _isPi = false;
               }
             });
           },
@@ -494,6 +505,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 _isQa = false;
                 _isPsp = false;
                 _isPspHsp = false;
+                _isPi = false;
               }
             });
           },
@@ -511,6 +523,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 _isQa = false;
                 _isHsp = false;
                 _isPspHsp = false;
+                _isPi = false;
               }
             });
           },
@@ -528,10 +541,29 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 _isQa = false;
                 _isHsp = false;
                 _isPsp = false;
+                _isPi = false;
               }
             });
           },
-        )
+        ),
+        const SizedBox(height: 8),
+        _buildRoleChip(
+          title: 'Plant Inspector',
+          value: _isPi,
+          icon: Icons.factory_rounded,
+          onChanged: (value) {
+            setState(() {
+              _isPi = value ?? false;
+              if (_isPi) {
+                _isAdmin = false;
+                _isQa = false;
+                _isHsp = false;
+                _isPsp = false;
+                _isPspHsp = false;
+              }
+            });
+          },
+        ),
       ],
     );
   }

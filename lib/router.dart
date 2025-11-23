@@ -29,6 +29,8 @@ import 'screens/admin/workload_map_screen.dart';
 import 'screens/admin/audit_dashboard.dart';
 // Notification Management
 import 'screens/admin/notifications_management.dart';
+// PI
+import 'screens/pi/pi_screen.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -108,6 +110,11 @@ final router = GoRouter(
       path: '/notifications_management',
       builder: (context, state) => const NotificationsManagementScreen(),
     ),
+    // PI
+    GoRoute(
+      path: '/pi',
+      builder: (context, state) => const PiScreen(),
+    ),
   ],
   redirect: (context, state) async {
     // Skip authentication check for splash screen
@@ -126,8 +133,8 @@ final router = GoRouter(
     }
 
     // If logged in as admin and trying to access home, redirect to admin dashboard
-    if (isLoggedIn && userRole == 'admin' && state.matchedLocation == '/qa') {
-      return '/admin';
+    if (isLoggedIn && userRole == 'pi' && state.matchedLocation == '/qa') {
+      return '/pi';
     }
 
     return null;

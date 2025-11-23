@@ -634,125 +634,125 @@ class AbsenLogScreenState extends State<AbsenLogScreen> with TickerProviderState
   @override
   Widget build(BuildContext context) {
     return PopScope(
-        canPop: !_isSubmitting, // ✅ Prevent back saat submitting
-        // ignore: deprecated_member_use
-        onPopInvoked: (didPop) {
-          if (!didPop && _isSubmitting) {
-            _showWarningSnackBar('Mohon tunggu, sedang menyimpan data...');
-          }
-        },
-        child: Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      body: Stack(
-        children: [
-          // Background Gradient
-          Container(
-            height: 280,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.green.shade700,
-                  Colors.green.shade800,
-                  Colors.green.shade900,
-                ],
-              ),
-            ),
-          ),
-
-          // Decorative Circles
-          Positioned(
-            top: -50,
-            right: -50,
-            child: Container(
-              width: 200,
-              height: 200,
+      canPop: !_isSubmitting, // ✅ Prevent back saat submitting
+      // ignore: deprecated_member_use
+      onPopInvoked: (didPop) {
+        if (!didPop && _isSubmitting) {
+          _showWarningSnackBar('Mohon tunggu, sedang menyimpan data...');
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        body: Stack(
+          children: [
+            // Background Gradient
+            Container(
+              height: 280,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withAlpha(12),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.green.shade700,
+                    Colors.green.shade800,
+                    Colors.green.shade900,
+                  ],
+                ),
               ),
             ),
-          ),
 
-          // Main Content
-          SafeArea(
-            child: Column(
-              children: [
-                // Custom AppBar
-                _buildCustomAppBar(),
+            // Decorative Circles
+            Positioned(
+              top: -50,
+              right: -50,
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withAlpha(12),
+                ),
+              ),
+            ),
 
-                // Scrollable Content
-                Expanded(
-                  child: _isLoading
-                      ? Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(32),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withAlpha(25),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Lottie.asset(
-                            'assets/loading.json',
-                            width: 120,
-                            height: 120,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Memproses...',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.green.shade800,
+            // Main Content
+            SafeArea(
+              child: Column(
+                children: [
+                  // Custom AppBar
+                  _buildCustomAppBar(),
+
+                  // Scrollable Content
+                  Expanded(
+                    child: _isLoading
+                        ? Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(32),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(25),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                      : FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: ScaleTransition(
-                      scale: _scaleAnimation,
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _buildUserCard(),
-                            const SizedBox(height: 16),
-                            _buildDateTimeCard(),
-                            const SizedBox(height: 16),
-                            _buildLocationCard(),
-                            const SizedBox(height: 16),
-                            _buildPhotoCard(),
-                            const SizedBox(height: 24),
-                            _buildActionButton(),
-                            const SizedBox(height: 16),
-                            _buildInstructionCard(),
-                            const SizedBox(height: 20),
                           ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Lottie.asset(
+                              'assets/loading.json',
+                              width: 120,
+                              height: 120,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Memproses...',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.green.shade800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                        : FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: ScaleTransition(
+                        scale: _scaleAnimation,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildUserCard(),
+                              const SizedBox(height: 16),
+                              _buildDateTimeCard(),
+                              const SizedBox(height: 16),
+                              _buildLocationCard(),
+                              const SizedBox(height: 16),
+                              _buildPhotoCard(),
+                              const SizedBox(height: 24),
+                              _buildActionButton(),
+                              const SizedBox(height: 16),
+                              _buildInstructionCard(),
+                              const SizedBox(height: 20),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
     );
   }
 
