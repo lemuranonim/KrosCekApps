@@ -57,3 +57,4 @@ android/app/src/debug/google-services1.json
 
 # FVM Version Cache
 .fvm/
+/lib/screens/pi/.claude/settings.local.json
