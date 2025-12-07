@@ -1014,7 +1014,7 @@ class _PlantInspectionFormState extends State<PlantInspectionForm> with TickerPr
                   Color catColor;
                   switch(category) {
                     case 'NC': catIcon = Icons.warning_rounded; catColor = Colors.red; break;
-                    case 'Observasi': catIcon = Icons.visibility_rounded; catColor = Colors.blue; break;
+                    case 'Improvement': catIcon = Icons.visibility_rounded; catColor = Colors.blue; break;
                     default: catIcon = Icons.more_horiz_rounded; catColor = Colors.purple; break;
                   }
 
