@@ -37,7 +37,7 @@ class PspScreenState extends State<PspScreen>
   String _appVersion = 'Fetching...';
   String userEmail = 'Fetching...';
   String userName = 'Fetching...';
-  List<String> fieldSPVList = ['PSP'];
+  List<String> fieldSPVList = ['PSP QA'];
   List<String> faList = [];
   List<String> qaSPVList = [];
   List<String> seasonList = [];
@@ -60,7 +60,7 @@ class PspScreenState extends State<PspScreen>
   Timer? _timer;
 
   final Map<String, String> regionDocumentIds = {
-    'PSP': 'psp',
+    'PSP QA': 'psp qa',
   };
 
   @override
@@ -339,8 +339,8 @@ class PspScreenState extends State<PspScreen>
       if (!snapshot.exists) return [];
       Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
 
-      if (data.containsKey('psp') && data['psp'] is List) {
-        return List<String>.from(data['psp']);
+      if (data.containsKey('psp qa') && data['psp qa'] is List) {
+        return List<String>.from(data['psp qa']);
       }
       return [];
     });
@@ -447,9 +447,9 @@ class PspScreenState extends State<PspScreen>
           .get();
       if (configSnapshot.exists) {
         final data = configSnapshot.data();
-        if (data != null && data.containsKey('psp')) {
+        if (data != null && data.containsKey('psp qa')) {
           setState(() {
-            fieldSPVList = List<String>.from(data['psp']);
+            fieldSPVList = List<String>.from(data['psp qa']);
           });
         }
       }
