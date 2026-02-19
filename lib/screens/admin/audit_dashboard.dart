@@ -1,16 +1,16 @@
+// ignore_for_file: curly_braces_in_flow_control_structures, use_build_context_synchronously
+
 import 'dart:async';
+import 'dart:convert'; // Wajib untuk utf8 & jsonEncode
+import 'package:archive/archive.dart'; // Wajib untuk GZIP
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
-// ignore: unused_import
-import 'package:collection/collection.dart';
-import 'package:dropdown_button2/dropdown_button2.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:syncfusion_flutter_charts/charts.dart';
 
-// Ganti path ini sesuai dengan struktur proyek Anda
 import '../services/config_manager.dart';
 import '../services/google_sheets_api.dart';
-// import 'generative_detail_screen.dart'; //
-import 'dashboard_widgets.dart'; // Pastikan file ini ada dan berisi CustomCard
 
 class AuditDashboard extends StatefulWidget {
   const AuditDashboard({super.key});
@@ -21,47 +21,44 @@ class AuditDashboard extends StatefulWidget {
 
 class _AuditDashboardState extends State<AuditDashboard> {
   // === STATE MANAGEMENT ===
-
-  // UI State
   bool _isLoading = false;
+  String? _loadingStatus;
   String? _error;
 
-  // Raw Data from Sheets
-  List<List<String>> _allGenerativeData = [];
-  final Map<String, int> _activityCounts = {};
-  final Map<String, List<DateTime>> _activityTimestamps = {};
+  // Data
+  List<List<String>> _allCombinedData = [];
+  Map<String, List<String>> _qaActivityMap = {};
 
-  // Filtered Data
   List<List<String>> _filteredData = [];
+  List<_AuditMonthlyData> _chartData = [];
 
-  // Filter Controls State
-  String? _selectedRegion;
+  // Statistik Total
+  double _totalSampunArea = 0;
+  double _totalDerengJangkepArea = 0;
+  double _totalDerengBlasArea = 0;
+  double _totalDerengArea = 0;
+  double _totalVisitedArea = 0;
+  double _totalNotVisitedArea = 0;
+
+  // Filter Controls
+  String? _selectedRegionGroup;
+  static const String _allRegionsSentinel = "Semua Region";
+
   String? _selectedQaSpv;
-  String? _selectedSeason;
-  final List<int> _selectedWeeks = [];
-  String _searchQuery = '';
-  // ✅ State untuk filter worksheet baru
+  String? _selectedDistrictFilter;
   String _selectedWorksheetTitle = 'Generative';
+
   final List<String> _worksheetTitles = ['Generative', 'Vegetative', 'Pre Harvest', 'Harvest'];
-
-  // Filter Options
-  List<String> _regionOptions = [];
+  List<String> _regionGroupOptions = [];
   List<String> _qaSpvOptions = [];
-  List<String> _seasonOptions = [];
-  List<int> _weekOptions = [];
+  List<String> _districtFilterOptions = [];
 
-  // API Instances
-  GoogleSheetsApi? _googleSheetsApi;
+  static const List<String> _excludedRegions = [
+    'PSP', 'PSP QA', 'SWC', 'HSP SWC', 'QA Plant Inspection'
+  ];
 
-  // Calculated Statistics
-  int _sampunCount = 0;
-  int _derengJangkepCount = 0;
-  int _derengBlasCount = 0;
-  int _derengCount = 0; // ✅ Statistik baru untuk 'Dereng'
-  double _sampunArea = 0.0;
-  double _derengJangkepArea = 0.0;
-  double _derengBlasArea = 0.0;
-  int _fieldsWithActivity = 0;
+  // Supabase Client Access
+  final _supabase = Supabase.instance.client;
 
   @override
   void initState() {
@@ -69,629 +66,769 @@ class _AuditDashboardState extends State<AuditDashboard> {
     _initializeApp();
   }
 
-  // === DATA & FILTER LOGIC ===
-
   Future<void> _initializeApp() async {
     setState(() => _isLoading = true);
     try {
       await ConfigManager.loadConfig();
-      setState(() {
-        _regionOptions = ConfigManager.getAllRegionNames()..sort();
-      });
+      _initRegionGroups();
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = "Gagal memuat konfigurasi: $e");
+      if (mounted) _showErrorMessage("Gagal memuat konfigurasi: $e");
     } finally {
-      // ignore: control_flow_in_finally
-      if (!mounted) return;
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _onRegionChanged(String? newRegion) async {
-    if (newRegion == null || newRegion == _selectedRegion) return;
+  // --- HELPER KOMPRESI & DEKOMPRESI ---
 
-    setState(() {
-      _selectedRegion = newRegion;
-      // Jangan reset worksheet, tapi panggil refetch
-    });
-
-    _fetchData();
+  // Mengubah Data Object -> JSON String -> GZIP Bytes
+  List<int>? _compressData(dynamic data) {
+    if (data == null) return null;
+    try {
+      final jsonString = jsonEncode(data);
+      final List<int> bytes = utf8.encode(jsonString);
+      return GZipEncoder().encode(bytes);
+    } catch (e) {
+      debugPrint("Gagal kompresi: $e");
+      return null;
+    }
   }
 
-  Future<void> _onWorksheetChanged(String? newWorksheet) async {
-    if(newWorksheet == null || newWorksheet == _selectedWorksheetTitle) return;
+  // Mengubah Raw Response (Hex String/Bytes) -> GZIP Decode -> JSON -> Data Object
+  dynamic _decompressData(dynamic rawData) {
+    if (rawData == null) return null;
+    try {
+      List<int> compressedBytes;
 
-    setState(() {
-      _selectedWorksheetTitle = newWorksheet;
-    });
+      // Handle jika Supabase mengembalikan Hex String (format Postgres bytea)
+      if (rawData is String) {
+        String cleanHex = rawData;
+        if (cleanHex.startsWith(r'\x')) {
+          cleanHex = cleanHex.substring(2);
+        }
+        // Convert Hex String ke List<int>
+        compressedBytes = [];
+        for (int i = 0; i < cleanHex.length; i += 2) {
+          compressedBytes.add(int.parse(cleanHex.substring(i, i + 2), radix: 16));
+        }
+      } else if (rawData is List) {
+        compressedBytes = List<int>.from(rawData);
+      } else {
+        return null;
+      }
 
-    _fetchData();
+      // Decompress GZIP
+      final List<int> decompressedBytes = GZipDecoder().decodeBytes(compressedBytes);
+      final String jsonString = utf8.decode(decompressedBytes);
+      return jsonDecode(jsonString);
+    } catch (e) {
+      debugPrint("Gagal dekompresi: $e");
+      return null;
+    }
   }
 
-  Future<void> _fetchData() async {
-    if(_selectedRegion == null) return;
+  // --- SUPABASE CACHE MANAGERS ---
+
+  Future<bool> _loadDataFromSupabase(String region, String worksheet) async {
+    try {
+      setState(() => _loadingStatus = "Mengambil ringkasan data...");
+
+      // 1. Ambil RINGKASAN dulu (Sangat Cepat, JSONB biasa)
+      final responseSummary = await _supabase
+          .from('audit_cache')
+          .select('chart_summary, updated_at')
+          .eq('region', region)
+          .eq('worksheet', worksheet)
+          .maybeSingle();
+
+      if (responseSummary == null) return false;
+
+      // 2. Jika ada summary, langsung tampilkan CHART!
+      if (responseSummary['chart_summary'] != null) {
+        final List<dynamic> rawSummary = responseSummary['chart_summary'];
+        final summaryData = rawSummary.map((e) => _AuditMonthlyData.fromJson(e)).toList();
+
+        if (mounted) {
+          setState(() {
+            _chartData = summaryData;
+            _recalculateTotalsFromSummary(summaryData);
+            _isLoading = false;
+          });
+        }
+      }
+
+      // 3. (BACKGROUND) Sekarang ambil Data Mentah (BINARY COMPRESSED)
+      _loadHeavyDataInBackground(region, worksheet);
+
+      return true;
+    } catch (e) {
+      debugPrint("Error reading cache: $e");
+      return false;
+    }
+  }
+
+  void _recalculateTotalsFromSummary(List<_AuditMonthlyData> summary) {
+    double s = 0, dj = 0, db = 0, v = 0, nv = 0;
+    for (var item in summary) {
+      s += item.sampunHa;
+      dj += item.derengJangkepHa;
+      db += item.derengBlasHa;
+      v += item.visitedHa;
+      nv += item.notVisitedHa;
+    }
+    setState(() {
+      _totalSampunArea = s;
+      _totalDerengJangkepArea = dj;
+      _totalDerengBlasArea = db;
+      _totalDerengArea = dj + db;
+      _totalVisitedArea = v;
+      _totalNotVisitedArea = nv;
+    });
+  }
+
+  Future<void> _loadHeavyDataInBackground(String region, String worksheet) async {
+    try {
+      // Ambil kolom bytea (binary)
+      final response = await _supabase
+          .from('audit_cache')
+          .select('data, activity_map')
+          .eq('region', region)
+          .eq('worksheet', worksheet)
+          .maybeSingle();
+
+      if (response == null) return;
+
+      // DEKOMPRESI DATA (Level 1 Optimization)
+      final List<dynamic> rawMainData = _decompressData(response['data']) ?? [];
+      final List<List<String>> mainData = rawMainData
+          .map((row) => (row as List).map((e) => e.toString()).toList())
+          .toList();
+
+      final Map<String, dynamic> rawActivity = _decompressData(response['activity_map']) ?? {};
+      final Map<String, List<String>> activityMap = rawActivity.map(
+            (k, v) => MapEntry(k, (v as List).map((e) => e.toString()).toList()),
+      );
+
+      if (mounted) {
+        setState(() {
+          _allCombinedData = mainData;
+          _qaActivityMap = activityMap;
+          _extractFilterOptions();
+        });
+      }
+    } catch (e) {
+      debugPrint("Background load error: $e");
+    }
+  }
+
+  Future<void> _saveDataToSupabase(String region, String worksheet) async {
+    try {
+      // 1. KOMPRESI DATA (Level 1 Optimization)
+      final List<int>? compressedData = _compressData(_allCombinedData);
+      final List<int>? compressedActivityMap = _compressData(_qaActivityMap);
+
+      // 2. Pre-Calc Summary (Tetap JSONB agar bisa dibaca cepat)
+      final summaryJson = _chartData.map((e) => e.toJson()).toList();
+
+      // 3. Simpan Binary ke Supabase
+      if (compressedData != null) {
+        await _supabase.from('audit_cache').upsert({
+          'region': region,
+          'worksheet': worksheet,
+          'data': compressedData, // Kirim Bytes
+          'activity_map': compressedActivityMap, // Kirim Bytes
+          'chart_summary': summaryJson,
+          'updated_at': DateTime.now().toIso8601String(),
+        }, onConflict: 'region, worksheet');
+
+        debugPrint("Compressed Data synced to Supabase for $region");
+      }
+    } catch (e) {
+      debugPrint("Error saving to Supabase: $e");
+    }
+  }
+
+  // --- DATA FETCHING ---
+
+  Future<void> _onRegionGroupChanged(String? newGroup, {bool forceRefresh = false}) async {
+    if (newGroup == null) return;
 
     setState(() {
+      _selectedRegionGroup = newGroup;
       _isLoading = true;
-      _clearAllData();
-      _resetSubFilters();
+      _error = null;
+      _selectedQaSpv = null;
+      _selectedDistrictFilter = null;
+    });
+
+    if (!forceRefresh) {
+      setState(() => _loadingStatus = "Mengecek database...");
+      final count = await _supabase
+          .from('audit_cache')
+          .count(CountOption.exact)
+          .eq('region', newGroup)
+          .eq('worksheet', _selectedWorksheetTitle);
+
+      if (count > 0) {
+        setState(() => _loadingStatus = "Cache ditemukan! Mengunduh data...");
+        bool loadedFromDb = await _loadDataFromSupabase(newGroup, _selectedWorksheetTitle);
+        if (loadedFromDb) {
+          if (mounted) setState(() => _isLoading = false);
+          return;
+        }
+      }
+    }
+
+    await _fetchFromApi(newGroup);
+  }
+
+  Future<void> _fetchFromApi(String groupName) async {
+    setState(() {
+      _allCombinedData.clear();
+      _qaActivityMap.clear();
+      _filteredData.clear();
+      _chartData.clear();
+      _loadingStatus = "Mempersiapkan data...";
     });
 
     try {
-      final spreadsheetId = ConfigManager.getSpreadsheetId(_selectedRegion!);
-      if (spreadsheetId == null) throw Exception("Spreadsheet ID untuk '$_selectedRegion' tidak ditemukan.");
+      final allKeys = ConfigManager.getAllRegionNames()
+          .where((r) => !_excludedRegions.contains(r))
+          .where((r) => r.startsWith('Region'))
+          .toList();
 
-      _googleSheetsApi = GoogleSheetsApi(spreadsheetId);
-      await _googleSheetsApi!.init();
+      List<String> targetKeys = [];
+      if (groupName == _allRegionsSentinel) {
+        targetKeys = allKeys;
+      } else {
+        targetKeys = allKeys.where((key) {
+          String keyGroup = key.contains(" - ") ? key.split(" - ")[0].trim() : key.trim();
+          return keyGroup == groupName;
+        }).toList();
+      }
 
-      final results = await Future.wait([
-        _googleSheetsApi!.getSpreadsheetData(_selectedWorksheetTitle),
-        _googleSheetsApi!.getSpreadsheetData('Aktivitas'),
-      ]);
+      if (targetKeys.isEmpty) throw Exception("Tidak ada data spreadsheet.");
 
-      _allGenerativeData = results[0];
-      _processActivityData(results[1]);
-      _populateSubFilterOptions();
-      _applyFilters();
+      List<List<String>> combinedMainData = [];
+      List<String> headers = [];
+      Map<String, List<String>> combinedActivityMap = {};
+
+      int totalRegions = targetKeys.length;
+      int processedCount = 0;
+
+      for (String regionKey in targetKeys) {
+        processedCount++;
+        setState(() => _loadingStatus = "Memproses $regionKey ($processedCount/$totalRegions)...");
+
+        // 1. COBA AMBIL DARI SUPABASE (DEKOMPRESI)
+        var (localData, localActivity) = await _getRegionDataFromSupabase(regionKey, _selectedWorksheetTitle);
+
+        if (localData != null && localData.isNotEmpty) {
+          debugPrint("✅ $regionKey diambil dari Cache Supabase");
+
+          if (headers.isEmpty && localData.isNotEmpty) headers = localData[0];
+
+          if (headers.isNotEmpty && localData[0].join() == headers.join()) {
+            combinedMainData.addAll(localData.sublist(1));
+          } else {
+            combinedMainData.addAll(localData);
+          }
+
+          if (localActivity != null) combinedActivityMap.addAll(localActivity);
+
+        } else {
+          // 2. DOWNLOAD DARI API
+          debugPrint("⬇️ $regionKey tidak ada di cache, download dari Sheets API...");
+          final sheetId = ConfigManager.getSpreadsheetId(regionKey);
+
+          if (sheetId != null) {
+            try {
+              final gSheets = GoogleSheetsApi(sheetId);
+              await gSheets.init();
+              final results = await Future.wait([
+                gSheets.getSpreadsheetData(_selectedWorksheetTitle),
+                gSheets.getSpreadsheetData('Aktivitas')
+              ]);
+
+              final mainRows = results[0];
+              if (mainRows.isNotEmpty) {
+                if (headers.isEmpty) headers = mainRows[0];
+                if (mainRows.length > 1) combinedMainData.addAll(mainRows.sublist(1));
+              }
+
+              final activityRows = results[1];
+              if (activityRows.length > 1) {
+                for (var row in activityRows.skip(1)) {
+                  final qaName = _safeGet(row, 1);
+                  final fieldNumber = _safeGet(row, 6);
+                  if (qaName.isNotEmpty && fieldNumber.isNotEmpty) {
+                    combinedActivityMap.putIfAbsent(qaName, () => []).add(fieldNumber);
+                  }
+                }
+              }
+            } catch (e) {
+              debugPrint("Gagal download $regionKey: $e");
+            }
+          }
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _allCombinedData = combinedMainData;
+          _qaActivityMap = combinedActivityMap;
+          _loadingStatus = "Menghitung Total...";
+        });
+
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        setState(() {
+          _extractFilterOptions();
+          _applyFilters();
+          _loadingStatus = "Mengompres & Menyimpan Cache...";
+        });
+
+        // Simpan versi terkompresi
+        await _saveDataToSupabase(groupName, _selectedWorksheetTitle);
+
+        setState(() {
+          _isLoading = false;
+          _loadingStatus = null;
+        });
+      }
 
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = "Gagal memuat data dari worksheet '$_selectedWorksheetTitle'. Pastikan sheet tersebut ada. Error: ${e.toString()}");
-    } finally {
-      // ignore: control_flow_in_finally
-      if (!mounted) return;
-      setState(() => _isLoading = false);
+      if (mounted) setState(() { _error = "Terjadi kesalahan: $e"; _isLoading = false; });
     }
   }
 
-  void _processActivityData(List<List<String>> activityRows) {
-    _activityCounts.clear();
-    _activityTimestamps.clear();
-    if (activityRows.length <= 1) return;
-    for (var row in activityRows.sublist(1)) {
-      final fieldNumber = _getValue(row, 1, "");
-      if (fieldNumber.isEmpty) continue;
-      _activityCounts[fieldNumber] = (_activityCounts[fieldNumber] ?? 0) + 1;
-      final timestamp = _parseDate(_getValue(row, 0, ""));
-      if(timestamp != null) _activityTimestamps.putIfAbsent(fieldNumber, () => []).add(timestamp);
+  // --- HELPER UNTUK MENGAMBIL DATA CACHE PER REGION (DEKOMPRESI) ---
+  Future<(List<List<String>>?, Map<String, List<String>>?)> _getRegionDataFromSupabase(String region, String worksheet) async {
+    try {
+      final response = await _supabase
+          .from('audit_cache')
+          .select('data, activity_map')
+          .eq('region', region)
+          .eq('worksheet', worksheet)
+          .maybeSingle();
+
+      if (response == null) return (null, null);
+
+      // DEKOMPRESI GZIP
+      final List<dynamic> rawMainData = _decompressData(response['data']) ?? [];
+      final List<List<String>> mainData = rawMainData
+          .map((row) => (row as List).map((e) => e.toString()).toList())
+          .toList();
+
+      final Map<String, dynamic> rawActivity = _decompressData(response['activity_map']) ?? {};
+      final Map<String, List<String>> activityMap = rawActivity.map(
+            (k, v) => MapEntry(k, (v as List).map((e) => e.toString()).toList()),
+      );
+
+      return (mainData, activityMap);
+    } catch (e) {
+      return (null, null);
     }
-    _activityTimestamps.forEach((key, value) => value.sort((a, b) => b.compareTo(a)));
   }
 
-  void _populateSubFilterOptions() {
-    if (_allGenerativeData.length <= 1) return;
-    final data = _allGenerativeData.sublist(1);
-    final int weekColumn = _getWeekColumn();
-
-    _qaSpvOptions = data.map((row) => _getValue(row, 4, "")).where((spv) => spv.isNotEmpty).toSet().toList()..sort();
-    _seasonOptions = data.map((row) => _getValue(row, 1, "")).where((s) => s.isNotEmpty).toSet().toList()..sort();
-    _weekOptions = data.map((row) => int.tryParse(_getValue(row, weekColumn, ""))).whereType<int>().toSet().toList()..sort();
+  // --- HELPERS LAINNYA ---
+  String _safeGet(List<String> row, int index) {
+    if (index < 0 || index >= row.length) return "";
+    return row[index].trim();
   }
 
-  void _resetSubFilters() {
-    _selectedQaSpv = null;
-    _selectedSeason = null;
-    _selectedWeeks.clear();
-    _qaSpvOptions.clear();
-    _seasonOptions.clear();
-    _weekOptions.clear();
+  double _parseArea(String val) {
+    if (val.isEmpty) return 0.0;
+    val = val.replaceAll(',', '.');
+    return double.tryParse(val) ?? 0.0;
   }
 
-  void _clearAllData() {
-    _allGenerativeData.clear();
-    _filteredData.clear();
+  Map<String, dynamic> _getMonthFromWeek(String weekVal) {
+    String cleanVal = weekVal.replaceAll(RegExp(r'[^0-9]'), '');
+    int weekNum = int.tryParse(cleanVal) ?? 0;
+    if (weekNum <= 0) return {'index': 99, 'name': 'Unset'};
+    DateTime date = DateTime(DateTime.now().year, 1, 1).add(Duration(days: (weekNum - 1) * 7));
+    int monthIndex = date.month;
+    const List<String> manualMonths = [
+      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+      "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    ];
+    String monthName = (monthIndex >= 1 && monthIndex <= 12) ? manualMonths[monthIndex - 1] : 'Unknown';
+    return {'index': monthIndex, 'name': monthName};
   }
 
-  void _clearAllFilters() {
+  void _initRegionGroups() {
+    final allKeys = ConfigManager.getAllRegionNames()
+        .where((r) => !_excludedRegions.contains(r))
+        .where((r) => r.startsWith('Region'))
+        .toList();
+    final Set<String> groups = {};
+    for (var key in allKeys) {
+      if (key.contains(" - ")) {
+        groups.add(key.split(" - ")[0].trim());
+      } else {
+        groups.add(key.trim());
+      }
+    }
     setState(() {
-      _searchQuery = '';
-      _resetSubFilters();
-      _applyFilters();
+      _regionGroupOptions = [_allRegionsSentinel, ...groups.toList()..sort()];
+    });
+  }
+
+  void _extractFilterOptions() {
+    Set<String> uniqueSpv = {};
+    Set<String> uniqueDistricts = {};
+    if (_allCombinedData.isNotEmpty) {
+      for (var row in _allCombinedData) {
+        int spvIndex = (_selectedWorksheetTitle == 'Vegetative' || _selectedWorksheetTitle == 'Generative') ? 30 : 28;
+        final qaSpv = _safeGet(row, spvIndex);
+        if (qaSpv.isNotEmpty && qaSpv != "-" && qaSpv != "0") uniqueSpv.add(qaSpv);
+        final districtVal = _safeGet(row, 13);
+        if (districtVal.isNotEmpty && districtVal != "-" && districtVal != "0") uniqueDistricts.add(districtVal);
+      }
+    }
+    setState(() {
+      _qaSpvOptions = uniqueSpv.toList()..sort();
+      _districtFilterOptions = uniqueDistricts.toList()..sort();
+      if (_selectedQaSpv != null && !_qaSpvOptions.contains(_selectedQaSpv)) _selectedQaSpv = null;
+      if (_selectedDistrictFilter != null && !_districtFilterOptions.contains(_selectedDistrictFilter)) _selectedDistrictFilter = null;
     });
   }
 
   void _applyFilters() {
-    if (_allGenerativeData.length <= 1) {
-      setState(() {
-        _filteredData = [];
-        _calculateStatistics();
-      });
+    if (_allCombinedData.isEmpty) {
+      setState(() => _filteredData = []);
       return;
     }
-    final int weekColumn = _getWeekColumn();
-    List<List<String>> tempFilteredData = _allGenerativeData.sublist(1);
-    tempFilteredData = tempFilteredData.where((row) {
-      final qaSpv = _getValue(row, 4, "");
-      final season = _getValue(row, 1, "");
-      final week = int.tryParse(_getValue(row, weekColumn, ""));
-      final qaSpvMatch = _selectedQaSpv == null || qaSpv == _selectedQaSpv;
-      final seasonMatch = _selectedSeason == null || season == _selectedSeason;
-      final weekMatch = _selectedWeeks.isEmpty || (week != null && _selectedWeeks.contains(week));
-      return qaSpvMatch && seasonMatch && weekMatch;
+    final filtered = _allCombinedData.where((row) {
+      int spvIndex = (_selectedWorksheetTitle == 'Vegetative' || _selectedWorksheetTitle == 'Generative') ? 30 : 28;
+      final qaSpv = _safeGet(row, spvIndex);
+      final spvMatch = _selectedQaSpv == null || _selectedQaSpv == "Semua SPV" || qaSpv == _selectedQaSpv;
+      final districtVal = _safeGet(row, 13);
+      final districtMatch = _selectedDistrictFilter == null || _selectedDistrictFilter == "Semua District" || districtVal == _selectedDistrictFilter;
+      return spvMatch && districtMatch;
     }).toList();
-    if (_searchQuery.isNotEmpty) {
-      tempFilteredData = tempFilteredData.where((row) {
-        final farmerName = _getValue(row, 3, "").toLowerCase();
-        final fieldNumber = _getValue(row, 2, "").toLowerCase();
-        return farmerName.contains(_searchQuery.toLowerCase()) || fieldNumber.contains(_searchQuery.toLowerCase());
-      }).toList();
-    }
     setState(() {
-      _filteredData = tempFilteredData;
-      _calculateStatistics();
+      _filteredData = filtered;
+      _calculateChartData();
     });
   }
 
-  // ✅ KALKULASI STATISTIK KONDISIONAL
-  void _calculateStatistics() {
-    int sampun = 0, derengJangkep = 0, derengBlas = 0, dereng = 0;
-    double sampunA = 0, derengJangkepA = 0, derengBlasA = 0;
-    int withActivity = 0;
+  void _calculateChartData() {
+    Map<int, _AuditMonthlyData> groupedData = {};
+    double tempSampun = 0;
+    double tempDerengJangkep = 0;
+    double tempDerengBlas = 0;
+    double tempDereng = 0;
+    double tempVisited = 0;
+    double tempNotVisited = 0;
+
+    int weekIdx = _selectedWorksheetTitle == 'Vegetative' ? 10 : 28;
+    int areaIdx = 8;
 
     for (var row in _filteredData) {
-      final fieldNumber = _getValue(row, 2, "");
+      final fieldNumber = _safeGet(row, 2);
+      final areaVal = _parseArea(_safeGet(row, areaIdx));
       final auditStatus = _getAuditStatus(row);
-      if (_activityCounts.containsKey(fieldNumber)) withActivity++;
-      final effectiveArea = double.tryParse(_getValue(row, 8, "0").replaceAll(',', '.')) ?? 0.0;
-
-      if (_selectedWorksheetTitle == 'Generative') {
-        switch (auditStatus) {
-          case "Sampun": sampun++; sampunA += effectiveArea; break;
-          case "Dereng Jangkep": derengJangkep++; derengJangkepA += effectiveArea; break;
-          default: derengBlas++; derengBlasA += effectiveArea; break;
-        }
-      } else { // For Vegetative, Pre Harvest, Harvest
-        if (auditStatus == "Sampun") {
-          sampun++;
-          sampunA += effectiveArea;
-        } else {
-          dereng++;
-          // Semua yang tidak sampun dianggap area dereng
-          derengJangkepA += effectiveArea;
-          derengBlasA += effectiveArea;
+      bool visited = false;
+      for (var listFn in _qaActivityMap.values) {
+        if (listFn.contains(fieldNumber)) {
+          visited = true;
+          break;
         }
       }
-    }
+      if (auditStatus == "Sampun") tempSampun += areaVal;
+      else if (auditStatus == "Dereng Jangkep") tempDerengJangkep += areaVal;
+      else if (auditStatus == "Dereng Blas") tempDerengBlas += areaVal;
+      else tempDereng += areaVal;
 
+      if (visited) tempVisited += areaVal;
+      else tempNotVisited += areaVal;
+
+      String weekRaw = _safeGet(row, weekIdx);
+      Map<String, dynamic> monthInfo = _getMonthFromWeek(weekRaw);
+      int monthIdx = monthInfo['index'];
+      String monthName = monthInfo['name'];
+      if (monthIdx == 99) continue;
+      if (!groupedData.containsKey(monthIdx)) {
+        groupedData[monthIdx] = _AuditMonthlyData(monthIdx, monthName);
+      }
+      if (auditStatus == "Sampun") groupedData[monthIdx]!.sampunHa += areaVal;
+      else if (auditStatus == "Dereng Jangkep") groupedData[monthIdx]!.derengJangkepHa += areaVal;
+      else groupedData[monthIdx]!.derengBlasHa += areaVal;
+      if (visited) groupedData[monthIdx]!.visitedHa += areaVal;
+      else groupedData[monthIdx]!.notVisitedHa += areaVal;
+      groupedData[monthIdx]!.totalHa += areaVal;
+    }
+    List<_AuditMonthlyData> result = groupedData.values.toList();
+    result.sort((a, b) => a.monthIndex.compareTo(b.monthIndex));
     setState(() {
-      _sampunCount = sampun;
-      _derengJangkepCount = derengJangkep;
-      _derengBlasCount = derengBlas;
-      _derengCount = dereng;
-      _sampunArea = sampunA;
-      // Gabungkan area dereng untuk tampilan sederhana
-      _derengJangkepArea = derengJangkepA;
-      _derengBlasArea = derengBlasA;
-      _fieldsWithActivity = withActivity;
+      _chartData = result;
+      _totalSampunArea = tempSampun;
+      _totalDerengJangkepArea = tempDerengJangkep;
+      _totalDerengBlasArea = tempDerengBlas;
+      _totalDerengArea = tempDereng;
+      _totalVisitedArea = tempVisited;
+      _totalNotVisitedArea = tempNotVisited;
     });
   }
 
-  // === UI BUILDERS ===
+  String _getAuditStatus(List<String> row) {
+    switch (_selectedWorksheetTitle) {
+      case 'Vegetative':
+        return _safeGet(row, 55).toLowerCase() == "audited" ? "Sampun" : "Dereng";
+      case 'Generative':
+        final r = _safeGet(row, 72).toLowerCase();
+        final p = _safeGet(row, 73).toLowerCase();
+        if (r == "audited" && p == "audited") return "Sampun";
+        if (r == "audited" || p == "audited") return "Dereng Jangkep";
+        return "Dereng Blas";
+      case 'Pre Harvest':
+        return _safeGet(row, 39).toLowerCase() == "audited" ? "Sampun" : "Dereng";
+      case 'Harvest':
+        return _safeGet(row, 43).toLowerCase() == "audited" ? "Sampun" : "Dereng";
+      default:
+        return "Dereng";
+    }
+  }
+
+  // === UI WIDGETS ===
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      // ignore: deprecated_member_use
-      onPopInvoked: (didPop) => context.go('/admin'),
-      child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => context.go('/admin')),
-          title: const Text('Audit Dashboard', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          backgroundColor: AppTheme.primaryDark, // Menggunakan warna dari AppTheme
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.white),
-              onPressed: _selectedRegion == null ? null : _fetchData,
-            )
-          ],
-        ),
-        body: Column(
-          children: [
-            _buildRegionSelector(),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                  ? Center(child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text("Error: $_error", textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.error)), // Menggunakan warna dari AppTheme
-              ))
-                  : _selectedRegion == null
-                  ? _buildInitialPrompt()
-                  : _buildDashboardContent(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ✅ KODE PERBAIKAN
-  Widget _buildDashboardContent() {
-    // Langsung gunakan SingleChildScrollView sebagai widget utama untuk seluruh konten
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0), // Padding dipindahkan ke sini
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Kartu filter sekarang menjadi bagian dari konten yang bisa di-scroll
-            _buildFilterCard(),
-            const SizedBox(height: 24), // Beri jarak antar elemen
-            Text('Ringkasan Dashboard', style: AppTheme.heading2),
-            const SizedBox(height: 16),
-            _buildSummaryCards(),
-            const SizedBox(height: 24),
-            Text('Analisis Area (Ha)', style: AppTheme.heading2),
-            const SizedBox(height: 16),
-            _buildAreaAnalysisCard(),
-            const SizedBox(height: 24),
-            Text('Update Terbaru', style: AppTheme.heading2),
-            const SizedBox(height: 16),
-            _buildRecentActivitiesCard(context),
-            const SizedBox(height: 24),
-            Text('Lahan Visited Terbanyak', style: AppTheme.heading2),
-            const SizedBox(height: 16),
-            _buildTopFieldsTable(context),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ✅ Tampilan kartu ringkasan dinamis
-  Widget _buildSummaryCards() {
-    return GridView.count(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: _selectedWorksheetTitle == 'Generative' ? 2 : 3,
-        childAspectRatio: _selectedWorksheetTitle == 'Generative' ? 1.3 : 2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        children: _selectedWorksheetTitle == 'Generative'
-            ? [ // Tampilan untuk Generative
-          _buildDashboardCard(title: 'Visited', value: '$_fieldsWithActivity', total: _filteredData.length, subtitle: 'Lahan', icon: Icons.analytics, color: AppTheme.info, percentage: _formatPercentage(_fieldsWithActivity, _filteredData.length)),
-          _buildDashboardCard(title: 'Sampun', value: '$_sampunCount', total: _filteredData.length, subtitle: 'Lahan', icon: Icons.check_circle, color: AppTheme.success, percentage: _formatPercentage(_sampunCount, _filteredData.length)),
-          _buildDashboardCard(title: 'Dereng Jangkep', value: '$_derengJangkepCount', total: _filteredData.length, subtitle: 'Lahan', icon: Icons.warning, color: AppTheme.warning, percentage: _formatPercentage(_derengJangkepCount, _filteredData.length)),
-          _buildDashboardCard(title: 'Dereng Blas', value: '$_derengBlasCount', total: _filteredData.length, subtitle: 'Lahan', icon: Icons.cancel, color: AppTheme.error, percentage: _formatPercentage(_derengBlasCount, _filteredData.length)),
-        ]
-            : [ // Tampilan untuk worksheet lain
-          _buildDashboardCard(title: 'Visited', value: '$_fieldsWithActivity', total: _filteredData.length, subtitle: 'Lahan', icon: Icons.analytics, color: AppTheme.info, percentage: _formatPercentage(_fieldsWithActivity, _filteredData.length)),
-          _buildDashboardCard(title: 'Sampun', value: '$_sampunCount', total: _filteredData.length, subtitle: 'Lahan', icon: Icons.check_circle, color: AppTheme.success, percentage: _formatPercentage(_sampunCount, _filteredData.length)),
-          _buildDashboardCard(title: 'Dereng', value: '$_derengCount', total: _filteredData.length, subtitle: 'Lahan', icon: Icons.warning, color: AppTheme.error, percentage: _formatPercentage(_derengCount, _filteredData.length)),
-        ]
-    );
-  }
-
-  // ✅ KARTU BARU UNTUK ANALISIS AREA
-  Widget _buildAreaAnalysisCard() {
-    double totalArea = _sampunArea + _derengJangkepArea + _derengBlasArea;
-    if (_selectedWorksheetTitle != 'Generative') {
-      totalArea = _sampunArea + (_derengJangkepArea + _derengBlasArea);
-    }
-
-    return CustomCard(
-        title: "Distribusi Area Efektif",
-        child: Column(
-          children: [
-            Row(
-              children: [
-                _buildAreaAnalysisItem(title: 'Total Area', value: '${totalArea.toStringAsFixed(2)} Ha', color: AppTheme.accent),
-                const SizedBox(width: 16),
-                _buildAreaAnalysisItem(title: 'Sampun', value: '${_sampunArea.toStringAsFixed(2)} Ha', color: AppTheme.success, percentage: _formatPercentage(_sampunArea.round(), totalArea.round())),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (_selectedWorksheetTitle == 'Generative')
-              Row(
-                children: [
-                  _buildAreaAnalysisItem(title: 'Dereng Jangkep', value: '${_derengJangkepArea.toStringAsFixed(2)} Ha', color: AppTheme.warning, percentage: _formatPercentage(_derengJangkepArea.round(), totalArea.round())),
-                  const SizedBox(width: 16),
-                  _buildAreaAnalysisItem(title: 'Dereng Blas', value: '${_derengBlasArea.toStringAsFixed(2)} Ha', color: AppTheme.error, percentage: _formatPercentage(_derengBlasArea.round(), totalArea.round())),
-                ],
-              )
-            else
-              Row(
-                children: [
-                  _buildAreaAnalysisItem(title: 'Dereng', value: '${(_derengJangkepArea + _derengBlasArea).toStringAsFixed(2)} Ha', color: AppTheme.error, percentage: _formatPercentage((_derengJangkepArea + _derengBlasArea).round(), totalArea.round())),
-                ],
-              )
-          ],
-        )
-    );
-  }
-
-  Widget _buildAreaAnalysisItem({ required String title, required String value, String? percentage, required Color color, }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: color.withAlpha(25), borderRadius: BorderRadius.circular(8)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: color)),
-            const SizedBox(height: 4),
-            Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
-            if (percentage != null) ...[
-              const SizedBox(height: 2),
-              Text('$percentage%', style: TextStyle(fontSize: 12, color: color.withAlpha(204))),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Widget lainnya tidak banyak berubah
-  Widget _buildDashboardCard({ required String title, required String value, int? total, required String subtitle, required IconData icon, required Color color, required String percentage, }) {
-    return Container(
-      decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [BoxShadow(color: Colors.black.withAlpha(12), blurRadius: 10, offset: const Offset(0, 4))] // Efek bayangan
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween, // Menyesuaikan penempatan konten
-          children: [
-            Row(children: [Icon(icon, color: color, size: 20), const SizedBox(width: 8), Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppTheme.textMedium))]),
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-                if (total != null) Text(' / $total', style: const TextStyle(fontSize: 14, color: AppTheme.textMedium)),
-              ]),
-              Text(subtitle, style: const TextStyle(fontSize: 12, color: AppTheme.textMedium)),
-            ]),
-          ],
-        ),
-      ),
-    );
-  }
-  Widget _buildRecentActivitiesCard(BuildContext context) {
-    final List<MapEntry<String, DateTime>> allActivities = [];
-    for (var row in _filteredData) {
-      final fieldNumber = _getValue(row, 2, "Unknown");
-      if (_activityTimestamps.containsKey(fieldNumber)) {
-        for (var timestamp in _activityTimestamps[fieldNumber]!) {
-          allActivities.add(MapEntry(fieldNumber, timestamp));
-        }
-      }
-    }
-    allActivities.sort((a, b) => b.value.compareTo(a.value));
-    final recentActivities = allActivities.take(5).toList();
-    return CustomCard(
-      title: "Update Terbaru",
-      child: recentActivities.isEmpty
-          ? const Center(child: Text('No recent activities.'))
-          : Column(
-        children: recentActivities.map((activity) {
-          final fieldData = _filteredData.firstWhere((row) => _getValue(row, 2, "") == activity.key, orElse: () => []);
-          final farmerName = fieldData.isNotEmpty ? _getValue(fieldData, 3, "Unknown") : "Unknown";
-          final auditStatus = fieldData.isNotEmpty ? _getAuditStatus(fieldData) : "Dereng Blas";
-          return ListTile(
-            leading: Icon(_getAuditStatusIcon(auditStatus), color: _getAuditStatusColor(auditStatus)),
-            title: Text('Lahan ${activity.key}'),
-            subtitle: Text('Farmer: $farmerName'),
-            trailing: Text(DateFormat('dd MMM, HH:mm').format(activity.value), style: const TextStyle(fontSize: 12)),
-            onTap: () { /* Navigasi dinonaktifkan sementara */ },
-          );
-        }).toList(),
-      ),
-    );
-  }
-  Widget _buildTopFieldsTable(BuildContext context) {
-    final List<MapEntry<String, int>> sortedFields = _activityCounts.entries.toList()
-      ..removeWhere((entry) => !_filteredData.any((row) => _getValue(row, 2, "") == entry.key))
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final topFields = sortedFields.take(5).toList();
-    return CustomCard(
-      title: 'Lahan Visited Terbanyak',
-      padding: EdgeInsets.zero, // Mengatur padding menjadi nol agar DataTable bisa mengisi penuh
-      child: topFields.isEmpty
-          ? const Center(heightFactor: 2, child: Text('No activities found.'))
-          : SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columns: const [ DataColumn(label: Text('Lahan')), DataColumn(label: Text('Visited')), DataColumn(label: Text('Status')), DataColumn(label: Text('DAP')), DataColumn(label: Text('Area (Ha)')) ],
-          rows: topFields.map((entry) {
-            final fieldData = _filteredData.firstWhere((row) => _getValue(row, 2, "") == entry.key, orElse: () => []);
-            final auditStatus = fieldData.isNotEmpty ? _getAuditStatus(fieldData) : "Dereng Blas";
-            final dap = fieldData.isNotEmpty ? _calculateDAP(fieldData) : 0;
-            final effectiveArea = double.tryParse(_getValue(fieldData, 8, "0").replaceAll(',', '.')) ?? 0.0;
-            return DataRow(cells: [
-              DataCell(Text(entry.key, style: const TextStyle(fontWeight: FontWeight.bold)), onTap: () { /* Navigasi dinonaktifkan sementara */ }),
-              DataCell(Text('${entry.value}')), DataCell(Text(auditStatus)),
-              DataCell(Text('$dap')), DataCell(Text(effectiveArea.toStringAsFixed(2))),
-            ]);
-          }).toList(),
-        ),
-      ),
-    );
-  }
-  Widget _buildInitialPrompt() { return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [ Icon(Icons.location_on_outlined, size: 60, color: Colors.grey.shade400), const SizedBox(height: 20), Text('Silakan Pilih Region', style: TextStyle(fontSize: 18, color: Colors.grey.shade600)) ])); }
-  Widget _buildRegionSelector() {
-    return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        color: AppTheme.background, // Menggunakan warna background dari AppTheme
-        child: DropdownButton2<String>(
-            isExpanded: true,
-            hint: Text('Pilih Region', style: TextStyle(color: AppTheme.textMedium)), // Menggunakan warna dari AppTheme
-            value: _selectedRegion,
-            items: _regionOptions.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
-            onChanged: _onRegionChanged,
-            buttonStyleData: ButtonStyleData(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                height: 40,
-                decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppTheme.textLight) // Menggunakan warna dari AppTheme
-                )
-            ),
-            dropdownStyleData: DropdownStyleData(
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(14))
-            )
-        )
-    );
-  }
-  Widget _buildFilterCard() {
-    return CustomCard( // Menggunakan CustomCard
-      title: 'Filter Data',
-      child: Column(
+    return Scaffold(
+      backgroundColor: Colors.grey.shade50,
+      body: Column(
         children: [
-          GridView(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 350,
-                mainAxisSpacing: 16,
-                crossAxisSpacing: 16,
-                childAspectRatio: 4.5 // Menyesuaikan rasio aspek untuk tampilan yang lebih baik
-            ),
-            children: [
-              // ✅ Filter Worksheet ditambahkan di sini
-              CustomDropdown<String>(
-                labelText: 'Worksheet', value: _selectedWorksheetTitle, hintText: 'Pilih Worksheet',
-                items: _worksheetTitles.map((w) => DropdownMenuItem(value: w, child: Text(w))).toList(),
-                onChanged: _onWorksheetChanged,
-              ),
-              CustomDropdown<String>(
-                labelText: 'QA SPV', value: _selectedQaSpv, hintText: 'Semua SPV',
-                items: [ const DropdownMenuItem(value: null, child: Text("Semua SPV")), ..._qaSpvOptions.map((spv) => DropdownMenuItem(value: spv, child: Text(spv))) ],
-                onChanged: (val) => setState(() { _selectedQaSpv = val; _applyFilters(); }),
-              ),
-              CustomDropdown<String>(
-                labelText: 'Season', value: _selectedSeason, hintText: 'Semua Season',
-                items: [ const DropdownMenuItem(value: null, child: Text("Semua Season")), ..._seasonOptions.map((s) => DropdownMenuItem(value: s, child: Text(s))) ],
-                onChanged: (val) => setState(() { _selectedSeason = val; _applyFilters(); }),
-              ),
-              _buildWeekMultiSelectDropdown(),
-              TextField(
-                onChanged: (value) { setState(() { _searchQuery = value; _applyFilters(); }); },
-                decoration: InputDecoration(
-                    labelText: 'Cari Farmer / Lahan',
-                    prefixIcon: const Icon(Icons.search),
-                    border: const OutlineInputBorder(), // Menggunakan OutlineInputBorder
-                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: AppTheme.primary)) // Warna border saat fokus
-                ),
-              ),
-            ],
+          _buildHeader(),
+          _buildFilterBar(),
+          Expanded(
+            child: _isLoading
+                ? _buildLoadingState()
+                : _error != null
+                ? _buildEmptyState(_error!, Icons.error_outline, isError: true)
+                : _selectedRegionGroup == null
+                ? _buildInitialState()
+                : _filteredData.isEmpty
+                ? _buildEmptyState("Data tidak ditemukan untuk filter ini", Icons.search_off)
+                : _buildDashboardContent(),
           ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              const Spacer(),
-              TextButton.icon(
-                  onPressed: _clearAllFilters,
-                  icon: const Icon(Icons.clear_all, color: AppTheme.textMedium), // Menggunakan warna dari AppTheme
-                  label: const Text("Reset Semua Filter", style: TextStyle(color: AppTheme.textMedium)) // Menggunakan warna dari AppTheme
-              ),
-            ],
-          )
         ],
       ),
     );
   }
-  Widget _buildWeekMultiSelectDropdown() {
-    return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("Weeks", style: TextStyle(fontSize: 12, color: AppTheme.textMedium)), // Menggunakan warna dari AppTheme
-          const SizedBox(height: 4),
-          DropdownButtonHideUnderline(
-              child: DropdownButton2<int>(
-                  isExpanded: true,
-                  customButton: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      height: 50,
-                      decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: AppTheme.textLight) // Menggunakan warna dari AppTheme
-                      ),
-                      child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                              _selectedWeeks.isEmpty ? "Semua Minggu" : "Terpilih: ${_selectedWeeks.join(', ')}",
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 14, color: AppTheme.textDark) // Menggunakan warna dari AppTheme
-                          )
-                      )
-                  ),
-                  items: _weekOptions.map((week) {
-                    return DropdownMenuItem<int>(
-                        value: week,
-                        enabled: false,
-                        child: StatefulBuilder(
-                            builder: (context, menuSetState) {
-                              final isSelected = _selectedWeeks.contains(week);
-                              return InkWell(
-                                  onTap: () {
-                                    isSelected ? _selectedWeeks.remove(week) : _selectedWeeks.add(week);
-                                    setState(() {});
-                                    menuSetState(() {});
-                                  },
-                                  child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                      child: Row(
-                                          children: [
-                                            if (isSelected) const Icon(Icons.check_box_outlined, color: AppTheme.primary) else const Icon(Icons.check_box_outline_blank, color: AppTheme.textMedium), // Menggunakan warna dari AppTheme
-                                            const SizedBox(width: 16),
-                                            Expanded(child: Text("Minggu ke-$week", style: const TextStyle(color: AppTheme.textDark))) // Menggunakan warna dari AppTheme
-                                          ]
-                                      )
-                                  )
-                              );
-                            }
-                        )
-                    );
-                  }).toList(),
-                  value: null,
-                  onChanged: (value) {},
-                  onMenuStateChange: (isOpen) { if (!isOpen) _applyFilters(); },
-                  dropdownStyleData: DropdownStyleData(maxHeight: 200, decoration: BoxDecoration(borderRadius: BorderRadius.circular(14))),
-                  menuItemStyleData: const MenuItemStyleData(height: 40, padding: EdgeInsets.zero)
-              )
-          )
-        ]
+
+  Widget _buildDashboardContent() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        if (_selectedRegionGroup != null) {
+          await _onRegionGroupChanged(_selectedRegionGroup, forceRefresh: true);
+        }
+      },
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionTitle("Graph 1: Ringkasan Audit (Total Ha)"),
+            const SizedBox(height: 16),
+            _buildAuditStatusChart(),
+            const SizedBox(height: 16),
+            _buildGraph1Summary(),
+            const SizedBox(height: 32),
+            _buildSectionTitle("Graph 2: Analisis Area (Visited vs Not Visited)"),
+            const SizedBox(height: 16),
+            _buildVisitedAreaChart(),
+            const SizedBox(height: 16),
+            _buildGraph2Summary(),
+          ],
+        ),
+      ),
     );
   }
 
-  // === HELPER METHODS ===
-  String _getValue(List<String> row, int index, String defaultValue) => (row.length > index && row[index].isNotEmpty) ? row[index] : defaultValue;
-  int _calculateDAP(List<String> row) { try { final date = _parseDate(_getValue(row, 9, '')); return date != null ? DateTime.now().difference(date).inDays : 0; } catch (e) { return 0; } }
-  DateTime? _parseDate(String dateStr) { try { final serial = double.tryParse(dateStr); if (serial != null) return DateTime(1899, 12, 30).add(Duration(days: serial.toInt())); return DateFormat('dd/MM/yyyy').parse(dateStr); } catch(e) { return null; } }
-  String _formatPercentage(int part, int total) => total == 0 ? '0.0' : ((part / total) * 100).toStringAsFixed(1);
-  String _getAuditStatus(List<String> row) { final auditFinding = _getValue(row, 12, "").toLowerCase(); if (auditFinding.isEmpty || auditFinding == "n/a") return "Dereng Blas"; if (auditFinding == "pass") return "Sampun"; return "Dereng Jangkep"; }
-  Color _getAuditStatusColor(String status) { switch (status) { case "Sampun": return AppTheme.success; case "Dereng Jangkep": return AppTheme.warning; default: return AppTheme.error; } }
-  IconData _getAuditStatusIcon(String status) { switch (status) { case "Sampun": return Icons.check_circle; case "Dereng Jangkep": return Icons.warning; default: return Icons.cancel; } }
-  int _getWeekColumn() { switch(_selectedWorksheetTitle) { case 'Vegetative': return 29; case 'Generative': return 10; case 'Pre Harvest': return 10; case 'Harvest': return 10; default: return 10; } }
+  Widget _buildGraph1Summary() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildSummaryItem("Sampun", _totalSampunArea, const Color(0xFFA5D6A7)),
+          if (_selectedWorksheetTitle == 'Generative') ...[
+            _buildSummaryItem("Dereng Jangkep", _totalDerengJangkepArea, const Color(0xFFFFB74D)),
+            _buildSummaryItem("Dereng Blas", _totalDerengBlasArea, const Color(0xFFD94545)),
+          ] else
+            _buildSummaryItem("Dereng", _totalDerengArea, const Color(0xFFD94545)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGraph2Summary() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildSummaryItem("Visited", _totalVisitedArea, const Color(0xFF64B5F6)),
+          _buildSummaryItem("Not Visited", _totalNotVisitedArea, Colors.grey.shade400),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryItem(String label, double value, Color color) {
+    return Column(children: [Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600)), const SizedBox(height: 4), Text("${value.toStringAsFixed(1)} Ha", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color))]);
+  }
+
+  Widget _buildAuditStatusChart() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SfCartesianChart(
+          primaryXAxis: CategoryAxis(title: AxisTitle(text: 'Bulan'), majorGridLines: const MajorGridLines(width: 0), labelStyle: const TextStyle(fontWeight: FontWeight.bold)),
+          primaryYAxis: NumericAxis(title: AxisTitle(text: 'Luasan (Ha)')),
+          legend: Legend(isVisible: true, position: LegendPosition.bottom),
+          tooltipBehavior: TooltipBehavior(enable: true),
+          series: <CartesianSeries>[
+            StackedColumnSeries<_AuditMonthlyData, String>(name: _selectedWorksheetTitle == 'Generative' ? 'Dereng Blas' : 'Dereng', dataSource: _chartData, xValueMapper: (data, _) => data.monthName, yValueMapper: (data, _) => data.derengBlasHa, color: const Color(0xFFD94545), animationDuration: 1500, dataLabelSettings: const DataLabelSettings(isVisible: false)),
+            if (_selectedWorksheetTitle == 'Generative') StackedColumnSeries<_AuditMonthlyData, String>(name: 'Dereng Jangkep', dataSource: _chartData, xValueMapper: (data, _) => data.monthName, yValueMapper: (data, _) => data.derengJangkepHa, color: const Color(0xFFFFB74D), animationDuration: 1500, dataLabelSettings: const DataLabelSettings(isVisible: false)),
+            StackedColumnSeries<_AuditMonthlyData, String>(name: 'Sampun', dataSource: _chartData, xValueMapper: (data, _) => data.monthName, yValueMapper: (data, _) => data.sampunHa, color: const Color(0xFFA5D6A7), borderRadius: const BorderRadius.vertical(top: Radius.circular(6)), animationDuration: 1500, dataLabelSettings: const DataLabelSettings(isVisible: false)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVisitedAreaChart() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SfCartesianChart(
+          primaryXAxis: CategoryAxis(title: AxisTitle(text: 'Bulan'), majorGridLines: const MajorGridLines(width: 0), labelStyle: const TextStyle(fontWeight: FontWeight.bold)),
+          primaryYAxis: NumericAxis(title: AxisTitle(text: 'Luasan (Ha)')),
+          legend: Legend(isVisible: true, position: LegendPosition.bottom),
+          tooltipBehavior: TooltipBehavior(enable: true),
+          series: <CartesianSeries>[
+            StackedColumnSeries<_AuditMonthlyData, String>(name: 'Not Visited', dataSource: _chartData, xValueMapper: (data, _) => data.monthName, yValueMapper: (data, _) => data.notVisitedHa, color: Colors.grey.shade400, animationDuration: 1500, dataLabelSettings: const DataLabelSettings(isVisible: false)),
+            StackedColumnSeries<_AuditMonthlyData, String>(name: 'Visited Area', dataSource: _chartData, xValueMapper: (data, _) => data.monthName, yValueMapper: (data, _) => data.visitedHa, color: const Color(0xFF64B5F6), borderRadius: const BorderRadius.vertical(top: Radius.circular(6)), animationDuration: 1500, dataLabelSettings: const DataLabelSettings(isVisible: false)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.green.shade700, Colors.green.shade900]), boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8, offset: const Offset(0, 3))]),
+      child: SafeArea(
+        bottom: false,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            IconButton(icon: const Icon(Icons.arrow_back_rounded, color: Colors.white), onPressed: () { if (kIsWeb) Navigator.of(context).pop(); else context.go('/admin'); }),
+            const SizedBox(width: 16),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Audit Dashboard', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)), Text(_selectedRegionGroup ?? 'Data Gabungan Seluruh Region', style: const TextStyle(color: Colors.white70, fontSize: 13))]))
+          ]),
+          const SizedBox(height: 16),
+          _buildRegionSelector(),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildRegionSelector() {
+    return Row(children: [
+      Expanded(child: Container(height: 45, padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)), child: DropdownButtonHideUnderline(child: DropdownButton<String>(value: _selectedRegionGroup, hint: const Text("Pilih Region", style: TextStyle(fontSize: 13, color: Colors.grey)), isExpanded: true, items: _regionGroupOptions.map((String value) => DropdownMenuItem<String>(value: value, child: Text(value, style: TextStyle(color: Colors.green.shade900, fontWeight: FontWeight.bold)))).toList(), onChanged: _isLoading ? null : (val) => _onRegionGroupChanged(val))))),
+      const SizedBox(width: 8),
+      if (_selectedRegionGroup != null) InkWell(onTap: _isLoading ? null : () => _onRegionGroupChanged(_selectedRegionGroup, forceRefresh: true), child: Container(height: 45, width: 45, decoration: BoxDecoration(color: Colors.white.withAlpha(51), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white54)), child: _isLoading ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.refresh_rounded, color: Colors.white)))
+    ]);
+  }
+
+  Widget _buildFilterBar() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
+      child: Column(children: [
+        Row(children: [
+          Expanded(flex: 3, child: _buildModernDropdown(label: "Worksheet", value: _selectedWorksheetTitle, items: _worksheetTitles, icon: Icons.table_chart_rounded, onChanged: (val) { if (val != null && val != _selectedWorksheetTitle) { setState(() => _selectedWorksheetTitle = val); if (_selectedRegionGroup != null) _onRegionGroupChanged(_selectedRegionGroup); } })),
+          const SizedBox(width: 8),
+          Expanded(flex: 4, child: _buildModernDropdown(label: "QA SPV", value: _selectedQaSpv, items: ["Semua SPV", ..._qaSpvOptions], icon: Icons.supervisor_account_rounded, onChanged: (val) { setState(() { _selectedQaSpv = (val == "Semua SPV") ? null : val; _applyFilters(); }); })),
+          const SizedBox(width: 8),
+          Expanded(flex: 4, child: _buildModernDropdown(label: "District", value: _selectedDistrictFilter, items: ["Semua District", ..._districtFilterOptions], icon: Icons.location_city_rounded, onChanged: (val) { setState(() { _selectedDistrictFilter = (val == "Semua District") ? null : val; _applyFilters(); }); })),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _buildModernDropdown({required String label, required String? value, required List<String> items, required IconData icon, required Function(String?) onChanged}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)),
+      child: DropdownButtonHideUnderline(child: DropdownButton<String>(value: value ?? items.first, isExpanded: true, icon: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Colors.grey.shade600), style: TextStyle(fontSize: 13, color: Colors.grey.shade800, fontWeight: FontWeight.w600), items: items.map((String item) => DropdownMenuItem<String>(value: item, child: Row(children: [Icon(icon, size: 16, color: Colors.blue.shade700), const SizedBox(width: 8), Expanded(child: Text(item, overflow: TextOverflow.ellipsis))]))).toList(), onChanged: onChanged)),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Row(children: [Container(width: 4, height: 18, color: Colors.green.shade700, margin: const EdgeInsets.only(right: 8)), Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800))]);
+  }
+
+  Widget _buildLoadingState() {
+    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const CircularProgressIndicator(color: Colors.green), const SizedBox(height: 16), Text(_loadingStatus ?? "Memuat data...", style: const TextStyle(color: Colors.grey))]));
+  }
+
+  Widget _buildInitialState() {
+    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.touch_app, size: 60, color: Colors.grey.shade300), const SizedBox(height: 20), Text("Pilih Region untuk memulai.", style: TextStyle(fontSize: 16, color: Colors.grey.shade500))]));
+  }
+
+  Widget _buildEmptyState(String message, IconData icon, {bool isError = false}) {
+    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, size: 60, color: isError ? Colors.red.shade200 : Colors.grey.shade300), const SizedBox(height: 20), Text(message, style: TextStyle(fontSize: 16, color: isError ? Colors.red.shade400 : Colors.grey.shade500))]));
+  }
+
+  void _showErrorMessage(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+  }
 }
 
-// DEFINISI CLASS AppTheme
-class AppTheme {
-  static const Color primaryDark = Color(0xFF1B5E20);
-  static const Color primary = Color(0xFF2E7D32);
-  static const Color primaryLight = Color(0xFF4CAF50);
-  static const Color accent = Color(0xFF1976D2);
-  static const Color accentLight = Color(0xFF42A5F5);
-  static const Color success = Color(0xFF388E3C);
-  static const Color warning = Color(0xFFFFA000);
-  static const Color error = Color(0xFFD32F2F);
-  static const Color info = Color(0xFF0288D1);
-  static const Color textDark = Color(0xFF212121);
-  static const Color textMedium = Color(0xFF757575);
-  static const Color textLight = Color(0xFFBDBDBD);
-  static const Color background = Color(0xFFF5F5F5);
+// Model Class (Tetap sama, karena Summary tetap disimpan sebagai JSONB)
+class _AuditMonthlyData {
+  final int monthIndex;
+  final String monthName;
+  double sampunHa = 0;
+  double derengJangkepHa = 0;
+  double derengBlasHa = 0;
+  double visitedHa = 0;
+  double notVisitedHa = 0;
+  double totalHa = 0;
 
-  static const TextStyle heading1 = TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textDark);
-  static const TextStyle heading2 = TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textDark);
-  static const TextStyle heading3 = TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textDark);
-  static const TextStyle subtitle = TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: textMedium);
-  static const TextStyle body = TextStyle(fontSize: 14, color: textDark);
-  static const TextStyle caption = TextStyle(fontSize: 12, color: textMedium);
+  _AuditMonthlyData(this.monthIndex, this.monthName);
+
+  Map<String, dynamic> toJson() => {
+    'mi': monthIndex,
+    'mn': monthName,
+    's': sampunHa,
+    'dj': derengJangkepHa,
+    'db': derengBlasHa,
+    'v': visitedHa,
+    'nv': notVisitedHa,
+    't': totalHa,
+  };
+
+  factory _AuditMonthlyData.fromJson(Map<String, dynamic> json) {
+    var data = _AuditMonthlyData(json['mi'], json['mn']);
+    data.sampunHa = (json['s'] as num).toDouble();
+    data.derengJangkepHa = (json['dj'] as num).toDouble();
+    data.derengBlasHa = (json['db'] as num).toDouble();
+    data.visitedHa = (json['v'] as num).toDouble();
+    data.notVisitedHa = (json['nv'] as num).toDouble();
+    data.totalHa = (json['t'] as num).toDouble();
+    return data;
+  }
 }

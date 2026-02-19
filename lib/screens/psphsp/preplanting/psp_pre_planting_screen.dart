@@ -4,7 +4,7 @@ import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import '../../services/google_sheets_api.dart'; // Sesuaikan path ini jika perlu
+import '../../services/google_sheets_api.dart';
 
 class PspPrePlantingScreen extends StatefulWidget {
   final String spreadsheetId;
@@ -83,6 +83,17 @@ class _PspPrePlantingScreenState extends State<PspPrePlantingScreen> {
     super.dispose();
   }
 
+  // Helper untuk mengubah teks menjadi Title Case
+  // Contoh: "john doe" -> "John Doe"
+  String _toTitleCase(String text) {
+    if (text.isEmpty) return text;
+    return text.split(' ').map((word) {
+      if (word.isEmpty) return '';
+      if (word.length == 1) return word.toUpperCase();
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).join(' ');
+  }
+
   void _calculateEffectiveArea() {
     double total = double.tryParse(_totalAreaController.text.replaceAll(',', '.')) ?? 0.0;
     double discard = double.tryParse(_discardAreaController.text.replaceAll(',', '.')) ?? 0.0;
@@ -90,7 +101,6 @@ class _PspPrePlantingScreenState extends State<PspPrePlantingScreen> {
 
     if (effective < 0) effective = 0;
 
-    // Update text hanya jika berbeda agar kursor tidak lompat
     String newValue = effective.toStringAsFixed(2).replaceAll('.', ',');
     if (_effectiveAreaController.text != newValue) {
       _effectiveAreaController.text = newValue;
@@ -99,7 +109,7 @@ class _PspPrePlantingScreenState extends State<PspPrePlantingScreen> {
 
   Future<void> _fetchConfigs() async {
     try {
-      // 1. Fetch Seasons dari 'seasons/season'
+      // 1. Fetch Seasons
       final seasonDoc = await FirebaseFirestore.instance.collection('seasons').doc('season').get();
       if (seasonDoc.exists) {
         setState(() {
@@ -107,29 +117,22 @@ class _PspPrePlantingScreenState extends State<PspPrePlantingScreen> {
         });
       }
 
-      // 2. Fetch Configs dari 'plant_types/corn'
+      // 2. Fetch Configs (Corn/Seed/Parent)
       final plantTypesDoc = await FirebaseFirestore.instance.collection('plant_types').doc('corn').get();
 
       if (plantTypesDoc.exists) {
         final data = plantTypesDoc.data() ?? {};
         setState(() {
-          // Ambil Corn Type
           if (data['corn_type'] != null) {
             _cornTypeList = List<String>.from(data['corn_type']);
           }
-
-          // Ambil Seed Type
           if (data['seed_type'] != null) {
             _seedTypeList = List<String>.from(data['seed_type']);
           }
-
-          // Ambil Parent Code
           if (data['parent_code'] != null) {
             _parentCodeList = List<String>.from(data['parent_code']);
           }
         });
-      } else {
-        debugPrint("Warning: plant_types/corn not found in Firestore");
       }
 
     } catch (e) {
@@ -148,28 +151,16 @@ class _PspPrePlantingScreenState extends State<PspPrePlantingScreen> {
     try {
       await _googleSheetsApi.init();
 
-      // Urutan Kolom Sesuai Permintaan:
-      // 0. No (Formula)
-      // 1. Season
-      // 2. Field Number
-      // 3. Corn Type
-      // 4. Seed Type
-      // 5. Farmer Name
-      // 6. Grower/Agent
-      // 7. Parent Code
-      // 8. Total Area Planted
-      // 9. Discard Area
-      // 10. Effective Area
-      // 11. Previous Crop Actual
-
+      // Data Row Baku (A - L)
+      // Perubahan di sini: Menggunakan _toTitleCase untuk Farmer & Grower
       final rowData = [
-        "=ROW()-1", // Kolom 0: Auto Number via Formula Excel/Sheets
+        "=ROW()-1", // Kolom 0: Auto Number
         _selectedSeason ?? "-",
-        _fieldNumberController.text.toUpperCase(),
+        _fieldNumberController.text.toUpperCase(), // Field No tetap Uppercase
         _selectedCornType ?? "-",
         _selectedSeedType ?? "-",
-        _farmerNameController.text.toUpperCase(),
-        _growerController.text.toUpperCase(),
+        _toTitleCase(_farmerNameController.text), // <-- Title Case
+        _toTitleCase(_growerController.text),     // <-- Title Case
         _selectedParentCode ?? "-",
         _totalAreaController.text,
         _discardAreaController.text,
@@ -177,24 +168,27 @@ class _PspPrePlantingScreenState extends State<PspPrePlantingScreen> {
         _selectedPrevCrop ?? "-",
       ];
 
-      // Append ke worksheet 'Vegetative'
-      await _googleSheetsApi.addRow('Vegetative', rowData);
+      // --- DOUBLE SAVING (VEGETATIVE & GENERATIVE) ---
+      await Future.wait([
+        _googleSheetsApi.addRow('Vegetative', rowData),
+        _googleSheetsApi.addRow('Generative', rowData),
+      ]);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
               children: const [
-                Icon(Icons.check_circle, color: Colors.white),
+                Icon(Icons.cloud_done_rounded, color: Colors.white),
                 SizedBox(width: 10),
-                Text("Pre-Planting data saved successfully!"),
+                Expanded(child: Text("Data saved to Vegetative & Generative!")),
               ],
             ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
         );
-        Navigator.pop(context, true); // Kembali dan trigger refresh jika perlu
+        Navigator.pop(context, true); // Kembali & Refresh
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -252,7 +246,7 @@ class _PspPrePlantingScreenState extends State<PspPrePlantingScreen> {
             const Center(child: CircularProgressIndicator())
           else
             SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 100, 20, 100), // Top padding for AppBar
+              padding: const EdgeInsets.fromLTRB(20, 100, 20, 100),
               physics: const BouncingScrollPhysics(),
               child: Form(
                 key: _formKey,
@@ -314,7 +308,7 @@ class _PspPrePlantingScreenState extends State<PspPrePlantingScreen> {
                           value: _selectedPrevCrop,
                           items: _prevCropList,
                           icon: Icons.history_edu_rounded,
-                          isDense: true, // Karena teksnya panjang
+                          isDense: true,
                           onChanged: (val) => setState(() => _selectedPrevCrop = val),
                         ),
                       ],
@@ -380,7 +374,7 @@ class _PspPrePlantingScreenState extends State<PspPrePlantingScreen> {
                             label: "Effective Area (Auto)",
                             icon: Icons.verified_rounded,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            // readOnly: true, // Bisa di-uncomment kalau mau murni auto
+                            readOnly: true, // FROZEN
                             labelColor: Colors.orange.shade900,
                           ),
                         ),
@@ -536,7 +530,7 @@ class _PspPrePlantingScreenState extends State<PspPrePlantingScreen> {
         );
       }).toList(),
       onChanged: onChanged,
-      isExpanded: true, // Agar teks panjang tidak overflow
+      isExpanded: true,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: Colors.grey.shade600, fontSize: 14),

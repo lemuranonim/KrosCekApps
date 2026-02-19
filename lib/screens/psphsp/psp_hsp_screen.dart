@@ -21,8 +21,16 @@ import 'psp_activity_screen.dart';
 import 'psp_detailed_map_screen.dart';
 import 'psp_issue_screen.dart';
 import 'psp_training_screen.dart';
-import 'psp_weather_widget.dart'; // Pastikan ini mengarah ke widget cuaca baru kamu
+import 'psp_weather_widget.dart';
+
+// Import Screen Fase Pertanian
 import 'vegetative/psp_vegetative_screen.dart';
+import 'generative/psp_generative_screen.dart';
+import 'preplanting/psp_pre_planting_screen.dart';
+import 'planting/psp_planting_screen.dart';
+import 'pre_harvest/psp_pre_harvest_screen.dart'; // Import Pre-Harvest
+import 'harvest/psp_harvest_screen.dart';         // Import Harvest
+
 
 enum SnackBarType { success, error, info }
 
@@ -35,12 +43,13 @@ class PspHspScreen extends StatefulWidget {
 
 class PspHspScreenState extends State<PspHspScreen>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  // ... (Variabel state tetap sama) ...
   bool _isLoading = true;
   int _selectedIndex = 0;
   String _appVersion = 'Fetching...';
   String userEmail = 'Fetching...';
   String userName = 'Fetching...';
-  List<String> fieldSPVList = ['PSP HSP'];
+  List<String> fieldSPVList = ['PSP'];
   List<String> faList = [];
   List<String> qaSPVList = [];
   List<String> seasonList = [];
@@ -63,7 +72,7 @@ class PspHspScreenState extends State<PspHspScreen>
   late AnimationController _fabController;
 
   final Map<String, String> regionDocumentIds = {
-    'PSP HSP': 'psp hsp',
+    'PSP': 'psp',
   };
 
   // Colors for Premium UI
@@ -89,6 +98,7 @@ class PspHspScreenState extends State<PspHspScreen>
     _loadInitialData();
   }
 
+  // ... (dispose, _handleBackInHomeScreen, _buildExitDialog tetap sama) ...
   @override
   void dispose() {
     _timer?.cancel();
@@ -111,6 +121,7 @@ class PspHspScreenState extends State<PspHspScreen>
   }
 
   Widget _buildExitDialog() {
+    // ... (Kode Dialog Exit tetap sama) ...
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
       child: Dialog(
@@ -234,6 +245,7 @@ class PspHspScreenState extends State<PspHspScreen>
     );
   }
 
+  // ... (Method _updateGreeting, _updateTime, Helper Date tetap sama) ...
   void _updateGreeting() {
     final hour = DateTime.now().hour;
     setState(() {
@@ -289,6 +301,7 @@ class PspHspScreenState extends State<PspHspScreen>
     }
   }
 
+  // ... (Method Setup Listener & Fetch Data tetap sama) ...
   void _setupRealTimeListeners() {
     _seasonsSubscription = FirebaseFirestore.instance
         .collection('seasons')
@@ -359,8 +372,8 @@ class PspHspScreenState extends State<PspHspScreen>
       if (!snapshot.exists) return [];
       Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
 
-      if (data.containsKey('psphsp') && data['psphsp'] is List) {
-        return List<String>.from(data['psphsp']);
+      if (data.containsKey('psp') && data['psp'] is List) {
+        return List<String>.from(data['psp']);
       }
       return [];
     });
@@ -462,9 +475,9 @@ class PspHspScreenState extends State<PspHspScreen>
           .get();
       if (configSnapshot.exists) {
         final data = configSnapshot.data();
-        if (data != null && data.containsKey('psphsp')) {
+        if (data != null && data.containsKey('psp')) {
           setState(() {
-            fieldSPVList = List<String>.from(data['psphsp']);
+            fieldSPVList = List<String>.from(data['psp']);
           });
         }
       }
@@ -507,8 +520,9 @@ class PspHspScreenState extends State<PspHspScreen>
     }
   }
 
-  // ... (Keep _buildLogoutDialog as is or simplify if needed) ...
+  // ... (_buildLogoutDialog, _navigateTo, _showBottomSheetMenu, _buildMenuItem tetap sama) ...
   Widget _buildLogoutDialog(BuildContext dialogContext) {
+    // (Isi Dialog Logout tetap sama)
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
       child: Dialog(
@@ -655,7 +669,6 @@ class PspHspScreenState extends State<PspHspScreen>
   }
 
   void _showBottomSheetMenu() {
-    // ... (Keep implementation same as provided) ...
     HapticFeedback.mediumImpact();
     _fabController.forward().then((_) => _fabController.reverse());
 
@@ -697,7 +710,6 @@ class PspHspScreenState extends State<PspHspScreen>
                   controller: scrollController,
                   padding: const EdgeInsets.only(top: 16, bottom: 40),
                   children: [
-                    // Drag Handle
                     Center(
                       child: Container(
                         width: 60,
@@ -718,8 +730,6 @@ class PspHspScreenState extends State<PspHspScreen>
                         ),
                       ),
                     ),
-                    // Header and Menu Items logic...
-                    // (Use previous implementation for menu items)
                     _buildMenuItem(context, 0, Icons.list_alt_rounded, Colors.indigo.shade600, 'Attendance Log', 'Track attendance records', [Colors.indigo.shade50, Colors.indigo.shade100], () {
                       if (selectedFieldSPV == null) {
                         Navigator.pop(context);
@@ -761,7 +771,7 @@ class PspHspScreenState extends State<PspHspScreen>
                           },
                         ));
                       } else {
-                        _showSnackBar(context, 'Please select Division, Zone PIC & Field Assistant first!');
+                        _showSnackBar(context, 'Please select Division, Zone & Field Assistant first!');
                       }
                     }),
                     const SizedBox(height: 24),
@@ -914,7 +924,31 @@ class PspHspScreenState extends State<PspHspScreen>
     );
   }
 
-  // ... (Build method remains same, drawer integration etc) ...
+  void _validateAndNavigate(
+      BuildContext context, {
+        required Widget Function(String zone, String fa) targetScreen,
+      }) {
+    if (selectedSpreadsheetId == null) {
+      _showSnackBar(context, 'Please select Division first');
+      return;
+    }
+    if (selectedQA == null) {
+      _showSnackBar(context, 'Zone not selected yet!');
+      return;
+    }
+    if (selectedFA == null) {
+      _showSnackBar(context, 'Hey, FA not selected yet!');
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => targetScreen(selectedQA!, selectedFA!),
+      ),
+    );
+  }
+
+  // ... (Build method, _buildMainScreen, _buildNavBarItem, _buildHomeContent sebagian tetap sama) ...
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -949,6 +983,7 @@ class PspHspScreenState extends State<PspHspScreen>
   }
 
   Widget _buildMainScreen(BuildContext context) {
+    // (Struktur scaffold utama tetap sama)
     return Stack(
       children: [
         Scaffold(
@@ -1307,6 +1342,7 @@ class PspHspScreenState extends State<PspHspScreen>
     );
   }
 
+  // --- UPDATED _buildHomeContent to include PRE-HARVEST and HARVEST ---
   Widget _buildHomeContent(BuildContext context) {
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
@@ -1319,8 +1355,7 @@ class PspHspScreenState extends State<PspHspScreen>
               children: [
                 const SizedBox(height: 8),
 
-                // --- UNIFIED GLASS HEADER (Profile, Greeting, Date) ---
-                // This aligns with the new weather widget style
+                // HEADER (Profile, Greeting etc - code unchanged)
                 TweenAnimationBuilder(
                   tween: Tween<double>(begin: 0, end: 1),
                   duration: const Duration(milliseconds: 1000),
@@ -1566,7 +1601,7 @@ class PspHspScreenState extends State<PspHspScreen>
 
                 const SizedBox(height: 24),
 
-                // Filter Section (Updated to match Glassmorphism)
+                // Filter Section
                 TweenAnimationBuilder(
                   tween: Tween<double>(begin: 0, end: 1),
                   duration: const Duration(milliseconds: 1500),
@@ -1586,7 +1621,7 @@ class PspHspScreenState extends State<PspHspScreen>
           ),
         ),
 
-        // Section Header Premium
+        // Section Header
         SliverToBoxAdapter(
           child: TweenAnimationBuilder(
             tween: Tween<double>(begin: 0, end: 1),
@@ -1600,7 +1635,6 @@ class PspHspScreenState extends State<PspHspScreen>
                   child: Container(
                     margin: const EdgeInsets.fromLTRB(20, 24, 20, 12),
                     decoration: BoxDecoration(
-                      // Background Kaca Putih Bersih
                       color: Colors.white.withOpacity(0.65),
                       borderRadius: BorderRadius.circular(28),
                       border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
@@ -1618,10 +1652,9 @@ class PspHspScreenState extends State<PspHspScreen>
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                         child: Padding(
-                          padding: const EdgeInsets.all(16), // Padding lebih compact
+                          padding: const EdgeInsets.all(16),
                           child: Row(
                             children: [
-                              // Animated Icon Container
                               TweenAnimationBuilder(
                                 tween: Tween<double>(begin: 0, end: 1),
                                 duration: const Duration(milliseconds: 1000),
@@ -1651,10 +1684,7 @@ class PspHspScreenState extends State<PspHspScreen>
                                   );
                                 },
                               ),
-
                               const SizedBox(width: 16),
-
-                              // Title & Subtitle
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1681,31 +1711,6 @@ class PspHspScreenState extends State<PspHspScreen>
                                   ],
                                 ),
                               ),
-
-                              // Counter Badge (Pill Shape)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.purple.shade50,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: Colors.purple.shade100),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.layers_rounded, size: 14, color: Colors.purple.shade700),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '1 Active', // Bisa diganti dinamis jika ada variabel count
-                                      style: TextStyle(
-                                        color: Colors.purple.shade800,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
                             ],
                           ),
                         ),
@@ -1718,9 +1723,9 @@ class PspHspScreenState extends State<PspHspScreen>
           ),
         ),
 
-        // Grid Premium
+        // Grid Premium (Pre-Planting -> Harvest)
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
           sliver: SliverGrid(
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 1,
@@ -1729,52 +1734,197 @@ class PspHspScreenState extends State<PspHspScreen>
             ),
             delegate: SliverChildBuilderDelegate(
                   (context, index) {
-                return _PostHarvestCard(
-                  imagePath: 'assets/vegetative.png',
-                  label: 'Vegetative',
-                  description: 'Parent Seeds Production',
-                  phase: 'Phase',
-                  primaryColor: Colors.purple.shade600,
-                  secondaryColor: Colors.purple.shade800,
-                  delay: 0,
-                  spreadsheetId: selectedSpreadsheetId,
-                  selectedDistrict: selectedFA,
-                  selectedQA: selectedQA,
-                  selectedSeason: selectedSeason,
-                  region: selectedFieldSPV,
-                  seasonList: seasonList,
-                  onTap: () {
-                    HapticFeedback.mediumImpact();
-
-                    if (selectedSpreadsheetId == null) {
-                      _showSnackBar(context, 'Please select Division first');
-                      return;
-                    }
-                    if (selectedQA == null) {
-                      _showSnackBar(context, 'Zone PIC not selected yet!');
-                      return;
-                    }
-                    if (selectedFA == null) {
-                      _showSnackBar(context, 'Hey, FA not selected yet!');
-                      return;
-                    }
-
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => PspVegetativeScreen(
-                          spreadsheetId: selectedSpreadsheetId!,
-                          selectedDistrict: selectedFA!,
-                          selectedQA: selectedQA!,
-                          selectedSeason: selectedSeason,
-                          region: selectedFieldSPV ?? 'Unknown Region',
-                          seasonList: seasonList,
+                // --- KARTU 1: PRE-PLANTING ---
+                if (index == 0) {
+                  return _PostHarvestCard(
+                    imagePath: 'assets/pre_planting.png',
+                    label: 'Pre-Planting',
+                    description: 'New Land Preparation',
+                    phase: 'Phase 1',
+                    primaryColor: Colors.teal.shade600,
+                    secondaryColor: Colors.teal.shade800,
+                    delay: 0,
+                    spreadsheetId: selectedSpreadsheetId,
+                    selectedDistrict: selectedFA,
+                    selectedQA: selectedQA,
+                    selectedSeason: selectedSeason,
+                    region: selectedFieldSPV,
+                    seasonList: seasonList,
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      if (selectedSpreadsheetId == null) {
+                        _showSnackBar(context, 'Please select Division first!');
+                        return;
+                      }
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PspPrePlantingScreen(
+                            spreadsheetId: selectedSpreadsheetId!,
+                            region: selectedFieldSPV ?? 'Unknown',
+                            initialSeason: selectedSeason,
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                );
+                      );
+                    },
+                  );
+                }
+                // --- KARTU 2: PLANTING ---
+                else if (index == 1) {
+                  return _PostHarvestCard(
+                    imagePath: 'assets/planting.png',
+                    label: 'Planting',
+                    description: 'Sowing & Germination',
+                    phase: 'Phase 2',
+                    primaryColor: Colors.green.shade600,
+                    secondaryColor: Colors.green.shade800,
+                    delay: 100,
+                    spreadsheetId: selectedSpreadsheetId,
+                    selectedDistrict: selectedFA,
+                    selectedQA: selectedQA,
+                    selectedSeason: selectedSeason,
+                    region: selectedFieldSPV,
+                    seasonList: seasonList,
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      if (selectedSpreadsheetId == null) {
+                        _showSnackBar(context, 'Please select Division first!');
+                        return;
+                      }
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PspPlantingScreen(
+                            spreadsheetId: selectedSpreadsheetId!,
+                            region: selectedFieldSPV ?? 'Unknown',
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                }
+                // --- KARTU 3: VEGETATIVE ---
+                else if (index == 2) {
+                  return _PostHarvestCard(
+                    imagePath: 'assets/vegetative.png',
+                    label: 'Vegetative',
+                    description: 'Visiting',
+                    phase: 'Phase 3',
+                    primaryColor: Colors.purple.shade600,
+                    secondaryColor: Colors.purple.shade800,
+                    delay: 200,
+                    spreadsheetId: selectedSpreadsheetId,
+                    selectedDistrict: selectedFA,
+                    selectedQA: selectedQA,
+                    selectedSeason: selectedSeason,
+                    region: selectedFieldSPV,
+                    seasonList: seasonList,
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      _validateAndNavigate(
+                        context,
+                        targetScreen: (zone, fa) => PspVegetativeScreen(
+                          spreadsheetId: selectedSpreadsheetId!,
+                          region: selectedFieldSPV ?? 'Unknown',
+                          selectedZone: zone,
+                          selectedFA: fa,
+                        ),
+                      );
+                    },
+                  );
+                }
+                // --- KARTU 4: GENERATIVE ---
+                else if (index == 3) {
+                  return _PostHarvestCard(
+                    imagePath: 'assets/generative.png',
+                    label: 'Generative',
+                    description: 'Flowering & Fruiting',
+                    phase: 'Phase 4',
+                    primaryColor: const Color(0xFFFF6F00),
+                    secondaryColor: const Color(0xFFE65100),
+                    delay: 300,
+                    spreadsheetId: selectedSpreadsheetId,
+                    selectedDistrict: selectedFA,
+                    selectedQA: selectedQA,
+                    selectedSeason: selectedSeason,
+                    region: selectedFieldSPV,
+                    seasonList: seasonList,
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      _validateAndNavigate(
+                        context,
+                        targetScreen: (zone, fa) => PspGenerativeScreen(
+                          spreadsheetId: selectedSpreadsheetId!,
+                          region: selectedFieldSPV ?? 'Unknown',
+                          selectedZone: zone,
+                          selectedFA: fa,
+                        ),
+                      );
+                    },
+                  );
+                }
+                // --- KARTU 5: PRE-HARVEST ---
+                else if (index == 4) {
+                  return _PostHarvestCard(
+                    imagePath: 'assets/preharvest.png', // Ganti icon jika ada
+                    label: 'Pre-Harvest',
+                    description: 'Maturation & Inspection',
+                    phase: 'Phase 5',
+                    primaryColor: Colors.red.shade700, // Warna Merah
+                    secondaryColor: Colors.red.shade900,
+                    delay: 400,
+                    spreadsheetId: selectedSpreadsheetId,
+                    selectedDistrict: selectedFA,
+                    selectedQA: selectedQA,
+                    selectedSeason: selectedSeason,
+                    region: selectedFieldSPV,
+                    seasonList: seasonList,
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      _validateAndNavigate(
+                        context,
+                        targetScreen: (zone, fa) => PspPreHarvestScreen(
+                          spreadsheetId: selectedSpreadsheetId!,
+                          region: selectedFieldSPV ?? 'Unknown',
+                          selectedZone: zone,
+                          selectedFA: fa,
+                        ),
+                      );
+                    },
+                  );
+                }
+                // --- KARTU 6: HARVEST ---
+                else {
+                  return _PostHarvestCard(
+                    imagePath: 'assets/harvest.png', // Ganti icon jika ada
+                    label: 'Harvest',
+                    description: 'Reaping & Collection',
+                    phase: 'Phase 6',
+                    primaryColor: Colors.amber.shade700, // Warna Emas
+                    secondaryColor: Colors.amber.shade900,
+                    delay: 500,
+                    spreadsheetId: selectedSpreadsheetId,
+                    selectedDistrict: selectedFA,
+                    selectedQA: selectedQA,
+                    selectedSeason: selectedSeason,
+                    region: selectedFieldSPV,
+                    seasonList: seasonList,
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      _validateAndNavigate(
+                        context,
+                        targetScreen: (zone, fa) => PspHarvestScreen(
+                          spreadsheetId: selectedSpreadsheetId!,
+                          region: selectedFieldSPV ?? 'Unknown',
+                          selectedZone: zone,
+                          selectedFA: fa,
+                        ),
+                      );
+                    },
+                  );
+                }
               },
-              childCount: 1,
+              childCount: 6, // UPDATE JUMLAH KARTU JADI 6
             ),
           ),
         ),
@@ -1782,13 +1932,12 @@ class PspHspScreenState extends State<PspHspScreen>
     );
   }
 
-  // --- REPLACEMENT CODE FOR FILTER SECTION ---
-
+  // --- _buildFilterSection & metode pendukungnya tetap sama persis ---
   Widget _buildFilterSection(BuildContext context) {
+    // (Isi Widget Filter tetap sama seperti sebelumnya)
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4), // Sedikit margin agar shadow tidak terpotong
+      margin: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
-        // Efek Kaca: Putih transparan
         color: Colors.white.withOpacity(0.65),
         borderRadius: BorderRadius.circular(32),
         border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
@@ -1804,13 +1953,12 @@ class PspHspScreenState extends State<PspHspScreen>
       child: ClipRRect(
         borderRadius: BorderRadius.circular(32),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), // Blur latar belakang
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // --- Header Filter ---
                 Row(
                   children: [
                     Container(
@@ -1837,7 +1985,7 @@ class PspHspScreenState extends State<PspHspScreen>
                       'FILTER BY ZONE',
                       style: TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w900, // Lebih tebal & modern
+                        fontWeight: FontWeight.w900,
                         color: Colors.purple.shade900,
                         letterSpacing: 1.0,
                       ),
@@ -1847,7 +1995,6 @@ class PspHspScreenState extends State<PspHspScreen>
 
                 const SizedBox(height: 24),
 
-                // --- Filter Dropdowns ---
                 StreamBuilder<List<String>>(
                   stream: getPSPFilterStream(),
                   builder: (context, snapshot) {
@@ -1870,7 +2017,7 @@ class PspHspScreenState extends State<PspHspScreen>
                     builder: (context, snapshot) {
                       final qaSPVList = snapshot.data ?? [];
                       return _buildFilterChip(
-                        label: 'Zone PIC',
+                        label: 'Zone',
                         value: selectedQA,
                         icon: Icons.supervisor_account_rounded,
                         onTap: () => _showQASPVBottomSheet(context, qaSPVList),
@@ -1897,7 +2044,6 @@ class PspHspScreenState extends State<PspHspScreen>
                   ),
                 ],
 
-                // --- Active Filter Summary & Reset ---
                 if (selectedFieldSPV != null || selectedQA != null || selectedFA != null) ...[
                   const SizedBox(height: 24),
                   Container(
@@ -1909,7 +2055,6 @@ class PspHspScreenState extends State<PspHspScreen>
                     ),
                     child: Row(
                       children: [
-                        // Status Indicator
                         Expanded(
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1950,8 +2095,6 @@ class PspHspScreenState extends State<PspHspScreen>
                             ),
                           ),
                         ),
-
-                        // Reset Button (Styled)
                         GestureDetector(
                           onTap: () {
                             HapticFeedback.mediumImpact();
@@ -1998,6 +2141,7 @@ class PspHspScreenState extends State<PspHspScreen>
     );
   }
 
+  // --- Helper Widgets (_buildFilterChip, BottomSheets, dll) tetap sama ---
   Widget _buildFilterChip({
     required String label,
     required String? value,
@@ -2007,7 +2151,6 @@ class PspHspScreenState extends State<PspHspScreen>
   }) {
     final bool hasValue = value != null;
 
-    // Animasi masuk sederhana
     return TweenAnimationBuilder(
       tween: Tween<double>(begin: 0, end: 1),
       duration: Duration(milliseconds: 400 + delay),
@@ -2031,7 +2174,6 @@ class PspHspScreenState extends State<PspHspScreen>
           curve: Curves.easeInOutCubic,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           decoration: BoxDecoration(
-            // Jika aktif: Gradient Ungu. Jika tidak: Putih Kaca.
             gradient: hasValue
                 ? LinearGradient(
               colors: [Colors.purple.shade600, Colors.purple.shade800],
@@ -2066,7 +2208,6 @@ class PspHspScreenState extends State<PspHspScreen>
           ),
           child: Row(
             children: [
-              // Icon Container
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -2080,8 +2221,6 @@ class PspHspScreenState extends State<PspHspScreen>
                 ),
               ),
               const SizedBox(width: 16),
-
-              // Text Info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2109,8 +2248,6 @@ class PspHspScreenState extends State<PspHspScreen>
                   ],
                 ),
               ),
-
-              // Arrow / Status Icon
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -2130,9 +2267,8 @@ class PspHspScreenState extends State<PspHspScreen>
     );
   }
 
-  // ... (Method lain seperti _showRegionBottomSheet, dll. tetap sama persis dengan kode sebelumnya) ...
-
   void _showRegionBottomSheet(BuildContext context, List<String> regions) {
+    // (Kode BottomSheet Region sama)
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2279,6 +2415,7 @@ class PspHspScreenState extends State<PspHspScreen>
   }
 
   void _showQASPVBottomSheet(BuildContext context, List<String> qaSPVList) {
+    // (Kode BottomSheet Zone sama)
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2324,7 +2461,7 @@ class PspHspScreenState extends State<PspHspScreen>
                       child: const Icon(Icons.supervisor_account_rounded, color: Colors.white, size: 26),
                     ),
                     const SizedBox(width: 14),
-                    const Text('Select Zone PIC', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    const Text('Select Zone', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                     const Spacer(),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
@@ -2408,6 +2545,7 @@ class PspHspScreenState extends State<PspHspScreen>
   }
 
   void _showDistrictBottomSheet(BuildContext context, List<String> districts) {
+    // (Kode BottomSheet FA sama)
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2565,7 +2703,9 @@ class PspHspScreenState extends State<PspHspScreen>
   }
 }
 
+// ... (_showSnackBar, MenuScreen, _PostHarvestCard tetap sama) ...
 void _showSnackBar(BuildContext context, String message, {SnackBarType type = SnackBarType.error}) {
+  // (Kode Snackbar sama)
   Color backgroundColor;
   IconData icon;
 
@@ -2603,6 +2743,7 @@ void _showSnackBar(BuildContext context, String message, {SnackBarType type = Sn
 }
 
 class MenuScreen extends StatelessWidget {
+  // (Kode MenuScreen sama)
   final String userName;
   final String userEmail;
   final String? userPhotoUrl;
@@ -2974,6 +3115,7 @@ class MenuScreen extends StatelessWidget {
 }
 
 class _PostHarvestCard extends StatefulWidget {
+  // (Class _PostHarvestCard sama)
   const _PostHarvestCard({
     required this.imagePath,
     required this.label,

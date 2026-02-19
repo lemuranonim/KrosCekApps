@@ -530,7 +530,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         ),
         const SizedBox(height: 8),
         _buildRoleChip(
-          title: 'PSP (HSP)',
+          title: 'User PSP',
           value: _isPspHsp,
           icon: Icons.person_outline,
           onChanged: (value) {

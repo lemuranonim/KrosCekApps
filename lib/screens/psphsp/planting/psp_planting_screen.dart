@@ -1,9 +1,11 @@
 // ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
 import 'dart:ui';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Wajib untuk ambil list FA
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import '../../services/google_sheets_api.dart';
 
 class PspPlantingScreen extends StatefulWidget {
@@ -26,11 +28,12 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
 
   bool _isLoading = true;
   bool _isSubmitting = false;
+  bool _isGettingLocation = false;
 
   // --- Data untuk Dropdown ---
   List<Map<String, dynamic>> _availableFields = [];
   Map<String, dynamic>? _selectedFieldData;
-  List<String> _fieldAssistantList = []; // List FA dari Firestore
+  List<String> _fieldAssistantList = [];
 
   // --- Controllers ---
   final TextEditingController _hamletController = TextEditingController();
@@ -38,11 +41,10 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
   final TextEditingController _subDistrictController = TextEditingController();
   final TextEditingController _districtController = TextEditingController();
   final TextEditingController _zoneController = TextEditingController();
-  // _faController dihapus, diganti _selectedFA
   final TextEditingController _coordinateController = TextEditingController();
   final TextEditingController _plantingDateController = TextEditingController();
 
-  // Teknis
+  // Teknis (Hanya untuk Vegetative)
   final TextEditingController _space1Controller = TextEditingController();
   final TextEditingController _plantingSpaceController = TextEditingController();
   final TextEditingController _space2Controller = TextEditingController();
@@ -54,7 +56,10 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
   // --- Dropdown Values ---
   final String _selectedStage = "Planting";
 
-  String? _selectedFA; // Variable untuk Dropdown FA
+  String? _selectedZone; // <--- Tambahkan variabel ini
+  final List<String> _zoneList = ["Zone 1", "Zone 2", "Zone 3", "Zone 4"]; // <--- List opsi
+
+  String? _selectedFA;
   String? _selectedIsoYesNo;
   String? _selectedIsoType;
   String? _selectedIsoDist;
@@ -62,6 +67,8 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
 
   // --- Colors ---
   final Color _primaryColor = Colors.teal.shade800;
+
+  final TextEditingController _fieldDisplayController = TextEditingController();
 
   @override
   void initState() {
@@ -86,21 +93,77 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
     _seedLotController.dispose();
     _seedQtyController.dispose();
     _usageController.dispose();
+    _fieldDisplayController.dispose();
     super.dispose();
+  }
+
+  // --- FUNGSI GET LOCATION & ADDRESS ---
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isGettingLocation = true);
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw 'Location services are disabled. Please enable GPS.';
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw 'Location permissions are denied';
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw 'Location permissions are permanently denied.';
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+
+      _coordinateController.text = "${position.latitude}, ${position.longitude}";
+
+      try {
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+            position.latitude, position.longitude);
+
+        if (placemarks.isNotEmpty) {
+          Placemark place = placemarks[0];
+          setState(() {
+            _villageController.text = place.subLocality ?? "";
+            _subDistrictController.text = place.locality ?? "";
+            _districtController.text = place.subAdministrativeArea ?? "";
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Location & Address updated!"), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        debugPrint("Error reverse geocoding: $e");
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Coordinates found, but failed to fetch address name.")),
+        );
+      }
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+      );
+    } finally {
+      setState(() => _isGettingLocation = false);
+    }
   }
 
   Future<void> _loadInitialData() async {
     try {
       await _googleSheetsApi.init();
-
-      // 1. Ambil Field Data dari Sheets
       final fields = await _googleSheetsApi.getAvailableFields('Vegetative');
 
-      // 2. Ambil Data Field Assistant dari Firestore
-      // Path: regions -> psp -> (field) zones
       final docSnapshot = await FirebaseFirestore.instance
           .collection('regions')
-          .doc('psp') // Sesuai path regions/psp
+          .doc('psp')
           .get();
 
       List<String> faList = [];
@@ -108,8 +171,6 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
         final data = docSnapshot.data();
         if (data != null && data['zones'] != null) {
           final zonesMap = data['zones'] as Map<String, dynamic>;
-
-          // Loop setiap Zone untuk ambil field_assistant
           zonesMap.forEach((key, value) {
             if (value['field_assistant'] != null) {
               final faArray = List<String>.from(value['field_assistant']);
@@ -118,8 +179,6 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
           });
         }
       }
-
-      // Hapus duplikat dan urutkan
       faList = faList.toSet().toList()..sort();
 
       if (mounted) {
@@ -167,46 +226,74 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
       final int targetRowIndex = _selectedFieldData!['rowIndex'];
 
       // 2. Siapkan Formula String
-      // Rumus Sheet: =WEEKNUM(V{row}) dan =TEXT(M{row}; "MMMM")
+      // DAS = TODAY() - Kolom M (Planting Date)
+      final String formulaDAS = "=TODAY()-M$targetRowIndex";
       final String formulaWeekPlanting = "=WEEKNUM(V$targetRowIndex)";
       final String formulaMonthPlanting = "=TEXT(M$targetRowIndex; \"MMMM\")";
 
-      // 3. Mapping Kolom (UPDATED 13-37)
-      Map<int, String> updates = {
-        13: _plantingDateController.text,  // Planting Date
-        14: _hamletController.text,        // Hamlet
-        15: _villageController.text,       // Village
-        16: _subDistrictController.text,   // Sub District
-        17: _districtController.text,      // District
-        18: _zoneController.text,          // Zone
-        19: _selectedFA ?? "-",            // Field Assistant (Dropdown)
-        20: _coordinateController.text,    // Coordinate
-        21: _selectedStage,                // Stage ("Planting")
-        22: _plantingDateController.text,  // Reporting Date
-        23: formulaWeekPlanting,           // Week Report (Pakai Rumus)
-        24: "0",                           // DAS
-        25: formulaWeekPlanting,           // Week Planting (Pakai Rumus dari Kolom V)
-        26: formulaMonthPlanting,          // Month Planting (Pakai Rumus dari Kolom M)
-        27: _selectedIsoYesNo ?? "-",      // Isolation A/B
-        28: _selectedIsoType ?? "-",       // Isolation Type
-        29: _selectedIsoDist ?? "-",       // Isolation Distance
-        30: _space1Controller.text,        // Space 1
-        31: _plantingSpaceController.text, // Planting Space
-        32: _space2Controller.text,        // Space 2
-        33: _remarksController.text,       // Planting Remarks
-        34: _selectedPlantingMethod ?? "-",// Planting Method
-        35: _seedLotController.text,       // Seed Lot
-        36: _seedQtyController.text,       // Seed Qty
-        37: "${_usageController.text}%",   // PS Usage (Tambah %)
+      // 3A. Mapping untuk VEGETATIVE (LENGKAP: 13-37)
+      Map<int, String> vegetativeUpdates = {
+        13: _plantingDateController.text,
+        14: _hamletController.text,
+        15: _villageController.text,
+        16: _subDistrictController.text,
+        17: _districtController.text,
+        18: _zoneController.text,
+        19: _selectedFA ?? "-",
+        20: _coordinateController.text,
+        21: _selectedStage,
+        22: _plantingDateController.text,
+        23: formulaWeekPlanting,
+        24: formulaDAS, // <--- RUMUS DAS (Auto Update)
+        25: formulaWeekPlanting,
+        26: formulaMonthPlanting,
+        27: _selectedIsoYesNo ?? "-",
+        28: _selectedIsoType ?? "-",
+        29: _selectedIsoDist ?? "-",
+        30: _space1Controller.text,
+        31: _plantingSpaceController.text,
+        32: _space2Controller.text,
+        33: _remarksController.text,
+        34: _selectedPlantingMethod ?? "-",
+        35: _seedLotController.text,
+        36: _seedQtyController.text,
+        37: "${_usageController.text}%",
       };
 
-      // 4. Eksekusi Update
-      await _googleSheetsApi.updateSpecificCells('Vegetative', targetRowIndex, updates);
+      // 3B. Mapping untuk GENERATIVE (HANYA DATA POKOK: 13-26)
+      Map<int, String> generativeUpdates = {
+        13: _plantingDateController.text,
+        14: _hamletController.text,
+        15: _villageController.text,
+        16: _subDistrictController.text,
+        17: _districtController.text,
+        18: _zoneController.text,
+        19: _selectedFA ?? "-",
+        20: _coordinateController.text,
+        21: _selectedStage,
+        22: _plantingDateController.text,
+        23: formulaWeekPlanting,
+        24: formulaDAS, // <--- RUMUS DAS (Auto Update)
+        25: formulaWeekPlanting,
+        26: formulaMonthPlanting,
+      };
+
+      // 4. Eksekusi Double Update
+      await Future.wait([
+        _googleSheetsApi.updateSpecificCells('Vegetative', targetRowIndex, vegetativeUpdates),
+        _googleSheetsApi.updateSpecificCells('Generative', targetRowIndex, generativeUpdates),
+      ]);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Row(children: [Icon(Icons.check, color: Colors.white), SizedBox(width: 10), Text("Planting data updated!")]),
+            content: Row(
+                children: [
+                  Icon(Icons.cloud_done_rounded, color: Colors.white),
+                  SizedBox(width: 10),
+                  Expanded(child: Text("Data saved! Full details to Vegetative, Basic info to Generative."))
+                ]
+            ),
             backgroundColor: Colors.teal,
             behavior: SnackBarBehavior.floating,
           ),
@@ -218,6 +305,85 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  // --- FUNGSI SEARCHABLE DROPDOWN (DIALOG) ---
+  void _showFieldSearchDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        String searchQuery = "";
+
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            // Filter list berdasarkan query pencarian
+            final filteredList = _availableFields.where((field) {
+              final fieldInfo = "${field['fieldNumber']} - ${field['farmer']}".toLowerCase();
+              return fieldInfo.contains(searchQuery.toLowerCase());
+            }).toList();
+
+            return AlertDialog(
+              title: const Text("Select Field"),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Input Pencarian
+                    TextField(
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: "Search Field No or Farmer...",
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onChanged: (val) {
+                        setStateDialog(() {
+                          searchQuery = val;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    // Daftar Hasil
+                    Expanded(
+                      child: filteredList.isEmpty
+                          ? const Center(child: Text("No field found."))
+                          : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: filteredList.length,
+                        itemBuilder: (context, index) {
+                          final item = filteredList[index];
+                          final displayText = "${item['fieldNumber']} - ${item['farmer']}";
+                          return ListTile(
+                            title: Text(displayText, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text("Row Index: ${item['rowIndex']}"),
+                            onTap: () {
+                              // Set data yang dipilih
+                              setState(() {
+                                _selectedFieldData = item;
+                                _fieldDisplayController.text = displayText; // Tampilkan di textfield utama
+                              });
+                              Navigator.pop(context); // Tutup dialog
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Close"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -271,31 +437,29 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
                     const SizedBox(height: 10),
                     _buildGlassContainer(
                       children: [
-                        DropdownButtonFormField<Map<String, dynamic>>(
-                          decoration: InputDecoration(
-                            labelText: "Search Field Number / Farmer",
-                            prefixIcon: Icon(Icons.qr_code_scanner, color: _primaryColor),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                            filled: true,
-                            fillColor: Colors.white,
-                          ),
-                          isExpanded: true,
-                          items: _availableFields.map((field) {
-                            return DropdownMenuItem(
-                              value: field,
-                              child: Text(
-                                "${field['fieldNumber']} - ${field['farmer']}",
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                                overflow: TextOverflow.ellipsis,
+                        // GANTI WIDGET DROPDOWN LAMA DENGAN INI:
+                        GestureDetector(
+                          onTap: _showFieldSearchDialog, // Panggil dialog saat diklik
+                          child: AbsorbPointer( // Mencegah keyboard muncul di layar utama
+                            child: TextFormField(
+                              controller: _fieldDisplayController,
+                              readOnly: true, // Pastikan read only
+                              decoration: InputDecoration(
+                                labelText: "Search Field Number / Farmer",
+                                prefixIcon: Icon(Icons.qr_code_scanner, color: _primaryColor),
+                                suffixIcon: const Icon(Icons.arrow_drop_down),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                                filled: true,
+                                fillColor: Colors.white,
                               ),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            setState(() {
-                              _selectedFieldData = val;
-                              // Optional: Reset controllers or fill existing data here
-                            });
-                          },
+                              validator: (value) {
+                                if (_selectedFieldData == null) {
+                                  return "Please select a field";
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -308,6 +472,57 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
                       const SizedBox(height: 10),
                       _buildGlassContainer(
                         children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center, // Sejajarkan vertikal
+                            children: [
+                              // 1. Kolom Input (Hanya menampilkan teks)
+                              Expanded(
+                                child: _buildTextField(
+                                  _coordinateController,
+                                  "Coordinate",
+                                  Icons.my_location,
+                                  keyboardType: TextInputType.text,
+                                  // Tidak ada suffixIcon lagi di sini
+                                ),
+                              ),
+
+                              const SizedBox(width: 8), // Jarak antara input dan tombol
+
+                              // 2. Tombol GET (Pin Map)
+                              SizedBox(
+                                height: 48, // Tinggi disesuaikan agar mirip dengan tinggi TextField
+                                child: ElevatedButton.icon(
+                                  onPressed: _isGettingLocation ? null : _getCurrentLocation,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _primaryColor, // Warna hijau teal sesuai tema
+                                    foregroundColor: Colors.white, // Warna teks/icon putih
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    elevation: 2,
+                                  ),
+                                  // Logika Tampilan: Loading Spinner atau Icon Pin
+                                  icon: _isGettingLocation
+                                      ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                      : const Icon(Icons.location_pin, size: 20), // Icon Pin Map
+                                  label: Text(
+                                    _isGettingLocation ? "..." : "GET",
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+
                           Row(
                             children: [
                               Expanded(child: _buildTextField(_hamletController, "Hamlet (Dusun)", Icons.home_work_outlined)),
@@ -323,11 +538,47 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
                               Expanded(child: _buildTextField(_districtController, "District", Icons.map_rounded)),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          _buildTextField(_zoneController, "Zone / Area", Icons.share_location_rounded),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50, // Latar belakang oranye muda
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.info_outline_rounded, size: 20, color: Colors.orange.shade800),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    "Village, Sub-district, District is Automatically filled by GET Coordinate. Check Again!",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.orange.shade900,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildDropdownSimple(
+                            "Zone / Area",
+                            _zoneList, // List: Zone 1, Zone 2, dst
+                                (val) {
+                              setState(() {
+                                _selectedZone = val;
+                                // PENTING: Kita update controller juga agar tombol SIMPAN tetap jalan tanpa ubah kode lain
+                                _zoneController.text = val ?? "";
+                              });
+                            },
+                            value: _selectedZone,
+                            icon: Icons.share_location_rounded,
+                          ),
                           const SizedBox(height: 10),
 
-                          // FA Dropdown Otomatis dari Firestore
                           _buildDropdownSimple(
                               "Field Assistant",
                               _fieldAssistantList,
@@ -335,9 +586,6 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
                               value: _selectedFA,
                               icon: Icons.person_outline
                           ),
-
-                          const SizedBox(height: 10),
-                          _buildTextField(_coordinateController, "Coordinate (Lat, Long)", Icons.my_location, keyboardType: TextInputType.text),
                         ],
                       ),
 
@@ -360,7 +608,6 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          // Auto Calculated Fields (Display Only - Rumus akan dikirim ke Sheets)
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(12),
@@ -371,7 +618,7 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
                                 const SizedBox(width: 8),
                                 const Expanded(
                                   child: Text(
-                                    "Week & Month Planting will be calculated automatically in Spreadsheet.",
+                                    "Week, Month & DAS will be calculated automatically in Database.",
                                     style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.black54),
                                   ),
                                 ),
@@ -431,13 +678,12 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
                             children: [
                               Expanded(child: _buildTextField(_seedQtyController, "Seed Qty (kg)", Icons.scale, keyboardType: TextInputType.number)),
                               const SizedBox(width: 10),
-                              // Usage % Input
                               Expanded(child: _buildTextField(
                                   _usageController,
                                   "PS Usage",
                                   Icons.percent,
                                   keyboardType: TextInputType.number,
-                                  suffixText: "%" // Visual cue
+                                  suffixText: "%"
                               )),
                             ],
                           ),
@@ -497,7 +743,7 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController ctrl, String label, IconData icon, {TextInputType keyboardType = TextInputType.text, int maxLines = 1, String? Function(String?)? validator, String? suffixText}) {
+  Widget _buildTextField(TextEditingController ctrl, String label, IconData icon, {TextInputType keyboardType = TextInputType.text, int maxLines = 1, String? Function(String?)? validator, String? suffixText, Widget? suffixIcon}) {
     return TextFormField(
       controller: ctrl,
       keyboardType: keyboardType,
@@ -506,6 +752,7 @@ class _PspPlantingScreenState extends State<PspPlantingScreen> {
       decoration: InputDecoration(
         labelText: label,
         suffixText: suffixText,
+        suffixIcon: suffixIcon,
         prefixIcon: Icon(icon, color: Colors.grey),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
         filled: true,

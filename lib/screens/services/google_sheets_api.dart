@@ -434,4 +434,38 @@ class GoogleSheetsApi {
   bool isDecimalIndonesia(String value) {
     return RegExp(r'^\d{1,3}(\.\d{3})*(,\d+)?$').hasMatch(value);
   }
+
+  /// Mengambil daftar Field Number dari sheet Vegetative untuk Dropdown
+  /// Return: List of Map {'rowIndex': int, 'fieldNumber': String, 'farmer': String}
+  Future<List<Map<String, dynamic>>> getAvailableFields(String worksheetTitle) async {
+    _ensureInitialized();
+    final Worksheet? sheet = spreadsheet.worksheetByTitle(worksheetTitle);
+    if (sheet == null) throw Exception('Worksheet tidak ditemukan');
+
+    // Ambil semua data
+    final rows = await sheet.values.allRows();
+    List<Map<String, dynamic>> options = [];
+
+    // Loop mulai dari index 1 (asumsi baris 0 adalah Header)
+    for (int i = 1; i < rows.length; i++) {
+      final row = rows[i];
+      // Pastikan baris memiliki minimal data sampai kolom Farmer (index 5)
+      // Index 2 = Field Number (Kolom C)
+      // Index 5 = Farmer Name (Kolom F)
+      if (row.length > 2) {
+        final fieldNumber = row[2].trim();
+        final farmerName = row.length > 5 ? row[5].trim() : "-";
+
+        // Kita hanya ambil jika Field Number ada isinya
+        if (fieldNumber.isNotEmpty) {
+          options.add({
+            'rowIndex': i + 1, // Simpan nomor baris asli (1-based untuk GSheets)
+            'fieldNumber': fieldNumber,
+            'farmer': farmerName,
+          });
+        }
+      }
+    }
+    return options;
+  }
 }

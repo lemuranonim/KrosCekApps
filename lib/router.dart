@@ -21,8 +21,8 @@ import 'screens/psp/psp_screen.dart';
 import 'screens/psphsp/psp_hsp_screen.dart';
 // Splash
 import 'screens/splash_screen.dart';
-// Audit Graph
-import 'screens/admin/audit_graph_page.dart';
+// Flagging Graph
+import 'screens/admin/flagging_graph_page.dart';
 // Workload Map
 import 'screens/admin/workload_map_screen.dart';
 // Audit Dashboard
@@ -91,10 +91,10 @@ final router = GoRouter(
       path: '/filter',
       builder: (context, state) => const FilterRegionsScreen(),
     ),
-    GoRoute(
-      path: '/audit_graph',
-      builder: (context, state) => const AuditGraphPage(),
-    ),
+    // GoRoute(
+    //   path: '/audit_graph',
+    //   builder: (context, state) => const AuditGraphPage(),
+    // ),
     //workload map
     GoRoute(
       path: '/workload_map',
@@ -104,6 +104,11 @@ final router = GoRouter(
     GoRoute(
       path: '/audit_dashboard',
       builder: (context, state) => const AuditDashboard(),
+    ),
+    // Flagging Graph
+    GoRoute(
+      path: '/flagging_graph',
+      builder: (context, state) => const FlaggingGraphPage(),
     ),
     // Notification Management
     GoRoute(
