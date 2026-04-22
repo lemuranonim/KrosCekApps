@@ -1,4877 +1,3913 @@
-import 'dart:convert';
-import 'package:flutter_quill/flutter_quill.dart';
-import 'dart:async';
-import 'dart:ui';
+// lib/screens/qa/qa_screen.dart
+//
+// HOME MAP SCREEN — Disesuaikan ke AdvantaTheme (centralized theme)
+// ─────────────────────────────────────────────────────────
+// Perubahan utama dari versi sebelumnya:
+//   • Semua warna hardcoded → AdvantaColors.*
+//   • Semua TextStyle hardcoded → AdvantaText.*
+//   • Border, shape, shadow → AdvantaRadius.* & AdvantaShadows.*
+//   • Warna dinamis light/dark dibaca dari Theme.of(context)
+//   • Komponen bottom sheet (dark-themed) tetap menggunakan
+//     AdvantaColors.deepForest / midGreen sesuai dark palette
+// ─────────────────────────────────────────────────────────
 
-import 'package:animated_text_kit/animated_text_kit.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:lottie/lottie.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:weather_icons/weather_icons.dart';
-import '../services/region_mapper_service.dart';
-import '../services/config_manager.dart';
-import 'absen_log_screen.dart';
-import 'activity_screen.dart';
-import 'dashboard_visit_screen.dart';
-import 'detailed_map_screen.dart';
-import 'detaselling_screen.dart';
-import 'generative/generative_screen.dart';
-import 'harvest/harvest_screen.dart';
-import 'issue_screen.dart';
-import 'pre_harvest/pre_harvest_screen.dart';
-import 'training_screen.dart';
-import 'vegetative/vegetative_screen.dart';
-import 'weather_widget.dart';
-import '../../services/notification_service.dart';
-import 'notification_list_screen.dart';
-import '../services/enhanced_absen_service.dart';
+import 'package:intl/intl.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+// url_launcher
+import 'package:url_launcher/url_launcher.dart';
+import '../../providers/master_fields_provider.dart';
+import '../../providers/filter_data_provider.dart';
+import '../../providers/attendance_provider.dart';
+import '../../widgets/field_detail_bottom_sheet.dart';
+import '../../services/supabase_auth_service.dart';
+import '../../theme/app_theme.dart';
+import '../../services/session_manager.dart';
+import '../../widgets/field_list_view.dart'; // Sesuaikan path ini
+import '../../utils/audit_status_helper.dart';
+import '../../utils/active_phase_filter.dart';
+import '../../utils/dap_helper.dart';
+import '../../widgets/audit_status_widgets.dart';
 
-enum SnackBarType { success, error, info }
-class QaScreen extends StatefulWidget {
-  const QaScreen({super.key});
+// ─── Work mode enum ──────────────────────────────────────
+enum _WorkMode { single, mass }
 
-  @override
-  QaScreenState createState() => QaScreenState();
+// ─── Audit Status filter enum ────────────────────────────
+enum _AuditFilter {
+  all,     // Semua lahan
+  sampun,  // Sudah audit fase aktif
+  partial, // Dereng Jangkep (generatif sebagian)
+  dereng,  // Belum audit sama sekali (Dereng Blas)
 }
 
-class QaScreenState extends State<QaScreen>
-    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
-  bool _isLoading = true;
-  bool _hasAbsenToday = false;
-  bool _isCheckingAbsen = true;
-  int _selectedIndex = 0;
-  String _appVersion = 'Fetching...';
-  String userEmail = 'Fetching...';
-  String userName = 'Fetching...';
-  List<String> fieldSPVList = [];
-  List<String> faList = [];
-  List<String> qaSPVList = [];
-  List<String> seasonList = [];
-  String? selectedFieldSPV;
-  String? selectedFA;
-  String? selectedQA;
-  String? selectedSeason;
-  String? selectedRegion;
-  String? selectedSpreadsheetId;
-  final ZoomDrawerController _drawerController = ZoomDrawerController();
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: ['email', 'profile'],
-  );
-  String? userPhotoUrl;
-  StreamSubscription? _seasonsSubscription;
-  Stream<int>? _unreadNotificationsStream;
-  StreamSubscription? _notificationListener;
-  String _greeting = '';
-  String _currentTime = '';
-  Timer? _timer;
-  Map<String, String> _regionDocumentIds = {};
-  String? _jamAbsenToday;
-  String? _regionAbsen;
-
-  bool _canAccessFeatures() {
-    return _hasAbsenToday;
-  }
+// ─── Screen ──────────────────────────────────────────────
+class QAScreen extends ConsumerStatefulWidget {
+  const QAScreen({super.key});
 
   @override
-  bool get wantKeepAlive => true;
+  ConsumerState<QAScreen> createState() => _QAScreenState();
+}
 
-  late AnimationController _absenCardAnimController;
+class _QAScreenState extends ConsumerState<QAScreen>
+    with TickerProviderStateMixin {
+  // Tinggi overlay atas (header + chips) — diukur setelah build
+  final GlobalKey _topOverlayKey = GlobalKey();
+  double _topOverlayHeight = 168.0; // fallback default
 
-  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
-  GlobalKey<RefreshIndicatorState>();
-  bool _isDataFromCache = false;
+  // Map
+  final MapController _mapController = MapController();
+  bool _isSatellite = true;
+
+  // Search & filter — Multi-param (Supabase-style)
+  final List<SearchFilter> _activeFilters = [];
+
+  // Region / District quick-filter (tetap dipertahankan)
+  String? _selectedRegion;
+  String? _selectedDistrict;
+
+  // Modes
+  _WorkMode _workMode = _WorkMode.single;
+  final Set<String> _selectedFieldNumbers = {};
+
+  // UI states
+  bool _isLegendVisible = false;
+  bool _isSpeedDialOpen = false;
+
+  // ── User GPS location ──────────────────────────────────
+  LatLng? _userLocation;
+  bool _isLocating = false;
+  bool _gpsEnabled = false;
+
+  // ── Loading / Refresh overlay ─────────────────────────
+  bool _isRefreshing = false;
+  late AnimationController _shimmerCtrl;
+  late Animation<double> _shimmerAnim;
+  late AnimationController _refreshSpinCtrl;
+
+  late AnimationController _speedDialCtrl;
+
+  ActivePhaseView _activePhaseView = ActivePhaseView.auto;
+  _AuditFilter _auditFilter = _AuditFilter.all;
 
   @override
   void initState() {
     super.initState();
-    _updateGreeting();
-    _updateTime();
-    _timer = Timer.periodic(const Duration(minutes: 1), (timer) {
-      _updateTime();
-    });
-
-    _absenCardAnimController = AnimationController(
+    _shimmerCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-
-    _loadInitialData();
-    _setupLocalNotificationListener();
-    _initializeUnreadStream();
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
+    _shimmerAnim = Tween<double>(begin: -1.5, end: 2.5).animate(
+      CurvedAnimation(parent: _shimmerCtrl, curve: Curves.easeInOut),
+    );
+    _refreshSpinCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _loadUser();
+    _initUserLocation();
+    _speedDialCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
-    _seasonsSubscription?.cancel();
-    _notificationListener?.cancel();
-    _absenCardAnimController.dispose();
+    _shimmerCtrl.dispose();
+    _refreshSpinCtrl.dispose();
+    _speedDialCtrl.dispose();
     super.dispose();
   }
 
-  void _setupLocalNotificationListener() {
-    _notificationListener = FirebaseFirestore.instance
-        .collection('notifications')
-        .orderBy('timestamp', descending: true)
-        .limit(1) // Kita hanya peduli pada notifikasi terbaru
-        .snapshots()
-        .listen((snapshot) async {
-      if (snapshot.docs.isEmpty) return; // Tidak ada notifikasi
-
-      final notificationDoc = snapshot.docs.first;
-      final notificationId = notificationDoc.id;
-      final notificationData = notificationDoc.data();
-      final prefs = await SharedPreferences.getInstance();
-      final lastShownId = prefs.getString('lastLocalNotificationId');
-
-      // Tampilkan notifikasi hanya jika ini adalah notifikasi baru
-      if (notificationId != lastShownId) {
-        final title = notificationData['title'] ?? 'Notifikasi Baru';
-        String body = notificationData['body'] ?? 'Anda memiliki pesan baru.';
-        final bool isRichText = notificationData['isRichText'] ?? false;
-
-        // --- PENYESUAIAN UTAMA DIMULAI DI SINI ---
-        // Jika notifikasi adalah rich text, kita ubah dari format JSON ke teks biasa.
-        if (isRichText) {
-          try {
-            // 1. Ubah string JSON menjadi objek List
-            var json = jsonDecode(body);
-            // 2. Buat objek Document dari data JSON tersebut
-            final doc = Document.fromJson(json);
-            // 3. Gunakan fungsi toPlainText() untuk mendapatkan teks biasa
-            //    Kita juga mengganti karakter baris baru (\n) dengan spasi agar rapi.
-            body = doc.toPlainText().replaceAll('\n', ' ').trim();
-
-            // Jika body kosong setelah konversi, beri pesan default
-            if (body.isEmpty) {
-              body = 'Anda menerima pesan terformat. Buka aplikasi untuk melihat.';
-            }
-
-          } catch (e) {
-            // Jika terjadi error saat konversi, tampilkan pesan fallback
-            body = 'Anda menerima pesan terformat. Buka aplikasi untuk melihat.';
-            debugPrint("Error converting Quill JSON to plain text: $e");
-          }
-        }
-
-        // Panggil service untuk menampilkan notifikasi di HP dengan body yang sudah bersih
-        NotificationService().showNotification(title, body);
-
-        // Simpan ID notifikasi terakhir yang ditampilkan untuk menghindari duplikat
-        await prefs.setString('lastLocalNotificationId', notificationId);
+  void _measureTopOverlay() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _topOverlayKey.currentContext;
+      if (ctx == null) return;
+      final box = ctx.findRenderObject() as RenderBox?;
+      if (box == null) return;
+      final h = box.size.height;
+      if (h > 0 && h != _topOverlayHeight) {
+        setState(() => _topOverlayHeight = h);
       }
     });
   }
 
-  void _initializeUnreadStream() {
-    setState(() {
-      _unreadNotificationsStream = Stream.fromFuture(SharedPreferences.getInstance()).asyncExpand((prefs) {
-        final lastReadTimestamp = prefs.getString('lastNotificationViewTimestamp');
-
-        Query query = FirebaseFirestore.instance.collection('notifications');
-
-        if (lastReadTimestamp != null) {
-          query = query.where('timestamp', isGreaterThan: Timestamp.fromDate(DateTime.parse(lastReadTimestamp)));
-        }
-
-        return query.snapshots().map((snapshot) => snapshot.size);
-      });
-    });
+  Future<void> _loadUser() async {
+    final session = await SessionManager.instance.getActiveSession();
+    final uid = session?.userId ?? '';
+    if (uid.isEmpty || !mounted) return;
+    ref.read(attendanceProvider.notifier).loadTodayAttendance(uid);
   }
 
-  void _handleBackInHomeScreen() {
-    // If the drawer is open, close it
-    if (_drawerController.isOpen!()) {
-      _drawerController.close!();
+  Future<void> _initUserLocation() async {
+    final svcOn = await Geolocator.isLocationServiceEnabled();
+    if (!svcOn) return;
+
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      perm = await Geolocator.requestPermission();
+    }
+    if (perm == LocationPermission.denied ||
+        perm == LocationPermission.deniedForever) {
       return;
     }
 
-    // If not, show a confirmation dialog for logout
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16.0),
+    await _fetchAndMoveToUser(centerMap: true);
+  }
+
+  Future<void> _fetchAndMoveToUser({bool centerMap = false}) async {
+    if (_isLocating) return;
+    if (!mounted) setState(() => _isLocating = true);
+
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy  : LocationAccuracy.high,
+          timeLimit : Duration(seconds: 8),
         ),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16.0),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(25),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+      );
+      if (!mounted) return;
+      setState(() {
+        _userLocation = LatLng(pos.latitude, pos.longitude);
+        _gpsEnabled   = true;
+        _isLocating   = false;
+      });
+      if (centerMap) {
+        _mapController.move(_userLocation!, 12.0);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _gpsEnabled = false;
+        _isLocating = false;
+      });
+    }
+  }
+
+  Future<void> _goToUserLocation() async {
+    if (_userLocation != null) {
+      _mapController.move(_userLocation!, 14.0);
+      return;
+    }
+    await _fetchAndMoveToUser(centerMap: true);
+    if (!_gpsEnabled && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Gagal mendapatkan lokasi GPS. Pastikan izin lokasi aktif.',
+            style: AdvantaText.body2.copyWith(color: Colors.white),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
+          backgroundColor: AdvantaColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: AdvantaRadius.cardRadius),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
+  }
+
+  // Fungsi untuk membuka Google Maps
+  Future<void> _openInGoogleMaps(double lat, double lng) async {
+    final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  // ─── Color helpers ───────────────────────────────────────
+  // Warna fase DAP — tetap hardcoded karena merupakan data semantik,
+  // bukan tema UI. Digunakan di map markers & legenda.
+  static const _phaseColors = [
+    Color(0xFF78909C), // Vegetative   ≤45 DAP
+    Color(0xFFFFCA28), // Generative1  46-54
+    Color(0xFFFF7043), // Generative2  55-59
+    Color(0xFFE53935), // Generative3  60-75
+    Color(0xFF795548), // Pre-Harvest  76-100
+    Color(0xFF43A047), // Harvest      >100
+  ];
+
+  Color _markerColor(int dap) {
+    return DapHelper.getDapMarkerColor(dap);
+  }
+
+  // ─── Helpers ────────────────────────────────────────────
+  List<ParsedFieldData> _filterFields(List<ParsedFieldData> allParsed) {
+    final selRegion   = _selectedRegion?.trim().toLowerCase();
+    final selDistrict = _selectedDistrict?.trim().toLowerCase();
+
+    return allParsed.where((f) {
+      // ── Region & District fixed filters ──
+      if (selRegion != null) {
+        final dbRegion = f.raw['region']?.toString().trim().toLowerCase() ?? '';
+        if (dbRegion != selRegion) return false;
+      }
+      if (selDistrict != null) {
+        final dbDistrict = f.raw['district_kab']?.toString().trim().toLowerCase() ?? '';
+        if (dbDistrict != selDistrict) return false;
+      }
+
+      // ── Dynamic multi-param filters ──
+      for (final filter in _activeFilters) {
+        if (filter.value.trim().isEmpty) continue;
+        final q      = filter.value.trim().toLowerCase();
+        final dbVal  = f.raw[filter.param.fieldKey]?.toString().toLowerCase().trim() ?? '';
+        if (!dbVal.contains(q)) return false;
+      }
+
+      // ── Audit Status filter ──
+      if (_auditFilter != _AuditFilter.all) {
+        final auditStatus = AuditStatusHelper.fromRaw(f.raw);
+        final phase = _activePhaseView == ActivePhaseView.auto
+            ? _dapToPhaseView(f.dap)
+            : _activePhaseView;
+
+        switch (_auditFilter) {
+          case _AuditFilter.sampun:
+            if (!_isAuditSampun(auditStatus, phase)) return false;
+            break;
+          case _AuditFilter.dereng:
+          // Dereng Blas — belum sama sekali di fase aktif
+            if (_isAuditSampun(auditStatus, phase)) return false;
+            if (phase == ActivePhaseView.generative &&
+                auditStatus.generative == GenerativeAuditStatus.derengJangkep) {
+              return false; // Jangkep bukan Blas
+            }
+            break;
+          case _AuditFilter.partial:
+          // Dereng Jangkep — hanya berlaku untuk generatif
+            if (phase != ActivePhaseView.generative) return false;
+            if (auditStatus.generative != GenerativeAuditStatus.derengJangkep) return false;
+            break;
+          case _AuditFilter.all:
+            break;
+        }
+      }
+
+      return true;
+    }).toList();
+  }
+
+  // Helper: resolve phase dari DAP (duplikat dari MarkerAuditDot, tapi perlu di state level)
+  ActivePhaseView _dapToPhaseView(int dap) {
+    if (dap <= 35)  return ActivePhaseView.vegetative;
+    if (dap <= 65)  return ActivePhaseView.generative;
+    if (dap <= 90) return ActivePhaseView.preHarvest;
+    return ActivePhaseView.harvest;
+  }
+
+  bool _isAuditSampun(FieldAuditStatus s, ActivePhaseView phase) {
+    switch (phase) {
+      case ActivePhaseView.vegetative:  return s.vegetative == SingleAuditStatus.sampun;
+      case ActivePhaseView.generative:  return s.generative == GenerativeAuditStatus.sampun;
+      case ActivePhaseView.preHarvest:  return s.preHarvest == SingleAuditStatus.sampun;
+      case ActivePhaseView.harvest:     return s.harvest == SingleAuditStatus.sampun;
+      case ActivePhaseView.auto:        return false;
+    }
+  }
+
+  void _fitBounds(List<ParsedFieldData> fields) {
+    if (fields.isEmpty) return;
+    // Menggunakan f.lat dan f.lng dari Provider
+    final points = fields.map((f) => LatLng(f.lat, f.lng)).toList();
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(points),
+        padding: const EdgeInsets.all(60),
+      ),
+    );
+  }
+
+  void _showDefaultCoordSheet(List<Map<String, dynamic>> uncoordFields) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _UncoordFieldsSheet(
+        fields: uncoordFields,
+        onOpenField: (f) {
+          Navigator.pop(context);
+          FieldDetailBottomSheet.show(
+            context,
+            f,
+            onInspectDone: (fieldData) {
+              FieldDetailBottomSheet.show(context, fieldData);
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  // ─── BUILD ───────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    _measureTopOverlay();
+    final masterAsync = ref.watch(masterFieldsProvider);
+    // 1. TAMBAHKAN BARIS INI: Mengambil data yang sudah di-parse oleh Isolate
+    final parsedMapAsync = ref.watch(parsedMapFieldsProvider);
+
+    final attendance = ref.watch(attendanceProvider);
+    final regions   = ref.watch(uniqueRegionsProvider);
+    final districts = ref.watch(uniqueDistrictsProvider(_selectedRegion));
+    final user = ref.watch(currentUserProvider).value;
+
+    // Matikan overlay refresh saat data baru sudah masuk
+    if (_isRefreshing && masterAsync is AsyncData) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _isRefreshing) {
+          setState(() => _isRefreshing = false);
+          _refreshSpinCtrl.stop();
+          _refreshSpinCtrl.reset();
+        }
+      });
+    }
+
+    bool canSeeCoverage = false;
+    if (user != null) {
+      final role = user.role.toUpperCase();
+      final action = user.action.toLowerCase();
+      canSeeCoverage = (action == 'all') &&
+          ['SPV', 'MANAGER', 'DEV', 'ADMIN'].contains(role);
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // ── 1. MAP ─────────────────────────────────────────
+          parsedMapAsync.when(
+            data: (parsedFields) {
+              final filtered = _filterFields(parsedFields);
+              return _buildMap(filtered); // Selalu tampilkan map
+            },
+            loading: () => const SizedBox.expand(),
+            error: (e, _) => _buildError(e.toString()),
+          ),
+
+          // ── 1b. REFRESH OVERLAY ────────────────────────────
+          if (_isRefreshing && masterAsync is! AsyncLoading)
+            _buildRefreshOverlay(),
+
+          // ── 2. UNIFIED TOP OVERLAY ──────────────────────────────
+          Positioned(
+            top: 0, left: 0, right: 0,
             child: Column(
+              key: _topOverlayKey,   // ← TAMBAH INI
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Title
-                const Text(
-                  "Konfirmasi Medal",
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Content
-                Text(
-                  "Menopo panjenengan badhe medal saking aplikasi puniko?",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey[700],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                // Action buttons
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: const Text(
-                        "Batal",
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
+                _buildHeader(attendance, regions, districts),
+                if (masterAsync is AsyncData)
+                  _buildModeChips(canSeeCoverage),
+                //   // ── BARU: Audit Phase Filter di map ──
+                if (masterAsync is AsyncData)
+                  parsedMapAsync.whenData((parsedFields) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: AuditPhaseFilterBar(
+                        activePhase: _activePhaseView,
+                        onChanged: (phase) => setState(() {
+                          _activePhaseView = phase;
+                          // Reset filter 'Jangkep' jika phase bukan generatif
+                          if (_auditFilter == _AuditFilter.partial &&
+                              phase != ActivePhaseView.generative &&
+                              phase != ActivePhaseView.auto) {
+                            _auditFilter = _AuditFilter.all;
+                          }
+                        }),
+                        compact: true,   // icon only di map agar tidak terlalu lebar
+                      ),
+                    );
+                  }).value ?? const SizedBox.shrink(),
+
+                // Uncoord banner — selalu di bawah mode chips
+                if (masterAsync is AsyncData)
+                  parsedMapAsync.whenData((parsedFields) {
+                    final uncoordFields = _filterFields(parsedFields)
+                        .where((f) => f.isDefault)
+                        .map((f) => f.raw)
+                        .toList();
+                    if (uncoordFields.isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                      child: GestureDetector(
+                        onTap: () => _showDefaultCoordSheet(uncoordFields),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                AdvantaColors.error.withAlpha(220),
+                                const Color(0xFFB71C1C).withAlpha(200),
+                              ],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.white.withAlpha(30)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AdvantaColors.error.withAlpha(90),
+                                blurRadius: 16,
+                                spreadRadius: -2,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 32, height: 32,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withAlpha(25),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.location_off_rounded, color: Colors.white, size: 16),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '${uncoordFields.length} Lahan Tanpa Koordinat',
+                                      style: AdvantaText.label.copyWith(
+                                        color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Tap untuk lihat daftar & koreksi',
+                                      style: AdvantaText.caption.copyWith(color: Colors.white.withAlpha(180)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.all(5),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withAlpha(20),
+                                  borderRadius: BorderRadius.circular(7),
+                                ),
+                                child: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 16),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).pop(true);
-                        // Exit the app
-                        SystemNavigator.pop();
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        // Use backgroundColor instead of primary
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12.0),
-                        ),
-                      ),
-                      child: const Text(
-                        "Medal",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ), // Ensure child is the last parameter
-                    ),
-                  ],
-                ),
+                    );
+                  }).value ?? const SizedBox.shrink(),
               ],
             ),
           ),
+
+          // ── 5. RIGHT FABs ──────────────────────────────────
+          if (masterAsync is AsyncData)
+            Positioned(
+              right: 12,
+              bottom: _workMode == _WorkMode.mass ? 116 : 32,
+              child: _buildRightFabs(masterAsync),
+            ),
+
+          // ── 6. LEGEND ─────────────────────────────────────────────
+          if (_isLegendVisible && masterAsync is AsyncData)
+            Positioned(
+              right: 62,  // ← sebelumnya 68, sekarang sejajar tombol speed-dial
+              bottom: _workMode == _WorkMode.mass ? 116 : 32,
+              child: _buildLegend(),
+            ),
+
+          // ── 7. MASS INSPECT BAR ───────────────────────────
+          if (_workMode == _WorkMode.mass && masterAsync is AsyncData)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: _buildMassBar(),
+            ),
+
+          // ── 8. INITIAL LOADING — on top of everything ──────
+          if (parsedMapAsync is AsyncLoading)
+            Positioned.fill(
+              child: _buildInitialLoadingScreen(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ─── MAP ─────────────────────────────────────────────────
+  Widget _buildMap(List<ParsedFieldData> fieldsData) {
+    final uncoordRaw = fieldsData.where((f) => f.isDefault).map((f) => f.raw).toList();
+    final coordFields = fieldsData.where((f) => !f.isDefault).toList();
+
+    return FlutterMap(
+      mapController: _mapController,
+      options: const MapOptions(
+        initialCenter: LatLng(-7.5, 112.5),
+        initialZoom  : 8.0,
+        maxZoom      : 18.0,
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: _isSatellite
+              ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+              : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.kroscek.app',
+          maxNativeZoom: 18,
+        ),
+        if (_userLocation != null)
+          MarkerLayer(
+            markers: [
+              Marker(
+                point : _userLocation!,
+                width : 52,
+                height: 52,
+                child : _UserLocationMarker(isLocating: _isLocating),
+              ),
+            ],
+          ),
+        if (uncoordRaw.length > 4)
+          MarkerLayer(
+            markers: [
+              Marker(
+                point : const LatLng(-7.637017, 112.8272303),
+                width : 72,
+                height: 72,
+                child : GestureDetector(
+                  onTap: () => _showDefaultCoordSheet(uncoordRaw),
+                  child: _UncoordMarker(count: uncoordRaw.length),
+                ),
+              ),
+            ],
+          ),
+        MarkerClusterLayerWidget(
+          options: MarkerClusterLayerOptions(
+            maxClusterRadius: 45,
+            size            : const Size(46, 46),
+            alignment       : Alignment.center,
+            padding         : const EdgeInsets.all(50),
+            markers         : _buildMarkers(
+              uncoordRaw.length > 4 ? coordFields : fieldsData,
+            ),
+            builder         : (ctx, markers) => _buildCluster(markers.length),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Marker> _buildMarkers(List<ParsedFieldData> fieldsData) {
+    final result = <Marker>[];
+
+    for (final f in fieldsData) {
+      final color = _markerColor(f.dap);
+      final fn = f.raw['field_number']?.toString() ?? '';
+      final isSelected = _selectedFieldNumbers.contains(fn);
+      final isCorrected = f.isCorrected;
+
+      // ── BARU: parse audit status ──
+      final auditStatus = AuditStatusHelper.fromRaw(f.raw);
+
+      result.add(Marker(
+        point: LatLng(f.lat, f.lng),
+        width: isCorrected ? 52 : 46,
+        height: isCorrected ? 52 : 46,
+        child: GestureDetector(
+          onTap: () {
+            if (_workMode == _WorkMode.mass) {
+              setState(() {
+                if (isSelected) {
+                  _selectedFieldNumbers.remove(fn);
+                } else {
+                  _selectedFieldNumbers.add(fn);
+                }
+              });
+            } else {
+              FieldDetailBottomSheet.show(
+                context,
+                f.raw,
+                onInspectDone: (fieldData) {
+                  FieldDetailBottomSheet.show(context, fieldData);
+                },
+              );
+            }
+          },
+          child: Stack(
+            children: [
+              Container(
+                width: isCorrected ? 52 : 46,
+                height: isCorrected ? 52 : 46,
+                decoration: BoxDecoration(
+                  color: isSelected ? AdvantaColors.primaryGreen : color,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelected
+                        ? Colors.white
+                        : isCorrected
+                        ? AdvantaColors.gold
+                        : Colors.white70,
+                    width: isSelected ? 3.0 : isCorrected ? 2.5 : 1.8,
+                  ),
+                  boxShadow: (isSelected || isCorrected)
+                      ? [
+                    BoxShadow(
+                      color: (isSelected
+                          ? AdvantaColors.primaryGreen
+                          : AdvantaColors.gold)
+                          .withAlpha(140),
+                      blurRadius: 8,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                      : null,
+                ),
+                child: Center(
+                  child: isSelected
+                      ? const Icon(Icons.check_rounded,
+                      color: Colors.white, size: 18)
+                      : Text(
+                    '${f.dap}',
+                    style: AdvantaText.caption.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+              ),
+
+              // Badge koreksi (existing — tidak berubah)
+              if (isCorrected && !isSelected)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Container(
+                    width: 15,
+                    height: 15,
+                    decoration: BoxDecoration(
+                      color: AdvantaColors.gold,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                            color: AdvantaColors.gold.withAlpha(136),
+                            blurRadius: 4),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        'C',
+                        style: AdvantaText.caption.copyWith(
+                          color: AdvantaColors.charcoal,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                          height: 1.0,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // ── BARU: Audit status dot di pojok KIRI ATAS ──
+              // Hanya tampil jika belum audit (Dereng/Dereng Jangkep)
+              // sehingga marker tetap bersih untuk yang sudah Sampun
+              if (!isSelected)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  child: MarkerAuditDot(
+                    auditStatus: auditStatus,
+                    dap: f.dap,
+                    activePhase: _activePhaseView,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ));
+    }
+    return result;
+  }
+
+  Widget _buildCluster(int count) => Container(
+    decoration: BoxDecoration(
+      color: AdvantaColors.primaryGreen,
+      shape: BoxShape.circle,
+      border: Border.all(color: Colors.white, width: 2.0),
+      boxShadow: [
+        BoxShadow(
+          color: AdvantaColors.primaryGreen.withAlpha(128),
+          blurRadius: 10,
+        ),
+      ],
+    ),
+    child: Center(
+      child: Text(
+        '$count',
+        style: AdvantaText.bodyBold.copyWith(color: Colors.white),
+      ),
+    ),
+  );
+
+  Widget _buildInitialLoadingScreen() => _MapLoadingScreen(shimmerAnim: _shimmerAnim);
+
+  Widget _buildRefreshOverlay() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: false,
+        child: Stack(
+          children: [
+            // Blur/dim layer
+            Container(color: Colors.black.withAlpha(90)),
+
+            // Floating pill di bawah header
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 80,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: AnimatedBuilder(
+                  animation: _refreshSpinCtrl,
+                  builder: (_, __) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AdvantaColors.deepForest,
+                        borderRadius: BorderRadius.circular(40),
+                        border: Border.all(color: AdvantaColors.primaryGreen.withAlpha(100)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AdvantaColors.primaryGreen.withAlpha(60),
+                            blurRadius: 20,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AdvantaColors.lightGreen,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Memperbarui data lahan…',
+                            style: AdvantaText.body2.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  void _updateGreeting() {
-    final hour = DateTime.now().hour;
-    setState(() {
-      if (hour < 4) {
-        _greeting = 'Sugêng Ndalu!';
-      } else if (hour < 10) {
-        _greeting = 'Sugêng Enjing!';
-      } else if (hour < 15) {
-        _greeting = 'Sugêng Siang!';
-      } else if (hour < 18) {
-        _greeting = 'Sugêng Sontên!';
-      } else {
-        _greeting = 'Sugêng Ndalu!';
-      }
-    });
-  }
+  Widget _buildError(String msg) => Container(
+    color: AdvantaColors.deepForest,
+    padding: const EdgeInsets.all(32),
+    child: Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.cloud_off, color: AdvantaColors.error, size: 52),
+          const SizedBox(height: 12),
+          Text(
+            'Gagal memuat peta',
+            style: AdvantaText.heading2.copyWith(color: Colors.white),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            msg,
+            textAlign: TextAlign.center,
+            style: AdvantaText.body2.copyWith(color: Colors.white54),
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            onPressed: () => ref.invalidate(masterFieldsProvider),
+            icon: const Icon(Icons.refresh),
+            label: Text('Coba Lagi', style: AdvantaText.button),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AdvantaColors.primaryGreen,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: AdvantaRadius.buttonRadius),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
-  void _updateTime() {
-    final now = DateTime.now();
-    setState(() {
-      _currentTime =
-      '${_getDayName(now.weekday)}, ${now.day} ${_getMonthName(now.month)} ${now.year}';
-    });
-  }
-
-  String _getDayName(int day) {
-    switch (day) {
-      case 1:
-        return 'Senin';
-      case 2:
-        return 'Selasa';
-      case 3:
-        return 'Rabu';
-      case 4:
-        return 'Kamis';
-      case 5:
-        return 'Jumat';
-      case 6:
-        return 'Sabtu';
-      case 7:
-        return 'Minggu';
-      default:
-        return '';
-    }
-  }
-
-  String _getMonthName(int month) {
-    switch (month) {
-      case 1:
-        return 'Januari';
-      case 2:
-        return 'Februari';
-      case 3:
-        return 'Maret';
-      case 4:
-        return 'April';
-      case 5:
-        return 'Mei';
-      case 6:
-        return 'Juni';
-      case 7:
-        return 'Juli';
-      case 8:
-        return 'Agustus';
-      case 9:
-        return 'September';
-      case 10:
-        return 'Oktober';
-      case 11:
-        return 'November';
-      case 12:
-        return 'Desember';
-      default:
-        return '';
-    }
-  }
-
-  void _setupRealTimeListeners() {
-    // Listener untuk seasons
-    _seasonsSubscription = FirebaseFirestore.instance
-        .collection('seasons')
-        .doc('season')
-        .snapshots()
-        .listen((snapshot) {
-      if (snapshot.exists && mounted) {
-        setState(() {
-          seasonList = List<String>.from(snapshot.data()!['sesi']);
-        });
-        _saveSeasonListToPreferences();
-      }
-    });
-    getQAFilterStream().listen((regions) {
-      if (mounted) {
-        setState(() {
-          fieldSPVList = regions;
-        });
-      }
-    });
-  }
-
-  // Stream untuk mendapatkan data QA SPV secara real-time
-  Stream<List<String>> getQASPVStream(String selectedRegion) {
-    if (selectedRegion.isEmpty) return Stream.value([]);
-
-    String? documentId = _regionDocumentIds[selectedRegion];
-    if (documentId == null) return Stream.value([]);
-
-    return FirebaseFirestore.instance
-        .collection('regions')
-        .doc(documentId)
-        .snapshots()
-        .map((snapshot) {
-      if (!snapshot.exists) return [];
-      Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
-      return (data['qa_spv'] as Map<String, dynamic>).keys.toList();
-    });
-  }
-
-  // Stream untuk mendapatkan data Districts secara real-time
-  Stream<List<String>> getDistrictsStream(
-      String? selectedRegion, String? selectedQASPV) {
-    if (selectedRegion == null || selectedQASPV == null) {
-      return Stream.value([]);
-    }
-
-    String? documentId = _regionDocumentIds[selectedRegion];
-
-    if (documentId == null) return Stream.value([]);
-    return FirebaseFirestore.instance
-        .collection('regions')
-        .doc(documentId)
-        .snapshots()
-        .map((snapshot) {
-      if (!snapshot.exists) return [];
-      Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
-
-      if (data.containsKey('qa_spv') &&
-          data['qa_spv'] is Map &&
-          data['qa_spv'][selectedQASPV] != null &&
-          data['qa_spv'][selectedQASPV]['districts'] != null) {
-        return List<String>.from(data['qa_spv'][selectedQASPV]['districts']);
-      }
-      return [];
-    });
-  }
-
-  // Stream untuk mendapatkan data QA filter secara real-time
-  Stream<List<String>> getQAFilterStream() {
-    return FirebaseFirestore.instance
-        .collection('config')
-        .doc('filter')
-        .snapshots()
-        .map((snapshot) {
-      if (!snapshot.exists) return [];
-      Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
-
-      if (data.containsKey('qa') && data['qa'] is List) {
-        return List<String>.from(data['qa']);
-      }
-      return [];
-    });
-  }
-
-  void _showLockedFeatureMessage() {
-    if (!mounted) return;
-
-    _showSnackBar(
-      context,
-      'Absen dulu ya sebelum menggunakan fitur ini! 🔒',
-      type: SnackBarType.info,
-    );
-  }
-
-  Future<void> _checkAbsenStatus({bool forceRefresh = false}) async {
-    if (!mounted) return;
-
-    setState(() {
-      _isCheckingAbsen = true;
-    });
-
-    try {
-      Map<String, dynamic> result;
-
-      if (forceRefresh) {
-        result = await EnhancedAbsenService.forceRefreshAbsenStatus(
-          userName: userName,
-        );
-      } else {
-        result = await EnhancedAbsenService.checkAbsenStatus(
-          userName: userName,
-        );
-      }
-
-      if (mounted) {
-        setState(() {
-          _hasAbsenToday = result['hasAbsen'] ?? false;
-          _jamAbsenToday = result['jamAbsen'];
-          _regionAbsen = result['region'];
-          _isDataFromCache = result['fromCache'] ?? false;
-        });
-      }
-    } catch (e) {
-      debugPrint("[AbsenService] ❌ Error checking absen: $e");
-
-      if (mounted) {
-        _showSnackBar(
-          context,
-          'Gagal mengecek status absen. Silakan coba lagi.',
-          type: SnackBarType.error,
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isCheckingAbsen = false;
-        });
-      }
-    }
-  }
-
-  // ✅ NEW: Handler untuk pull-to-refresh
-  Future<void> _onRefresh() async {
-    debugPrint("[QaScreen] 🔄 Pull to refresh triggered");
-
-    HapticFeedback.mediumImpact();
-
-    try {
-      // Force refresh absen status
-      await _checkAbsenStatus(forceRefresh: true);
-
-      // Show success message
-      if (mounted) {
-        _showSnackBar(
-          context,
-          'Data berhasil diperbarui!',
-          type: SnackBarType.success,
-        );
-      }
-    } catch (e) {
-      debugPrint("[QaScreen] Error during refresh: $e");
-
-      if (mounted) {
-        _showSnackBar(
-          context,
-          'Gagal memperbarui data',
-          type: SnackBarType.error,
-        );
-      }
-    }
-  }
-
-  Future<void> _navigateToAbsenAndRefresh() async {
-    debugPrint("[QaScreen] 🚀 Navigating to absen screen");
-
-    // Navigasi ke halaman absen
-    final result = await Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const AbsenLogScreen()),
-    );
-
-    // Cek apakah berhasil absen (optional - jika AbsenLogScreen return boolean)
-    final didAbsen = result == true || result == null;
-
-    if (didAbsen) {
-      debugPrint("[QaScreen] ✅ User completed absen, invalidating cache");
-
-      // ✅ Mark bahwa user baru saja absen
-      await AbsenCacheManager.markAbsenAction();
-
-      // ✅ Invalidate cache untuk force refresh
-      await AbsenCacheManager.invalidateCache();
-
-      // ✅ Force refresh status dengan feedback
-      if (mounted) {
-        setState(() {
-          _isCheckingAbsen = true;
-        });
-      }
-
-      await _checkAbsenStatus(forceRefresh: true);
-
-      if (mounted) {
-        _showSnackBar(
-          context,
-          'Status absen berhasil diperbarui!',
-          type: SnackBarType.success,
-        );
-      }
-    } else {
-      debugPrint("[QaScreen] ℹ️ User canceled absen or already done");
-    }
-  }
-
-  Future<void> _loadSeasonPreference() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    setState(() {
-      selectedSeason = prefs.getString('selectedSeason');
-    });
-  }
-
-  Future<void> _fetchGoogleUserData() async {
-    try {
-      // FIX: Gunakan signInSilently() yang baru dengan null safety
-      final GoogleSignInAccount? googleUser = _googleSignIn.currentUser;
-
-      GoogleSignInAccount? signedInUser = googleUser;
-      if (signedInUser == null) {
-        try {
-          signedInUser = await _googleSignIn.signInSilently();
-        } catch (e) {
-          debugPrint("Silent sign in failed: $e");
-          return;
-        }
-      }
-
-      if (signedInUser != null) {
-        setState(() {
-          userName = signedInUser!.displayName ?? 'Pengguna';
-          userEmail = signedInUser.email;
-          userPhotoUrl = signedInUser.photoUrl;
-        });
-
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setString('userName', signedInUser.displayName ?? 'Pengguna');
-        await prefs.setString('userEmail', signedInUser.email);
-        await prefs.setString('userPhotoUrl', signedInUser.photoUrl ?? '');
-      }
-    } catch (error) {
-      debugPrint("Error mengambil data Google: $error");
-    }
-  }
-
-  Future<void> _logoutGoogle() async {
-    await _googleSignIn.signOut();
-  }
-
-  Future<void> _fetchUserData() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    setState(() {
-      userEmail = prefs.getString('userEmail') ?? 'Unknown Email';
-      userName = prefs.getString('userName') ?? 'Pengguna';
-    });
-  }
-
-  Future<void> _loadUserEmail() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    setState(() {
-      userEmail = prefs.getString('userEmail') ?? 'Email tidak ditemukan';
-    });
-  }
-
-  Future<void> _saveFilterPreferences() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('selectedQA', selectedQA ?? '');
-    await prefs.setString('selectedFA', selectedFA ?? '');
-    await prefs.setString('selectedSeason', selectedSeason ?? '');
-  }
-
-  Future<void> _saveSeasonListToPreferences() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('seasonList', seasonList);
-  }
-
-  Future<void> _fetchAppVersion() async {
-    try {
-      final packageInfo = await PackageInfo.fromPlatform();
-      setState(() {
-        _appVersion = packageInfo.version;
-      });
-    } catch (e) {
-      setState(() {
-        _appVersion = 'Unknown';
-      });
-    }
-  }
-
-  Future<void> _loadInitialData() async {
-    setState(() {
-      _isLoading = true;
-      _isCheckingAbsen = true;
-    });
-
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    try {
-      // Load config dulu (penting untuk absen check)
-      await Future.wait([
-        ConfigManager.loadConfig(),
-        RegionMapperService.loadMappings(),
-      ]);
-
-      if (mounted) {
-        setState(() {
-          _regionDocumentIds = RegionMapperService.getRegionDocumentIdsForRole('qa');
-        });
-      }
-
-      _setupRealTimeListeners();
-
-      // Load data lainnya secara parallel
-      await Future.wait([
-        _fetchAppVersion(),
-        _fetchUserData(),
-        _fetchGoogleUserData(),
-        _loadUserEmail(),
-        _loadSeasonPreference(),
-      ]);
-
-      // ✅ Check absen dengan smart cache (not force refresh on initial load)
-      _checkAbsenStatus(forceRefresh: false).then((_) {
-        if (mounted) {
-          setState(() {
-            _isCheckingAbsen = false;
-          });
-        }
-      });
-
-    } catch (e) {
-      debugPrint("Error loading initial data: $e");
-
-      if (mounted) {
-        _showSnackBar(
-          context,
-          'Gagal memuat data awal',
-          type: SnackBarType.error,
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  // ✅ NEW: Enhanced absen prompt card dengan cache info
-  Widget _buildAbsenPromptCardWithCacheInfo() {
-    return Column(
-      children: [
-        // Main absen card (minimalis)
-        _buildAbsenPromptCard(),
-
-        // Compact cache & refresh hint
-        if (_isDataFromCache && !_isCheckingAbsen)
-          Container(
-            margin: const EdgeInsets.only(top: 6),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: _hasAbsenToday
-                  ? Colors.green.shade50
-                  : Colors.red.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: _hasAbsenToday
-                    ? Colors.green.shade200
-                    : Colors.red.shade200,
-                width: 1,
+  // ─── HEADER ──────────────────────────────────────────────
+  Widget _buildHeader(AttendanceState att, List<String> regions, List<String> districts) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AdvantaColors.deepForest.withAlpha(240),
+            AdvantaColors.deepForest.withAlpha(220),
+            AdvantaColors.deepForest.withAlpha(180),
+          ],
+          stops: const [0.0, 0.75, 1.0],
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Row 1: Attendance + Date + Actions ──────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
+              child: Row(
+                children: [
+                  _AttendanceChip(attendance: att),
+                  const Spacer(),
+                  _DateBadge(),
+                  const SizedBox(width: 6),
+                  // Divider tipis pemisah
+                  Container(
+                    width: 1,
+                    height: 20,
+                    color: Colors.white.withAlpha(25),
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                  ),
+                  // ── Refresh button ──
+                  GestureDetector(
+                    onTap: () async {
+                      if (_isRefreshing) return;
+                      setState(() => _isRefreshing = true);
+                      _refreshSpinCtrl.repeat();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Menyinkronkan data & profil terbaru...',
+                            style: AdvantaText.body2.copyWith(color: Colors.white),
+                          ),
+                          duration: const Duration(seconds: 2),
+                          backgroundColor: AdvantaColors.primaryGreen,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: AdvantaRadius.cardRadius),
+                          margin: const EdgeInsets.all(16),
+                        ),
+                      );
+                      await SupabaseAuthService().restoreSession();
+                      ref.invalidate(currentUserProvider);
+                      ref.invalidate(masterFieldsProvider);
+                    },
+                    child: AnimatedBuilder(
+                      animation: _refreshSpinCtrl,
+                      builder: (_, child) => Transform.rotate(
+                        angle: _isRefreshing ? _refreshSpinCtrl.value * 6.28319 : 0,
+                        child: child,
+                      ),
+                      child: _IconActionButton(
+                        icon: Icons.sync_rounded,
+                        color: _isRefreshing ? AdvantaColors.lightGreen : AdvantaColors.goldLight,
+                        active: _isRefreshing,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // ── Settings button ──
+                  GestureDetector(
+                    onTap: () => context.push('/qa/settings'),
+                    child: const _IconActionButton(
+                      icon: Icons.settings_outlined,
+                      color: AdvantaColors.goldLight,
+                      active: false,
+                    ),
+                  ),
+                ],
               ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.cached_rounded,
-                  size: 12,
-                  color: _hasAbsenToday
-                      ? Colors.green.shade600
-                      : Colors.red.shade600,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Cached • Swipe down to refresh',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: _hasAbsenToday
-                        ? Colors.green.shade700
-                        : Colors.red.shade700,
-                    fontWeight: FontWeight.w500,
+
+            // ── Row 2: Smart Search Bar ─────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _SmartSearchBar(
+                      filters: _activeFilters,
+                      onFiltersChanged: () => setState(() {}),
+                      regions: regions,
+                      districts: districts,
+                      selectedRegion: _selectedRegion,
+                      selectedDistrict: _selectedDistrict,
+                      onRegionChanged: (v) => setState(() {
+                        _selectedRegion = v;
+                        _selectedDistrict = null;
+                      }),
+                      onDistrictChanged: (v) => setState(() => _selectedDistrict = v),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-      ],
+          ],
+        ),
+      ),
+    );
+  } // end _buildHeader
+
+  // ─── MODE CHIPS ────────────────────────────────────────────
+  Widget _buildModeChips(bool canSeeCoverage) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 4),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+        child: Row(
+          children: [
+            // ── Mode chips (existing) ──
+            _ModeChip(
+              icon: Icons.touch_app_outlined,
+              label: 'Single Inspect',
+              active: _workMode == _WorkMode.single,
+              activeColor: AdvantaColors.primaryGreen,
+              onTap: () => setState(() {
+                _workMode = _WorkMode.single;
+                _selectedFieldNumbers.clear();
+              }),
+            ),
+            const SizedBox(width: 8),
+            _ModeChip(
+              icon: Icons.checklist_rtl_outlined,
+              label: 'Mass Inspect',
+              active: _workMode == _WorkMode.mass,
+              activeColor: AdvantaColors.midGreen,
+              badge: _workMode == _WorkMode.mass && _selectedFieldNumbers.isNotEmpty
+                  ? '${_selectedFieldNumbers.length}'
+                  : null,
+              onTap: () => setState(() {
+                _workMode = _WorkMode.mass;
+              }),
+            ),
+            if (canSeeCoverage) ...[
+              const SizedBox(width: 8),
+              _ActionChip(
+                icon: Icons.analytics_outlined,
+                label: 'Coverage',
+                color: AdvantaColors.gold,
+                onTap: () => context.push('/coverage'),
+              ),
+            ],
+
+            // ── Separator ──
+            Container(
+              width: 1,
+              height: 22,
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              color: Colors.white.withAlpha(40),
+            ),
+
+            // ── Audit Status filter chips ──
+            _AuditFilterChip(
+              filter: _AuditFilter.all,
+              activeFilter: _auditFilter,
+              onTap: () => setState(() => _auditFilter = _AuditFilter.all),
+            ),
+            const SizedBox(width: 6),
+            _AuditFilterChip(
+              filter: _AuditFilter.sampun,
+              activeFilter: _auditFilter,
+              onTap: () => setState(() => _auditFilter = _AuditFilter.sampun),
+            ),
+            const SizedBox(width: 6),
+            // Dereng Jangkep hanya relevan jika phase generatif
+            if (_activePhaseView == ActivePhaseView.generative ||
+                _activePhaseView == ActivePhaseView.auto) ...[
+              _AuditFilterChip(
+                filter: _AuditFilter.partial,
+                activeFilter: _auditFilter,
+                onTap: () => setState(() => _auditFilter = _AuditFilter.partial),
+              ),
+              const SizedBox(width: 6),
+            ],
+            _AuditFilterChip(
+              filter: _AuditFilter.dereng,
+              activeFilter: _auditFilter,
+              onTap: () => setState(() => _auditFilter = _AuditFilter.dereng),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Future<void> _logout(BuildContext context) async {
-    final navigator = Navigator.of(context);
+  // ─── SPEED-DIAL FAB ──────────────────────────────────────────
+  Widget _buildRightFabs(AsyncValue<List<Map<String, dynamic>>> masterAsync) {
+    return AnimatedBuilder(
+      animation: _speedDialCtrl,
+      builder: (context, _) {
+        final t = CurvedAnimation(
+          parent: _speedDialCtrl,
+          curve: Curves.easeOutCubic,
+        ).value;
 
-    bool? confirmLogout = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text(
-            "Konfirmasi Medal",
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.green,
-            ),
+        // Item definitions: icon, label, activeColor, isActive, onTap
+        final items = <({IconData icon, String label, Color color, bool active, VoidCallback onTap})>[
+          (
+          icon  : Icons.format_list_bulleted_rounded,
+          label : 'List View',
+          color : AdvantaColors.primaryGreen,
+          active: false,
+          onTap : () {
+            // Tutup speed dial
+            setState(() => _isSpeedDialOpen = false);
+            _speedDialCtrl.reverse();
+
+            // Ambil data lahan dan tampilkan Bottom Sheet
+            ref.read(parsedMapFieldsProvider).whenData((allFields) {
+              final filtered = _filterFields(allFields);
+              FieldListView.showSheet(
+                context,
+                fieldsData: filtered,
+                userLocation: _userLocation,
+                getMarkerColor: _markerColor,
+                onUncoordBannerTap: (uncoordFields) => _showDefaultCoordSheet(uncoordFields),
+                onNavigateTap: (lat, lng) => _openInGoogleMaps(lat, lng),
+                isMassMode: _workMode == _WorkMode.mass,
+                selectedFieldNumbers: _selectedFieldNumbers,
+                onFieldTap: (f) {
+                  final fn = f.raw['field_number']?.toString() ?? '';
+                  if (_workMode == _WorkMode.mass) {
+                    // Jika mode massal, ubah status centang lahan
+                    setState(() {
+                      if (_selectedFieldNumbers.contains(fn)) {
+                        _selectedFieldNumbers.remove(fn);
+                      } else {
+                        _selectedFieldNumbers.add(fn);
+                      }
+                    });
+                  } else {
+                    // Jika mode single, TUTUP list view dulu, baru buka detailnya
+                    Navigator.pop(context);
+
+                    FieldDetailBottomSheet.show(
+                      context,
+                      f.raw,
+                      onInspectDone: (fieldData) {
+                        FieldDetailBottomSheet.show(context, fieldData);
+                      },
+                    );
+                  }
+                },
+                activePhase: _activePhaseView,          // ← TAMBAH
+                onPhaseChanged: (phase) {               // ← TAMBAH
+                  setState(() => _activePhaseView = phase);
+                },
+              );
+            });
+          },
           ),
-          content:
-          const Text("Menopo panjenengan yakin badhe medal gantos akun?"),
-          actions: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text(
-                    "Batal",
-                    style: TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
+          (
+          icon  : Icons.fit_screen_outlined,
+          label : 'Fit on Map',
+          color : AdvantaColors.midGreen,
+          active: false,
+          onTap : () {
+            ref.read(parsedMapFieldsProvider).whenData(
+                  (all) => _fitBounds(_filterFields(all)),
+            );
+            setState(() => _isSpeedDialOpen = false);
+            _speedDialCtrl.reverse();
+          },
+          ),
+          (
+          icon  : _isLegendVisible ? Icons.layers : Icons.layers_outlined,
+          label : 'Legends',
+          color : AdvantaColors.midGreen,
+          active: _isLegendVisible,
+          onTap : () => setState(() {
+            _isLegendVisible = !_isLegendVisible;
+          }),
+          ),
+          (
+          icon  : _isSatellite ? Icons.map_outlined : Icons.satellite_alt_outlined,
+          label : _isSatellite ? 'StreetView' : 'Satelit',
+          color : AdvantaColors.goldLight,
+          active: _isSatellite,
+          onTap : () => setState(() => _isSatellite = !_isSatellite),
+          ),
+          (
+          icon  : _isLocating
+              ? Icons.location_searching_rounded
+              : (_gpsEnabled ? Icons.my_location_rounded : Icons.location_off_rounded),
+          label : 'Get User GPS',
+          color : _gpsEnabled ? AdvantaColors.lightGreen : AdvantaColors.error,
+          active: _gpsEnabled,
+          onTap : _goToUserLocation,
+          ),
+        ];
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // ── Item-item yang muncul saat open ──────────────────
+            ...items.asMap().entries.map((e) {
+              final idx   = e.key;
+              final item  = e.value;
+              final delay = (items.length - 1 - idx) * 0.07;
+              final tItem = ((t - delay) / (1.0 - delay)).clamp(0.0, 1.0);
+
+              return Opacity(
+                opacity: tItem,
+                child: Transform.translate(
+                  offset: Offset(0, 20 * (1.0 - tItem)),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Label pill
+                        if (tItem > 0.3)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                            margin: const EdgeInsets.only(right: 8),
+                            decoration: BoxDecoration(
+                              color: AdvantaColors.deepForest.withAlpha(210),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white.withAlpha(25)),
+                            ),
+                            child: Text(
+                              item.label,
+                              style: AdvantaText.caption.copyWith(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        // FAB button
+                        GestureDetector(
+                          onTap: item.onTap,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: item.active
+                                  ? item.color.withAlpha(220)
+                                  : AdvantaColors.deepForest.withAlpha(210),
+                              borderRadius: BorderRadius.circular(11),
+                              border: Border.all(
+                                color: item.active
+                                    ? item.color.withAlpha(255)
+                                    : Colors.white.withAlpha(28),
+                                width: 1,
+                              ),
+                            ),
+                            child: item.icon == Icons.location_searching_rounded && _isLocating
+                                ? const Padding(
+                              padding: EdgeInsets.all(10),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                                : Icon(item.icon, size: 16,
+                                color: item.active ? Colors.white : Colors.white70),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(true);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    // Use backgroundColor instead of primary
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.0),
-                    ),
+              );
+            }),
+
+            // ── Divider tipis sebelum tombol utama ───────────────
+            if (_isSpeedDialOpen)
+              Container(
+                width: 36,
+                height: 1,
+                margin: const EdgeInsets.only(bottom: 6),
+                color: Colors.white.withAlpha(30),
+              ),
+
+            // ── Tombol utama (toggle) ─────────────────────────────
+            GestureDetector(
+              onTap: () {
+                final willOpen = !_isSpeedDialOpen;
+                setState(() => _isSpeedDialOpen = willOpen);
+                willOpen
+                    ? _speedDialCtrl.forward()
+                    : _speedDialCtrl.reverse();
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  gradient: _isSpeedDialOpen
+                      ? const LinearGradient(
+                    colors: [AdvantaColors.primaryGreen, AdvantaColors.midGreen],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                      : null,
+                  color: _isSpeedDialOpen ? null : AdvantaColors.deepForest.withAlpha(220),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: _isSpeedDialOpen
+                        ? AdvantaColors.lightGreen.withAlpha(180)
+                        : Colors.white.withAlpha(35),
+                    width: 1.5,
                   ),
-                  child: const Text(
-                    "Medal",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                  boxShadow: [
+                    BoxShadow(
+                      color: _isSpeedDialOpen
+                          ? AdvantaColors.primaryGreen.withAlpha(100)
+                          : Colors.black.withAlpha(80),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
                     ),
-                  ), // Ensure child is the last parameter
+                  ],
                 ),
-              ],
+                child: AnimatedRotation(
+                  turns: _isSpeedDialOpen ? 0.125 : 0.0,
+                  duration: const Duration(milliseconds: 250),
+                  child: Icon(
+                    _isSpeedDialOpen ? Icons.close_rounded : Icons.tune_rounded,
+                    size: 20,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
             ),
           ],
         );
       },
     );
-
-    if (confirmLogout == true) {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.remove('isLoggedIn');
-      await prefs.remove('userRole');
-      await _logoutGoogle();
-      _navigateToLoginScreen(navigator);
-    }
   }
 
-  void _navigateToLoginScreen(NavigatorState navigator) {
-    context.go('/login');
-  }
+  // ─── LEGEND ─────────────────────────────────────────────────
+  Widget _buildLegend() {
+    const items = [
+      (_phaseColors, 0, '7–35 DAP', 'Vegetative'),
+      (_phaseColors, 1, '50–54 DAP', 'Generative 1'),
+      (_phaseColors, 2, '55–59 DAP', 'Generative 2'),
+      (_phaseColors, 3, '60–65 DAP', 'Generative 3'),
+      (_phaseColors, 4, '71–90 DAP', 'Pre-Harvest'),
+      (_phaseColors, 5, '95–105 DAP', 'Harvest'),
+    ];
 
-  void _navigateTo(BuildContext context, Widget screen) {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => screen,
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          const begin = Offset(1.0, 0.0);
-          const end = Offset.zero;
-          const curve = Curves.easeInOutQuart;
-
-          var tween =
-          Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-          var offsetAnimation = animation.drive(tween);
-
-          return SlideTransition(position: offsetAnimation, child: child);
-        },
-        transitionDuration: const Duration(milliseconds: 300),
-        maintainState: true,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: BoxDecoration(
+        color: AdvantaColors.deepForest.withAlpha(224),
+        borderRadius: AdvantaRadius.cardRadius,
+        border: Border.all(color: AdvantaColors.goldLight.withAlpha(30)),
+        boxShadow: AdvantaShadows.card(true),
       ),
-    );
-  }
-
-  void _showBottomSheetMenu() {
-    // ✅ CEK ABSEN DULU
-    if (!_canAccessFeatures()) {
-      _showLockedFeatureMessage();
-      return;
-    }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true, // ✅ Sudah ada, bagus!
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withAlpha(153),
-      builder: (BuildContext context) {
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: DraggableScrollableSheet(
-            initialChildSize: 0.7, // Mulai dari 70% tinggi layar
-            minChildSize: 0.5, // Minimal 50% tinggi layar
-            maxChildSize: 0.95, // Maksimal 95% tinggi layar
-            builder: (context, scrollController) {
-              return Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.white,
-                      Colors.green.shade50.withAlpha(76),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'LEGENDA DAP',
+            style: AdvantaText.caption.copyWith(
+              color: AdvantaColors.goldLight.withAlpha(153),
+              letterSpacing: 1.2,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...items.map((it) {
+            final color = it.$1[it.$2];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 7),
+              child: Row(
+                children: [
+                  Container(
+                    width: 11,
+                    height: 11,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: color.withAlpha(153), blurRadius: 5),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        it.$4,
+                        style: AdvantaText.caption.copyWith(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          height: 1.2,
+                        ),
+                      ),
+                      Text(
+                        it.$3,
+                        style: AdvantaText.caption.copyWith(
+                          color: Colors.white38,
+                          fontSize: 9,
+                          height: 1.1,
+                        ),
+                      ),
                     ],
                   ),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(76),
-                      blurRadius: 30,
-                      offset: const Offset(0, -8),
+                ],
+              ),
+            );
+          }),
+          Divider(color: AdvantaColors.goldLight.withAlpha(25), height: 14),
+          // Corrected marker
+          Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 11,
+                    height: 11,
+                    decoration: BoxDecoration(
+                      color: Colors.grey,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AdvantaColors.gold, width: 1.5),
                     ),
-                  ],
-                ),
-                child: ListView(
-                  controller: scrollController, // ✅ PENTING: Gunakan scrollController
-                  padding: const EdgeInsets.only(top: 12, bottom: 32),
-                  children: <Widget>[
-                    // Animated Drag Handle
-                    TweenAnimationBuilder(
-                      tween: Tween<double>(begin: 0, end: 1),
-                      duration: const Duration(milliseconds: 400),
-                      builder: (context, double value, child) {
-                        return Opacity(
-                          opacity: value,
-                          child: Transform.scale(
-                            scale: value,
-                            child: Container(
-                              width: 50,
-                              height: 5,
-                              margin: const EdgeInsets.only(bottom: 24),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Colors.green.shade400,
-                                    Colors.green.shade600,
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(3),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.green.withAlpha(100),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-
-                    // Enhanced Header with Gradient Background
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 24),
-                      padding: const EdgeInsets.all(20),
+                  ),
+                  Positioned(
+                    top: -4,
+                    right: -5,
+                    child: Container(
+                      width: 8,
+                      height: 8,
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Colors.green.shade50,
-                            Colors.green.shade100.withAlpha(127),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.green.shade200,
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.green.withAlpha(30),
-                            blurRadius: 15,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
+                        color: AdvantaColors.gold,
+                        shape: BoxShape.circle,
                       ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Colors.green.shade400,
-                                  Colors.green.shade600,
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.green.withAlpha(100),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.dashboard_customize_rounded,
-                              color: Colors.white,
-                              size: 28,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Quick Actions',
-                                  style: TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.black87,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Pilih menu yang kamu butuhkan',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    _buildEnhancedMenuItem(
-                      context,
-                      index: 0,
-                      icon: Icons.map_rounded,
-                      iconColor: Colors.blue.shade600,
-                      title: 'Workload Map',
-                      subtitle: 'Peta workload area dengan filter lanjutan',
-                      gradientColors: [Colors.blue.shade50, Colors.blue.shade100],
-                      onTap: () {
-                        Navigator.pop(context);
-                        if (selectedSpreadsheetId == null || selectedFieldSPV == null) {
-                          _showSnackBar(context, 'Pilih Region dulu boloo!');
-                          return;
-                        }
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (context) => DetailedMapScreen(
-                            spreadsheetId: selectedSpreadsheetId!,
-                            initialWorksheetTitle: 'Generative',
-                            initialRegion: selectedFieldSPV,
-                            initialDistrict: selectedFA,
-                            initialSeason: selectedSeason,
-                          ),
-                        ));
-                      },
-                    ),
-
-                    _buildEnhancedMenuItem(
-                      context,
-                      index: 1,
-                      icon: Icons.model_training_rounded,
-                      iconColor: Colors.teal.shade600,
-                      title: 'Training',
-                      subtitle: 'Materi & sumber daya pelatihan',
-                      gradientColors: [Colors.teal.shade50, Colors.teal.shade100],
-                      onTap: () {
-                        Navigator.pop(context);
-                        _navigateTo(
-                          context,
-                          TrainingScreen(onSave: (updatedData) {
-                            setState(() {});
-                          }),
-                        );
-                      },
-                    ),
-
-                    _buildEnhancedMenuItem(
-                      context,
-                      index: 2,
-                      icon: Icons.analytics_rounded,
-                      iconColor: Colors.purple.shade600,
-                      title: 'Dashboard Visit',
-                      subtitle: 'Ringkasan visit dan crop uniformity',
-                      gradientColors: [Colors.purple.shade50, Colors.purple.shade100],
-                      onTap: () {
-                        Navigator.pop(context);
-                        if (selectedSpreadsheetId == null || selectedFieldSPV == null) {
-                          _showSnackBar(context, 'Pilih Region dulu boloo!');
-                          return;
-                        }
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (context) => DashboardVisitScreen(
-                            selectedRegion: selectedFieldSPV!,
-                            spreadsheetId: selectedSpreadsheetId!,
-                          ),
-                        ));
-                      },
-                    ),
-
-                    _buildEnhancedMenuItem(
-                      context,
-                      index: 3,
-                      icon: Icons.report_problem_rounded,
-                      iconColor: Colors.red.shade600,
-                      title: 'Issue',
-                      subtitle: 'Laporkan dan lacak masalah',
-                      gradientColors: [Colors.red.shade50, Colors.red.shade100],
-                      onTap: () {
-                        Navigator.pop(context);
-                        if (selectedFA != null) {
-                          _navigateTo(
-                            context,
-                            IssueScreen(
-                              selectedFA: selectedFA!,
-                              onSave: (updatedIssue) {
-                                setState(() {});
-                              },
-                            ),
-                          );
-                        } else {
-                          _showSnackBar(context, 'Pilih Region, QA SPV & District dulu boloo!');
-                        }
-                      },
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Enhanced Close Button
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withAlpha(40),
-                              blurRadius: 12,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              Navigator.pop(context);
-                            },
-                            borderRadius: BorderRadius.circular(16),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Colors.white,
-                                    Colors.grey.shade50,
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: Colors.grey.shade300,
-                                  width: 2,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.close_rounded,
-                                    color: Colors.grey.shade700,
-                                    size: 24,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Tutup',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                      color: Colors.grey.shade700,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                      child: Center(
+                        child: Text(
+                          'C',
+                          style: AdvantaText.caption.copyWith(
+                            color: AdvantaColors.charcoal,
+                            fontSize: 5,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     ),
-
-                    // ✅ TAMBAHAN: Padding bawah untuk layar kecil
-                    SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
-                  ],
-                ),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  // Ganti method _buildAbsenPromptCard dengan kode di bawah ini
-
-  Widget _buildAbsenPromptCard() {
-    // Jika masih checking, tampilkan skeleton
-    if (_isCheckingAbsen) {
-      return _buildAbsenLoadingCard();
-    }
-
-    // Jika sudah selesai checking, tampilkan hasil
-    return AnimatedCrossFade(
-      firstChild: _buildAbsenNeededCard(),
-      secondChild: _buildAbsenDoneCard(),
-      crossFadeState: _hasAbsenToday ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-      duration: const Duration(milliseconds: 400),
-    );
-  }
-
-  // GANTI DENGAN KODE INI
-  Widget _buildAbsenLoadingCard() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          // Skeleton Icon
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.grey.shade300,
-            ),
-          ),
-          const SizedBox(width: 14),
-
-          // Skeleton Text
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  height: 16,
-                  width: 150,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(4),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  height: 12,
-                  width: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(4),
+                ],
+              ),
+              const SizedBox(width: 9),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Corrected',
+                    style: AdvantaText.caption.copyWith(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      height: 1.2,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  Text(
+                    'Koordinat sudah direvisi FI',
+                    style: AdvantaText.caption.copyWith(
+                      color: Colors.white38,
+                      fontSize: 9,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-
-          // Circular Progress
-          SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.5,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.grey.shade400),
-            ),
+          Divider(color: AdvantaColors.goldLight.withAlpha(25), height: 14),
+          // Uncoord marker
+          Row(
+            children: [
+              Container(
+                width: 11,
+                height: 11,
+                decoration: const BoxDecoration(
+                  color: AdvantaColors.error,
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Icon(Icons.location_off_rounded, color: Colors.white, size: 7),
+                ),
+              ),
+              const SizedBox(width: 9),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Belum Terkoordinat',
+                    style: AdvantaText.caption.copyWith(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      height: 1.2,
+                    ),
+                  ),
+                  Text(
+                    'Tap marker merah → lihat daftar',
+                    style: AdvantaText.caption.copyWith(
+                      color: Colors.white38,
+                      fontSize: 9,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  // GANTI DENGAN KODE INI
-  Widget _buildAbsenNeededCard() {
-    return TweenAnimationBuilder(
-      tween: Tween<double>(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeOutCubic,
-      builder: (context, double value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 20 * (1 - value)),
-            child: child,
+  // ─── MASS INSPECT BAR ────────────────────────────────────────
+  Widget _buildMassBar() {
+    final count = _selectedFieldNumbers.length;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AdvantaColors.deepForest, Color(0xFF0F2318)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        border: Border(
+          top: BorderSide(
+            color: count > 0
+                ? AdvantaColors.primaryGreen.withAlpha(80)
+                : Colors.white.withAlpha(18),
+            width: 1,
           ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.red.shade500,
-              Colors.red.shade700,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(140),
+            blurRadius: 24,
+            offset: const Offset(0, -6),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              // Count badge
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: count > 0
+                      ? const LinearGradient(
+                    colors: [AdvantaColors.primaryGreen, AdvantaColors.midGreen],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                      : null,
+                  color: count > 0 ? null : Colors.white.withAlpha(15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: count > 0
+                        ? AdvantaColors.lightGreen.withAlpha(120)
+                        : Colors.white.withAlpha(20),
+                    width: 1,
+                  ),
+                  boxShadow: count > 0
+                      ? [
+                    BoxShadow(
+                      color: AdvantaColors.primaryGreen.withAlpha(80),
+                      blurRadius: 12,
+                      spreadRadius: -2,
+                    ),
+                  ]
+                      : [],
+                ),
+                child: Center(
+                  child: count > 0
+                      ? Text(
+                    '$count',
+                    style: AdvantaText.heading2.copyWith(color: Colors.white),
+                  )
+                      : const Icon(Icons.touch_app_rounded, color: Colors.white38, size: 20),
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              // Description
+              Expanded(
+                child: count == 0
+                    ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Mass Inspect Aktif',
+                      style: AdvantaText.bodyBold.copyWith(color: Colors.white),
+                    ),
+                    Text(
+                      'Tap marker di peta untuk memilih lahan',
+                      style: AdvantaText.caption.copyWith(color: Colors.white38),
+                    ),
+                  ],
+                )
+                    : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$count lahan dipilih',
+                      style: AdvantaText.bodyBold.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      'Pilih fase untuk mulai inspeksi massal',
+                      style: AdvantaText.caption.copyWith(color: Colors.white38),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Actions
+              if (count > 0) ...[
+                GestureDetector(
+                  onTap: _showSelectedFieldsSheet,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(14),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white.withAlpha(22)),
+                    ),
+                    child: Text(
+                      'Daftar',
+                      style: AdvantaText.label.copyWith(color: AdvantaColors.goldLight),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () => setState(() => _selectedFieldNumbers.clear()),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(10),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white.withAlpha(15)),
+                    ),
+                    child: Text(
+                      'Batal',
+                      style: AdvantaText.label.copyWith(color: Colors.white38),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: _showPhaseSheet,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AdvantaColors.primaryGreen, AdvantaColors.midGreen],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(
+                        color: AdvantaColors.lightGreen.withAlpha(100),
+                        width: 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AdvantaColors.primaryGreen.withAlpha(80),
+                          blurRadius: 12,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      'Lanjut →',
+                      style: AdvantaText.label.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // ─── PHASE SELECTION SHEET (mass only) ──────────────────────
+  void _showPhaseSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _PhaseSheet(
+        selectionCount: _selectedFieldNumbers.length,
+        onSelected: (phase) {
+          Navigator.pop(context);
+          context.push('/inspect/mass', extra: {
+            'fieldNumbers': _selectedFieldNumbers.toList(),
+            'phase': phase,
+          });
+        },
+      ),
+    );
+  }
+
+  void _showSelectedFieldsSheet() {
+    // 1. Ambil data yang sudah di-parse (dimana DAP sudah dihitung)
+    final parsedAsync = ref.read(parsedMapFieldsProvider);
+    if (parsedAsync.value == null) return;
+
+    // 2. Filter data berdasarkan field number yang dipilih
+    final selectedParsedFields = parsedAsync.value!
+        .where((f) => _selectedFieldNumbers.contains(f.raw['field_number']?.toString()))
+        .toList();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _SelectedFieldsSheet(
+        fields: selectedParsedFields, // 3. Kirim data yang sudah di-parse
+        onRemove: (fieldNumber) {
+          setState(() {
+            _selectedFieldNumbers.remove(fieldNumber);
+          });
+          if (_selectedFieldNumbers.isEmpty) {
+            Navigator.pop(context);
+          }
+        },
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// SUB-WIDGETS
+// ─────────────────────────────────────────────────────────────
+
+/// Icon-only action button untuk header (refresh, settings)
+class _IconActionButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final bool active;
+
+  const _IconActionButton({
+    required this.icon,
+    required this.color,
+    required this.active,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: active ? color.withAlpha(40) : Colors.white.withAlpha(14),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: active ? color.withAlpha(120) : Colors.white.withAlpha(22),
+          width: 1,
+        ),
+        boxShadow: active
+            ? [
+          BoxShadow(
+            color: color.withAlpha(50),
+            blurRadius: 10,
+          ),
+        ]
+            : [],
+      ),
+      child: Icon(icon, color: color, size: 15),
+    );
+  }
+}
+
+
+class _AttendanceChip extends StatelessWidget {
+  final AttendanceState attendance;
+  const _AttendanceChip({required this.attendance});
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color;
+    final IconData icon;
+    final String label;
+    final Color bgColor;
+
+    if (attendance.isCheckedOut) {
+      color = AdvantaColors.gold;
+      bgColor = AdvantaColors.gold;
+      icon = Icons.exit_to_app_rounded;
+      label = 'Check-out';
+    } else if (attendance.isCheckedIn) {
+      color = AdvantaColors.lightGreen;
+      bgColor = AdvantaColors.primaryGreen;
+      icon = Icons.check_circle_rounded;
+      label = attendance.checkInTime != null
+          ? 'Masuk ${DateFormat('HH:mm').format(attendance.checkInTime!)}'
+          : 'Check-in ✓';
+    } else {
+      color = AdvantaColors.error;
+      bgColor = AdvantaColors.error;
+      icon = Icons.warning_amber_rounded;
+      label = 'Belum Check-in';
+    }
+
+    return GestureDetector(
+      onTap: () {
+        if (!attendance.isCheckedIn) {
+          context.push('/checkin');
+        } else if (!attendance.isCheckedOut) {
+          context.push('/checkout');
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              bgColor.withAlpha(55),
+              bgColor.withAlpha(35),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: color.withAlpha(100), width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.blue.withAlpha(80),
-              blurRadius: 15,
-              spreadRadius: -2,
-              offset: const Offset(0, 8),
+              color: color.withAlpha(35),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: _navigateToAbsenAndRefresh,
-            borderRadius: BorderRadius.circular(16),
-            splashColor: Colors.white.withAlpha(51),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  // Icon
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withAlpha(51),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 13),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: AdvantaText.label.copyWith(
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DateBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withAlpha(14),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withAlpha(20), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Live dot
+          Container(
+            width: 5,
+            height: 5,
+            decoration: const BoxDecoration(
+              color: AdvantaColors.lightGreen,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            DateFormat('EEE, d MMM', 'id_ID').format(DateTime.now()),
+            style: AdvantaText.label.copyWith(
+              color: Colors.white.withAlpha(180),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// SMART SEARCH — Supabase-style multi-parameter filter
+// ─────────────────────────────────────────────────────────────
+
+/// Defines a searchable parameter
+enum SearchParam {
+  fieldNumber('No. Lahan',   'field_number',      Icons.tag_rounded),
+  farmerName ('Nama Petani', 'farmer_name',       Icons.person_rounded),
+  grower     ('Grower',      'grower',            Icons.store_rounded),
+  season     ('Season',      'season',            Icons.calendar_today_rounded),
+  hybrid     ('Hybrid',      'hybrid',            Icons.grass_rounded),
+  village    ('Desa',        'village_desa',      Icons.location_city_rounded),  // ← fix
+  district   ('Kecamatan',   'sub_district_kec',  Icons.map_rounded),            // ← fix
+  fa         ('Nama FA',     'fa',                Icons.badge_rounded),           // ← fix
+  qaFI       ('Nama FI',     'qa_fi',             Icons.badge_outlined),          // ← fix
+  qaSPV      ('Nama SPV',    'qa_spv',            Icons.supervisor_account_rounded); // ← fix
+
+  const SearchParam(this.label, this.fieldKey, this.icon);
+  final String label;
+  final String fieldKey;
+  final IconData icon;
+}
+
+/// A single active filter row
+class SearchFilter {
+  SearchParam param;
+  String value;
+  SearchFilter({required this.param, this.value = ''});
+}
+
+/// Modern Supabase-style multi-param search bar
+class _SmartSearchBar extends StatefulWidget {
+  final List<SearchFilter> filters;
+  // HAPUS: final bool isExpanded;
+  // HAPUS: final VoidCallback onToggleExpand;
+  final VoidCallback onFiltersChanged;
+
+  final List<String> regions;
+  final List<String> districts;
+  final String? selectedRegion;
+  final String? selectedDistrict;
+  final void Function(String?) onRegionChanged;
+  final void Function(String?) onDistrictChanged;
+
+  const _SmartSearchBar({
+    required this.filters,
+    required this.onFiltersChanged,
+    required this.regions,
+    required this.districts,
+    required this.selectedRegion,
+    required this.selectedDistrict,
+    required this.onRegionChanged,
+    required this.onDistrictChanged,
+  });
+
+  @override
+  State<_SmartSearchBar> createState() => _SmartSearchBarState();
+}
+
+class _SmartSearchBarState extends State<_SmartSearchBar>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _expandCtrl;
+  late Animation<double> _expandAnim;
+
+  // TAMBAHKAN STATE LOKAL INI:
+  bool _isExpanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _expandCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+      value: 0.0, // Mulai dari posisi tertutup
+    );
+    _expandAnim = CurvedAnimation(parent: _expandCtrl, curve: Curves.easeOutCubic);
+  }
+
+  // HAPUS fungsi didUpdateWidget sepenuhnya karena kita tidak lagi menerima isExpanded dari luar
+
+  @override
+  void dispose() {
+    _expandCtrl.dispose();
+    super.dispose();
+  }
+
+  // TAMBAHKAN FUNGSI INI:
+  void _toggleExpand() {
+    setState(() {
+      _isExpanded = !_isExpanded;
+      if (_isExpanded) {
+        _expandCtrl.forward();
+      } else {
+        _expandCtrl.reverse();
+      }
+    });
+  }
+
+  void _addFilter() {
+    // Find a param not yet used
+    final usedParams = widget.filters.map((f) => f.param).toSet();
+    final available = SearchParam.values.where((p) => !usedParams.contains(p)).toList();
+    if (available.isEmpty) return;
+    widget.filters.add(SearchFilter(param: available.first));
+    widget.onFiltersChanged();
+  }
+
+  void _removeFilter(int index) {
+    widget.filters.removeAt(index);
+    widget.onFiltersChanged();
+  }
+
+  void _clearAll() {
+    widget.filters.clear();
+    widget.onRegionChanged(null);
+    widget.onDistrictChanged(null);
+    widget.onFiltersChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRegion   = widget.selectedRegion != null;
+    final hasDistrict = widget.selectedDistrict != null;
+    final hasFilters  = widget.filters.isNotEmpty || hasRegion || hasDistrict;
+    final activeCount = widget.filters.where((f) => f.value.trim().isNotEmpty).length
+        + (hasRegion ? 1 : 0)
+        + (hasDistrict ? 1 : 0);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Main bar (always visible) ──────────────────────────
+        GestureDetector(
+          onTap: _toggleExpand,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            height: 44,
+            decoration: BoxDecoration(
+              color: hasFilters
+                  ? AdvantaColors.primaryGreen.withAlpha(30)
+                  : Colors.white.withAlpha(18),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: hasFilters
+                    ? AdvantaColors.lightGreen.withAlpha(120)
+                    : Colors.white.withAlpha(28),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: hasFilters
+                      ? AdvantaColors.primaryGreen.withAlpha(40)
+                      : Colors.black.withAlpha(40),
+                  blurRadius: 12,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 12),
+                Icon(
+                  Icons.search_rounded,
+                  size: 17,
+                  color: hasFilters ? AdvantaColors.lightGreen : Colors.white38,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: hasFilters
+                      ? _buildFilterSummaryChips()
+                      : Text(
+                    'Filter lahan…',
+                    style: AdvantaText.body2.copyWith(color: Colors.white38),
+                  ),
+                ),
+                if (hasFilters) ...[
+                  // Active count badge
+                  if (activeCount > 0)
+                    Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AdvantaColors.primaryGreen,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$activeCount aktif',
+                        style: AdvantaText.caption.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10,
+                        ),
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.fingerprint_rounded,
-                      color: Colors.white,
-                      size: 28,
+                  // Clear all
+                  GestureDetector(
+                    onTap: _clearAll,
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                      child: Icon(Icons.close_rounded, size: 15, color: Colors.white54),
                     ),
                   ),
-                  const SizedBox(width: 14),
+                ] else ...[
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: AnimatedRotation(
+                      turns: _isExpanded ? 0.5 : 0.0,
+                      duration: const Duration(milliseconds: 280),
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 16,
+                        color: Colors.white38,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
 
-                  // Text
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        // ── Expandable filter panel ────────────────────────────
+        SizeTransition(
+          sizeFactor: _expandAnim,
+          axisAlignment: -1,
+          child: Container(
+            margin: const EdgeInsets.only(top: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D2410).withAlpha(230),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AdvantaColors.lightGreen.withAlpha(35),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(80),
+                  blurRadius: 20,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header row
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+                    child: Row(
                       children: [
-                        Text(
-                          "Anda Belum Absen",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: AdvantaColors.primaryGreen.withAlpha(50),
+                            borderRadius: BorderRadius.circular(7),
+                          ),
+                          child: Icon(
+                            Icons.filter_list_rounded,
+                            size: 14,
+                            color: AdvantaColors.lightGreen,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(width: 8),
                         Text(
-                          "Ketuk untuk melakukan absensi hari ini.",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white70,
+                          'Filter Pencarian',
+                          style: AdvantaText.label.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${widget.filters.length} / ${SearchParam.values.length}',
+                          style: AdvantaText.caption.copyWith(
+                            color: Colors.white38,
+                            fontSize: 10,
                           ),
                         ),
                       ],
                     ),
                   ),
 
-                  // Arrow
-                  const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    color: Colors.white,
-                    size: 18,
+                  // ── Section: Lokasi (Region & Kabupaten) ──────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+                    child: Row(
+                      children: [
+                        Icon(Icons.place_rounded, size: 12, color: AdvantaColors.goldLight.withAlpha(180)),
+                        const SizedBox(width: 6),
+                        Text(
+                          'LOKASI',
+                          style: AdvantaText.caption.copyWith(
+                            color: AdvantaColors.goldLight.withAlpha(180),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+                    child: Row(
+                      children: [
+                        // Region picker
+                        Expanded(
+                          child: _LocationDropdown(
+                            hint: 'Semua Region',
+                            value: widget.selectedRegion,
+                            items: widget.regions,
+                            icon: Icons.map_outlined,
+                            onChanged: widget.onRegionChanged,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // District picker
+                        Expanded(
+                          child: _LocationDropdown(
+                            hint: 'Semua Kabupaten',
+                            value: widget.selectedDistrict,
+                            items: widget.districts,
+                            icon: Icons.location_city_outlined,
+                            onChanged: widget.onDistrictChanged,
+                            enabled: widget.selectedRegion != null || widget.districts.isNotEmpty,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Thin divider before dynamic filters
+                  Container(
+                    height: 1,
+                    color: Colors.white.withAlpha(12),
+                    margin: const EdgeInsets.fromLTRB(14, 2, 14, 0),
+                  ),
+
+                  // ── Section: Filter Lainnya ───────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+                    child: Row(
+                      children: [
+                        Icon(Icons.tune_rounded, size: 12, color: AdvantaColors.lightGreen.withAlpha(180)),
+                        const SizedBox(width: 6),
+                        Text(
+                          'FILTER LAINNYA',
+                          style: AdvantaText.caption.copyWith(
+                            color: AdvantaColors.lightGreen.withAlpha(180),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${widget.filters.length} / ${SearchParam.values.length}',
+                          style: AdvantaText.caption.copyWith(color: Colors.white30, fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Filter rows
+                  if (widget.filters.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded, size: 13, color: Colors.white24),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Tambah filter untuk mencari lahan',
+                            style: AdvantaText.caption.copyWith(color: Colors.white30),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+                      itemCount: widget.filters.length,
+                      itemBuilder: (_, i) => _FilterRow(
+                        key: ValueKey(i),
+                        filter: widget.filters[i],
+                        index: i,
+                        usedParams: widget.filters.map((f) => f.param).toSet(),
+                        onRemove: () => _removeFilter(i),
+                        onChanged: widget.onFiltersChanged,
+                      ),
+                    ),
+
+                  // Add filter button
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+                    child: GestureDetector(
+                      onTap: widget.filters.length < SearchParam.values.length
+                          ? _addFilter
+                          : null,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: widget.filters.length < SearchParam.values.length
+                              ? AdvantaColors.primaryGreen.withAlpha(25)
+                              : Colors.white.withAlpha(8),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: widget.filters.length < SearchParam.values.length
+                                ? AdvantaColors.lightGreen.withAlpha(60)
+                                : Colors.white.withAlpha(12),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.add_rounded,
+                              size: 15,
+                              color: widget.filters.length < SearchParam.values.length
+                                  ? AdvantaColors.lightGreen
+                                  : Colors.white24,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              widget.filters.length < SearchParam.values.length
+                                  ? 'Tambah Filter'
+                                  : 'Semua filter digunakan',
+                              style: AdvantaText.caption.copyWith(
+                                color: widget.filters.length < SearchParam.values.length
+                                    ? AdvantaColors.lightGreen
+                                    : Colors.white24,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
           ),
         ),
-      ),
-    );
-  }
-
-// ✅ ABSEN DONE CARD - COMPACT
-  Widget _buildAbsenDoneCard() {
-    return TweenAnimationBuilder(
-      tween: Tween<double>(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.easeOutCubic,
-      builder: (context, double value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.scale(
-            scale: 0.95 + (0.05 * value),
-            child: child,
-          ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.green.withAlpha(40),
-              blurRadius: 15,
-              spreadRadius: -2,
-              offset: const Offset(0, 8),
-            ),
-          ],
-          border: Border.all(
-            color: Colors.green.shade200,
-            width: 1.5,
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Success Icon
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.green.shade400,
-                      Colors.green.shade600,
-                    ],
-                  ),
-                ),
-                child: const Icon(
-                  Icons.check_circle_rounded,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 14),
-
-              // Text Content
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "Absen Berhasil!",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green.shade800,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-
-                    // Detail Absen (Region & Waktu)
-                    if (_regionAbsen != null)
-                      _buildAbsenDetailRow(
-                        icon: Icons.location_on_rounded,
-                        text: _regionAbsen!,
-                      ),
-                    if (_jamAbsenToday != null) ...[
-                      const SizedBox(height: 4),
-                      _buildAbsenDetailRow(
-                        icon: Icons.access_time_rounded,
-                        text: "pada pukul ${_jamAbsenToday!}",
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAbsenDetailRow({required IconData icon, required String text}) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          size: 14,
-          color: Colors.green.shade600,
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade700,
-              fontWeight: FontWeight.w500,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
       ],
     );
   }
 
-// Enhanced Menu Item Widget - ADD THIS METHOD TO QaScreenState class
-  Widget _buildEnhancedMenuItem(
-      BuildContext context, {
-        required int index,
-        required IconData icon,
-        required Color iconColor,
-        required String title,
-        required String subtitle,
-        required List<Color> gradientColors,
-        required VoidCallback onTap,
-      }) {
-    return TweenAnimationBuilder(
-      tween: Tween<double>(begin: 0, end: 1),
-      duration: Duration(milliseconds: 400 + (index * 100)),
-      curve: Curves.easeOutCubic,
-      builder: (context, double value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 30 * (1 - value)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    onTap();
-                  },
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: gradientColors,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: iconColor.withAlpha(76),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: iconColor.withAlpha(30),
-                          blurRadius: 12,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        // Icon Container with Gradient
-                        Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                iconColor.withAlpha(204),
-                                iconColor,
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(18),
-                            boxShadow: [
-                              BoxShadow(
-                                color: iconColor.withAlpha(100),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Icon(icon, color: Colors.white, size: 30),
-                        ),
-                        const SizedBox(width: 16),
+  Widget _buildFilterSummaryChips() {
+    final activeFilters = widget.filters.where((f) => f.value.trim().isNotEmpty).toList();
+    final hasRegion   = widget.selectedRegion != null;
+    final hasDistrict = widget.selectedDistrict != null;
 
-                        // Text Content
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Colors.black87,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                subtitle,
-                                style: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
+    // Build all active chip data: (icon, label, color)
+    final chips = <({IconData icon, String label, Color color})>[];
 
-                        // Arrow Icon with Background
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withAlpha(204),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: iconColor.withAlpha(30),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Icon(
-                            Icons.arrow_forward_ios_rounded,
-                            size: 16,
-                            color: iconColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+    if (hasRegion) {
+      chips.add((icon: Icons.map_outlined, label: widget.selectedRegion!, color: AdvantaColors.gold));
+    }
+    if (hasDistrict) {
+      chips.add((icon: Icons.location_city_outlined, label: widget.selectedDistrict!, color: AdvantaColors.gold));
+    }
+    for (final f in activeFilters) {
+      chips.add((icon: f.param.icon, label: '${f.param.label}: ${f.value}', color: AdvantaColors.primaryGreen));
+    }
+
+    if (chips.isEmpty) {
+      final total = (hasRegion ? 1 : 0) + (hasDistrict ? 1 : 0) + widget.filters.length;
+      return Text(
+        '$total filter dipilih',
+        style: AdvantaText.body2.copyWith(color: Colors.white54),
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: chips.map((c) => Container(
+          margin: const EdgeInsets.only(right: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: c.color.withAlpha(55),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: c.color.withAlpha(120)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(c.icon, size: 10, color: c.color),
+              const SizedBox(width: 4),
+              Text(
+                c.label,
+                style: AdvantaText.caption.copyWith(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-            ),
+            ],
           ),
-        );
-      },
+        )).toList(),
+      ),
+    );
+  }
+}
+
+/// Compact dropdown untuk Region / Kabupaten di dalam panel filter
+class _LocationDropdown extends StatelessWidget {
+  final String hint;
+  final String? value;
+  final List<String> items;
+  final IconData icon;
+  final void Function(String?) onChanged;
+  final bool enabled;
+
+  const _LocationDropdown({
+    required this.hint,
+    required this.value,
+    required this.items,
+    required this.icon,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = value != null;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: hasValue
+            ? AdvantaColors.gold.withAlpha(28)
+            : enabled
+            ? Colors.white.withAlpha(10)
+            : Colors.white.withAlpha(5),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: hasValue
+              ? AdvantaColors.gold.withAlpha(120)
+              : Colors.white.withAlpha(18),
+          width: 1,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          hint: Row(
+            children: [
+              Icon(icon, size: 12, color: enabled ? Colors.white30 : Colors.white.withAlpha(38)),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  hint,
+                  style: AdvantaText.caption.copyWith(
+                    color: enabled ? Colors.white38 : Colors.white.withAlpha(38),
+                    fontSize: 11,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          value: value,
+          dropdownColor: const Color(0xFF0D2410),
+          style: AdvantaText.caption.copyWith(color: Colors.white, fontSize: 12),
+          icon: Icon(
+            Icons.keyboard_arrow_down_rounded,
+            size: 14,
+            color: hasValue ? AdvantaColors.gold : Colors.white30,
+          ),
+          items: [
+            DropdownMenuItem<String>(
+              value: null,
+              child: Text('Semua', style: AdvantaText.caption.copyWith(color: Colors.white54, fontSize: 12)),
+            ),
+            ...items.map((s) => DropdownMenuItem(
+              value: s,
+              child: Text(s, overflow: TextOverflow.ellipsis,
+                  style: AdvantaText.caption.copyWith(color: Colors.white, fontSize: 12)),
+            )),
+          ],
+          onChanged: enabled ? onChanged : null,
+        ),
+      ),
+    );
+  }
+}
+
+/// A single filter row inside the panel
+class _FilterRow extends StatefulWidget {
+  final SearchFilter filter;
+  final int index;
+  final Set<SearchParam> usedParams;
+  final VoidCallback onRemove;
+  final VoidCallback onChanged;
+
+  const _FilterRow({
+    super.key,
+    required this.filter,
+    required this.index,
+    required this.usedParams,
+    required this.onRemove,
+    required this.onChanged,
+  });
+
+  @override
+  State<_FilterRow> createState() => _FilterRowState();
+}
+
+class _FilterRowState extends State<_FilterRow> {
+  late TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.filter.value);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _showParamPicker() {
+    final available = SearchParam.values
+        .where((p) => p == widget.filter.param || !widget.usedParams.contains(p))
+        .toList();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _ParamPickerSheet(
+        currentParam: widget.filter.param,
+        availableParams: available,
+        onSelected: (p) {
+          setState(() => widget.filter.param = p);
+          widget.onChanged();
+          Navigator.pop(context);
+        },
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
-    return PopScope(
-      // Callback saat pengguna menekan tombol back
-      canPop: false, // Mencegah pop langsung
-      // ignore: deprecated_member_use
-      onPopInvoked: (didPop) {
-        // didPop akan false karena canPop: false
-        if (!didPop) {
-          _handleBackInHomeScreen();
-        }
-        return;
-      },
-      child: ZoomDrawer(
-        controller: _drawerController,
-        style: DrawerStyle.defaultStyle,
-        menuScreen: MenuScreen(
-          userName: userName,
-          userEmail: userEmail,
-          userPhotoUrl: userPhotoUrl,
-          appVersion: _appVersion,
-          onLogout: () => _logout(context),
-        ),
-        mainScreen: _buildMainScreen(context),
-        borderRadius: 24.0,
-        showShadow: true,
-        angle: -1.0,
-        slideWidth: MediaQuery.of(context).size.width * 0.95,
-        openCurve: Curves.fastOutSlowIn,
-        closeCurve: Curves.fastOutSlowIn,
-        menuBackgroundColor: Colors.green[100]!,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          // ── Param selector button ──────────────────────────
+          GestureDetector(
+            onTap: _showParamPicker,
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: AdvantaColors.primaryGreen.withAlpha(40),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AdvantaColors.lightGreen.withAlpha(80),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(widget.filter.param.icon, size: 13, color: AdvantaColors.lightGreen),
+                  const SizedBox(width: 6),
+                  Text(
+                    widget.filter.param.label,
+                    style: AdvantaText.caption.copyWith(
+                      color: AdvantaColors.lightGreen,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(Icons.unfold_more_rounded, size: 12, color: AdvantaColors.lightGreen.withAlpha(150)),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // ── "contains" label ──────────────────────────────
+          Text(
+            '≈',
+            style: AdvantaText.body2.copyWith(color: Colors.white30, fontSize: 16),
+          ),
+
+          const SizedBox(width: 8),
+
+          // ── Value input ───────────────────────────────────
+          Expanded(
+            child: Container(
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withAlpha(22), width: 1),
+              ),
+              child: TextField(
+                controller: _ctrl,
+                style: AdvantaText.body2.copyWith(color: Colors.white, fontSize: 13),
+
+                // 1. TAMBAHKAN DUA BARIS INI:
+                textAlignVertical: TextAlignVertical.center,
+                cursorColor: AdvantaColors.lightGreen,
+
+                decoration: InputDecoration(
+                  hintText: 'nilai…',
+                  hintStyle: AdvantaText.caption.copyWith(color: Colors.white30),
+                  border: InputBorder.none,
+
+                  // 2. TAMBAHKAN BARIS INI:
+                  isDense: true,
+
+                  // 3. SESUAIKAN PADDINGNYA:
+                  contentPadding: const EdgeInsets.only(left: 10, right: 10, bottom: 2),
+
+                  suffixIcon: _ctrl.text.isNotEmpty
+                      ? GestureDetector(
+                    onTap: () {
+                      _ctrl.clear();
+                      widget.filter.value = '';
+                      widget.onChanged();
+                      setState(() {});
+                    },
+                    child: const Icon(Icons.close_rounded, size: 14, color: Colors.white30),
+                  )
+                      : null,
+                ),
+                onChanged: (v) {
+                  widget.filter.value = v;
+                  widget.onChanged();
+                  setState(() {});
+                },
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 6),
+
+          // ── Remove button ─────────────────────────────────
+          GestureDetector(
+            onTap: widget.onRemove,
+            child: Container(
+              width: 36,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AdvantaColors.error.withAlpha(20),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AdvantaColors.error.withAlpha(50), width: 1),
+              ),
+              child: Icon(Icons.remove_rounded, size: 15, color: AdvantaColors.error),
+            ),
+          ),
+        ],
       ),
     );
   }
+}
 
-  // Replace the _buildMainScreen method in qa_screen.dart
+/// Bottom sheet to pick a search parameter
+class _ParamPickerSheet extends StatelessWidget {
+  final SearchParam currentParam;
+  final List<SearchParam> availableParams;
+  final void Function(SearchParam) onSelected;
 
-  Widget _buildMainScreen(BuildContext context) {
-    return Stack(
-      children: [
-        Scaffold(
-          // ENHANCED APP BAR
-          appBar: PreferredSize(
-            preferredSize: const Size.fromHeight(70),
-            child: AppBar(
-              title: _selectedIndex == 0
-                  ? Row(
-                children: [
-                  // Animated Icon
-                  TweenAnimationBuilder(
-                    tween: Tween<double>(begin: 0, end: 1),
-                    duration: const Duration(milliseconds: 800),
-                    curve: Curves.elasticOut,
-                    builder: (context, double value, child) {
-                      return Transform.scale(
-                        scale: 0.7 + (value * 0.3),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withAlpha(51),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.dashboard_rounded,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Dashboard',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              )
-                  : Row(
-                children: [
-                  TweenAnimationBuilder(
-                    tween: Tween<double>(begin: 0, end: 1),
-                    duration: const Duration(milliseconds: 800),
-                    curve: Curves.elasticOut,
-                    builder: (context, double value, child) {
-                      return Transform.scale(
-                        scale: 0.7 + (value * 0.3),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withAlpha(51),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.history_rounded,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Aktivitas',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-              flexibleSpace: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.green.shade800,
-                      Colors.green.shade600,
-                      Colors.green.shade700,
-                    ],
-                  ),
-                ),
-              ),
-              elevation: 0,
-              iconTheme: const IconThemeData(color: Colors.white),
-              leading: Container(
-                margin: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(51),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.menu_rounded, color: Colors.white),
-                  onPressed: () {
-                    HapticFeedback.lightImpact();
-                    _drawerController.toggle!();
-                  },
-                  padding: EdgeInsets.zero,
-                ),
-              ),
-              actions: [
-                // Notification Button with Badge
-                Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(51),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: StreamBuilder<int>(
-                    stream: _unreadNotificationsStream,
-                    builder: (context, snapshot) {
-                      final unreadCount = snapshot.data ?? 0;
-                      return Stack(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.notifications_rounded),
-                            onPressed: () async {
-                              HapticFeedback.lightImpact();
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) => const NotificationListScreen(),
-                                ),
-                              );
-                              _initializeUnreadStream();
-                            },
-                            tooltip: 'Riwayat Notifikasi',
-                          ),
-                          if (unreadCount > 0)
-                            Positioned(
-                              right: 8,
-                              top: 8,
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.red.shade400,
-                                      Colors.red.shade600,
-                                    ],
-                                  ),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 2,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.red.withAlpha(100),
-                                      blurRadius: 4,
-                                      spreadRadius: 1,
-                                    ),
-                                  ],
-                                ),
-                                constraints: const BoxConstraints(
-                                  minWidth: 18,
-                                  minHeight: 18,
-                                ),
-                                child: Text(
-                                  unreadCount > 99 ? '99+' : '$unreadCount',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
+  const _ParamPickerSheet({
+    required this.currentParam,
+    required this.availableParams,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0A1F0D),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 6),
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(30),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            child: Row(
+              children: [
+                Icon(Icons.tune_rounded, size: 16, color: AdvantaColors.lightGreen),
+                const SizedBox(width: 10),
+                Text(
+                  'Pilih Parameter Filter',
+                  style: AdvantaText.heading3.copyWith(color: Colors.white),
                 ),
               ],
             ),
           ),
-
-          body: IndexedStack(
-            index: _selectedIndex,
-            children: [
-              _buildHomeContent(context),
-              const ActivityScreen(),
-            ],
-          ),
-
-          // ENHANCED FLOATING ACTION BUTTON
-          floatingActionButton: TweenAnimationBuilder(
-            tween: Tween<double>(begin: 0, end: 1),
-            duration: const Duration(milliseconds: 800),
-            curve: Curves.elasticOut,
-            builder: (context, double value, child) {
-              return Transform.scale(
-                scale: 0.5 + (value * 0.5),
-                child: Container(
-                  height: 68,
-                  width: 68,
+          Container(height: 1, color: Colors.white.withAlpha(12)),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: availableParams.length,
+            itemBuilder: (_, i) {
+              final p = availableParams[i];
+              final isSelected = p == currentParam;
+              return GestureDetector(
+                onTap: () => onSelected(p),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.white,
-                        Colors.green.shade50,
-                      ],
+                    color: isSelected
+                        ? AdvantaColors.primaryGreen.withAlpha(50)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected
+                          ? AdvantaColors.lightGreen.withAlpha(100)
+                          : Colors.transparent,
+                      width: 1,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.green.withAlpha(80),
-                        blurRadius: 20,
-                        spreadRadius: 3,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
                   ),
-                  child: Container(
-                    margin: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Colors.green.shade600,
-                          Colors.green.shade700,
-                          Colors.green.shade800,
-                        ],
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AdvantaColors.primaryGreen.withAlpha(80)
+                              : Colors.white.withAlpha(10),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          p.icon,
+                          size: 17,
+                          color: isSelected ? AdvantaColors.lightGreen : Colors.white54,
+                        ),
                       ),
-                    ),
-                    child: FloatingActionButton(
-                      onPressed: () {
-                        HapticFeedback.mediumImpact();
-                        _showBottomSheetMenu();
-                      },
-                      backgroundColor: Colors.transparent,
-                      elevation: 0,
-                      child: const Icon(
-                        Icons.add_rounded,
-                        color: Colors.white,
-                        size: 32,
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p.label,
+                              style: AdvantaText.bodyBold.copyWith(
+                                color: isSelected ? Colors.white : Colors.white70,
+                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                              ),
+                            ),
+                            Text(
+                              p.fieldKey,
+                              style: AdvantaText.caption.copyWith(
+                                color: Colors.white30,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                      if (isSelected)
+                        Icon(Icons.check_circle_rounded, size: 18, color: AdvantaColors.lightGreen),
+                    ],
                   ),
                 ),
               );
             },
           ),
-          floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-
-          // ENHANCED BOTTOM NAVIGATION BAR
-          bottomNavigationBar: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.green.shade800,
-                  Colors.green.shade600,
-                  Colors.green.shade700,
-                ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.green.withAlpha(60),
-                  blurRadius: 15,
-                  spreadRadius: 0,
-                  offset: const Offset(0, -3),
-                ),
-              ],
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(24),
-                topRight: Radius.circular(24),
-              ),
-            ),
-            child: ClipRRect(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(24),
-                topRight: Radius.circular(24),
-              ),
-              child: BottomAppBar(
-                elevation: 0,
-                color: Colors.transparent,
-                notchMargin: 12.0,
-                shape: const CircularNotchedRectangle(),
-                child: Container(
-                  height: 65,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Home Button
-                      _buildNavBarItem(
-                        icon: Icons.home_rounded,
-                        label: '',
-                        isSelected: _selectedIndex == 0,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          setState(() => _selectedIndex = 0);
-                        },
-                      ),
-
-                      const SizedBox(width: 40), // Space for FAB
-
-                      // Activity Button
-                      _buildNavBarItem(
-                        icon: Icons.history_rounded,
-                        label: '',
-                        isSelected: _selectedIndex == 1,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          setState(() => _selectedIndex = 1);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-
-        // ENHANCED LOADING OVERLAY
-        if (_isLoading)
-          Container(
-            color: Colors.white,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-              child: Container(
-                color: Colors.white.withAlpha(204),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Lottie Animation
-                      Lottie.asset(
-                        'assets/loading.json',
-                        width: 180,
-                        height: 180,
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Loading Text with Gradient
-                      ShaderMask(
-                        shaderCallback: (bounds) => LinearGradient(
-                          colors: [
-                            Colors.green.shade600,
-                            Colors.green.shade800,
-                          ],
-                        ).createShader(bounds),
-                        child: const Text(
-                          'Ngrantos sekedap...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontFamily: 'Poppins',
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            decoration: TextDecoration.none,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Loading Progress Indicator
-                      Container(
-                        width: 200,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade100,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(2),
-                          child: TweenAnimationBuilder(
-                            tween: Tween<double>(begin: 0, end: 1),
-                            duration: const Duration(milliseconds: 1500),
-                            curve: Curves.easeInOut,
-                            builder: (context, double value, child) {
-                              return LinearProgressIndicator(
-                                value: value,
-                                backgroundColor: Colors.transparent,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.green.shade600,
-                                ),
-                              );
-                            },
-                            onEnd: () {
-                              // Loop animation if still loading
-                              if (_isLoading) {
-                                setState(() {});
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-// Helper Widget for Enhanced Bottom Nav Bar Item
-  Widget _buildNavBarItem({
-    required IconData icon,
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? Colors.white.withAlpha(51)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? Colors.white.withAlpha(63)
-                    : Colors.transparent,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                color: isSelected ? Colors.white : Colors.white70,
-                size: isSelected ? 28 : 26,
-              ),
-            ),
-            const SizedBox(height: 4),
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white70,
-                fontSize: isSelected ? 12 : 11,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                letterSpacing: 0.3,
-              ),
-              child: Text(label),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHomeContent(BuildContext context) {
-    // Data untuk kartu fase inspeksi
-    final List<Map<String, dynamic>> inspectionPhases = [
-      {
-        'imagePath': 'assets/vegetative.png',
-        'label': 'Vegetative',
-        'description': 'Plant growth',
-        'phase': 'Fase 1',
-        'primaryColor': Colors.green.shade600,
-        'secondaryColor': Colors.green.shade700,
-        'delay': 0,
-      },
-      {
-        'imagePath': 'assets/generative.png',
-        'label': 'Generative',
-        'description': 'Flowering',
-        'phase': 'Fase 2',
-        'primaryColor': Colors.amber.shade600,
-        'secondaryColor': Colors.amber.shade700,
-        'delay': 100,
-      },
-      {
-        'imagePath': 'assets/preharvest.png',
-        'label': 'Pre-Harvest',
-        'description': 'Maturation',
-        'phase': 'Fase 3',
-        'primaryColor': Colors.orange.shade600,
-        'secondaryColor': Colors.orange.shade700,
-        'delay': 200,
-      },
-      {
-        'imagePath': 'assets/harvest.png',
-        'label': 'Harvest',
-        'description': 'Harvesting',
-        'phase': 'Fase 4',
-        'primaryColor': Colors.red.shade600,
-        'secondaryColor': Colors.red.shade700,
-        'delay': 300,
-      },
-    ];
-
-    return RefreshIndicator(
-      key: _refreshIndicatorKey,
-      onRefresh: _onRefresh,
-      color: Colors.green.shade600,
-      backgroundColor: Colors.white,
-      displacement: 40,
-      strokeWidth: 3,
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(), // ✅ PENTING untuk pull-to-refresh!
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 16),
-
-                  // ✅ Absen Card dengan cache info
-                  _buildAbsenPromptCardWithCacheInfo(),
-
-                  // Welcome Card dengan Greeting
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(24.0),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.green.withAlpha(40),
-                          spreadRadius: 5,
-                          blurRadius: 15,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(24.0),
-                      child: Stack(
-                        children: [
-                          // Background gradient
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Colors.white,
-                                  Colors.green.shade50,
-                                ],
-                              ),
-                            ),
-                          ),
-
-                          Padding(
-                            padding: const EdgeInsets.all(20.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // User Profile Row
-                                Row(
-                                  children: [
-                                    // Enhanced User Avatar
-                                    GestureDetector(
-                                      onTap: () {
-                                        HapticFeedback.lightImpact();
-                                        _drawerController.toggle!();
-                                      },
-                                      child: TweenAnimationBuilder(
-                                        tween: Tween<double>(begin: 0, end: 1),
-                                        duration: const Duration(milliseconds: 800),
-                                        curve: Curves.elasticOut,
-                                        builder: (context, double value, child) {
-                                          return Transform.scale(
-                                            scale: 0.7 + (value * 0.3),
-                                            child: Container(
-                                              padding: const EdgeInsets.all(4),
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                gradient: LinearGradient(
-                                                  begin: Alignment.topLeft,
-                                                  end: Alignment.bottomRight,
-                                                  colors: [
-                                                    Colors.green.shade400,
-                                                    Colors.green.shade600,
-                                                    Colors.green.shade800,
-                                                  ],
-                                                ),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.green.withAlpha(100),
-                                                    blurRadius: 12,
-                                                    spreadRadius: 2,
-                                                    offset: const Offset(0, 4),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: Container(
-                                                padding: const EdgeInsets.all(3),
-                                                decoration: const BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  color: Colors.white,
-                                                ),
-                                                child: CircleAvatar(
-                                                  radius: 32,
-                                                  backgroundColor: Colors.green.shade100,
-                                                  backgroundImage: userPhotoUrl != null && userPhotoUrl!.isNotEmpty
-                                                      ? NetworkImage(userPhotoUrl!)
-                                                      : const AssetImage('assets/logo.png') as ImageProvider,
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-
-                                    // Greeting Text
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          // Animated Greeting
-                                          TweenAnimationBuilder(
-                                            tween: Tween<double>(begin: 0, end: 1),
-                                            duration: const Duration(milliseconds: 600),
-                                            curve: Curves.easeOut,
-                                            builder: (context, double value, child) {
-                                              return Opacity(
-                                                opacity: value,
-                                                child: Transform.translate(
-                                                  offset: Offset(0, 10 * (1 - value)),
-                                                  child: AnimatedTextKit(
-                                                    animatedTexts: [
-                                                      TyperAnimatedText(
-                                                        _greeting,
-                                                        textStyle: TextStyle(
-                                                          fontSize: 22.0,
-                                                          fontWeight: FontWeight.w800,
-                                                          color: Colors.green.shade800,
-                                                          letterSpacing: 0.5,
-                                                        ),
-                                                        speed: const Duration(milliseconds: 100),
-                                                      ),
-                                                    ],
-                                                    totalRepeatCount: 1,
-                                                    displayFullTextOnTap: true,
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                          const SizedBox(height: 4),
-
-                                          // User Name
-                                          TweenAnimationBuilder(
-                                            tween: Tween<double>(begin: 0, end: 1),
-                                            duration: const Duration(milliseconds: 800),
-                                            curve: Curves.easeOut,
-                                            builder: (context, double value, child) {
-                                              return Opacity(
-                                                opacity: value,
-                                                child: Text(
-                                                  userName,
-                                                  style: TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: Colors.green.shade700,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-
-                                    // Weather Icon
-                                    TweenAnimationBuilder(
-                                      tween: Tween<double>(begin: 0, end: 1),
-                                      duration: const Duration(milliseconds: 1000),
-                                      curve: Curves.elasticOut,
-                                      builder: (context, double value, child) {
-                                        return Transform.scale(
-                                          scale: 0.5 + (value * 0.5),
-                                          child: Container(
-                                            padding: const EdgeInsets.all(14),
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              gradient: LinearGradient(
-                                                begin: Alignment.topLeft,
-                                                end: Alignment.bottomRight,
-                                                colors: [
-                                                  Colors.white.withAlpha(229),
-                                                  Colors.green.shade50,
-                                                ],
-                                              ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.green.withAlpha(40),
-                                                  blurRadius: 12,
-                                                  spreadRadius: 2,
-                                                  offset: const Offset(0, 4),
-                                                ),
-                                              ],
-                                            ),
-                                            child: BoxedIcon(
-                                              _greeting == 'Sugêng Enjing!'
-                                                  ? WeatherIcons.sunrise
-                                                  : _greeting == 'Sugêng Siang!'
-                                                  ? WeatherIcons.day_sunny
-                                                  : _greeting == 'Sugêng Sontên!'
-                                                  ? WeatherIcons.sunset
-                                                  : WeatherIcons.night_clear,
-                                              color: _greeting == 'Sugêng Enjing!'
-                                                  ? Colors.orange.shade600
-                                                  : _greeting == 'Sugêng Siang!'
-                                                  ? Colors.amber.shade600
-                                                  : _greeting == 'Sugêng Sontên!'
-                                                  ? Colors.deepOrange.shade600
-                                                  : Colors.indigo.shade300,
-                                              size: 32,
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-
-                                // Date Badge
-                                TweenAnimationBuilder(
-                                  tween: Tween<double>(begin: 0, end: 1),
-                                  duration: const Duration(milliseconds: 1000),
-                                  curve: Curves.easeOut,
-                                  builder: (context, double value, child) {
-                                    return Opacity(
-                                      opacity: value,
-                                      child: Transform.translate(
-                                        offset: Offset(0, 10 * (1 - value)),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              colors: [
-                                                Colors.white,
-                                                Colors.green.shade50,
-                                              ],
-                                            ),
-                                            borderRadius: BorderRadius.circular(30),
-                                            border: Border.all(
-                                              color: Colors.green.shade200,
-                                              width: 1.5,
-                                            ),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.green.withAlpha(20),
-                                                blurRadius: 8,
-                                                spreadRadius: 1,
-                                                offset: const Offset(0, 3),
-                                              ),
-                                            ],
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.all(6),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.green.shade700,
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: const Icon(
-                                                  Icons.calendar_today_rounded,
-                                                  size: 14,
-                                                  color: Colors.white,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 10),
-                                              Text(
-                                                _currentTime,
-                                                style: TextStyle(
-                                                  fontSize: 13,
-                                                  color: Colors.green.shade800,
-                                                  fontWeight: FontWeight.w600,
-                                                  letterSpacing: 0.3,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                const SizedBox(height: 20),
-
-                                // Weather Widget
-                                TweenAnimationBuilder(
-                                  tween: Tween<double>(begin: 0, end: 1),
-                                  duration: const Duration(milliseconds: 1200),
-                                  curve: Curves.easeOut,
-                                  builder: (context, double value, child) {
-                                    return Opacity(
-                                      opacity: value,
-                                      child: Transform.translate(
-                                        offset: Offset(0, 20 * (1 - value)),
-                                        child: WeatherWidget(greeting: _greeting),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                const SizedBox(height: 20),
-
-                                // Premium Filter Section
-                                TweenAnimationBuilder(
-                                  tween: Tween<double>(begin: 0, end: 1),
-                                  duration: const Duration(milliseconds: 1400),
-                                  curve: Curves.easeOut,
-                                  builder: (context, double value, child) {
-                                    return Opacity(
-                                      opacity: value,
-                                      child: Transform.translate(
-                                        offset: Offset(0, 20 * (1 - value)),
-                                        child: _buildPremiumFilterSection(context),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Estimasi TKD Button
-                  TweenAnimationBuilder(
-                    tween: Tween<double>(begin: 0, end: 1),
-                    duration: const Duration(milliseconds: 1400),
-                    curve: Curves.easeOut,
-                    builder: (context, double value, child) {
-                      return Opacity(
-                        opacity: value,
-                        child: Transform.translate(
-                          offset: Offset(0, 30 * (1 - value)),
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 20),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.orange.withAlpha(60),
-                                  blurRadius: 15,
-                                  spreadRadius: 1,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () {
-                                  HapticFeedback.mediumImpact();
-                                  // ✅ CEK ABSEN DULU
-                                  if (!_canAccessFeatures()) {
-                                    _showLockedFeatureMessage();
-                                    return;
-                                  }
-
-                                  if (selectedFieldSPV == null) {
-                                    _showSnackBar(context, 'Pilih Region dulu sebelum cek Estimasi TKD!');
-                                    return;
-                                  }
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (context) => KalkulatorTKDPage(
-                                        selectedRegion: selectedFieldSPV!,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                borderRadius: BorderRadius.circular(16),
-                                splashColor: Colors.white.withAlpha(76),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        Colors.orange.shade400,
-                                        Colors.orange.shade600,
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: Colors.orange.shade700.withAlpha(100),
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      // Icon Container
-                                      TweenAnimationBuilder(
-                                        tween: Tween<double>(begin: 0.9, end: 1.0),
-                                        duration: const Duration(milliseconds: 1000),
-                                        curve: Curves.easeInOut,
-                                        builder: (context, double scale, child) {
-                                          return Transform.scale(
-                                            scale: scale,
-                                            child: Container(
-                                              padding: const EdgeInsets.all(12),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white.withAlpha(76),
-                                                shape: BoxShape.circle,
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black.withAlpha(25),
-                                                    blurRadius: 8,
-                                                    offset: const Offset(0, 3),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: const Icon(
-                                                Icons.calculate_rounded,
-                                                size: 24,
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        onEnd: () {
-                                          if (mounted) setState(() {});
-                                        },
-                                      ),
-                                      const SizedBox(width: 16),
-
-                                      // Text Content
-                                      const Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'Estimasi TKD',
-                                              style: TextStyle(
-                                                fontSize: 17,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.white,
-                                                letterSpacing: 0.3,
-                                              ),
-                                            ),
-                                            SizedBox(height: 4),
-                                            Text(
-                                              'Hitung kebutuhan tenaga detaseling',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.white,
-                                                height: 1.2,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-
-                                      // Arrow Icon
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withAlpha(51),
-                                          borderRadius: BorderRadius.circular(10),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black.withAlpha(20),
-                                              blurRadius: 6,
-                                              offset: const Offset(0, 2),
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Icon(
-                                          Icons.arrow_forward_rounded,
-                                          color: Colors.white,
-                                          size: 20,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-
-                  // FASE INSPEKSI Section Header
-                  TweenAnimationBuilder(
-                    tween: Tween<double>(begin: 0, end: 1),
-                    duration: const Duration(milliseconds: 1600),
-                    curve: Curves.easeOut,
-                    builder: (context, double value, child) {
-                      return Opacity(
-                        opacity: value,
-                        child: Transform.translate(
-                          offset: Offset(0, 30 * (1 - value)),
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Colors.green.shade50,
-                                  Colors.green.shade100.withAlpha(127),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: Colors.green.shade200,
-                                width: 2,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.green.withAlpha(30),
-                                  blurRadius: 15,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                // Animated Icon Container
-                                TweenAnimationBuilder(
-                                  tween: Tween<double>(begin: 0, end: 1),
-                                  duration: const Duration(milliseconds: 800),
-                                  curve: Curves.elasticOut,
-                                  builder: (context, double iconValue, child) {
-                                    return Transform.scale(
-                                      scale: 0.5 + (iconValue * 0.5),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(14),
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            colors: [
-                                              Colors.green.shade600,
-                                              Colors.green.shade800,
-                                            ],
-                                          ),
-                                          borderRadius: BorderRadius.circular(16),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.green.withAlpha(100),
-                                              blurRadius: 12,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Icon(
-                                          Icons.auto_graph_rounded,
-                                          color: Colors.white,
-                                          size: 32,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                const SizedBox(width: 16),
-
-                                // Header Text
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'FASE INSPEKSI',
-                                        style: TextStyle(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.green.shade800,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Pilih fase untuk inspeksi',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.green.shade600,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-
-                                // Info Badge
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.shade700,
-                                    borderRadius: BorderRadius.circular(20),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.green.withAlpha(60),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 3),
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.eco_rounded,
-                                        size: 14,
-                                        color: Colors.white,
-                                      ),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        '4',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Inspection Phases Grid
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: 1 / 1.4,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                  final phase = inspectionPhases[index];
-                  return _EnhancedCategoryCard(
-                    imagePath: phase['imagePath'],
-                    label: phase['label'],
-                    description: phase['description'],
-                    phase: phase['phase'],
-                    primaryColor: phase['primaryColor'],
-                    secondaryColor: phase['secondaryColor'],
-                    delay: phase['delay'],
-                    spreadsheetId: selectedSpreadsheetId,
-                    selectedDistrict: selectedFA,
-                    selectedQA: selectedQA,
-                    selectedSeason: selectedSeason,
-                    region: selectedFieldSPV,
-                    seasonList: seasonList,
-                    onTap: () {
-                      HapticFeedback.mediumImpact();
-                      // ✅ CEK ABSEN DULU
-                      if (!_canAccessFeatures()) {
-                        _showLockedFeatureMessage();
-                        return;
-                      }
-
-                      if (selectedSpreadsheetId == null) {
-                        _showSnackBar(context, 'Harap pilih Region terlebih dahulu');
-                        return;
-                      }
-                      if (selectedQA == null) {
-                        _showSnackBar(context, 'QA SPV belum dipilih gaes!');
-                        return;
-                      }
-                      if (selectedFA == null) {
-                        _showSnackBar(context, 'Hayo, Districtnya belum dipilih!');
-                        return;
-                      }
-
-                      Widget targetScreen;
-                      switch (phase['label']) {
-                        case 'Vegetative':
-                          targetScreen = VegetativeScreen(
-                            spreadsheetId: selectedSpreadsheetId!,
-                            selectedDistrict: selectedFA!,
-                            selectedQA: selectedQA!,
-                            selectedSeason: selectedSeason,
-                            region: selectedFieldSPV ?? 'Unknown Region',
-                            seasonList: seasonList,
-                          );
-                          break;
-                        case 'Generative':
-                          targetScreen = GenerativeScreen(
-                            spreadsheetId: selectedSpreadsheetId!,
-                            selectedDistrict: selectedFA!,
-                            selectedQA: selectedQA!,
-                            selectedSeason: selectedSeason,
-                            region: selectedFieldSPV ?? 'Unknown Region',
-                            seasonList: seasonList,
-                          );
-                          break;
-                        case 'Pre-Harvest':
-                          targetScreen = PreHarvestScreen(
-                            spreadsheetId: selectedSpreadsheetId!,
-                            selectedDistrict: selectedFA!,
-                            selectedQA: selectedQA!,
-                            selectedSeason: selectedSeason,
-                            region: selectedFieldSPV ?? 'Unknown Region',
-                            seasonList: seasonList,
-                          );
-                          break;
-                        case 'Harvest':
-                          targetScreen = HarvestScreen(
-                            spreadsheetId: selectedSpreadsheetId!,
-                            selectedDistrict: selectedFA!,
-                            selectedQA: selectedQA!,
-                            selectedSeason: selectedSeason,
-                            region: selectedFieldSPV ?? 'Unknown Region',
-                            seasonList: seasonList,
-                          );
-                          break;
-                        default:
-                          return;
-                      }
-
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => targetScreen),
-                      );
-                    },
-                  );
-                },
-                childCount: inspectionPhases.length,
-              ),
-            ),
-          ),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 12),
         ],
       ),
     );
   }
+}
 
-  Widget _buildPremiumFilterSection(BuildContext context) {
-    final bool isLocked = !_canAccessFeatures();
+class _ModeChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool active;
+  final Color activeColor;
+  final String? badge;
+  final VoidCallback onTap;
 
-    return Stack(
-      children: [
-        // Main Filter Container
-        Opacity(
-          opacity: isLocked ? 0.5 : 1.0,
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Colors.white, Colors.green.shade50],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.green.withAlpha(25),
-                  blurRadius: 20,
-                  spreadRadius: 2,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [Colors.green.shade400, Colors.green.shade600],
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.green.withAlpha(76),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Icon(
-                              isLocked ? Icons.lock_rounded : Icons.tune_rounded,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              isLocked ? 'FILTER TERKUNCI' : 'FILTER BY REGION!',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
+  const _ModeChip({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.activeColor,
+    required this.onTap,
+    this.badge,
+  });
 
-                      // ✅ Region Chip - TIDAK TERKUNCI
-                      _buildFilterChip(
-                        label: 'Region',
-                        value: selectedFieldSPV,
-                        icon: Icons.location_city_rounded,
-                        onTap: () => _showRegionBottomSheet(context), // Tidak ada lock check
-                        isLocked: false, // ✅ Selalu unlocked
-                      ),
-
-                      // QA SPV Chip
-                      if (selectedFieldSPV != null) ...[
-                        const SizedBox(height: 12),
-                        _buildFilterChip(
-                          label: 'QA SPV',
-                          value: selectedQA,
-                          icon: Icons.supervisor_account_rounded,
-                          onTap: isLocked
-                              ? () => _showLockedFeatureMessage() // ✅ Pass context
-                              : () => _showQASPVBottomSheet(context),
-                          isLocked: isLocked,
-                        ),
-                      ],
-
-                      // District Chip
-                      if (selectedQA != null) ...[
-                        const SizedBox(height: 12),
-                        _buildFilterChip(
-                          label: 'District',
-                          value: selectedFA,
-                          icon: Icons.location_on_rounded,
-                          onTap: isLocked
-                              ? _showLockedFeatureMessage // ✅ Pass context
-                              : () => _showDistrictBottomSheet(context),
-                          isLocked: isLocked,
-                        ),
-                      ],
-
-                      // Active Filters Summary with Reset Button
-                      if (selectedFieldSPV != null || selectedQA != null || selectedFA != null) ...[
-                        const SizedBox(height: 16),
-
-                        Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Colors.green.shade50,
-                                Colors.green.shade100.withAlpha(127),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.green.shade300,
-                              width: 1.5,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.green.withAlpha(30),
-                                blurRadius: 8,
-                                spreadRadius: 1,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: isLocked
-                                  ? _showLockedFeatureMessage
-                                  : () {
-                                HapticFeedback.lightImpact();
-                                _showActiveFiltersDialog(context);
-                              },
-                              borderRadius: BorderRadius.circular(16),
-                              child: Padding(
-                                padding: const EdgeInsets.all(14),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            Colors.green.shade600,
-                                            Colors.green.shade700,
-                                          ],
-                                        ),
-                                        shape: BoxShape.circle,
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.green.withAlpha(60),
-                                            blurRadius: 6,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ],
-                                      ),
-                                      child: const Icon(
-                                        Icons.check_circle_rounded,
-                                        color: Colors.white,
-                                        size: 18,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            _getActiveFiltersCount(),
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.green.shade800,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            _getActiveFiltersList(),
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.green.shade700,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-
-                                    const SizedBox(width: 8),
-
-                                    GestureDetector(
-                                      onTap: isLocked
-                                          ? _showLockedFeatureMessage
-                                          : () {
-                                        HapticFeedback.mediumImpact();
-                                        _showResetConfirmationDialog(context);
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 8,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            colors: [
-                                              Colors.red.shade400,
-                                              Colors.red.shade600,
-                                            ],
-                                          ),
-                                          borderRadius: BorderRadius.circular(12),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.red.withAlpha(40),
-                                              blurRadius: 6,
-                                              offset: const Offset(0, 2),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Icon(
-                                              Icons.refresh_rounded,
-                                              size: 16,
-                                              color: Colors.white,
-                                            ),
-                                            const SizedBox(width: 6),
-                                            const Text(
-                                              'Reset',
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-
-        // Lock Overlay (hanya muncul jika belum absen)
-        if (isLocked)
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: _showLockedFeatureMessage,
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  color: Colors.black.withAlpha(10),
-                ),
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade600,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.orange.withAlpha(100),
-                          blurRadius: 15,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.lock_rounded,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-// Helper method to get active filters count
-  String _getActiveFiltersCount() {
-    int count = 0;
-    if (selectedFieldSPV != null) count++;
-    if (selectedQA != null) count++;
-    if (selectedFA != null) count++;
-
-    return '$count Filter Aktif';
-  }
-
-// Helper method to get active filters list
-  String _getActiveFiltersList() {
-    List<String> active = [];
-    if (selectedFieldSPV != null) active.add('Region');
-    if (selectedQA != null) active.add('QA SPV');
-    if (selectedFA != null) active.add('District');
-
-    return active.join(' • ');
-  }
-
-// Dialog to show active filters details (optional - triggered on tap)
-  void _showActiveFiltersDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white,
-                  Colors.green.shade50,
-                ],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(25),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.green.shade400, Colors.green.shade600],
-                        ),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.filter_list_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Text(
-                      'Filter Aktif',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // Active Filters List
-                if (selectedFieldSPV != null)
-                  _buildFilterDetailRow(
-                    icon: Icons.location_city_rounded,
-                    label: 'Region',
-                    value: selectedFieldSPV!,
-                    color: Colors.blue.shade600,
-                  ),
-                if (selectedQA != null) ...[
-                  const SizedBox(height: 12),
-                  _buildFilterDetailRow(
-                    icon: Icons.supervisor_account_rounded,
-                    label: 'QA SPV',
-                    value: selectedQA!,
-                    color: Colors.purple.shade600,
-                  ),
-                ],
-                if (selectedFA != null) ...[
-                  const SizedBox(height: 12),
-                  _buildFilterDetailRow(
-                    icon: Icons.location_on_rounded,
-                    label: 'District',
-                    value: selectedFA!,
-                    color: Colors.orange.shade600,
-                  ),
-                ],
-
-                const SizedBox(height: 20),
-
-                // Close Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade600,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'Tutup',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-// Helper widget for filter detail row in dialog
-  Widget _buildFilterDetailRow({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withAlpha(25),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withAlpha(76),
-          width: 1.5,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              color: Colors.white,
-              size: 16,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: color,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-// Confirmation dialog for reset
-  void _showResetConfirmationDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(25),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Icon
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.refresh_rounded,
-                    color: Colors.red.shade600,
-                    size: 32,
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Title
-                const Text(
-                  'Reset Semua Filter?',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 12),
-
-                // Message
-                Text(
-                  'Semua filter yang aktif akan dihapus dan dikembalikan ke kondisi awal.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-
-                // Action Buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(dialogContext),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          side: BorderSide(
-                            color: Colors.grey.shade300,
-                            width: 2,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          'Batal',
-                          style: TextStyle(
-                            color: Colors.grey.shade700,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(dialogContext);
-                          _clearAllFilters();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red.shade600,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Reset',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-// ============================================
-// FILTER CHIP WIDGET
-// ============================================
-
-  Widget _buildFilterChip({
-    required String label,
-    required String? value,
-    required IconData icon,
-    required VoidCallback onTap,
-    bool isLocked = false,
-  }) {
-    final bool hasValue = value != null;
-
+  @override
+  Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.all(16),
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          gradient: hasValue && !isLocked
+          gradient: active
               ? LinearGradient(
-            colors: [Colors.green.shade400, Colors.green.shade600],
+            colors: [
+              activeColor,
+              activeColor.withAlpha(200),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           )
               : null,
-          color: hasValue && !isLocked
-              ? null
-              : isLocked
-              ? Colors.grey.shade200
-              : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(16),
+          color: active ? null : Colors.white.withAlpha(16),
+          borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: hasValue && !isLocked
-                ? Colors.green.shade700
-                : Colors.grey.shade300,
-            width: hasValue && !isLocked ? 2 : 1,
+            color: active ? activeColor : Colors.white.withAlpha(30),
+            width: 1,
           ),
-          boxShadow: hasValue && !isLocked
+          boxShadow: active
               ? [
             BoxShadow(
-              color: Colors.green.withAlpha(76),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              color: activeColor.withAlpha(100),
+              blurRadius: 14,
+              spreadRadius: -2,
+              offset: const Offset(0, 3),
             ),
           ]
               : [],
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: hasValue && !isLocked
-                    ? Colors.white.withAlpha(51)
-                    : Colors.white,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                isLocked ? Icons.lock_outline_rounded : icon,
-                color: hasValue && !isLocked
-                    ? Colors.white
-                    : Colors.grey.shade600,
-                size: 20,
+            Icon(icon, color: Colors.white, size: 14),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: AdvantaText.label.copyWith(
+                color: Colors.white,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: hasValue && !isLocked
-                          ? Colors.white70
-                          : Colors.grey.shade600,
-                    ),
+            if (badge != null) ...[
+              const SizedBox(width: 7),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  badge!,
+                  style: AdvantaText.caption.copyWith(
+                    color: activeColor,
+                    fontWeight: FontWeight.w800,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    isLocked
-                        ? 'Absen dulu ya!'
-                        : (value ?? 'Pilih $label'),
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: hasValue && !isLocked
-                          ? Colors.white
-                          : Colors.grey.shade800,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                ),
               ),
-            ),
-            Icon(
-              isLocked
-                  ? Icons.lock_rounded
-                  : Icons.arrow_forward_ios_rounded,
-              size: 16,
-              color: hasValue && !isLocked
-                  ? Colors.white
-                  : Colors.grey.shade400,
-            ),
+            ],
           ],
-        ),
-      ),
-    );
-  }
-
-  // BOTTOM SHEET - REGION (FIXED)
-  void _showRegionBottomSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StreamBuilder<List<String>>(
-        stream: getQAFilterStream(),
-        builder: (context, snapshot) {
-          final regions = snapshot.data ?? [];
-
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.7,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              children: [
-                // Drag Handle
-                Container(
-                  margin: const EdgeInsets.only(top: 12),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-
-                // Header
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Colors.green.shade400, Colors.green.shade600],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(Icons.location_city_rounded,
-                            color: Colors.white, size: 24),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'Pilih Region',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Divider(height: 1),
-
-                // List Items
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    itemCount: regions.length,
-                    itemBuilder: (context, index) {
-                      final region = regions[index];
-                      final isSelected = selectedFieldSPV == region;
-
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(
-                          gradient: isSelected
-                              ? LinearGradient(
-                            colors: [Colors.green.shade400, Colors.green.shade600],
-                          )
-                              : null,
-                          color: isSelected ? null : Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected ? Colors.green.shade700 : Colors.grey.shade200,
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
-                        child: ListTile(
-                          leading: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? Colors.white.withAlpha(51)
-                                  : Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.location_city_rounded,
-                              color: isSelected ? Colors.white : Colors.green.shade600,
-                            ),
-                          ),
-                          title: Text(
-                            region,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: isSelected ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                          trailing: isSelected
-                              ? const Icon(Icons.check_circle_rounded, color: Colors.white)
-                              : null,
-                          onTap: () async {
-                            final spreadsheetId = ConfigManager.getSpreadsheetId(region);
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.setString('selectedRegion', region);
-
-                            setState(() {
-                              selectedFieldSPV = region;
-                              selectedSpreadsheetId = spreadsheetId;
-                              selectedQA = null;
-                              selectedFA = null;
-                              faList.clear();
-                            });
-
-                            // ignore: use_build_context_synchronously
-                            Navigator.pop(context);
-
-                            if (spreadsheetId == null) {
-                              // LANGKAH 3: Ganti SnackBar dengan fungsi terpusat
-                              // ignore: use_build_context_synchronously
-                              _showSnackBar(context, 'Spreadsheet ID tidak ditemukan');
-                            }
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // BOTTOM SHEET - QA SPV (FIXED)
-  void _showQASPVBottomSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StreamBuilder<List<String>>(
-        stream: getQASPVStream(selectedFieldSPV!),
-        builder: (context, snapshot) {
-          final qaSPVList = snapshot.data ?? [];
-
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.6,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              children: [
-                // Drag Handle
-                Container(
-                  margin: const EdgeInsets.only(top: 12),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-
-                // Header
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Colors.green.shade400, Colors.green.shade600],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(Icons.supervisor_account_rounded,
-                            color: Colors.white, size: 24),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'Pilih QA SPV',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Divider(height: 1),
-
-                // List Items
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: qaSPVList.length,
-                    itemBuilder: (context, index) {
-                      final qa = qaSPVList[index];
-                      final isSelected = selectedQA == qa;
-
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(
-                          gradient: isSelected
-                              ? LinearGradient(
-                            colors: [Colors.green.shade400, Colors.green.shade600],
-                          )
-                              : null,
-                          color: isSelected ? null : Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected ? Colors.green.shade700 : Colors.grey.shade200,
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
-                        child: ListTile(
-                          leading: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? Colors.white.withAlpha(51)
-                                  : Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.person_rounded,
-                              color: isSelected ? Colors.white : Colors.green.shade600,
-                            ),
-                          ),
-                          title: Text(
-                            qa,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: isSelected ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                          trailing: isSelected
-                              ? const Icon(Icons.check_circle_rounded, color: Colors.white)
-                              : null,
-                          onTap: () async {
-                            setState(() => selectedQA = qa);
-                            await _saveFilterPreferences();
-                            // ignore: use_build_context_synchronously
-                            Navigator.pop(context);
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-// BOTTOM SHEET - DISTRICT (FIXED)
-  void _showDistrictBottomSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StreamBuilder<List<String>>(
-        stream: getDistrictsStream(selectedFieldSPV, selectedQA),
-        builder: (context, snapshot) {
-          final districts = snapshot.data ?? [];
-
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.6,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              children: [
-                // Drag Handle
-                Container(
-                  margin: const EdgeInsets.only(top: 12),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-
-                // Header
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Colors.green.shade400, Colors.green.shade600],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(Icons.location_on_rounded,
-                            color: Colors.white, size: 24),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'Pilih District',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Divider(height: 1),
-
-                // List Items
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: districts.length,
-                    itemBuilder: (context, index) {
-                      final district = districts[index];
-                      final isSelected = selectedFA == district;
-
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(
-                          gradient: isSelected
-                              ? LinearGradient(
-                            colors: [Colors.green.shade400, Colors.green.shade600],
-                          )
-                              : null,
-                          color: isSelected ? null : Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected ? Colors.green.shade700 : Colors.grey.shade200,
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
-                        child: ListTile(
-                          leading: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? Colors.white.withAlpha(51)
-                                  : Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.location_on_rounded,
-                              color: isSelected ? Colors.white : Colors.green.shade600,
-                            ),
-                          ),
-                          title: Text(
-                            district,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: isSelected ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                          trailing: isSelected
-                              ? const Icon(Icons.check_circle_rounded, color: Colors.white)
-                              : null,
-                          onTap: () async {
-                            setState(() => selectedFA = district);
-                            await _saveFilterPreferences();
-                            // ignore: use_build_context_synchronously
-                            Navigator.pop(context);
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-// ============================================
-// HELPER METHODS
-// ============================================
-
-  void _clearAllFilters() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    setState(() {
-      selectedFieldSPV = null;
-      selectedQA = null;
-      selectedFA = null;
-      selectedSpreadsheetId = null;
-      faList.clear();
-    });
-
-    await prefs.remove('selectedRegion');
-    await prefs.remove('selectedQA');
-    await prefs.remove('selectedFA');
-
-    // LANGKAH 3: Ganti SnackBar dengan fungsi terpusat
-    // ignore: use_build_context_synchronously
-    _showSnackBar(context, 'Semua filter telah direset', type: SnackBarType.success);
-  }
-
-  Widget buildCategoryItem(
-      BuildContext context,
-      String imagePath,
-      String label,
-      String? spreadsheetId,
-      String? selectedDistrict,
-      String? selectedQA,
-      String? selectedSeason,
-      String? region,
-      List<String> seasonList,
-      ) {
-    return GestureDetector(
-      onTap: () {
-        if (spreadsheetId == null) {
-          // LANGKAH 3: Ganti SnackBar dengan fungsi terpusat
-          _showSnackBar(context, 'Harap pilih Region terlebih dahulu');
-          return;
-        }
-        if (selectedQA == null) {
-          // LANGKAH 3: Ganti SnackBar dengan fungsi terpusat
-          _showSnackBar(context, 'QA SPV belum dipilih gaes!');
-          return;
-        }
-        if (selectedDistrict == null) {
-          // LANGKAH 3: Ganti SnackBar dengan fungsi terpusat
-          _showSnackBar(context, 'Hayo, Districtnya belum dipilih!');
-          return;
-        }
-
-        Widget targetScreen;
-        switch (label) {
-          case 'Vegetative':
-            targetScreen = VegetativeScreen(
-              spreadsheetId: spreadsheetId,
-              selectedDistrict: selectedDistrict,
-              selectedQA: selectedQA,
-              selectedSeason: selectedSeason,
-              region: region ?? 'Unknown Region',
-              seasonList: seasonList,
-            );
-            break;
-          case 'Generative':
-            targetScreen = GenerativeScreen(
-              spreadsheetId: spreadsheetId,
-              selectedDistrict: selectedDistrict,
-              selectedQA: selectedQA,
-              selectedSeason: selectedSeason,
-              region: region ?? 'Unknown Region',
-              seasonList: seasonList,
-            );
-            break;
-          case 'Pre-Harvest':
-            targetScreen = PreHarvestScreen(
-              spreadsheetId: spreadsheetId,
-              selectedDistrict: selectedDistrict,
-              selectedQA: selectedQA,
-              selectedSeason: selectedSeason,
-              region: region ?? 'Unknown Region',
-              seasonList: seasonList,
-            );
-            break;
-          case 'Harvest':
-            targetScreen = HarvestScreen(
-              spreadsheetId: spreadsheetId,
-              selectedDistrict: selectedDistrict,
-              selectedQA: selectedQA,
-              selectedSeason: selectedSeason,
-              region: region ?? 'Unknown Region',
-              seasonList: seasonList,
-            );
-            break;
-          default:
-            return;
-        }
-
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (context) => targetScreen),
-        );
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(55.0),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha((0.10 * 255).toInt()),
-              spreadRadius: 3,
-              blurRadius: 2,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Card(
-          color: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(55.0),
-          ),
-          elevation: 0,
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Image.asset(imagePath,
-                    height: 60, width: 60, fit: BoxFit.contain),
-                const SizedBox(height: 8),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.green,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
   }
 }
 
-Widget buildPremiumCategoryItem(
-    BuildContext context,
-    String imagePath,
-    String label,
-    String description,
-    String? spreadsheetId,
-    String? selectedDistrict,
-    String? selectedQA,
-    String? selectedSeason,
-    String? region,
-    List<String> seasonList,
-    ) {
-  return GestureDetector(
-    onTap: () {
-      // Haptic feedback
-      HapticFeedback.mediumImpact();
+class _ActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
 
-      if (spreadsheetId == null) {
-        _showSnackBar(context, 'Harap pilih Region terlebih dahulu');
-        return;
-      }
-      if (selectedQA == null) {
-        _showSnackBar(context, 'QA SPV belum dipilih gaes!');
-        return;
-      }
-      if (selectedDistrict == null) {
-        _showSnackBar(context, 'Hayo, Districtnya belum dipilih!');
-        return;
-      }
-
-      Widget targetScreen;
-      switch (label) {
-        case 'Vegetative':
-          targetScreen = VegetativeScreen(
-            spreadsheetId: spreadsheetId,
-            selectedDistrict: selectedDistrict,
-            selectedQA: selectedQA,
-            selectedSeason: selectedSeason,
-            region: region ?? 'Unknown Region',
-            seasonList: seasonList,
-          );
-          break;
-        case 'Generative':
-          targetScreen = GenerativeScreen(
-            spreadsheetId: spreadsheetId,
-            selectedDistrict: selectedDistrict,
-            selectedQA: selectedQA,
-            selectedSeason: selectedSeason,
-            region: region ?? 'Unknown Region',
-            seasonList: seasonList,
-          );
-          break;
-        case 'Pre-Harvest':
-          targetScreen = PreHarvestScreen(
-            spreadsheetId: spreadsheetId,
-            selectedDistrict: selectedDistrict,
-            selectedQA: selectedQA,
-            selectedSeason: selectedSeason,
-            region: region ?? 'Unknown Region',
-            seasonList: seasonList,
-          );
-          break;
-        case 'Harvest':
-          targetScreen = HarvestScreen(
-            spreadsheetId: spreadsheetId,
-            selectedDistrict: selectedDistrict,
-            selectedQA: selectedQA,
-            selectedSeason: selectedSeason,
-            region: region ?? 'Unknown Region',
-            seasonList: seasonList,
-          );
-          break;
-        default:
-          return;
-      }
-
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (context) => targetScreen),
-      );
-    },
-    child: Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white,
-            Colors.green.withAlpha(50),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.green.withAlpha(25),
-            blurRadius: 10,
-            spreadRadius: 1,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border.all(
-          color: Colors.green.withAlpha(51),
-          width: 1.5,
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Circular image container with gradient background
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.green.withAlpha(25),
-                  Colors.green.withAlpha(51),
-                ],
-              ),
-            ),
-            child: Image.asset(
-              imagePath,
-              height: 40,
-              width: 40,
-              fit: BoxFit.contain,
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Title
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.green,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-          // Description
-          Text(
-            description,
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontSize: 12,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-// LANGKAH 2: Modifikasi fungsi _showSnackBar untuk menerima tipe
-void _showSnackBar(BuildContext context, String message, {SnackBarType type = SnackBarType.error}) {
-  Color backgroundColor;
-  switch (type) {
-    case SnackBarType.success:
-      backgroundColor = Colors.green.shade600;
-      break;
-    case SnackBarType.error:
-      backgroundColor = Colors.red.shade400;
-      break;
-    case SnackBarType.info:
-      backgroundColor = Colors.black87;
-      break;
-  }
-
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(message, textAlign: TextAlign.center),
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      backgroundColor: backgroundColor,
-      duration: const Duration(seconds: 3),
-    ),
-  );
-}
-
-// Replace the MenuScreen class in qa_screen.dart
-
-class MenuScreen extends StatelessWidget {
-  final String userName;
-  final String userEmail;
-  final String? userPhotoUrl;
-  final String appVersion;
-  final VoidCallback onLogout;
-
-  const MenuScreen({
-    super.key,
-    required this.userName,
-    required this.userEmail,
-    this.userPhotoUrl,
-    required this.appVersion,
-    required this.onLogout,
+  const _ActionChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
-
-    return Container(
-      width: MediaQuery.of(context).size.width,
-      height: screenHeight,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.green.shade700,
-            Colors.green.shade800,
-            Colors.green.shade900,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withAlpha(22),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: color.withAlpha(130), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: color.withAlpha(40),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
           ],
         ),
-        borderRadius: const BorderRadius.only(
-          topRight: Radius.circular(30.0),
-          bottomRight: Radius.circular(30.0),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 14),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: AdvantaText.label.copyWith(
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Icon(Icons.arrow_forward_ios_rounded, color: color.withAlpha(180), size: 9),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(76),
-            blurRadius: 20,
-            offset: const Offset(5, 0),
-          ),
-        ],
       ),
-      child: Stack(
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUDIT STATUS FILTER CHIP
+// Chip kecil untuk filter Sampun / Jangkep / Dereng di mode chips row
+// ─────────────────────────────────────────────────────────────
+class _AuditFilterChip extends StatelessWidget {
+  final _AuditFilter filter;
+  final _AuditFilter activeFilter;
+  final VoidCallback onTap;
+
+  const _AuditFilterChip({
+    required this.filter,
+    required this.activeFilter,
+    required this.onTap,
+  });
+
+  _AuditFilterStyle get _style {
+    switch (filter) {
+      case _AuditFilter.all:
+        return _AuditFilterStyle(
+          icon: Icons.apps_rounded,
+          label: 'Semua',
+          color: Colors.white70,
+        );
+      case _AuditFilter.sampun:
+        return _AuditFilterStyle(
+          icon: Icons.check_circle_rounded,
+          label: 'Sampun',
+          color: const Color(0xFF43A047),
+        );
+      case _AuditFilter.partial:
+        return _AuditFilterStyle(
+          icon: Icons.timelapse_rounded,
+          label: 'Jangkep',
+          color: const Color(0xFFFFA726),
+        );
+      case _AuditFilter.dereng:
+        return _AuditFilterStyle(
+          icon: Icons.radio_button_unchecked_rounded,
+          label: 'Dereng',
+          color: const Color(0xFFEF5350),
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isActive = filter == activeFilter;
+    final s = _style;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: isActive ? s.color.withAlpha(50) : Colors.white.withAlpha(12),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: isActive ? s.color : Colors.white.withAlpha(28),
+            width: isActive ? 1.5 : 1.0,
+          ),
+          boxShadow: isActive
+              ? [BoxShadow(color: s.color.withAlpha(80), blurRadius: 10, offset: const Offset(0, 2))]
+              : [],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(s.icon, size: 13, color: isActive ? s.color : Colors.white54),
+            const SizedBox(width: 5),
+            Text(
+              s.label,
+              style: AdvantaText.label.copyWith(
+                color: isActive ? s.color : Colors.white54,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AuditFilterStyle {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _AuditFilterStyle({required this.icon, required this.label, required this.color});
+}
+
+// ─────────────────────────────────────────────────────────────
+// PHASE SELECTION BOTTOM SHEET
+// Dark-themed menggunakan AdvantaColors palette
+// ─────────────────────────────────────────────────────────────
+
+class _PhaseSheet extends StatelessWidget {
+  final int selectionCount;
+  final void Function(String) onSelected;
+
+  const _PhaseSheet({
+    required this.selectionCount,
+    required this.onSelected,
+  });
+
+  static const _phases = [
+    (Icons.eco_outlined, 'Vegetative', 'vegetative',
+    Color(0xFF78909C), '100% target – semua field aktif'),
+    (Icons.grass_outlined, 'Generative 1', 'generative_1',
+    Color(0xFFFFCA28), 'Checkpoint pertama – readiness & roguing'),
+    (Icons.grass, 'Generative 2', 'generative_2',
+    Color(0xFFFF7043), 'Checkpoint kedua – female shedding'),
+    (Icons.grass, 'Generative 3 (Final)', 'generative_3',
+    Color(0xFFE53935), 'Checkpoint final – flagging & detasseling'),
+    (Icons.agriculture_outlined, 'Pre-Harvest', 'pre_harvest',
+    Color(0xFF795548), 'Target 50% – sampling eligible'),
+    (Icons.grain, 'Harvest', 'harvest',
+    Color(0xFF43A047), 'Target 50% + field flagged'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AdvantaColors.deepForest,
+        borderRadius: AdvantaRadius.sheetRadius,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Decorative Background Circles
-          Positioned(
-            top: -50,
-            right: -50,
+          // Handle
+          Padding(
+            padding: const EdgeInsets.only(top: 10, bottom: 4),
             child: Container(
-              width: 200,
-              height: 200,
+              width: 36,
+              height: 4,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withAlpha(12),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -80,
-            left: -60,
-            child: Container(
-              width: 250,
-              height: 250,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withAlpha(7),
+                color: AdvantaColors.goldLight.withAlpha(46),
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
 
-          // Main Content
-          Column(
-            children: [
-              // Profile Section
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      top: screenHeight * 0.08,
-                      left: 24,
-                      right: 24,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Enhanced Profile Avatar
-                        TweenAnimationBuilder(
-                          tween: Tween<double>(begin: 0, end: 1),
-                          duration: const Duration(milliseconds: 800),
-                          curve: Curves.elasticOut,
-                          builder: (context, double value, child) {
-                            return Transform.scale(
-                              scale: 0.7 + (value * 0.3),
-                              child: Container(
-                                padding: const EdgeInsets.all(5),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      Colors.white.withAlpha(76),
-                                      Colors.white.withAlpha(25),
-                                    ],
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withAlpha(51),
-                                      blurRadius: 20,
-                                      spreadRadius: 2,
-                                      offset: const Offset(0, 8),
-                                    ),
-                                  ],
-                                ),
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Colors.white,
-                                  ),
-                                  child: CircleAvatar(
-                                    radius: screenHeight * 0.08,
-                                    backgroundColor: Colors.green.shade100,
-                                    backgroundImage: userPhotoUrl != null && userPhotoUrl!.isNotEmpty
-                                        ? NetworkImage(userPhotoUrl!)
-                                        : const AssetImage('assets/logo.png') as ImageProvider,
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 20),
-
-                        // User Name with Animation
-                        TweenAnimationBuilder(
-                          tween: Tween<double>(begin: 0, end: 1),
-                          duration: const Duration(milliseconds: 600),
-                          curve: Curves.easeOut,
-                          builder: (context, double value, child) {
-                            return Opacity(
-                              opacity: value,
-                              child: Transform.translate(
-                                offset: Offset(0, 10 * (1 - value)),
-                                child: Text(
-                                  userName,
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    fontFamily: 'Poppins',
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    decoration: TextDecoration.none,
-                                    letterSpacing: 0.5,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 8),
-
-                        // User Email with Animation
-                        TweenAnimationBuilder(
-                          tween: Tween<double>(begin: 0, end: 1),
-                          duration: const Duration(milliseconds: 800),
-                          curve: Curves.easeOut,
-                          builder: (context, double value, child) {
-                            return Opacity(
-                              opacity: value,
-                              child: Transform.translate(
-                                offset: Offset(0, 10 * (1 - value)),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withAlpha(38),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: Colors.white.withAlpha(76),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.email_rounded,
-                                        size: 14,
-                                        color: Colors.white.withAlpha(229),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Flexible(
-                                        child: Text(
-                                          userEmail,
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontFamily: 'Poppins',
-                                            color: Colors.white.withAlpha(229),
-                                            decoration: TextDecoration.none,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 32),
-
-                        // Divider with Gradient
-                        Container(
-                          width: 220,
-                          height: 2,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.transparent,
-                                Colors.white.withAlpha(102),
-                                Colors.transparent,
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(1),
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-
-                        // Enhanced Logout Button
-                        TweenAnimationBuilder(
-                          tween: Tween<double>(begin: 0, end: 1),
-                          duration: const Duration(milliseconds: 1000),
-                          curve: Curves.easeOut,
-                          builder: (context, double value, child) {
-                            return Opacity(
-                              opacity: value,
-                              child: Transform.translate(
-                                offset: Offset(0, 20 * (1 - value)),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withAlpha(51),
-                                        blurRadius: 15,
-                                        offset: const Offset(0, 6),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: () {
-                                        HapticFeedback.mediumImpact();
-                                        onLogout();
-                                      },
-                                      borderRadius: BorderRadius.circular(16),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 14,
-                                          horizontal: 32,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            colors: [
-                                              Colors.white,
-                                              Colors.white.withAlpha(242),
-                                            ],
-                                          ),
-                                          borderRadius: BorderRadius.circular(16),
-                                          border: Border.all(
-                                            color: Colors.white.withAlpha(127),
-                                            width: 2,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.logout_rounded,
-                                              size: 22,
-                                              color: Colors.green.shade700,
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Text(
-                                              'Logout',
-                                              style: TextStyle(
-                                                color: Colors.green.shade700,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 16,
-                                                letterSpacing: 0.5,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Version Info with Animation
-                        TweenAnimationBuilder(
-                          tween: Tween<double>(begin: 0, end: 1),
-                          duration: const Duration(milliseconds: 1200),
-                          curve: Curves.easeOut,
-                          builder: (context, double value, child) {
-                            return Opacity(
-                              opacity: value,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withAlpha(25),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: Colors.white.withAlpha(51),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.info_outline_rounded,
-                                      size: 16,
-                                      color: Colors.white.withAlpha(204),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Version $appVersion',
-                                      style: TextStyle(
-                                        color: Colors.white.withAlpha(204),
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        decoration: TextDecoration.none,
-                                        letterSpacing: 0.3,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
+          // Title
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AdvantaColors.primaryGreen.withAlpha(51),
+                    borderRadius: BorderRadius.circular(10),
                   ),
+                  child: Icon(Icons.checklist_rtl, color: AdvantaColors.lightGreen, size: 18),
                 ),
-              ),
-
-              // Enhanced Footer
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withAlpha(51),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Pilih Fase – Mass Inspect',
+                        style: AdvantaText.heading3.copyWith(color: Colors.white),
+                      ),
+                      Text(
+                        '$selectionCount lahan akan diinspeksi bersamaan',
+                        style: AdvantaText.caption.copyWith(color: Colors.white54),
+                      ),
                     ],
                   ),
-                  borderRadius: const BorderRadius.only(
-                    bottomRight: Radius.circular(30.0),
+                ),
+              ],
+            ),
+          ),
+
+          Divider(color: AdvantaColors.goldLight.withAlpha(25), height: 20),
+
+          // Phase list
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _phases.length,
+            itemBuilder: (ctx, i) {
+              final (icon, label, key, color, desc) = _phases[i];
+              return ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: color.withAlpha(38),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: color, size: 20),
+                ),
+                title: Text(
+                  label,
+                  style: AdvantaText.body1.copyWith(color: Colors.white, fontWeight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  desc,
+                  style: AdvantaText.caption.copyWith(color: Colors.white38),
+                ),
+                trailing: Icon(Icons.chevron_right, color: Colors.white30, size: 18),
+                onTap: () => onSelected(key),
+              );
+            },
+          ),
+
+          SafeArea(top: false, child: const SizedBox(height: 8)),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// USER LOCATION MARKER
+// ─────────────────────────────────────────────────────────────
+class _UserLocationMarker extends StatefulWidget {
+  final bool isLocating;
+  const _UserLocationMarker({required this.isLocating});
+
+  @override
+  State<_UserLocationMarker> createState() => _UserLocationMarkerState();
+}
+
+class _UserLocationMarkerState extends State<_UserLocationMarker>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+  late final Animation<double>   _scale;
+  late final Animation<double>   _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync   : this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat(reverse: false);
+
+    _scale = Tween<double>(begin: 1.0, end: 2.4).animate(
+      CurvedAnimation(parent: _pulse, curve: Curves.easeOut),
+    );
+    _opacity = Tween<double>(begin: 0.55, end: 0.0).animate(
+      CurvedAnimation(parent: _pulse, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Warna biru GPS tetap dipertahankan — ini adalah konvensi UX universal
+    // (mirip Google Maps / Apple Maps) bukan warna branding.
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        AnimatedBuilder(
+          animation: _pulse,
+          builder: (_, __) => Transform.scale(
+            scale: _scale.value,
+            child: Container(
+              width : 20,
+              height: 20,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF2196F3).withAlpha((_opacity.value * 255).round()),
+              ),
+            ),
+          ),
+        ),
+        Container(
+          width : 20,
+          height: 20,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(color: Color(0x662196F3), blurRadius: 8, spreadRadius: 2),
+            ],
+          ),
+        ),
+        Container(
+          width : 13,
+          height: 13,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Color(0xFF2196F3),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// UNCOORD MARKER
+// ─────────────────────────────────────────────────────────────
+class _UncoordMarker extends StatefulWidget {
+  final int count;
+  const _UncoordMarker({required this.count});
+
+  @override
+  State<_UncoordMarker> createState() => _UncoordMarkerState();
+}
+
+class _UncoordMarkerState extends State<_UncoordMarker>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+  late final Animation<double> _scale;
+  late final Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: false);
+    _scale   = Tween<double>(begin: 1.0, end: 2.2).animate(
+        CurvedAnimation(parent: _pulse, curve: Curves.easeOut));
+    _opacity = Tween<double>(begin: 0.5, end: 0.0).animate(
+        CurvedAnimation(parent: _pulse, curve: Curves.easeOut));
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Pulsing ring merah (error color)
+        AnimatedBuilder(
+          animation: _pulse,
+          builder: (_, __) => Transform.scale(
+            scale: _scale.value,
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AdvantaColors.error.withAlpha((_opacity.value * 255).round()),
+              ),
+            ),
+          ),
+        ),
+        // Marker body
+        Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            color: AdvantaColors.error,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2.5),
+            boxShadow: [
+              BoxShadow(
+                color: AdvantaColors.error.withAlpha(153),
+                blurRadius: 12,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.location_off_rounded, color: Colors.white, size: 18),
+              const SizedBox(height: 1),
+              Text(
+                '${widget.count}',
+                style: AdvantaText.heading3.copyWith(color: Colors.white, height: 1.0),
+              ),
+              Text(
+                'lahan',
+                style: AdvantaText.caption.copyWith(color: Colors.white70, height: 1.1),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// UNCOORD FIELDS SHEET
+// ─────────────────────────────────────────────────────────────
+class _UncoordFieldsSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> fields;
+  final void Function(Map<String, dynamic> field) onOpenField;
+
+  const _UncoordFieldsSheet({
+    required this.fields,
+    required this.onOpenField,
+  });
+
+  @override
+  State<_UncoordFieldsSheet> createState() => _UncoordFieldsSheetState();
+}
+
+class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _filtered {
+    if (_query.isEmpty) return widget.fields;
+    final q = _query.toLowerCase();
+    return widget.fields.where((f) {
+      final fn     = f['field_number']?.toString().toLowerCase() ?? '';
+      final farmer = f['farmer_name']?.toString().toLowerCase() ?? '';
+      final fa     = f['fa']?.toString().toLowerCase() ?? '';
+      return fn.contains(q) || farmer.contains(q) || fa.contains(q);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Sheet ini selalu dark-themed (ditampilkan di atas peta)
+    const kBg      = AdvantaColors.deepForest;
+    const kSurface = AdvantaColors.midGreen;
+    const kRed     = AdvantaColors.error;
+
+    return DraggableScrollableSheet(
+      initialChildSize : 0.72,
+      minChildSize     : 0.45,
+      maxChildSize     : 0.92,
+      expand           : false,
+      builder: (ctx, scrollCtrl) {
+        final filtered = _filtered;
+
+        return Container(
+          decoration: const BoxDecoration(
+            color: kBg,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // ── Handle ────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 4),
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AdvantaColors.goldLight.withAlpha(46),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                child: Column(
-                  children: [
-                    // Divider
-                    Container(
-                      width: 180,
-                      height: 1,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.transparent,
-                            Colors.white.withAlpha(76),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
+              ),
 
-                    // Copyright Text
-                    Text(
-                      '© 2024 Tim Cengoh',
-                      style: TextStyle(
-                        color: Colors.white.withAlpha(204),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Poppins',
-                        decoration: TextDecoration.none,
-                        letterSpacing: 0.5,
+              // ── Header ────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: kRed.withAlpha(38),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: kRed.withAlpha(102)),
                       ),
-                      textAlign: TextAlign.center,
+                      child: const Icon(Icons.location_off_rounded, color: kRed, size: 18),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Ahli Huru-Hara',
-                      style: TextStyle(
-                        color: Colors.white.withAlpha(153),
-                        fontSize: 11,
-                        fontFamily: 'Poppins',
-                        decoration: TextDecoration.none,
-                        fontWeight: FontWeight.w500,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Lahan Tanpa Koordinat',
+                            style: AdvantaText.heading3.copyWith(color: Colors.white),
+                          ),
+                          Text(
+                            '${widget.fields.length} lahan — koordinat belum diisi / masih 0',
+                            style: AdvantaText.caption.copyWith(color: Colors.white54),
+                          ),
+                        ],
                       ),
-                      textAlign: TextAlign.center,
+                    ),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(ctx),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(20),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.close, color: Colors.white54, size: 16),
+                      ),
                     ),
                   ],
                 ),
               ),
+
+              const SizedBox(height: 10),
+
+              // ── Info bar ──────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AdvantaColors.successLight.withAlpha(20),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AdvantaColors.success.withAlpha(128)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: AdvantaColors.lightGreen, size: 14),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Tap baris lahan → buka detail → Correction Tagging untuk mengisi koordinat yang benar.',
+                          style: AdvantaText.caption.copyWith(color: AdvantaColors.lightGreen),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // ── Search ────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: kSurface.withAlpha(200),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AdvantaColors.goldLight.withAlpha(30)),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 10),
+                      const Icon(Icons.search, color: Colors.white38, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchCtrl,
+                          style: AdvantaText.body2.copyWith(color: Colors.white, fontSize: 13),
+
+                          // 1. Tambahkan perataan vertikal ke tengah
+                          textAlignVertical: TextAlignVertical.center,
+                          cursorColor: AdvantaColors.lightGreen,
+
+                          decoration: InputDecoration(
+                            hintText: 'Cari No. Lahan, Petani, FA…',
+                            hintStyle: AdvantaText.body2.copyWith(color: Colors.white38, fontSize: 13),
+                            border: InputBorder.none,
+
+                            // 2. Pastikan isDense aktif
+                            isDense: true,
+
+                            // 3. Atur padding agar teks tidak terpotong
+                            contentPadding: const EdgeInsets.only(left: 0, right: 10, bottom: 12),
+                          ),
+                          onChanged: (v) => setState(() => _query = v),
+                        ),
+                      ),
+                      if (_query.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            _searchCtrl.clear();
+                            setState(() => _query = '');
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.all(8),
+                            child: Icon(Icons.clear, color: Colors.white38, size: 14),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+              Divider(color: AdvantaColors.goldLight.withAlpha(20), height: 1),
+
+              // ── List ──────────────────────────────────────────
+              Expanded(
+                child: filtered.isEmpty
+                    ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.search_off, color: Colors.white24, size: 40),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Tidak ada hasil',
+                        style: AdvantaText.body2.copyWith(color: Colors.white38),
+                      ),
+                    ],
+                  ),
+                )
+                    : ListView.separated(
+                  controller: scrollCtrl,
+                  padding: const EdgeInsets.only(top: 4, bottom: 24),
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, __) => Divider(
+                    color: AdvantaColors.goldLight.withAlpha(15),
+                    height: 1,
+                    indent: 16,
+                    endIndent: 16,
+                  ),
+                  itemBuilder: (_, i) {
+                    final f = filtered[i];
+                    final fn = f['field_number'] ?? '—';
+                    final farmer = f['farmer_name'] ?? '—';
+                    final fa = f['fa'] ?? '—';
+                    final district = f['district_kab'] ?? '';
+                    final village = f['village_desa'] ?? '';
+                    final haRaw = f['effective_area_ha'];
+                    final ha = haRaw != null
+                        ? '${haRaw.toStringAsFixed(2)} ha'
+                        : '—';
+
+                    return InkWell(
+                      onTap: () => widget.onOpenField(f),
+                      splashColor: AdvantaColors.midGreen.withAlpha(51),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: kRed.withAlpha(31),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.location_off_rounded, color: kRed, size: 18),
+                            ),
+                            const SizedBox(width: 12),
+
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          fn,
+                                          style: AdvantaText.bodyBold.copyWith(color: Colors.white),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withAlpha(15),
+                                          borderRadius: BorderRadius.circular(5),
+                                        ),
+                                        child: Text(
+                                          ha,
+                                          style: AdvantaText.caption.copyWith(color: Colors.white54),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    farmer,
+                                    style: AdvantaText.body2.copyWith(color: Colors.white70),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      if (village.isNotEmpty || district.isNotEmpty)
+                                        Expanded(
+                                          child: Text(
+                                            [village, district]
+                                                .where((s) => s.isNotEmpty)
+                                                .join(', '),
+                                            style: AdvantaText.caption.copyWith(
+                                              color: AdvantaColors.mutedGrey,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      if (fa.isNotEmpty)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                          margin: const EdgeInsets.only(left: 6),
+                                          decoration: BoxDecoration(
+                                            color: AdvantaColors.primaryGreen.withAlpha(51),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            fa,
+                                            style: AdvantaText.caption.copyWith(
+                                              color: AdvantaColors.lightGreen,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(width: 8),
+                            const Icon(Icons.chevron_right, color: Colors.white24, size: 18),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// INITIAL MAP LOADING SCREEN — animated step-by-step
+// ─────────────────────────────────────────────────────────────
+class _MapLoadingScreen extends StatefulWidget {
+  final Animation<double> shimmerAnim;
+  const _MapLoadingScreen({required this.shimmerAnim});
+
+  @override
+  State<_MapLoadingScreen> createState() => _MapLoadingScreenState();
+}
+
+class _MapLoadingScreenState extends State<_MapLoadingScreen>
+    with SingleTickerProviderStateMixin {
+
+  // Step label & ikon
+  static const _steps = [
+    (Icons.wifi_rounded, 'Menghubungkan ke server…'),
+    (Icons.verified_user_outlined, 'Memverifikasi sesi pengguna…'),
+    (Icons.cloud_download_outlined, 'Mengambil data lahan…'),
+    (Icons.place_outlined, 'Menyiapkan marker peta…'),
+    (Icons.map_outlined, 'Merender peta…'),
+  ];
+
+  int _stepIndex = 0;
+  late final AnimationController _dotCtrl;
+  late final Animation<double> _dotAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _dotCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..repeat(reverse: true);
+    _dotAnim = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _dotCtrl, curve: Curves.easeInOut),
+    );
+    _tickStep();
+  }
+
+  void _tickStep() {
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (!mounted) return;
+      setState(() {
+        _stepIndex = (_stepIndex + 1) % _steps.length;
+      });
+      _tickStep();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dotCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: AdvantaColors.deepForest,
+      child: Stack(
+        children: [
+          // ── Shimmer scan line efek di background ──────────
+          AnimatedBuilder(
+            animation: widget.shimmerAnim,
+            builder: (_, __) {
+              return Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: CustomPaint(
+                  painter: _ShimmerScanPainter(
+                    progress: widget.shimmerAnim.value,
+                  ),
+                ),
+              );
+            },
+          ),
+
+          // ── Fake map tiles shimmer (bawah) ────────────────
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: size.height * 0.45,
+            child: AnimatedBuilder(
+              animation: widget.shimmerAnim,
+              builder: (_, __) {
+                return GridView.builder(
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    childAspectRatio: 1,
+                  ),
+                  itemCount: 20,
+                  itemBuilder: (_, i) {
+                    final shimmerX = widget.shimmerAnim.value;
+                    final t = ((shimmerX + i * 0.15) % 1.0).clamp(0.0, 1.0);
+                    final alpha = (50 + (t * 35)).round();
+                    return Container(
+                      margin: const EdgeInsets.all(1),
+                      decoration: BoxDecoration(
+                        color: AdvantaColors.midGreen.withAlpha(alpha),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+
+          // ── Gradient overlay gelap dari atas ─────────────
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  AdvantaColors.deepForest,
+                  Color(0xE0162920),
+                  Color(0xA0162920),
+                ],
+                stops: [0.0, 0.55, 1.0],
+              ),
+            ),
+          ),
+
+          // ── Konten tengah ─────────────────────────────────
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Logo / ikon utama
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: AdvantaColors.primaryGreen.withAlpha(40),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: AdvantaColors.lightGreen.withAlpha(80),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AdvantaColors.primaryGreen.withAlpha(60),
+                        blurRadius: 24,
+                        spreadRadius: 4,
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(22),
+                    child: SvgPicture.asset(
+                      'assets/logo_kc.svg',
+                      placeholderBuilder: (_) => const Icon(Icons.agriculture_rounded, color: Colors.white, size: 36),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 28),
+
+                // Judul
+                Text(
+                  'QA Field Map',
+                  style: AdvantaText.heading2.copyWith(
+                    color: Colors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Kroscek · Field Intelligence',
+                  style: AdvantaText.caption.copyWith(
+                    color: AdvantaColors.goldLight.withAlpha(153),
+                    letterSpacing: 1.2,
+                  ),
+                ),
+
+                const SizedBox(height: 40),
+
+                // Step-step animasi
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 350),
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.3),
+                        end: Offset.zero,
+                      ).animate(anim),
+                      child: child,
+                    ),
+                  ),
+                  child: _StepPill(
+                    key: ValueKey(_stepIndex),
+                    icon: _steps[_stepIndex].$1,
+                    label: _steps[_stepIndex].$2,
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Progress dots
+                AnimatedBuilder(
+                  animation: _dotAnim,
+                  builder: (_, __) {
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(3, (i) {
+                        final delay = i * 0.33;
+                        final raw = (_dotCtrl.value - delay).abs();
+                        final opacity = (1.0 - raw).clamp(0.2, 1.0);
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AdvantaColors.lightGreen.withAlpha(
+                              (opacity * 220).round(),
+                            ),
+                          ),
+                        );
+                      }),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Step counter
+                Text(
+                  'Langkah ${_stepIndex + 1} dari ${_steps.length}',
+                  style: AdvantaText.caption.copyWith(color: Colors.white24),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -4879,198 +3915,242 @@ class MenuScreen extends StatelessWidget {
   }
 }
 
-// HAPUS metode _buildEnhancedCategoryCard yang lama dan GANTI dengan KELAS BARU di bawah ini.
-// Letakkan di luar kelas QaScreenState, misalnya di paling bawah file.
-
-class _EnhancedCategoryCard extends StatefulWidget {
-  const _EnhancedCategoryCard({
-    required this.imagePath,
-    required this.label,
-    required this.description,
-    required this.phase,
-    required this.primaryColor,
-    required this.secondaryColor,
-    required this.delay,
-    required this.spreadsheetId,
-    required this.selectedDistrict,
-    required this.selectedQA,
-    required this.selectedSeason,
-    required this.region,
-    required this.seasonList,
-    required this.onTap,
-  });
-
-  final String imagePath;
+/// Pill kecil yang menampilkan step aktif
+class _StepPill extends StatelessWidget {
+  final IconData icon;
   final String label;
-  final String description;
-  final String phase;
-  final Color primaryColor;
-  final Color secondaryColor;
-  final int delay;
-  final String? spreadsheetId;
-  final String? selectedDistrict;
-  final String? selectedQA;
-  final String? selectedSeason;
-  final String? region;
-  final List<String> seasonList;
-  final VoidCallback onTap;
-
-  @override
-  State<_EnhancedCategoryCard> createState() => _EnhancedCategoryCardState();
-}
-
-class _EnhancedCategoryCardState extends State<_EnhancedCategoryCard> {
-  bool _isPressed = false;
+  const _StepPill({super.key, required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    // BARU: Animasi entri untuk fade in dan slide up
-    return TweenAnimationBuilder(
-      tween: Tween<double>(begin: 0, end: 1),
-      duration: Duration(milliseconds: 500 + widget.delay),
-      curve: Curves.easeOutCubic,
-      builder: (context, double value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 50 * (1 - value)),
-            child: child,
-          ),
-        );
-      },
-      child: GestureDetector(
-        onTapDown: (_) => setState(() => _isPressed = true),
-        onTapUp: (_) => setState(() => _isPressed = false),
-        onTapCancel: () => setState(() => _isPressed = false),
-        onTap: widget.onTap,
-        child: AnimatedScale(
-          scale: _isPressed ? 0.95 : 1.0,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: widget.primaryColor.withAlpha((255 * 0.25).toInt()),
-                  blurRadius: 20,
-                  spreadRadius: -5,
-                  offset: const Offset(0, 10),
-                ),
-              ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      decoration: BoxDecoration(
+        color: AdvantaColors.midGreen.withAlpha(180),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: AdvantaColors.lightGreen.withAlpha(60)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.8,
+              color: AdvantaColors.lightGreen,
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Stack(
-                children: [
-                  // Latar Belakang Gradient
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          widget.primaryColor.withAlpha((255 * 0.1).toInt()),
-                          Colors.white,
+          ),
+          const SizedBox(width: 10),
+          Icon(icon, color: AdvantaColors.goldLight, size: 15),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: AdvantaText.body2.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Custom painter untuk scan-line shimmer di background
+class _ShimmerScanPainter extends CustomPainter {
+  final double progress;
+  _ShimmerScanPainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final y = size.height * ((progress + 1.5) / 4.0).clamp(0.0, 1.0);
+    final paint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.transparent,
+          AdvantaColors.lightGreen.withAlpha(18),
+          AdvantaColors.lightGreen.withAlpha(30),
+          AdvantaColors.lightGreen.withAlpha(18),
+          Colors.transparent,
+        ],
+      ).createShader(Rect.fromLTWH(0, y - 30, size.width, 60));
+    canvas.drawRect(Rect.fromLTWH(0, y - 30, size.width, 60), paint);
+  }
+
+  @override
+  bool shouldRepaint(_ShimmerScanPainter old) => old.progress != progress;
+}
+
+// ─────────────────────────────────────────────────────────────
+// SELECTED FIELDS SHEET (Mass Inspect List View)
+// ─────────────────────────────────────────────────────────────
+class _SelectedFieldsSheet extends StatelessWidget {
+  // UBAH: Tipe data menjadi ParsedFieldData
+  final List<ParsedFieldData> fields;
+  final void Function(String fieldNumber) onRemove;
+
+  const _SelectedFieldsSheet({
+    required this.fields,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (ctx, scrollCtrl) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: AdvantaColors.deepForest,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle
+              Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 4),
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AdvantaColors.goldLight.withAlpha(46),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: AdvantaColors.primaryGreen.withAlpha(51),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.checklist_rtl, color: AdvantaColors.lightGreen, size: 18),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Daftar Lahan Dipilih',
+                            style: AdvantaText.heading3.copyWith(color: Colors.white),
+                          ),
+                          Text(
+                            '${fields.length} lahan siap diinspeksi',
+                            style: AdvantaText.caption.copyWith(color: Colors.white54),
+                          ),
                         ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        stops: const [0.0, 0.7],
                       ),
                     ),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(ctx),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(20),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.close, color: Colors.white54, size: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Divider(color: AdvantaColors.goldLight.withAlpha(20), height: 1),
+
+              // Daftar Lahan
+              Expanded(
+                child: ListView.separated(
+                  controller: scrollCtrl,
+                  padding: const EdgeInsets.only(top: 8, bottom: 24),
+                  itemCount: fields.length,
+                  separatorBuilder: (_, __) => Divider(
+                    color: AdvantaColors.goldLight.withAlpha(15),
+                    height: 1,
+                    indent: 16,
+                    endIndent: 16,
                   ),
+                  itemBuilder: (_, i) {
+                    final f = fields[i];
+                    // UBAH: Akses nilai dari objek ParsedFieldData
+                    final fn = f.raw['field_number']?.toString() ?? '—';
+                    final farmer = f.raw['farmer_name']?.toString() ?? '—';
+                    final hybrid = f.raw['hybrid']?.toString() ?? '—';
+                    final dap = f.dap.toString(); // Ambil langsung dari f.dap
 
-                  // Konten Kartu
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Phase Badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: widget.primaryColor.withAlpha((255 * 0.15).toInt()),
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          child: Text(
-                            widget.phase,
-                            style: TextStyle(
-                              color: widget.primaryColor,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-
-                        // Judul & Deskripsi
-                        Text(
-                          widget.label,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: widget.primaryColor,
-                            height: 1.2,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.description,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                        const Spacer(),
-
-                        // Tombol Aksi
-                        Align(
-                          alignment: Alignment.bottomRight,
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                colors: [widget.primaryColor, widget.secondaryColor],
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: widget.primaryColor.withAlpha((255 * 0.4).toInt()),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AdvantaColors.primaryGreen,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        fn,
+                                        style: AdvantaText.caption.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'DAP $dap',
+                                      style: AdvantaText.caption.copyWith(color: Colors.white54),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  farmer,
+                                  style: AdvantaText.bodyBold.copyWith(color: Colors.white),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Hybrid: $hybrid',
+                                  style: AdvantaText.caption.copyWith(color: Colors.white54),
                                 ),
                               ],
                             ),
-                            child: const Icon(
-                              Icons.arrow_forward_rounded,
-                              color: Colors.white,
-                              size: 20,
-                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Gambar yang "mengambang"
-                  Positioned(
-                    top: 40,
-                    right: -20,
-                    child: Image.asset(
-                      widget.imagePath,
-                      height: 100,
-                      width: 100,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                ],
+                          IconButton(
+                            onPressed: () => onRemove(fn),
+                            icon: const Icon(Icons.remove_circle_outline, color: AdvantaColors.error),
+                            tooltip: 'Hapus dari daftar',
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
+            ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
