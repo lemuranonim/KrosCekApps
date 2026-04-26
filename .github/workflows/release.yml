@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write  # ← tambahkan ini
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
