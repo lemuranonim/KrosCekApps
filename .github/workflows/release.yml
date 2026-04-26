@@ -56,22 +56,19 @@ jobs:
       - name: Build APK release
         run: flutter build apk --release
 
-      - name: Upload APK to Supabase Storage
-        run: |
-          VERSION=${{ steps.version.outputs.version }}
-          FILE_NAME="kroscek-v${VERSION}.apk"
-          
-          curl -X POST "${{ secrets.SUPABASE_URL }}/storage/v1/object/apk-releases/${FILE_NAME}" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Content-Type: application/vnd.android.package-archive" \
-            --data-binary @build/app/outputs/flutter-apk/app-release.apk
+      - name: Upload APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/app-release.apk
+          name: "KROSCEK v${{ steps.version.outputs.version }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update version in Supabase
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          APK_URL="${{ secrets.SUPABASE_URL }}/storage/v1/object/public/apk-releases/kroscek-v${VERSION}.apk"
-          
+          APK_URL="https://github.com/lemuranonim/KrosCekApps/releases/download/v${VERSION}/app-release.apk"
+
           curl -X PATCH "${{ secrets.SUPABASE_URL }}/rest/v1/app_config?id=eq.kroscek" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \

@@ -12,7 +12,6 @@ class QaMappingScreen extends ConsumerStatefulWidget {
 }
 
 class _QaMappingScreenState extends ConsumerState<QaMappingScreen> {
-  // ── Controller untuk fitur pencarian ──
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
@@ -22,13 +21,9 @@ class _QaMappingScreenState extends ConsumerState<QaMappingScreen> {
     super.dispose();
   }
 
-  // ---------------------------------------------------------------------------
-  // Bottom sheet form — Add & Edit
-  // ---------------------------------------------------------------------------
   void _showForm(BuildContext context, [Map<String, dynamic>? existingData]) {
     final isEdit = existingData != null;
 
-    // Reset cascade selections setiap kali form dibuka
     ref.read(selectedKabupatenProvider.notifier).select(null);
     ref.read(selectedKecamatanProvider.notifier).select(null);
     ref.read(selectedDesaProvider.notifier).select(null);
@@ -55,9 +50,6 @@ class _QaMappingScreenState extends ConsumerState<QaMappingScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Delete confirmation
-  // ---------------------------------------------------------------------------
   void _confirmDelete(BuildContext context, int id) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -101,9 +93,6 @@ class _QaMappingScreenState extends ConsumerState<QaMappingScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -122,7 +111,6 @@ class _QaMappingScreenState extends ConsumerState<QaMappingScreen> {
           child: AdvantaBanner.error(message: 'Terjadi kesalahan: $err'),
         ),
         data: (mappings) {
-          // ── Logika Filter Pencarian Cerdas ──
           final filteredMappings = mappings.where((item) {
             if (_searchQuery.isEmpty) return true;
 
@@ -135,14 +123,12 @@ class _QaMappingScreenState extends ConsumerState<QaMappingScreen> {
             final fa = (item['fa'] ?? '').toString().toLowerCase();
             final region = (item['region'] ?? '').toString().toLowerCase();
 
-            // Return true jika kata kunci ada di salah satu kolom ini
             return kec.contains(q) || desa.contains(q) || kab.contains(q) ||
                 fi.contains(q) || spv.contains(q) || fa.contains(q) || region.contains(q);
           }).toList();
 
           return Column(
             children: [
-              // ── Search Bar UI ──
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: TextField(
@@ -175,8 +161,6 @@ class _QaMappingScreenState extends ConsumerState<QaMappingScreen> {
                   onChanged: (val) => setState(() => _searchQuery = val),
                 ),
               ),
-
-              // ── List View ──
               Expanded(
                 child: filteredMappings.isEmpty
                     ? Center(
@@ -304,7 +288,7 @@ class _QaMappingScreenState extends ConsumerState<QaMappingScreen> {
 }
 
 // =============================================================================
-// Form Sheet — Diubah menjadi ConsumerStatefulWidget untuk kelola controllers
+// Form Sheet
 // =============================================================================
 class _WilayahFormSheet extends ConsumerStatefulWidget {
   final bool isEdit;
@@ -331,16 +315,11 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
   @override
   void initState() {
     super.initState();
-    _haCtrl = TextEditingController(
-        text: widget.existingData?['ha']?.toString() ?? '');
-    _regionCtrl = TextEditingController(
-        text: widget.existingData?['region'] ?? '');
-    _qaSpvCtrl = TextEditingController(
-        text: widget.existingData?['qa_spv'] ?? '');
-    _qaFiCtrl = TextEditingController(
-        text: widget.existingData?['qa_fi'] ?? '');
-    _faCtrl = TextEditingController(
-        text: widget.existingData?['fa'] ?? '');
+    _haCtrl = TextEditingController(text: widget.existingData?['ha']?.toString() ?? '');
+    _regionCtrl = TextEditingController(text: widget.existingData?['region'] ?? '');
+    _qaSpvCtrl = TextEditingController(text: widget.existingData?['qa_spv'] ?? '');
+    _qaFiCtrl = TextEditingController(text: widget.existingData?['qa_fi'] ?? '');
+    _faCtrl = TextEditingController(text: widget.existingData?['fa'] ?? '');
   }
 
   @override
@@ -374,11 +353,15 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Cek apakah user yang login memiliki akses terbatas (audit only / QA FI)
     final sessionAsync = ref.watch(currentSessionProvider);
-    final isRestricted = sessionAsync.value?.isRestricted ?? true;
 
-    // Watch cascade states
+    // bool? — null saat loading, true/false saat resolved
+    final bool? isRestricted = sessionAsync.when(
+      data: (s) => s?.isRestricted ?? false,
+      loading: () => null,
+      error: (_, __) => false,
+    );
+
     final selectedKab = ref.watch(selectedKabupatenProvider);
     final selectedKec = ref.watch(selectedKecamatanProvider);
     final selectedDesa = ref.watch(selectedDesaProvider);
@@ -416,8 +399,7 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
 
             Text(
               widget.isEdit ? 'Edit Wilayah' : 'Tambah Wilayah Baru',
-              style: AdvantaText.heading2
-                  .copyWith(color: theme.colorScheme.onSurface),
+              style: AdvantaText.heading2.copyWith(color: theme.colorScheme.onSurface),
             ),
             const SizedBox(height: 6),
             Text(
@@ -430,15 +412,18 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
             ),
             const SizedBox(height: 20),
 
-            // ── Dynamic Fields berdasarkan Role User ─────────────────────
-            if (isRestricted) ...[
-              // Jika User = QA FI (Restricted), field ini Read-Only dan hanya muncul saat Edit
+            // ── Dynamic Fields berdasarkan Role ──────────────────────────
+            if (isRestricted == null) ...[
+              // Session masih loading — tampilkan shimmer/indicator
+              const Center(child: CircularProgressIndicator()),
+              const SizedBox(height: 16),
+            ] else if (isRestricted == true) ...[
+              // QA FI (Restricted)
               if (widget.isEdit) ...[
                 _ReadOnlyField(label: 'Region', value: _regionCtrl.text),
                 _ReadOnlyField(label: 'QA Supervisor', value: _qaSpvCtrl.text),
                 _ReadOnlyField(label: 'QA FI', value: _qaFiCtrl.text),
-                _ReadOnlyField(
-                    label: 'Field Assistant (FA)', value: _faCtrl.text),
+                _ReadOnlyField(label: 'Field Assistant (FA)', value: _faCtrl.text),
                 const SizedBox(height: 8),
                 Divider(
                     color: isDark
@@ -447,13 +432,21 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
                 const SizedBox(height: 8),
                 Text(
                   'Perbarui Wilayah Utama',
-                  style: AdvantaText.bodyBold
-                      .copyWith(color: theme.colorScheme.onSurface),
+                  style: AdvantaText.bodyBold.copyWith(color: theme.colorScheme.onSurface),
                 ),
                 const SizedBox(height: 12),
-              ]
+              ] else ...[
+                // Mode ADD untuk FI — hanya perlu isi FA
+                _buildTextField('Field Assistant (FA)', _faCtrl, theme),
+                const SizedBox(height: 8),
+                Divider(
+                    color: isDark
+                        ? AdvantaColors.goldLight.withAlpha(30)
+                        : AdvantaColors.charcoal.withAlpha(20)),
+                const SizedBox(height: 12),
+              ],
             ] else ...[
-              // Jika User = SPV/Admin/Manager, Field ini Editable!
+              // SPV / Admin / Manager
               _buildTextField('Region', _regionCtrl, theme),
               _buildTextField('QA Supervisor', _qaSpvCtrl, theme),
               _buildTextField('QA Field Inspector (FI)', _qaFiCtrl, theme),
@@ -466,7 +459,7 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
               const SizedBox(height: 12),
             ],
 
-            // ── Cascade 1: Kabupaten ──────────────────────────────────────
+            // ── Cascade Wilayah ──────────────────────────────────────────
             _CascadeDropdown<WilayahItem>(
               label: 'Kabupaten / Kota',
               asyncValue: kabupatenAsync,
@@ -480,14 +473,11 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
               },
             ),
 
-            // ── Cascade 2: Kecamatan ──────────────────────────────────────
             _CascadeDropdown<WilayahItem>(
               label: 'Kecamatan',
               asyncValue: kecamatanAsync,
               selected: selectedKec,
-              hint: selectedKab == null
-                  ? 'Pilih kabupaten dulu'
-                  : 'Pilih Kecamatan',
+              hint: selectedKab == null ? 'Pilih kabupaten dulu' : 'Pilih Kecamatan',
               enabled: selectedKab != null,
               itemLabel: (e) => e.name,
               onChanged: (val) {
@@ -496,7 +486,6 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
               },
             ),
 
-            // ── Cascade 3: Desa ───────────────────────────────────────────
             _CascadeDropdown<WilayahItem>(
               label: 'Desa / Kelurahan',
               asyncValue: desaAsync,
@@ -509,24 +498,23 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
               },
             ),
 
-            // ── Luas lahan ────────────────────────────────────────────────
             _buildTextField('Luas Lahan (ha)', _haCtrl, theme, isNumeric: true),
 
             const SizedBox(height: 16),
 
-            // ── Tombol Simpan ─────────────────────────────────────────────
+            // ── Tombol Simpan ────────────────────────────────────────────
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  // Validasi minimal kecamatan & desa dipilih
+                onPressed: isRestricted == null
+                    ? null // disable saat session masih loading
+                    : () {
                   if (selectedKab == null ||
                       selectedKec == null ||
                       selectedDesa == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                          content: Text(
-                              'Mohon pilih kabupaten, kecamatan, dan desa.')),
+                          content: Text('Mohon pilih kabupaten, kecamatan, dan desa.')),
                     );
                     return;
                   }
@@ -539,8 +527,11 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
                       'ha': double.tryParse(_haCtrl.text.trim()),
                   };
 
-                  // Jika user SPV/Admin, masukkan juga data region, qa_spv, dll ke map update
-                  if (!isRestricted) {
+                  if (isRestricted == true) {
+                    // FI — hanya kirim fa, qa_fi akan di-set oleh addMapping di provider
+                    dataToSave['fa'] = _faCtrl.text.trim();
+                  } else {
+                    // SPV/Admin — kirim semua field
                     dataToSave['region'] = _regionCtrl.text.trim();
                     dataToSave['qa_spv'] = _qaSpvCtrl.text.trim();
                     dataToSave['qa_fi'] = _qaFiCtrl.text.trim();
@@ -561,7 +552,7 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
 }
 
 // =============================================================================
-// Widget Helper: Dropdown dengan AsyncValue + loading + error
+// Widget Helper: Cascade Dropdown
 // =============================================================================
 class _CascadeDropdown<T> extends StatelessWidget {
   final String label;
@@ -597,8 +588,7 @@ class _CascadeDropdown<T> extends StatelessWidget {
           ),
         ),
         error: (e, _) => InputDecorator(
-          decoration: InputDecoration(
-              labelText: label, errorText: 'Gagal memuat data'),
+          decoration: InputDecoration(labelText: label, errorText: 'Gagal memuat data'),
           child: const SizedBox.shrink(),
         ),
         data: (items) => DropdownButtonFormField<T>(
@@ -606,16 +596,14 @@ class _CascadeDropdown<T> extends StatelessWidget {
           isExpanded: true,
           decoration: InputDecoration(labelText: label),
           hint: Text(hint,
-              style:
-              AdvantaText.body2.copyWith(color: AdvantaColors.mutedGrey)),
+              style: AdvantaText.body2.copyWith(color: AdvantaColors.mutedGrey)),
           onChanged: enabled ? onChanged : null,
           items: items
               .map((item) => DropdownMenuItem<T>(
             value: item,
             child: Text(
               itemLabel(item),
-              style: AdvantaText.body2
-                  .copyWith(color: theme.colorScheme.onSurface),
+              style: AdvantaText.body2.copyWith(color: theme.colorScheme.onSurface),
               overflow: TextOverflow.ellipsis,
             ),
           ))
@@ -627,7 +615,7 @@ class _CascadeDropdown<T> extends StatelessWidget {
 }
 
 // =============================================================================
-// Widget Helper: Read-only field (untuk region, qa_spv, fa)
+// Widget Helper: Read-only field
 // =============================================================================
 class _ReadOnlyField extends StatelessWidget {
   final String label;

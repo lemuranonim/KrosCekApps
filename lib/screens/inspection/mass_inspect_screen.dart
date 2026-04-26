@@ -39,7 +39,12 @@ const _vegLsvOpts = [
   GenOpt('A', 'A – None'), GenOpt('B', 'B – Low'),
   GenOpt('C', 'C – Moderate'), GenOpt('D', 'D – High'),
 ];
-const _vegCropCondOpts = [
+const _vegCropUniformityOpts = [
+  GenOpt('1', '1 – Very Poor'), GenOpt('2', '2 – Poor'), GenOpt('3', '3 – Fair'),
+  GenOpt('4', '4 – Good'), GenOpt('5', '5 – Best'),
+];
+
+const _vegCropHealthOpts = [
   GenOpt('1', '1 – Very Poor'), GenOpt('2', '2 – Poor'), GenOpt('3', '3 – Fair'),
   GenOpt('4', '4 – Good'), GenOpt('5', '5 – Best'),
 ];
@@ -181,7 +186,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   final _vegCoDetasselingCtrl = TextEditingController();
   final _vegRemarksCtrl       = TextEditingController();
   String? _vegPreviousCrop, _vegMaleSplit, _vegSplitField, _vegOneSeedPerHole;
-  String? _vegIsolationProblem, _vegCropCondition, _vegRoguingStatus, _vegLsvStatus;
+  DateTime? _vegRevPlantingDate;
+  String? _vegIsolationProblem, _vegCropUniformity, _vegCropHealth, _vegRoguingStatus, _vegLsvStatus;
   String? _vegOfftypeM, _vegOfftypeF, _vegPoiAccuracy;
   String? _vegFinalDecision, _vegActionNeeded, _vegPldReason, _vegFinalFlagging;
 
@@ -269,6 +275,18 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     if (p != null) setState(() => _auditDate = p);
   }
 
+  Future<void> _pickVegRevPlantingDate() async {
+    final p = await showDatePicker(
+      context: context,
+      initialDate: _vegRevPlantingDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (ctx, child) =>
+          Theme(data: genDatePickerTheme(ctx, _kVeg), child: child!),
+    );
+    if (p != null) setState(() => _vegRevPlantingDate = p);
+  }
+
   Future<void> _pickGen3ClosedDate() async {
     final p = await showDatePicker(
       context: context, initialDate: _gen3ClosedOutDate ?? DateTime.now(),
@@ -346,7 +364,9 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'previous_crop_by_audit'    : _vegPreviousCrop,
               'one_seed_per_hole'         : _vegOneSeedPerHole,
               'isolation_problem_by_audit': _vegIsolationProblem,
-              'crop_condition'            : _vegCropCondition,
+              'rev_planting_date'         : _vegRevPlantingDate != null ? DateFormat('yyyy-MM-dd').format(_vegRevPlantingDate!) : null,
+              'crop_uniformity'           : _vegCropUniformity,
+              'crop_health'               : _vegCropHealth,
               'roguing_status'            : _vegRoguingStatus,
               'lsv_status'                : _vegLsvStatus,
               'offtype_in_male'           : _vegOfftypeM,
@@ -699,6 +719,13 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
         icon : Icons.landscape_outlined,
         color: const Color(0xFF26A69A),
         children: [
+          GenDateTileNullable(
+            label  : 'Rev Planting Date',
+            date   : _vegRevPlantingDate,
+            onTap  : _pickVegRevPlantingDate,
+            onClear: () => setState(() => _vegRevPlantingDate = null),
+          ),
+          const SizedBox(height: 14),
           GenOptionPicker(
             label: 'Male Split', required: !isD,
             options: _vegMaleSplitOpts, value: _vegMaleSplit,
@@ -744,9 +771,16 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
         color: const Color(0xFFFFCA28),
         children: [
           GenOptionPicker(
-            label: 'Crop Condition', required: !isD,
-            options: _vegCropCondOpts, value: _vegCropCondition,
-            onChanged: (v) => setState(() => _vegCropCondition = v),
+            label: 'Crop Uniformity', required: !isD,
+            options: _vegCropUniformityOpts, value: _vegCropUniformity,
+            onChanged: (v) => setState(() => _vegCropUniformity = v),
+            accentColor: const Color(0xFFFFCA28),
+          ),
+          const SizedBox(height: 14),
+          GenOptionPicker(
+            label: 'Crop Health', required: !isD,
+            options: _vegCropHealthOpts, value: _vegCropHealth,
+            onChanged: (v) => setState(() => _vegCropHealth = v),
             accentColor: const Color(0xFFFFCA28),
           ),
           const SizedBox(height: 14),
