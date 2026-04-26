@@ -3,7 +3,7 @@ name: Build & Release APK
 on:
   push:
     tags:
-      - 'v*'   # trigger saat push tag seperti v1.2.0
+      - 'v*'
 
 jobs:
   build-and-release:
@@ -36,23 +36,37 @@ jobs:
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
           echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
 
+      - name: Setup keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/my-release-key.jks
+          cat > android/key.properties << EOF
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          storeFile=my-release-key.jks
+          storePassword=${{ secrets.STORE_PASSWORD }}
+          EOF
+
       - name: Install dependencies
         run: flutter pub get
 
       - name: Build APK release
         run: flutter build apk --release
 
-      - name: Upload APK to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: build/app/outputs/flutter-apk/app-release.apk
-          name: "KROSCEK v${{ steps.version.outputs.version }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload APK to Supabase Storage
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          FILE_NAME="kroscek-v${VERSION}.apk"
+          
+          curl -X POST "${{ secrets.SUPABASE_URL }}/storage/v1/object/apk-releases/${FILE_NAME}" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/vnd.android.package-archive" \
+            --data-binary @build/app/outputs/flutter-apk/app-release.apk
 
       - name: Update version in Supabase
         run: |
-          APK_URL="https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/app-release.apk"
+          VERSION=${{ steps.version.outputs.version }}
+          APK_URL="${{ secrets.SUPABASE_URL }}/storage/v1/object/public/apk-releases/kroscek-v${VERSION}.apk"
           
           curl -X PATCH "${{ secrets.SUPABASE_URL }}/rest/v1/app_config?id=eq.kroscek" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
@@ -60,8 +74,8 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Prefer: return=minimal" \
             -d "{
-              \"latest_version\": \"${{ steps.version.outputs.version }}\",
-              \"min_version\": \"${{ steps.version.outputs.version }}\",
-              \"apk_url\": \"$APK_URL\",
-              \"force_update\": true
+              \"latest_version\": \"${VERSION}\",
+              \"min_version\": \"${VERSION}\",
+              \"apk_url\": \"${APK_URL}\",
+              \"force_update\": false
             }"
