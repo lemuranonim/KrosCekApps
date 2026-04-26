@@ -63,5 +63,5 @@ jobs:
               \"latest_version\": \"${{ steps.version.outputs.version }}\",
               \"min_version\": \"${{ steps.version.outputs.version }}\",
               \"apk_url\": \"$APK_URL\",
-              \"force_update\": false
+              \"force_update\": true
             }"
