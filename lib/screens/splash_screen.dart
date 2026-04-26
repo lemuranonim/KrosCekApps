@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:go_router/go_router.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -206,48 +205,29 @@ class SplashScreenState extends State<SplashScreen>
 
   Future<void> _checkForUpdate() async {
     try {
-      debugPrint("Checking for app updates...");
+      final response = await Supabase.instance.client
+          .from('app_config')
+          .select()
+          .eq('id', 'kroscek')
+          .single();
 
-      DocumentSnapshot snapshot = await FirebaseFirestore.instance
-          .collection('app_config')
-          .doc('version')
-          .get();
-
-      if (!snapshot.exists) return;
-
-      Map<String, dynamic>? data;
-      try {
-        data = snapshot.data() as Map<String, dynamic>?;
-      } catch (e) {
-        debugPrint("Error converting data: $e");
-        return;
-      }
-
-      if (data == null) return;
-
-      final latestVersion = data['current_version'] as String?;
-      final forceUpdate = data['force_update'] as bool?;
-      final downloadUrl = data['download_url'] as String?;
+      final latestVersion = response['latest_version'] as String?;
+      final forceUpdate   = response['force_update'] as bool? ?? false;
+      final downloadUrl   = response['apk_url'] as String?;
 
       if (latestVersion == null || downloadUrl == null) return;
 
-      PackageInfo packageInfo = await PackageInfo.fromPlatform();
-      String currentVersion = packageInfo.version;
-
-      debugPrint("Current version: $currentVersion");
-      debugPrint("Latest version: $latestVersion");
+      final packageInfo    = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
 
       if (currentVersion != latestVersion) {
         _updateRequired = true;
         if (mounted) {
-          _showUpdateDialog(forceUpdate ?? false, latestVersion, downloadUrl);
+          _showUpdateDialog(forceUpdate, latestVersion, downloadUrl);
         }
-      } else {
-        debugPrint("App is up to date");
       }
-    } catch (e, stackTrace) {
-      debugPrint("Error checking for update: $e");
-      debugPrint("Stack trace: $stackTrace");
+    } catch (_) {
+      // Gagal cek update → lanjut saja
     }
   }
 

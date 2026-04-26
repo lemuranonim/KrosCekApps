@@ -592,7 +592,7 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     onSelected: (v) => setState(() => _showAllRegisteredFields = v == 'Semua Lahan'),
                   ),
                 ],
-                onRefresh: () => ref.refresh(coverageStatusListProvider),
+                onRefresh: () => ref.refresh(masterFieldsProvider),
               ),
             ),
             SliverToBoxAdapter(
@@ -768,7 +768,7 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     onSelected: (v) => setState(() => _showAllRegisteredFields = v == 'Semua Lahan'),
                   ),
                 ],
-                onRefresh: () => ref.refresh(coverageStatusListProvider),
+                onRefresh: () => ref.refresh(masterFieldsProvider),
               ),
             ),
             SliverToBoxAdapter(
@@ -943,7 +943,7 @@ class _FIViewState extends ConsumerState<_FIView> {
                     onSelected: (v) => setState(() => _selectedPhase = v == 'All Phase' ? null : v),
                   ),
                 ],
-                onRefresh: () => ref.refresh(coverageStatusListProvider),
+                onRefresh: () => ref.refresh(masterFieldsProvider),
               ),
             ),
             SliverToBoxAdapter(
