@@ -151,7 +151,6 @@ flutter:
     - assets/icon_foreground.png
     - assets/login_background.png
     - assets/google_logo.svg
-    - assets/credentials.json
     - assets/loading.json
     - assets/pre_planting.png
     - assets/planting.png
@@ -159,7 +158,6 @@ flutter:
     - assets/generative.png
     - assets/preharvest.png
     - assets/harvest.png
-    - assets/config.json
     - assets/maintenance.png
     - assets/icon/icon.png
     - assets/gadm41_IDN_3.json
