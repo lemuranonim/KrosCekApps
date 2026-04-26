@@ -2,7 +2,7 @@ name: kroscek
 description: "Crop Inspection and Check Result"
 publish_to: 'none'
 
-version: 4.0.6+116
+version: 4.0.7+117
 
 environment:
   sdk: '>=3.5.4 <4.0.0'
