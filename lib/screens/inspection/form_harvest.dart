@@ -14,6 +14,9 @@ import 'package:geolocator/geolocator.dart';
 import '../../providers/audit_harvest_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
+import '../../services/session_manager.dart';   // ← NEW
+import '../../theme/app_theme.dart';
+import '../../utils/guest_guard.dart';           // ← NEW
 import 'generative_form_widgets.dart';
 
 // ─── Phase accent color ───────────────────────────────────
@@ -67,9 +70,13 @@ class FormHarvest extends ConsumerStatefulWidget {
 }
 
 class _FormHarvestState extends ConsumerState<FormHarvest> {
-  final _formKey  = GlobalKey<FormState>();
-  bool _isSaving  = false;
+  final _formKey   = GlobalKey<FormState>();
+  bool _isSaving   = false;
   bool _dataLoaded = false;
+
+  // ── NEW: session untuk GuestGuard ────────────────────────
+  ActiveSession? _session;
+  bool get _isGuest => GuestGuard.isGuest(_session);
 
   // Controllers
   final _qaFiCtrl  = TextEditingController();
@@ -82,13 +89,21 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
   // Dropdowns
   String? _earCondition;
   String? _cropCondition;
-  String? _statusDowngrade;    // status_downgrade (A=Yes/B=No)
-  String? _reasonDowngrade;    // reason_downgrade (A/B/C)
-  String? _downgradeFlagging;  // downgrade_flagging (RFI/RFD)
+  String? _statusDowngrade;
+  String? _reasonDowngrade;
+  String? _downgradeFlagging;
   String? _finalFlagging;
 
   // Downgrade section expand
   bool _showDowngrade = false;
+
+  @override
+  void initState() {
+    super.initState();
+    SessionManager.instance.getActiveSession().then((s) {
+      if (mounted) setState(() => _session = s);
+    });
+  }
 
   @override
   void dispose() {
@@ -107,17 +122,16 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
     }
     if (a['date_of_downgrade_flagging'] != null) {
       try {
-        _downgradeFlagDate =
-            DateTime.parse(a['date_of_downgrade_flagging']);
+        _downgradeFlagDate = DateTime.parse(a['date_of_downgrade_flagging']);
       } catch (_) {}
     }
     setState(() {
-      _earCondition     = a['ear_condition_observation']?.toString();
-      _cropCondition    = a['crop_condition'];
-      _statusDowngrade  = a['status_downgrade'];
-      _reasonDowngrade  = a['reason_downgrade'];
+      _earCondition      = a['ear_condition_observation']?.toString();
+      _cropCondition     = a['crop_condition'];
+      _statusDowngrade   = a['status_downgrade'];
+      _reasonDowngrade   = a['reason_downgrade'];
       _downgradeFlagging = a['downgrade_flagging'];
-      _finalFlagging    = a['final_flagging'];
+      _finalFlagging     = a['final_flagging'];
       if (_statusDowngrade != null || _reasonDowngrade != null ||
           _downgradeFlagging != null || _downgradeFlagDate != null) {
         _showDowngrade = true;
@@ -126,40 +140,31 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
   }
 
   Future<void> _pickDate() async {
+    if (_isGuest) { GuestGuard.blockIfGuest(context, _session); return; }
     final p = await showDatePicker(
       context: context,
       initialDate: _auditDate,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      builder: (ctx, child) => Theme(
-        data: ThemeData.dark().copyWith(
-          colorScheme: const ColorScheme.dark(
-              primary: _kPhase, surface: kGenSurface),
-        ),
-        child: child!,
-      ),
+      builder: (ctx, child) => Theme(data: genDatePickerTheme(ctx, _kPhase), child: child!),
     );
     if (p != null) setState(() => _auditDate = p);
   }
 
   Future<void> _pickDowngradeDate() async {
+    if (_isGuest) { GuestGuard.blockIfGuest(context, _session); return; }
     final p = await showDatePicker(
       context: context,
       initialDate: _downgradeFlagDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
-      builder: (ctx, child) => Theme(
-        data: ThemeData.dark().copyWith(
-          colorScheme: const ColorScheme.dark(
-              primary: _kPhase, surface: kGenSurface),
-        ),
-        child: child!,
-      ),
+      builder: (ctx, child) => Theme(data: genDatePickerTheme(ctx, _kPhase), child: child!),
     );
     if (p != null) setState(() => _downgradeFlagDate = p);
   }
 
   Future<void> _save() async {
+    if (GuestGuard.blockIfGuest(context, _session)) return;
     if (!_formKey.currentState!.validate()) {
       _snack('Periksa kembali isian form', err: true);
       return;
@@ -226,13 +231,16 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
     }
   }
 
-  void _snack(String msg, {bool err = false}) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(msg),
-        backgroundColor: err ? kGenRed : kGenGreen,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ));
+  void _snack(String msg, {bool err = false}) {
+    final theme = Theme.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content        : Text(msg, style: AdvantaText.body2.copyWith(color: Colors.white)),
+      backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
+      behavior       : SnackBarBehavior.floating,
+      shape          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      margin         : const EdgeInsets.all(12),
+    ));
+  }
 
   // ─── BUILD ────────────────────────────────────────────────
   @override
@@ -243,8 +251,7 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
             (f) => f['field_number'] == widget.fieldNumber, orElse: () => {});
 
     return Scaffold(
-      backgroundColor: kGenBg,
-      appBar: buildGenAppBar(
+      appBar: GenAppBar(
         checkpointLabel: 'Harvest Audit',
         fieldNumber    : widget.fieldNumber,
         isDiscard      : false,
@@ -256,7 +263,8 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
         const Center(child: CircularProgressIndicator(color: _kPhase)),
         error: (e, _) =>
             Center(child: Text('Error: $e',
-                style: const TextStyle(color: kGenSub))),
+                style: AdvantaText.body2.copyWith(
+                    color: Theme.of(context).colorScheme.error))),
         data: (audit) {
           if (audit != null) _loadAudit(audit);
           return _buildBody(fd);
@@ -280,6 +288,12 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
                   GenFieldCard(fieldData: fd, accentColor: _kPhase),
                   const SizedBox(height: 14),
 
+                  // ── NEW: Guest read-only banner ──────────────
+                  if (_isGuest) ...[
+                    GuestGuard.banner(),
+                    const SizedBox(height: 8),
+                  ],
+
                   // ── Section: Audit Info ──
                   GenSection(
                     title: 'Informasi Audit',
@@ -295,7 +309,7 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
                         controller : _qaFiCtrl,
                         label      : 'QA FI',
                         hint       : 'Nama QA Field Inspector',
-                        required   : true,
+                        required   : !_isGuest,
                         icon       : Icons.person_outline,
                         accentColor: _kPhase,
                       ),
@@ -304,7 +318,7 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
                         controller : _qaSpvCtrl,
                         label      : 'QA SPV',
                         hint       : 'Nama QA Supervisor',
-                        required   : true,
+                        required   : !_isGuest,
                         icon       : Icons.supervisor_account_outlined,
                         accentColor: _kPhase,
                       ),
@@ -320,19 +334,27 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
                     children: [
                       GenOptionPicker(
                         label      : 'Ear Condition (Maturity)',
-                        required   : true,
+                        required   : !_isGuest,
                         options    : _earConditionOpts,
                         value      : _earCondition,
-                        onChanged  : (v) => setState(() => _earCondition = v),
+                        onChanged  : (v) { if (!_isGuest) {
+                          setState(() => _earCondition = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
                         accentColor: _kPhase,
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
                         label      : 'Crop Condition',
-                        required   : true,
+                        required   : !_isGuest,
                         options    : _cropCondOpts,
                         value      : _cropCondition,
-                        onChanged  : (v) => setState(() => _cropCondition = v),
+                        onChanged  : (v) { if (!_isGuest) {
+                          setState(() => _cropCondition = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
                         accentColor: _kPhase,
                       ),
                     ],
@@ -340,7 +362,7 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
                   const SizedBox(height: 12),
 
                   // ── Section: Downgrade Flagging (collapsible) ──
-                  _buildDowngradeSection(),
+                  _buildDowngradeSection(context),
                   const SizedBox(height: 12),
 
                   // ── Section: Final Flagging ──
@@ -351,10 +373,14 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
                     children: [
                       GenOptionPicker(
                         label      : 'Final Flagging',
-                        required   : true,
+                        required   : !_isGuest,
                         options    : _finalFlaggingOpts,
                         value      : _finalFlagging,
-                        onChanged  : (v) => setState(() => _finalFlagging = v),
+                        onChanged  : (v) { if (!_isGuest) {
+                          setState(() => _finalFlagging = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
                         accentColor: const Color(0xFF42A5F5),
                       ),
                     ],
@@ -366,8 +392,12 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
           GenSaveBar(
             isSaving : _isSaving,
             isDiscard: false,
-            saveLabel: 'SIMPAN HARVEST AUDIT',
-            onSave   : _save,
+            saveLabel: _isGuest
+                ? 'READ-ONLY — TIDAK DAPAT MENYIMPAN'
+                : 'SIMPAN HARVEST AUDIT',
+            onSave   : _isGuest
+                ? () => GuestGuard.blockIfGuest(context, _session)
+                : _save,
           ),
         ],
       ),
@@ -375,68 +405,71 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
   }
 
   // ── Downgrade Flagging (collapsible section) ──────────────
-  Widget _buildDowngradeSection() {
+  Widget _buildDowngradeSection(BuildContext context) {
+    final isDark        = Theme.of(context).brightness == Brightness.dark;
+    final surfaceColor  = isDark ? AdvantaColors.primaryGreen : Colors.white;
+    final borderColor   = isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+    final subColor      = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
+    final fillColor     = isDark ? AdvantaColors.deepForest.withAlpha(200) : AdvantaColors.softGrey;
+    const accentColor   = Color(0xFFAB47BC);
+
     return Container(
       decoration: BoxDecoration(
-        color: kGenSurface,
+        color: surfaceColor,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: _showDowngrade
-              ? const Color(0xFFAB47BC).withValues(alpha: 0.60)
-              : kGenBorder,
+              ? accentColor.withValues(alpha: 0.60)
+              : borderColor,
         ),
+        boxShadow: AdvantaShadows.card(isDark),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Header (tapable toggle) ──
           InkWell(
-            borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(14)),
-            onTap: () => setState(() => _showDowngrade = !_showDowngrade),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+            onTap: () {
+              if (_isGuest) { GuestGuard.blockIfGuest(context, _session); return; }
+              setState(() => _showDowngrade = !_showDowngrade);
+            },
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
               child: Row(
                 children: [
-                  Icon(Icons.swap_vert_outlined,
-                      color: _showDowngrade
-                          ? const Color(0xFFCE93D8)
-                          : kGenSub,
-                      size: 14),
+                  Icon(
+                    Icons.swap_vert_outlined,
+                    color: _showDowngrade ? const Color(0xFFCE93D8) : subColor,
+                    size: 14,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     'DOWNGRADE FLAGGING',
-                    style: TextStyle(
-                      color: _showDowngrade
-                          ? const Color(0xFFCE93D8)
-                          : kGenSub,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
+                    style: AdvantaText.caption.copyWith(
+                      color      : _showDowngrade ? const Color(0xFFCE93D8) : subColor,
+                      fontWeight : FontWeight.w700,
                       letterSpacing: 0.8,
                     ),
                   ),
                   const Spacer(),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: _showDowngrade
-                          ? const Color(0xFFAB47BC).withValues(alpha: 0.15)
-                          : kGenBg,
+                          ? accentColor.withValues(alpha: 0.15)
+                          : fillColor,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
                         color: _showDowngrade
-                            ? const Color(0xFFAB47BC).withValues(alpha: 0.50)
-                            : kGenBorder,
+                            ? accentColor.withValues(alpha: 0.50)
+                            : borderColor,
                       ),
                     ),
                     child: Text(
                       'Opsional',
-                      style: TextStyle(
-                        color: _showDowngrade
-                            ? const Color(0xFFCE93D8)
-                            : kGenSub,
-                        fontSize: 10,
+                      style: AdvantaText.caption.copyWith(
+                        color     : _showDowngrade ? const Color(0xFFCE93D8) : subColor,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -446,7 +479,7 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
                     _showDowngrade
                         ? Icons.keyboard_arrow_up_rounded
                         : Icons.keyboard_arrow_down_rounded,
-                    color: kGenSub,
+                    color: subColor,
                     size: 18,
                   ),
                 ],
@@ -455,7 +488,7 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
           ),
 
           if (_showDowngrade) ...[
-            Container(height: 1, color: kGenBorder),
+            Divider(height: 1, thickness: 1, color: borderColor),
             Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
@@ -466,8 +499,7 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
                     label  : 'Tanggal Downgrade Flagging',
                     date   : _downgradeFlagDate,
                     onTap  : _pickDowngradeDate,
-                    onClear: () =>
-                        setState(() => _downgradeFlagDate = null),
+                    onClear: () => setState(() => _downgradeFlagDate = null),
                   ),
                   const SizedBox(height: 14),
 
@@ -476,9 +508,12 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
                     label      : 'Status Downgrade',
                     options    : _statusDowngradeOpts,
                     value      : _statusDowngrade,
-                    onChanged  : (v) =>
-                        setState(() => _statusDowngrade = v),
-                    accentColor: const Color(0xFFAB47BC),
+                    onChanged  : (v) { if (!_isGuest) {
+                      setState(() => _statusDowngrade = v);
+                    } else {
+                      GuestGuard.blockIfGuest(context, _session);
+                    } },
+                    accentColor: accentColor,
                   ),
                   const SizedBox(height: 14),
 
@@ -487,9 +522,12 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
                     label      : 'Reason Downgrade',
                     options    : _reasonDowngradeOpts,
                     value      : _reasonDowngrade,
-                    onChanged  : (v) =>
-                        setState(() => _reasonDowngrade = v),
-                    accentColor: const Color(0xFFAB47BC),
+                    onChanged  : (v) { if (!_isGuest) {
+                      setState(() => _reasonDowngrade = v);
+                    } else {
+                      GuestGuard.blockIfGuest(context, _session);
+                    } },
+                    accentColor: accentColor,
                   ),
                   const SizedBox(height: 14),
 
@@ -498,9 +536,12 @@ class _FormHarvestState extends ConsumerState<FormHarvest> {
                     label      : 'Downgrade Flagging',
                     options    : _downgradeFlaggingOpts,
                     value      : _downgradeFlagging,
-                    onChanged  : (v) =>
-                        setState(() => _downgradeFlagging = v),
-                    accentColor: const Color(0xFFAB47BC),
+                    onChanged  : (v) { if (!_isGuest) {
+                      setState(() => _downgradeFlagging = v);
+                    } else {
+                      GuestGuard.blockIfGuest(context, _session);
+                    } },
+                    accentColor: accentColor,
                   ),
                 ],
               ),

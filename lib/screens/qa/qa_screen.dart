@@ -79,6 +79,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
   bool _isLegendVisible = false;
   bool _isSpeedDialOpen = false;
 
+  // ── State Minggu Kerja ──────────────────────────────────
+  late List<Map<String, dynamic>> _workWeeks; // UBAH JADI dynamic
+  late Map<String, dynamic> _selectedWeek;    // UBAH JADI dynamic
+
   // ── User GPS location ──────────────────────────────────
   LatLng? _userLocation;
   bool _isLocating = false;
@@ -95,9 +99,254 @@ class _QAScreenState extends ConsumerState<QAScreen>
   ActivePhaseView _activePhaseView = ActivePhaseView.auto;
   _AuditFilter _auditFilter = _AuditFilter.all;
 
+  // FUNGSI BARU: Menghitung proyeksi DAP berdasarkan minggu yang dipilih
+  int _getProjectedDap(int currentDap) {
+    if (_selectedWeek.isEmpty || _selectedWeek['startDate'] == null) {
+      return currentDap; // Jika "Semua Minggu" dipilih, gunakan DAP asli
+    }
+
+    // Ambil tanggal awal dari minggu yang dipilih
+    final targetDate = _selectedWeek['startDate'] as DateTime;
+    final today = DateTime.now();
+
+    // Normalisasi jam agar hitungan hari presisi
+    final normalizedTarget = DateTime(targetDate.year, targetDate.month, targetDate.day);
+    final normalizedToday = DateTime(today.year, today.month, today.day);
+
+    // Cari selisih hari
+    final deltaDays = normalizedTarget.difference(normalizedToday).inDays;
+
+    // Kembalikan DAP yang sudah diproyeksikan (simulasi masa depan/lalu)
+    return currentDap + deltaDays;
+  }
+
+  // FUNGSI BARU: Mengecek apakah lahan masuk jendela operasional pada minggu yang dipilih
+  bool _isFieldActiveInSelectedWeek(int currentDap) {
+    // Jika "Semua Minggu" dipilih, kembalikan true (biarkan filter fase normal yang bekerja)
+    if (_selectedWeek.isEmpty || _selectedWeek['startDate'] == null || _selectedWeek['endDate'] == null) {
+      return true;
+    }
+
+    final startDate = _selectedWeek['startDate'] as DateTime;
+    final endDate = _selectedWeek['endDate'] as DateTime;
+    final today = DateTime.now();
+
+    final normalizedStart = DateTime(startDate.year, startDate.month, startDate.day);
+    final normalizedEnd = DateTime(endDate.year, endDate.month, endDate.day);
+    final normalizedToday = DateTime(today.year, today.month, today.day);
+
+    // Hitung DAP di hari pertama dan hari terakhir pada minggu yang dipilih
+    final dapAtStart = currentDap + normalizedStart.difference(normalizedToday).inDays;
+    final dapAtEnd = currentDap + normalizedEnd.difference(normalizedToday).inDays;
+
+    // Tentukan target range DAP berdasarkan _activePhaseView
+    List<List<int>> targetRanges = [];
+    switch (_activePhaseView) {
+      case ActivePhaseView.vegetative:
+        targetRanges = [[7, 35]];
+        break;
+      case ActivePhaseView.generative:
+        targetRanges = [[50, 65]]; // Gabungan Gen 1, 2, 3
+        break;
+      case ActivePhaseView.preHarvest:
+        targetRanges = [[71, 90]];
+        break;
+      case ActivePhaseView.harvest:
+        targetRanges = [[95, 105]];
+        break;
+      case ActivePhaseView.auto:
+      // Jika Semua Fase (Auto), targetnya adalah semua jendela waktu operasional
+        targetRanges = [[7, 35], [50, 65], [71, 90], [95, 105]];
+        break;
+    }
+
+    // Cek apakah range umur lahan [dapAtStart - dapAtEnd] bersinggungan dengan target fase
+    for (final range in targetRanges) {
+      final phaseStart = range[0];
+      final phaseEnd = range[1];
+
+      // Rumus Overlap: (Start A <= End B) dan (End A >= Start B)
+      if (dapAtStart <= phaseEnd && dapAtEnd >= phaseStart) {
+        return true; // Lahan aktif di fase ini pada minggu tersebut!
+      }
+    }
+
+    return false; // Lahan berada di luar jendela operasional (misal: fase kosong / overdue)
+  }
+
+  List<Map<String, dynamic>> _generateDynamicWorkWeeks() {
+    final now = DateTime.now();
+    // UBAH: Dari 2 (Selasa) menjadi 1 (Senin)
+    final int startDayOfWeek = 1;
+
+    // Logika pencarian hari Senin terdekat
+    int daysToSubtract = now.weekday - startDayOfWeek;
+    if (daysToSubtract < 0) daysToSubtract += 7;
+
+    final DateTime startOfThisWeek = now.subtract(Duration(days: daysToSubtract));
+
+    List<Map<String, dynamic>> weeks = [];
+
+    for (int i = -4; i <= 3; i++) { // Saya set -4 agar bisa mundur lebih jauh
+      final start = DateTime(startOfThisWeek.year, startOfThisWeek.month, startOfThisWeek.day)
+          .add(Duration(days: i * 7));
+      final end = start.add(const Duration(days: 6)); // Senin + 6 hari = Minggu
+
+      final startFormat = DateFormat('d MMM', 'id_ID').format(start);
+      final endFormat = DateFormat('d MMM', 'id_ID').format(end);
+
+      final String dateLabel = start.month == end.month
+          ? '${start.day}–$endFormat'
+          : '$startFormat–$endFormat';
+
+      final int dayOfYear = int.parse(DateFormat("D").format(start));
+      int weekNumber = ((dayOfYear - start.weekday + 10) / 7).floor();
+
+      weeks.add({
+        'label': 'W$weekNumber',
+        'date': dateLabel,
+        'startDate': start,
+        'endDate': end,
+      });
+    }
+    return weeks;
+  }
+
+  // FUNGSI BARU 1: Membuat daftar minggu yang panjang (misal -26 minggu ke belakang sampai +26 ke depan)
+  List<Map<String, dynamic>> _generateExtendedWeeks() {
+    final now = DateTime.now();
+    final int startDayOfWeek = 1; // UBAH JADI 1 (Senin)
+
+    int daysToSubtract = now.weekday - startDayOfWeek;
+    if (daysToSubtract < 0) daysToSubtract += 7;
+
+    final DateTime startOfThisWeek = now.subtract(Duration(days: daysToSubtract));
+
+    List<Map<String, dynamic>> extendedWeeks = [];
+
+    for (int i = -26; i <= 26; i++) {
+      final start = DateTime(startOfThisWeek.year, startOfThisWeek.month, startOfThisWeek.day)
+          .add(Duration(days: i * 7));
+      final end = start.add(const Duration(days: 6));
+
+      final startFormat = DateFormat('d MMM', 'id_ID').format(start);
+      final endFormat = DateFormat('d MMM', 'id_ID').format(end);
+      final String dateLabel = start.month == end.month
+          ? '${start.day}–$endFormat'
+          : '$startFormat–$endFormat';
+
+      final int dayOfYear = int.parse(DateFormat("D").format(start));
+      int weekNumber = ((dayOfYear - start.weekday + 10) / 7).floor();
+      if (weekNumber < 1) weekNumber = 52;
+
+      final yearLabel = start.year != now.year ? ' ${start.year}' : '';
+
+      extendedWeeks.add({
+        'label': 'W$weekNumber$yearLabel',
+        'date': dateLabel,
+        'startDate': start,
+        'endDate': end,
+      });
+    }
+    return extendedWeeks;
+  }
+
+  // FUNGSI BARU 2: Menampilkan Bottom Sheet untuk memilih minggu manual
+  void _showExtendedWeekPicker() {
+    final extendedWeeks = _generateExtendedWeeks();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (ctx, scrollCtrl) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: AdvantaColors.deepForest,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 10, bottom: 16),
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(50),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Text(
+                    'Pilih Minggu Manual',
+                    style: AdvantaText.heading3.copyWith(color: Colors.white),
+                  ),
+                  const SizedBox(height: 16),
+                  Divider(color: Colors.white.withAlpha(20), height: 1),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: scrollCtrl,
+                      itemCount: extendedWeeks.length,
+                      itemBuilder: (context, index) {
+                        final week = extendedWeeks[index];
+                        final isSelected = _selectedWeek.isNotEmpty && _selectedWeek['label'] == week['label'];
+
+                        return ListTile(
+                          title: Row(
+                            children: [
+                              SizedBox(
+                                width: 50,
+                                child: Text(
+                                  week['label'],
+                                  style: AdvantaText.bodyBold.copyWith(color: Colors.white),
+                                ),
+                              ),
+                              Text(
+                                week['date'],
+                                style: AdvantaText.body2.copyWith(color: Colors.white70),
+                              ),
+                            ],
+                          ),
+                          trailing: isSelected
+                              ? const Icon(Icons.check_circle, color: AdvantaColors.lightGreen)
+                              : const Icon(Icons.chevron_right, color: Colors.white24),
+                          onTap: () {
+                            setState(() => _selectedWeek = week);
+                            Navigator.pop(context); // Tutup bottom sheet
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   void initState() {
     super.initState();
+
+    // ── Generate Minggu Dinamis ──
+    _workWeeks = _generateDynamicWorkWeeks();
+    // Set default pilihan ke "Minggu Ini" (index 2 karena kita mulai dari -2)
+    final now = DateTime.now();
+    _selectedWeek = _workWeeks.firstWhere((week) {
+      final start = week['startDate'] as DateTime;
+      final end = week['endDate'] as DateTime;
+      // Cek apakah hari ini berada di antara startDate dan endDate
+      return now.isAfter(start.subtract(const Duration(days: 1))) &&
+          now.isBefore(end.add(const Duration(days: 1)));
+    }, orElse: () => _workWeeks[4]); // Fallback ke index 4 jika meleset
+
     _shimmerCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
@@ -242,7 +491,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final selDistrict = _selectedDistrict?.trim().toLowerCase();
 
     return allParsed.where((f) {
-      // ── Region & District fixed filters ──
+      // ── Proyeksi DAP untuk Visual Marker ──
+      final int projectedDap = _getProjectedDap(f.dap);
+      final ActivePhaseView projectedPhase = _activePhaseView == ActivePhaseView.auto
+          ? _dapToPhaseView(projectedDap)
+          : _activePhaseView;
+
+      // ── Region, District, & Multi-param filters (TETAP SAMA) ──
       if (selRegion != null) {
         final dbRegion = f.raw['region']?.toString().trim().toLowerCase() ?? '';
         if (dbRegion != selRegion) return false;
@@ -251,8 +506,6 @@ class _QAScreenState extends ConsumerState<QAScreen>
         final dbDistrict = f.raw['district_kab']?.toString().trim().toLowerCase() ?? '';
         if (dbDistrict != selDistrict) return false;
       }
-
-      // ── Dynamic multi-param filters ──
       for (final filter in _activeFilters) {
         if (filter.value.trim().isEmpty) continue;
         final q      = filter.value.trim().toLowerCase();
@@ -260,28 +513,37 @@ class _QAScreenState extends ConsumerState<QAScreen>
         if (!dbVal.contains(q)) return false;
       }
 
-      // ── Audit Status filter ──
+      // ── LOGIKA BARU: FILTER FASE & MINGGU (SIMULASI DAP) ──
+      if (_selectedWeek.isNotEmpty) {
+        // Jika user memilih minggu spesifik, cek apakah lahan ini punya hari aktif
+        // di fase tersebut pada rentang hari Senin-Minggu.
+        if (!_isFieldActiveInSelectedWeek(f.dap)) return false;
+      } else {
+        // Jika "Semua Minggu" dipilih, filter persis menggunakan DAP hari ini
+        if (_activePhaseView != ActivePhaseView.auto) {
+          if (_dapToPhaseView(f.dap) != _activePhaseView) return false;
+        }
+      }
+
+      // ── Audit Status filter (TETAP SAMA) ──
       if (_auditFilter != _AuditFilter.all) {
         final auditStatus = AuditStatusHelper.fromRaw(f.raw);
-        final phase = _activePhaseView == ActivePhaseView.auto
-            ? _dapToPhaseView(f.dap)
-            : _activePhaseView;
+        // Tetap gunakan projectedPhase agar status di map menyesuaikan kondisi minggu yang dicek
+        final phaseToCheck = projectedPhase;
 
         switch (_auditFilter) {
           case _AuditFilter.sampun:
-            if (!_isAuditSampun(auditStatus, phase)) return false;
+            if (!_isAuditSampun(auditStatus, phaseToCheck)) return false;
             break;
           case _AuditFilter.dereng:
-          // Dereng Blas — belum sama sekali di fase aktif
-            if (_isAuditSampun(auditStatus, phase)) return false;
-            if (phase == ActivePhaseView.generative &&
+            if (_isAuditSampun(auditStatus, phaseToCheck)) return false;
+            if (phaseToCheck == ActivePhaseView.generative &&
                 auditStatus.generative == GenerativeAuditStatus.derengJangkep) {
-              return false; // Jangkep bukan Blas
+              return false;
             }
             break;
           case _AuditFilter.partial:
-          // Dereng Jangkep — hanya berlaku untuk generatif
-            if (phase != ActivePhaseView.generative) return false;
+            if (phaseToCheck != ActivePhaseView.generative) return false;
             if (auditStatus.generative != GenerativeAuditStatus.derengJangkep) return false;
             break;
           case _AuditFilter.all:
@@ -368,13 +630,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
       });
     }
 
-    bool canSeeCoverage = false;
-    if (user != null) {
-      final role = user.role.toUpperCase();
-      final action = user.action.toLowerCase();
-      canSeeCoverage = (action == 'all') &&
-          ['SPV', 'MANAGER', 'DEV', 'ADMIN'].contains(role);
-    }
+    // Semua user yang masuk ke /qa bisa akses Coverage Dashboard.
+    // Filtering view di dalam dashboard sudah ditangani per role
+    // (FI → operasional, SPV → tim, Manager/Dev → bird-eye).
+    // Hanya 'guest' yang dikecualikan karena read-only.
+    final bool canSeeCoverage = user != null &&
+        user.role.toLowerCase() != 'guest';
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -394,117 +655,67 @@ class _QAScreenState extends ConsumerState<QAScreen>
           if (_isRefreshing && masterAsync is! AsyncLoading)
             _buildRefreshOverlay(),
 
-          // ── 2. UNIFIED TOP OVERLAY ──────────────────────────────
+          // ── 2. NEW UNIFIED TOP OVERLAY (Minimalist) ────────
           Positioned(
             top: 0, left: 0, right: 0,
-            child: Column(
-              key: _topOverlayKey,   // ← TAMBAH INI
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildHeader(attendance, regions, districts),
-                if (masterAsync is AsyncData)
-                  _buildModeChips(canSeeCoverage),
-                //   // ── BARU: Audit Phase Filter di map ──
-                if (masterAsync is AsyncData)
-                  parsedMapAsync.whenData((parsedFields) {
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: AuditPhaseFilterBar(
-                        activePhase: _activePhaseView,
-                        onChanged: (phase) => setState(() {
-                          _activePhaseView = phase;
-                          // Reset filter 'Jangkep' jika phase bukan generatif
-                          if (_auditFilter == _AuditFilter.partial &&
-                              phase != ActivePhaseView.generative &&
-                              phase != ActivePhaseView.auto) {
-                            _auditFilter = _AuditFilter.all;
-                          }
-                        }),
-                        compact: true,   // icon only di map agar tidak terlalu lebar
-                      ),
-                    );
-                  }).value ?? const SizedBox.shrink(),
+            child: Container(
+              key: _topOverlayKey,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    AdvantaColors.deepForest.withAlpha(240),
+                    AdvantaColors.deepForest.withAlpha(150),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.6, 1.0],
+                ),
+              ),
+              child: SafeArea(
+                bottom: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // BARIS 1: Unified Search & Action Bar
+                    _buildUnifiedTopBar(attendance),
 
-                // Uncoord banner — selalu di bawah mode chips
-                if (masterAsync is AsyncData)
-                  parsedMapAsync.whenData((parsedFields) {
-                    final uncoordFields = _filterFields(parsedFields)
-                        .where((f) => f.isDefault)
-                        .map((f) => f.raw)
-                        .toList();
-                    if (uncoordFields.isEmpty) return const SizedBox.shrink();
-                    return Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-                      child: GestureDetector(
-                        onTap: () => _showDefaultCoordSheet(uncoordFields),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                AdvantaColors.error.withAlpha(220),
-                                const Color(0xFFB71C1C).withAlpha(200),
-                              ],
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.white.withAlpha(30)),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AdvantaColors.error.withAlpha(90),
-                                blurRadius: 16,
-                                spreadRadius: -2,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 32, height: 32,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withAlpha(25),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(Icons.location_off_rounded, color: Colors.white, size: 16),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      '${uncoordFields.length} Lahan Tanpa Koordinat',
-                                      style: AdvantaText.label.copyWith(
-                                        color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 0.2,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Tap untuk lihat daftar & koreksi',
-                                      style: AdvantaText.caption.copyWith(color: Colors.white.withAlpha(180)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.all(5),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withAlpha(20),
-                                  borderRadius: BorderRadius.circular(7),
-                                ),
-                                child: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 16),
-                              ),
-                            ],
-                          ),
-                        ),
+                    // BARIS 2: Gabungan Semua Filter (Region, District, QA, Status, Fase)
+                    if (masterAsync is AsyncData)
+                      _buildUnifiedFilters(
+                        regions: regions,
+                        districts: districts,
+                        qaList: ref.watch(uniqueQAProvider(QAFilterParams(
+                          region: _selectedRegion,
+                          district: _selectedDistrict,
+                        ))),
+                        userRole: user?.role, // <── TAMBAHKAN BARIS INI
                       ),
-                    );
-                  }).value ?? const SizedBox.shrink(),
-              ],
+
+                    // BARIS 3: Uncoord Banner (Dibuat lebih tipis/compact)
+                    if (masterAsync is AsyncData)
+                      parsedMapAsync.whenData((parsedFields) {
+                        final uncoordFields = _filterFields(parsedFields)
+                            .where((f) => f.isDefault)
+                            .map((f) => f.raw)
+                            .toList();
+                        if (uncoordFields.isEmpty) return const SizedBox.shrink();
+                        return _buildCompactUncoordBanner(uncoordFields);
+                      }).value ?? const SizedBox.shrink(),
+                  ],
+                ),
+              ),
             ),
           ),
+
+          // ── 3. FLOATING WORK MODE TOGGLE ───────────────────
+          // Dipindah ke bawah agar tidak menutupi map atas
+          if (masterAsync is AsyncData)
+            Positioned(
+              bottom: _workMode == _WorkMode.mass ? 116 : 32, // Sesuaikan dengan Mass Bar
+              left: 16, // Taruh di kiri bawah, berseberangan dengan Speed Dial
+              child: _buildFloatingModeToggle(canSeeCoverage),
+            ),
 
           // ── 5. RIGHT FABs ──────────────────────────────────
           if (masterAsync is AsyncData)
@@ -512,6 +723,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
               right: 12,
               bottom: _workMode == _WorkMode.mass ? 116 : 32,
               child: _buildRightFabs(masterAsync),
+            ),
+          // ── 5b. DISMISS BARRIER UNTUK LEGENDA ──
+          // Jika legenda muncul, buat lapisan transparan di seluruh layar untuk menangkap tap
+          if (_isLegendVisible)
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => setState(() => _isLegendVisible = false),
+                child: Container(color: Colors.transparent),
+              ),
             ),
 
           // ── 6. LEGEND ─────────────────────────────────────────────
@@ -541,6 +761,286 @@ class _QAScreenState extends ConsumerState<QAScreen>
     );
   }
 
+  // ─── DESAIN BARU: COMPACT HEADER BUILDERS ─────────────────────────────────
+
+  // 1. Unified Top Bar (Search + Attendance + Settings dalam 1 baris)
+  Widget _buildUnifiedTopBar(AttendanceState att) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Row(
+        children: [
+          // Dot Attendance Compact
+          _CompactAttendanceDot(attendance: att),
+          const SizedBox(width: 8),
+
+          // Search Bar di Tengah
+          Expanded(child: _buildNewRow2Search()), // Gunakan fungsi search bar kamu yang sudah ada
+
+          const SizedBox(width: 8),
+
+          // Tombol Refresh Mini
+          GestureDetector(
+            onTap: () async {
+              if (_isRefreshing) return;
+              setState(() => _isRefreshing = true);
+              _refreshSpinCtrl.repeat();
+              await SupabaseAuthService().restoreSession();
+              ref.invalidate(currentUserProvider);
+              ref.invalidate(masterFieldsProvider);
+            },
+            child: AnimatedBuilder(
+              animation: _refreshSpinCtrl,
+              builder: (_, child) => Transform.rotate(
+                angle: _isRefreshing ? _refreshSpinCtrl.value * 6.28319 : 0,
+                child: child,
+              ),
+              child: const _NewActionPill(icon: Icons.sync_rounded),
+            ),
+          ),
+
+          const SizedBox(width: 6),
+
+          // Tombol Settings Mini
+          GestureDetector(
+            onTap: () => context.push('/qa/settings'),
+            child: const _NewActionPill(icon: Icons.settings_outlined),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 2. Filter Bar (Peringkas: 3 Baris Terpisah)
+  Widget _buildUnifiedFilters({
+    required List<String> regions,
+    required List<String> districts,
+    required List<String> qaList,
+    String? userRole,
+  }) {
+
+    String getAuditLabel() {
+      switch (_auditFilter) {
+        case _AuditFilter.all: return 'Status';
+        case _AuditFilter.sampun: return 'Sampun';
+        case _AuditFilter.partial: return 'Jangkep';
+        case _AuditFilter.dereng: return 'Belum';
+      }
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // ── BARIS 1: WEEK PICKER (Memanjang Full Width) ──
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: SizedBox(
+            width: double.infinity, // <── Membuatnya memanjang penuh
+            child: _NewWeekPickerChip(
+              selectedWeek: _selectedWeek,
+              workWeeks: _workWeeks,
+              onSelected: (val) {
+                if (val.containsKey('action') && val['action'] == 'manual') {
+                  _showExtendedWeekPicker();
+                } else {
+                  setState(() => _selectedWeek = val);
+                }
+              },
+            ),
+          ),
+        ),
+
+        // ── BARIS 2: LOKASI & STATUS (Dapat Digeser) ──
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(
+            children: [
+              _FilterPopupChip<String>(
+                // Hilangkan kurung kurawal menjadi:
+                key: ValueKey('reg_$_selectedRegion'),
+                icon: Icons.map_outlined,
+                // Pastikan label kembali ke "Semua Region" jika null
+                label: _selectedRegion ?? 'Semua Region',
+                currentValue: _selectedRegion,
+                items: regions,
+                itemLabel: (s) => s,
+                isActive: _selectedRegion != null,
+                onSelected: (val) {
+                  setState(() {
+                    _selectedRegion = val; // val akan null jika pilih "Semua"
+                    _selectedDistrict = null;
+                  });
+                },
+              ),
+              const SizedBox(width: 8),
+
+              if (districts.isNotEmpty) ...[
+                _FilterPopupChip<String>(
+                  // Hilangkan kurung kurawal menjadi:
+                  key: ValueKey('dist_$_selectedDistrict'),
+                  icon: Icons.location_city_outlined,
+                  label: _selectedDistrict ?? 'Semua Kabupaten',
+                  currentValue: _selectedDistrict,
+                  items: districts,
+                  itemLabel: (s) => s,
+                  enabled: true,
+                  isActive: _selectedDistrict != null,
+                  onSelected: (val) => setState(() => _selectedDistrict = val),
+                ),
+                const SizedBox(width: 8),
+              ],
+              _NewQuickFilterChip(
+                icon: Icons.checklist_rtl_outlined,
+                label: getAuditLabel(),
+                hasDropdown: true,
+                isActive: _auditFilter != _AuditFilter.all,
+                onTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    backgroundColor: Colors.transparent,
+                    isScrollControlled: true,
+                    builder: (_) => _AuditStatusSheet(
+                      currentFilter: _auditFilter,
+                      activePhase: _activePhaseView,
+                      onSelected: (selectedFilter) {
+                        setState(() => _auditFilter = selectedFilter);
+                      },
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+
+        // ── BARIS 3: FASE (Ikon Ringkas) ──
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              _buildPhaseIconButton(ActivePhaseView.auto, Icons.auto_awesome),
+              const SizedBox(width: 8),
+              _buildPhaseIconButton(ActivePhaseView.vegetative, Icons.eco_outlined),
+              const SizedBox(width: 8),
+              _buildPhaseIconButton(ActivePhaseView.generative, Icons.grass_rounded),
+              const SizedBox(width: 8),
+              _buildPhaseIconButton(ActivePhaseView.preHarvest, Icons.agriculture_outlined),
+              const SizedBox(width: 8),
+              _buildPhaseIconButton(ActivePhaseView.harvest, Icons.grain_rounded),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Fungsi Helper baru untuk membuat Tombol Ikon Fase yang ringkas
+  Widget _buildPhaseIconButton(ActivePhaseView phase, IconData icon) {
+    final isActive = _activePhaseView == phase;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _activePhaseView = phase;
+          // Logika reset filter parsial jika pindah dari generatif
+          if (phase != ActivePhaseView.generative &&
+              phase != ActivePhaseView.auto &&
+              _auditFilter == _AuditFilter.partial) {
+            _auditFilter = _AuditFilter.all;
+          }
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isActive ? AdvantaColors.primaryGreen.withAlpha(80) : Colors.white.withAlpha(15),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isActive ? AdvantaColors.lightGreen : Colors.white.withAlpha(30),
+            width: 1.5,
+          ),
+          boxShadow: isActive ? [
+            BoxShadow(color: AdvantaColors.primaryGreen.withAlpha(60), blurRadius: 8)
+          ] : [],
+        ),
+        child: Icon(
+            icon,
+            color: isActive ? Colors.white : Colors.white60,
+            size: 18
+        ),
+      ),
+    );
+  }
+
+  // 3. Uncoord Banner Compact
+  Widget _buildCompactUncoordBanner(List<Map<String, dynamic>> uncoordFields) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        onTap: () => _showDefaultCoordSheet(uncoordFields),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AdvantaColors.error.withAlpha(200),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AdvantaColors.error),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.location_off_rounded, color: Colors.white, size: 14),
+              const SizedBox(width: 8),
+              Text(
+                '${uncoordFields.length} Lahan Tanpa Koordinat',
+                style: AdvantaText.caption.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 4. Floating Mode Toggle (Ditaruh di Kiri Bawah)
+  Widget _buildFloatingModeToggle(bool canSeeCoverage) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AdvantaColors.deepForest.withAlpha(220),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withAlpha(20)),
+        boxShadow: AdvantaShadows.card(true),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _CompactSegmentButton(
+            icon: Icons.touch_app_outlined,
+            isActive: _workMode == _WorkMode.single,
+            onTap: () => setState(() {
+              _workMode = _WorkMode.single;
+              _selectedFieldNumbers.clear();
+            }),
+          ),
+          _CompactSegmentButton(
+            icon: Icons.checklist_rtl_outlined,
+            isActive: _workMode == _WorkMode.mass,
+            onTap: () => setState(() => _workMode = _WorkMode.mass),
+          ),
+          if (canSeeCoverage)
+            _CompactSegmentButton(
+              icon: Icons.analytics_outlined,
+              isActive: false,
+              isWarning: true,
+              onTap: () => context.push('/coverage'),
+            ),
+        ],
+      ),
+    );
+  }
+
   // ─── MAP ─────────────────────────────────────────────────
   Widget _buildMap(List<ParsedFieldData> fieldsData) {
     final uncoordRaw = fieldsData.where((f) => f.isDefault).map((f) => f.raw).toList();
@@ -548,10 +1048,19 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
     return FlutterMap(
       mapController: _mapController,
-      options: const MapOptions(
-        initialCenter: LatLng(-7.5, 112.5),
+      options: MapOptions(
+        initialCenter: const LatLng(-7.5, 112.5),
         initialZoom  : 8.0,
         maxZoom      : 18.0,
+        onTap: (_, __) {
+          if (_isLegendVisible || _isSpeedDialOpen) {
+            setState(() {
+              _isLegendVisible = false;
+              _isSpeedDialOpen = false;
+              _speedDialCtrl.reverse();
+            });
+          }
+        },
       ),
       children: [
         TileLayer(
@@ -606,6 +1115,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final result = <Marker>[];
 
     for (final f in fieldsData) {
+      final projectedDap = _getProjectedDap(f.dap);
       final color = _markerColor(f.dap);
       final fn = f.raw['field_number']?.toString() ?? '';
       final isSelected = _selectedFieldNumbers.contains(fn);
@@ -672,7 +1182,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       ? const Icon(Icons.check_rounded,
                       color: Colors.white, size: 18)
                       : Text(
-                    '${f.dap}',
+                    '$projectedDap', // Tampilkan angka proyeksi
                     style: AdvantaText.caption.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -855,200 +1365,111 @@ class _QAScreenState extends ConsumerState<QAScreen>
     ),
   );
 
-  // ─── HEADER ──────────────────────────────────────────────
-  Widget _buildHeader(AttendanceState att, List<String> regions, List<String> districts) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AdvantaColors.deepForest.withAlpha(240),
-            AdvantaColors.deepForest.withAlpha(220),
-            AdvantaColors.deepForest.withAlpha(180),
-          ],
-          stops: const [0.0, 0.75, 1.0],
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Row 1: Attendance + Date + Actions ──────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
-              child: Row(
-                children: [
-                  _AttendanceChip(attendance: att),
-                  const Spacer(),
-                  _DateBadge(),
-                  const SizedBox(width: 6),
-                  // Divider tipis pemisah
-                  Container(
-                    width: 1,
-                    height: 20,
-                    color: Colors.white.withAlpha(25),
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
+  // ─── DESAIN BARU: HEADER BUILDERS ─────────────────────────────────
+  Widget _buildNewRow2Search() {
+    return GestureDetector(
+      onTap: () {
+        // Ambil semua data lahan saat ini untuk fitur Autocomplete (Saran Teks)
+        final allFields = ref.read(parsedMapFieldsProvider).value ?? [];
+
+        showGeneralDialog(
+          context: context,
+          barrierDismissible: true,
+          barrierLabel: 'SearchSheet',
+          barrierColor: Colors.black.withAlpha(150), // Latar belakang redup
+          transitionDuration: const Duration(milliseconds: 300),
+          pageBuilder: (ctx, anim1, anim2) {
+            return Align(
+              alignment: Alignment.topCenter,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  margin: EdgeInsets.only(
+                    // Memastikan letaknya persis di bawah SafeArea (poni HP)
+                    top: MediaQuery.of(context).padding.top + 10,
+                    left: 16,
+                    right: 16,
                   ),
-                  // ── Refresh button ──
-                  GestureDetector(
-                    onTap: () async {
-                      if (_isRefreshing) return;
-                      setState(() => _isRefreshing = true);
-                      _refreshSpinCtrl.repeat();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Menyinkronkan data & profil terbaru...',
-                            style: AdvantaText.body2.copyWith(color: Colors.white),
-                          ),
-                          duration: const Duration(seconds: 2),
-                          backgroundColor: AdvantaColors.primaryGreen,
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(borderRadius: AdvantaRadius.cardRadius),
-                          margin: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AdvantaColors.deepForest,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AdvantaColors.lightGreen.withAlpha(30)),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withAlpha(120), blurRadius: 20, offset: const Offset(0, 10)),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              width: 40, height: 4,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withAlpha(50),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            // Panggil _SmartSearchBar dan kirim data allFields
+                            _SmartSearchBar(
+                              filters: _activeFilters,
+                              allFields: allFields, // <--- Data List
+                              onFiltersChanged: () => setState(() {}),
+                            ),
+                          ],
                         ),
-                      );
-                      await SupabaseAuthService().restoreSession();
-                      ref.invalidate(currentUserProvider);
-                      ref.invalidate(masterFieldsProvider);
-                    },
-                    child: AnimatedBuilder(
-                      animation: _refreshSpinCtrl,
-                      builder: (_, child) => Transform.rotate(
-                        angle: _isRefreshing ? _refreshSpinCtrl.value * 6.28319 : 0,
-                        child: child,
-                      ),
-                      child: _IconActionButton(
-                        icon: Icons.sync_rounded,
-                        color: _isRefreshing ? AdvantaColors.lightGreen : AdvantaColors.goldLight,
-                        active: _isRefreshing,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  // ── Settings button ──
-                  GestureDetector(
-                    onTap: () => context.push('/qa/settings'),
-                    child: const _IconActionButton(
-                      icon: Icons.settings_outlined,
-                      color: AdvantaColors.goldLight,
-                      active: false,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-
-            // ── Row 2: Smart Search Bar ─────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _SmartSearchBar(
-                      filters: _activeFilters,
-                      onFiltersChanged: () => setState(() {}),
-                      regions: regions,
-                      districts: districts,
-                      selectedRegion: _selectedRegion,
-                      selectedDistrict: _selectedDistrict,
-                      onRegionChanged: (v) => setState(() {
-                        _selectedRegion = v;
-                        _selectedDistrict = null;
-                      }),
-                      onDistrictChanged: (v) => setState(() => _selectedDistrict = v),
-                    ),
-                  ),
-                ],
+            );
+          },
+          transitionBuilder: (ctx, anim1, anim2, child) {
+            // Animasi Slide dari Atas ke Bawah
+            return SlideTransition(
+              position: Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero).animate(
+                  CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic)
               ),
-            ),
-          ],
+              child: FadeTransition(opacity: anim1, child: child),
+            );
+          },
+        );
+      },
+      child: Container(
+        height: 42,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: Colors.white.withAlpha(12),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withAlpha(20)),
         ),
-      ),
-    );
-  } // end _buildHeader
-
-  // ─── MODE CHIPS ────────────────────────────────────────────
-  Widget _buildModeChips(bool canSeeCoverage) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 6, bottom: 4),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
         child: Row(
           children: [
-            // ── Mode chips (existing) ──
-            _ModeChip(
-              icon: Icons.touch_app_outlined,
-              label: 'Single Inspect',
-              active: _workMode == _WorkMode.single,
-              activeColor: AdvantaColors.primaryGreen,
-              onTap: () => setState(() {
-                _workMode = _WorkMode.single;
-                _selectedFieldNumbers.clear();
-              }),
-            ),
-            const SizedBox(width: 8),
-            _ModeChip(
-              icon: Icons.checklist_rtl_outlined,
-              label: 'Mass Inspect',
-              active: _workMode == _WorkMode.mass,
-              activeColor: AdvantaColors.midGreen,
-              badge: _workMode == _WorkMode.mass && _selectedFieldNumbers.isNotEmpty
-                  ? '${_selectedFieldNumbers.length}'
-                  : null,
-              onTap: () => setState(() {
-                _workMode = _WorkMode.mass;
-              }),
-            ),
-            if (canSeeCoverage) ...[
-              const SizedBox(width: 8),
-              _ActionChip(
-                icon: Icons.analytics_outlined,
-                label: 'Coverage',
-                color: AdvantaColors.gold,
-                onTap: () => context.push('/coverage'),
+            const Icon(Icons.search_rounded, color: Colors.white54, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _activeFilters.isNotEmpty
+                    ? '${_activeFilters.length} parameter pencarian'
+                    : 'Cari lahan / petani...',
+                style: AdvantaText.body2.copyWith(
+                    color: _activeFilters.isNotEmpty ? Colors.white : Colors.white54
+                ),
               ),
-            ],
-
-            // ── Separator ──
-            Container(
-              width: 1,
-              height: 22,
-              margin: const EdgeInsets.symmetric(horizontal: 10),
-              color: Colors.white.withAlpha(40),
             ),
-
-            // ── Audit Status filter chips ──
-            _AuditFilterChip(
-              filter: _AuditFilter.all,
-              activeFilter: _auditFilter,
-              onTap: () => setState(() => _auditFilter = _AuditFilter.all),
-            ),
-            const SizedBox(width: 6),
-            _AuditFilterChip(
-              filter: _AuditFilter.sampun,
-              activeFilter: _auditFilter,
-              onTap: () => setState(() => _auditFilter = _AuditFilter.sampun),
-            ),
-            const SizedBox(width: 6),
-            // Dereng Jangkep hanya relevan jika phase generatif
-            if (_activePhaseView == ActivePhaseView.generative ||
-                _activePhaseView == ActivePhaseView.auto) ...[
-              _AuditFilterChip(
-                filter: _AuditFilter.partial,
-                activeFilter: _auditFilter,
-                onTap: () => setState(() => _auditFilter = _AuditFilter.partial),
-              ),
-              const SizedBox(width: 6),
-            ],
-            _AuditFilterChip(
-              filter: _AuditFilter.dereng,
-              activeFilter: _auditFilter,
-              onTap: () => setState(() => _auditFilter = _AuditFilter.dereng),
-            ),
+            if (_activeFilters.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(shape: BoxShape.circle, color: AdvantaColors.primaryGreen),
+                child: Text('${_activeFilters.length}', style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
+              )
+            else
+              const Icon(Icons.tune_rounded, color: Colors.white54, size: 18),
           ],
         ),
       ),
@@ -1316,8 +1737,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      width: 220, // Beri lebar pasti agar rapi
       decoration: BoxDecoration(
-        color: AdvantaColors.deepForest.withAlpha(224),
+        color: AdvantaColors.deepForest.withAlpha(240),
         borderRadius: AdvantaRadius.cardRadius,
         border: Border.all(color: AdvantaColors.goldLight.withAlpha(30)),
         boxShadow: AdvantaShadows.card(true),
@@ -1326,13 +1748,23 @@ class _QAScreenState extends ConsumerState<QAScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            'LEGENDA DAP',
-            style: AdvantaText.caption.copyWith(
-              color: AdvantaColors.goldLight.withAlpha(153),
-              letterSpacing: 1.2,
-              fontWeight: FontWeight.w600,
-            ),
+          // ── HEADER DENGAN TOMBOL CLOSE ──
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'LEGENDA DAP',
+                style: AdvantaText.caption.copyWith(
+                  color: AdvantaColors.goldLight.withAlpha(153),
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _isLegendVisible = false),
+                child: const Icon(Icons.close_rounded, color: Colors.white38, size: 16),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           ...items.map((it) {
@@ -1725,117 +2157,270 @@ class _QAScreenState extends ConsumerState<QAScreen>
 // SUB-WIDGETS
 // ─────────────────────────────────────────────────────────────
 
-/// Icon-only action button untuk header (refresh, settings)
-class _IconActionButton extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final bool active;
-
-  const _IconActionButton({
-    required this.icon,
-    required this.color,
-    required this.active,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      width: 34,
-      height: 34,
-      decoration: BoxDecoration(
-        color: active ? color.withAlpha(40) : Colors.white.withAlpha(14),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: active ? color.withAlpha(120) : Colors.white.withAlpha(22),
-          width: 1,
-        ),
-        boxShadow: active
-            ? [
-          BoxShadow(
-            color: color.withAlpha(50),
-            blurRadius: 10,
-          ),
-        ]
-            : [],
-      ),
-      child: Icon(icon, color: color, size: 15),
-    );
-  }
-}
-
-
-class _AttendanceChip extends StatelessWidget {
+class _CompactAttendanceDot extends StatelessWidget {
   final AttendanceState attendance;
-  const _AttendanceChip({required this.attendance});
+  const _CompactAttendanceDot({required this.attendance});
 
   @override
   Widget build(BuildContext context) {
-    final Color color;
-    final IconData icon;
-    final String label;
-    final Color bgColor;
+    final isNotCheckedIn = !attendance.isCheckedIn;
+    final isCheckedOut = attendance.isCheckedOut;
+    final isActive = attendance.isCheckedIn && !attendance.isCheckedOut;
 
-    if (attendance.isCheckedOut) {
-      color = AdvantaColors.gold;
-      bgColor = AdvantaColors.gold;
-      icon = Icons.exit_to_app_rounded;
-      label = 'Check-out';
-    } else if (attendance.isCheckedIn) {
-      color = AdvantaColors.lightGreen;
-      bgColor = AdvantaColors.primaryGreen;
-      icon = Icons.check_circle_rounded;
-      label = attendance.checkInTime != null
-          ? 'Masuk ${DateFormat('HH:mm').format(attendance.checkInTime!)}'
-          : 'Check-in ✓';
-    } else {
+    Color color;
+    if (isNotCheckedIn) {
       color = AdvantaColors.error;
-      bgColor = AdvantaColors.error;
-      icon = Icons.warning_amber_rounded;
-      label = 'Belum Check-in';
+    } else if (isCheckedOut) {
+      color = AdvantaColors.gold;
+    } else {
+      color = AdvantaColors.primaryGreen;
     }
 
     return GestureDetector(
       onTap: () {
-        if (!attendance.isCheckedIn) {
+        if (isNotCheckedIn) {
           context.push('/checkin');
-        } else if (!attendance.isCheckedOut) {
+        } else if (isActive) {
           context.push('/checkout');
         }
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        width: 38,
+        height: 38,
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              bgColor.withAlpha(55),
-              bgColor.withAlpha(35),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: color.withAlpha(100), width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: color.withAlpha(35),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          shape: BoxShape.circle,
+          color: color.withAlpha(40),
+          border: Border.all(color: color, width: 2),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 13),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: AdvantaText.label.copyWith(
-                color: color,
-                fontWeight: FontWeight.w600,
+        child: Center(
+          child: Icon(
+              isNotCheckedIn ? Icons.warning_amber_rounded
+                  : isCheckedOut ? Icons.task_alt_rounded
+                  : Icons.person,
+              color: color,
+              size: 18
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompactSegmentButton extends StatelessWidget {
+  final IconData icon;
+  final bool isActive;
+  final bool isWarning;
+  final VoidCallback onTap;
+
+  const _CompactSegmentButton({
+    required this.icon,
+    required this.isActive,
+    required this.onTap,
+    this.isWarning = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isActive ? Colors.white : (isWarning ? AdvantaColors.goldLight : Colors.white54);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isActive ? AdvantaColors.primaryGreen : Colors.transparent,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: color, size: 20),
+      ),
+    );
+  }
+}
+
+class _NewWeekPickerChip extends StatelessWidget {
+  final Map<String, dynamic> selectedWeek;
+  final List<Map<String, dynamic>> workWeeks;
+  final Function(Map<String, dynamic>) onSelected;
+
+  const _NewWeekPickerChip({
+    required this.selectedWeek,
+    required this.workWeeks,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Format tanggal hari ini seperti di gambar: "Rab, 22 Apr"
+    final todayStr = DateFormat('E, d MMM', 'id_ID').format(DateTime.now());
+
+    // Teks yang tampil di Chip
+    final displayText = selectedWeek.isNotEmpty && selectedWeek['label'] != null
+        ? '$todayStr • ${selectedWeek['label']}'
+        : 'Semua Minggu';
+
+    return PopupMenuButton<Map<String, dynamic>>(
+      color: const Color(0xFF132A1C),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.white.withAlpha(20)),
+      ),
+      offset: const Offset(0, 45),
+      elevation: 12,
+      onSelected: onSelected,
+      itemBuilder: (BuildContext context) {
+        return [
+          // 1. HEADER DROPDOWN
+          PopupMenuItem<Map<String, dynamic>>(
+            enabled: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pilih Minggu',
+                  style: AdvantaText.bodyBold.copyWith(color: Colors.white),
+                ),
+                Text(
+                  'Berdasarkan minggu kerja / tanggal',
+                  style: AdvantaText.caption.copyWith(color: Colors.white54, fontSize: 11),
+                ),
+                const SizedBox(height: 8),
+                Divider(color: Colors.white.withAlpha(20), height: 1),
+              ],
+            ),
+          ),
+
+          // 2. OPSI "SEMUA MINGGU" (TOMBOL RESET)
+          PopupMenuItem<Map<String, dynamic>>(
+            value: const {}, // Kirim Map kosong sebagai penanda "Semua"
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: selectedWeek.isEmpty ? AdvantaColors.primaryGreen.withAlpha(40) : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: selectedWeek.isEmpty ? AdvantaColors.lightGreen.withAlpha(100) : Colors.transparent,
+                ),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 40,
+                    child: Icon(Icons.all_inclusive_rounded, color: selectedWeek.isEmpty ? AdvantaColors.lightGreen : Colors.white, size: 20),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'Semua Minggu',
+                      style: AdvantaText.bodyBold.copyWith(
+                        color: selectedWeek.isEmpty ? AdvantaColors.lightGreen : Colors.white70,
+                      ),
+                    ),
+                  ),
+                  if (selectedWeek.isEmpty)
+                    const Icon(Icons.check_circle_rounded, color: AdvantaColors.lightGreen, size: 18),
+                ],
               ),
             ),
+          ),
+
+          // Garis pemisah tipis antara "Semua" dan List Minggu Kalender
+          const PopupMenuItem<Map<String, dynamic>>(
+            enabled: false,
+            height: 10,
+            child: Divider(color: Colors.white12, height: 1),
+          ),
+
+          // TOMBOL MANUAL
+          PopupMenuItem<Map<String, dynamic>>(
+            value: const {'action': 'manual'}, // Map penanda untuk memicu bottom sheet
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(10),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.search_rounded, color: Colors.white70, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Pilih Minggu Lainnya...',
+                    style: AdvantaText.body2.copyWith(color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // 3. LIST MINGGU KALENDER (W15, W16, W17, dst)
+          ...workWeeks.map((week) {
+            final isSelected = selectedWeek.isNotEmpty && selectedWeek['label'] == week['label'];
+            return PopupMenuItem<Map<String, dynamic>>(
+              value: week,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected ? AdvantaColors.primaryGreen.withAlpha(40) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSelected ? AdvantaColors.lightGreen.withAlpha(100) : Colors.transparent,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 40,
+                      child: Text(
+                        week['label'],
+                        style: AdvantaText.bodyBold.copyWith(
+                          color: isSelected ? AdvantaColors.lightGreen : Colors.white,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        week['date'],
+                        style: AdvantaText.body2.copyWith(
+                          color: isSelected ? AdvantaColors.lightGreen : Colors.white70,
+                        ),
+                      ),
+                    ),
+                    if (isSelected)
+                      const Icon(Icons.check_circle_rounded, color: AdvantaColors.lightGreen, size: 18),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ];
+      },
+      // Desain Chip Utama yang bisa diklik
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withAlpha(12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withAlpha(20)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.calendar_today_outlined, color: Colors.white, size: 14),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                displayText,
+                style: AdvantaText.label.copyWith(color: Colors.white),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 16),
           ],
         ),
       ),
@@ -1843,37 +2428,280 @@ class _AttendanceChip extends StatelessWidget {
   }
 }
 
-class _DateBadge extends StatelessWidget {
+class _NewActionPill extends StatelessWidget {
+  final IconData icon;
+  const _NewActionPill({required this.icon});
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.white.withAlpha(14),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withAlpha(20), width: 1),
+        color: Colors.white.withAlpha(12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withAlpha(20)),
       ),
-      child: Row(
+      child: Icon(icon, color: AdvantaColors.goldLight, size: 18),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUDIT STATUS BOTTOM SHEET
+// ─────────────────────────────────────────────────────────────
+class _AuditStatusSheet extends StatelessWidget {
+  final _AuditFilter currentFilter;
+  final ActivePhaseView activePhase; // TAMBAHAN: Menerima info fase aktif
+  final Function(_AuditFilter) onSelected;
+
+  const _AuditStatusSheet({
+    required this.currentFilter,
+    required this.activePhase,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Data opsi filter dinamis
+    final items = [
+      (
+      filter: _AuditFilter.all,
+      label: 'Semua Status',
+      icon: Icons.apps_rounded,
+      color: Colors.white70
+      ),
+      (
+      filter: _AuditFilter.sampun,
+      label: 'Sampun (Sudah Audit)',
+      icon: Icons.check_circle_rounded,
+      color: const Color(0xFF43A047)
+      ),
+      // MUNCUL HANYA JIKA FASE = GENERATIF atau AUTO
+      if (activePhase == ActivePhaseView.generative || activePhase == ActivePhaseView.auto)
+        (
+        filter: _AuditFilter.partial,
+        label: 'Jangkep (Generatif Sebagian)',
+        icon: Icons.timelapse_rounded,
+        color: const Color(0xFFFFA726)
+        ),
+      (
+      filter: _AuditFilter.dereng,
+      label: 'Dereng (Belum Audit)',
+      icon: Icons.radio_button_unchecked_rounded,
+      color: const Color(0xFFEF5350)
+      ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.only(bottom: 24),
+      decoration: const BoxDecoration(
+        color: AdvantaColors.deepForest,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Live dot
           Container(
-            width: 5,
-            height: 5,
-            decoration: const BoxDecoration(
-              color: AdvantaColors.lightGreen,
-              shape: BoxShape.circle,
+            margin: const EdgeInsets.only(top: 10, bottom: 16),
+            width: 40, height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(50),
+              borderRadius: BorderRadius.circular(2),
             ),
           ),
-          const SizedBox(width: 6),
           Text(
-            DateFormat('EEE, d MMM', 'id_ID').format(DateTime.now()),
-            style: AdvantaText.label.copyWith(
-              color: Colors.white.withAlpha(180),
-              fontWeight: FontWeight.w500,
+            'Pilih Status Audit',
+            style: AdvantaText.heading3.copyWith(color: Colors.white),
+          ),
+          const SizedBox(height: 16),
+          Divider(color: Colors.white.withAlpha(20), height: 1),
+
+          Flexible(
+            child: ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: items.length,
+              separatorBuilder: (_, __) => Divider(color: Colors.white.withAlpha(10), height: 1),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                final isSelected = item.filter == currentFilter;
+
+                return ListTile(
+                  leading: Icon(item.icon, color: item.color),
+                  title: Text(item.label, style: AdvantaText.body1.copyWith(color: Colors.white)),
+                  trailing: isSelected
+                      ? const Icon(Icons.check_circle, color: AdvantaColors.lightGreen)
+                      : null,
+                  onTap: () {
+                    onSelected(item.filter);
+                    Navigator.pop(context);
+                  },
+                );
+              },
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _NewQuickFilterChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool hasDropdown;
+  final bool isActive;
+  final VoidCallback? onTap;
+
+  const _NewQuickFilterChip({
+    required this.icon,
+    required this.label,
+    this.hasDropdown = false,
+    this.isActive = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          // Jika aktif, warnanya jadi hijau. Jika tidak, transparan.
+          color: isActive ? AdvantaColors.primaryGreen.withAlpha(50) : Colors.white.withAlpha(10),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isActive ? AdvantaColors.primaryGreen : Colors.white.withAlpha(25),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: isActive ? AdvantaColors.lightGreen : Colors.white70, size: 14),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: AdvantaText.caption.copyWith(
+                color: isActive ? Colors.white : Colors.white70,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+            if (hasDropdown) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.keyboard_arrow_down_rounded, color: isActive ? Colors.white : Colors.white70, size: 14),
+            ]
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterPopupChip<T> extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final T? currentValue;
+  final List<T> items;
+  final String Function(T) itemLabel;
+  final Function(T?) onSelected;
+  final bool isActive;
+  final bool enabled;
+
+  const _FilterPopupChip({
+    super.key, // <── TAMBAHKAN BARIS INI
+    required this.icon,
+    required this.label,
+    required this.currentValue,
+    required this.items,
+    required this.itemLabel,
+    required this.onSelected,
+    this.isActive = false,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<T?>(
+      enabled: enabled,
+      color: const Color(0xFF132A1C),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.white.withAlpha(20)),
+      ),
+      offset: const Offset(0, 40),
+      onSelected: onSelected,
+      initialValue: currentValue, // Memastikan posisi scroll dropdown pas
+      itemBuilder: (context) => [
+        // ── Perbaikan Opsi "Semua" (Ditambah Checkmark) ──
+        PopupMenuItem<T?>(
+          value: null,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text('Semua',
+                    style: AdvantaText.body2.copyWith(
+                      color: currentValue == null ? AdvantaColors.lightGreen : Colors.white70,
+                      fontWeight: currentValue == null ? FontWeight.bold : FontWeight.normal,
+                    )
+                ),
+              ),
+              if (currentValue == null)
+                const Icon(Icons.check_circle_rounded, color: AdvantaColors.lightGreen, size: 16),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
+        ...items.map((item) {
+          final isSelected = item == currentValue;
+          return PopupMenuItem<T>(
+            value: item,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    itemLabel(item),
+                    style: AdvantaText.body2.copyWith(
+                      color: isSelected ? AdvantaColors.lightGreen : Colors.white,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ),
+                if (isSelected)
+                  const Icon(Icons.check_circle_rounded, color: AdvantaColors.lightGreen, size: 16),
+              ],
+            ),
+          );
+        }),
+      ],
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? AdvantaColors.primaryGreen.withAlpha(50) : Colors.white.withAlpha(10),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isActive ? AdvantaColors.primaryGreen : Colors.white.withAlpha(25),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: isActive ? AdvantaColors.lightGreen : Colors.white70, size: 14),
+            const SizedBox(width: 6),
+            Text(
+              label, // Label ini dikirim dari parent
+              style: AdvantaText.caption.copyWith(
+                color: isActive ? Colors.white : Colors.white70,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.keyboard_arrow_down_rounded,
+                color: isActive ? Colors.white : Colors.white70, size: 14),
+          ],
+        ),
       ),
     );
   }
@@ -1912,570 +2740,172 @@ class SearchFilter {
 /// Modern Supabase-style multi-param search bar
 class _SmartSearchBar extends StatefulWidget {
   final List<SearchFilter> filters;
-  // HAPUS: final bool isExpanded;
-  // HAPUS: final VoidCallback onToggleExpand;
+  final List<ParsedFieldData> allFields; // Menerima data
   final VoidCallback onFiltersChanged;
-
-  final List<String> regions;
-  final List<String> districts;
-  final String? selectedRegion;
-  final String? selectedDistrict;
-  final void Function(String?) onRegionChanged;
-  final void Function(String?) onDistrictChanged;
 
   const _SmartSearchBar({
     required this.filters,
+    required this.allFields,
     required this.onFiltersChanged,
-    required this.regions,
-    required this.districts,
-    required this.selectedRegion,
-    required this.selectedDistrict,
-    required this.onRegionChanged,
-    required this.onDistrictChanged,
   });
 
   @override
   State<_SmartSearchBar> createState() => _SmartSearchBarState();
 }
 
-class _SmartSearchBarState extends State<_SmartSearchBar>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _expandCtrl;
-  late Animation<double> _expandAnim;
-
-  // TAMBAHKAN STATE LOKAL INI:
-  bool _isExpanded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _expandCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-      value: 0.0, // Mulai dari posisi tertutup
-    );
-    _expandAnim = CurvedAnimation(parent: _expandCtrl, curve: Curves.easeOutCubic);
-  }
-
-  // HAPUS fungsi didUpdateWidget sepenuhnya karena kita tidak lagi menerima isExpanded dari luar
+class _SmartSearchBarState extends State<_SmartSearchBar> {
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void dispose() {
-    _expandCtrl.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  // TAMBAHKAN FUNGSI INI:
-  void _toggleExpand() {
+  void _addFilter() {
+    final usedParams = widget.filters.map((f) => f.param).toSet();
+    final available = SearchParam.values.where((p) => !usedParams.contains(p)).toList();
+    if (available.isEmpty) return;
+
     setState(() {
-      _isExpanded = !_isExpanded;
-      if (_isExpanded) {
-        _expandCtrl.forward();
-      } else {
-        _expandCtrl.reverse();
+      widget.filters.add(SearchFilter(param: available.first));
+    });
+    widget.onFiltersChanged();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
       }
     });
   }
 
-  void _addFilter() {
-    // Find a param not yet used
-    final usedParams = widget.filters.map((f) => f.param).toSet();
-    final available = SearchParam.values.where((p) => !usedParams.contains(p)).toList();
-    if (available.isEmpty) return;
-    widget.filters.add(SearchFilter(param: available.first));
-    widget.onFiltersChanged();
-  }
-
   void _removeFilter(int index) {
-    widget.filters.removeAt(index);
+    setState(() {
+      widget.filters.removeAt(index);
+    });
     widget.onFiltersChanged();
   }
 
   void _clearAll() {
-    widget.filters.clear();
-    widget.onRegionChanged(null);
-    widget.onDistrictChanged(null);
+    setState(() {
+      widget.filters.clear();
+    });
     widget.onFiltersChanged();
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasRegion   = widget.selectedRegion != null;
-    final hasDistrict = widget.selectedDistrict != null;
-    final hasFilters  = widget.filters.isNotEmpty || hasRegion || hasDistrict;
-    final activeCount = widget.filters.where((f) => f.value.trim().isNotEmpty).length
-        + (hasRegion ? 1 : 0)
-        + (hasDistrict ? 1 : 0);
-
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Main bar (always visible) ──────────────────────────
-        GestureDetector(
-          onTap: _toggleExpand,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            height: 44,
-            decoration: BoxDecoration(
-              color: hasFilters
-                  ? AdvantaColors.primaryGreen.withAlpha(30)
-                  : Colors.white.withAlpha(18),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: hasFilters
-                    ? AdvantaColors.lightGreen.withAlpha(120)
-                    : Colors.white.withAlpha(28),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: hasFilters
-                      ? AdvantaColors.primaryGreen.withAlpha(40)
-                      : Colors.black.withAlpha(40),
-                  blurRadius: 12,
-                  offset: const Offset(0, 3),
-                ),
-              ],
+        Row(
+          children: [
+            const Icon(Icons.manage_search_rounded, color: AdvantaColors.lightGreen, size: 24),
+            const SizedBox(width: 8),
+            Text(
+              'Pencarian Spesifik',
+              style: AdvantaText.heading3.copyWith(color: Colors.white),
             ),
-            child: Row(
-              children: [
-                const SizedBox(width: 12),
-                Icon(
-                  Icons.search_rounded,
-                  size: 17,
-                  color: hasFilters ? AdvantaColors.lightGreen : Colors.white38,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: hasFilters
-                      ? _buildFilterSummaryChips()
-                      : Text(
-                    'Filter lahan…',
-                    style: AdvantaText.body2.copyWith(color: Colors.white38),
-                  ),
-                ),
-                if (hasFilters) ...[
-                  // Active count badge
-                  if (activeCount > 0)
-                    Container(
-                      margin: const EdgeInsets.only(right: 6),
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AdvantaColors.primaryGreen,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '$activeCount aktif',
-                        style: AdvantaText.caption.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ),
-                  // Clear all
-                  GestureDetector(
-                    onTap: _clearAll,
-                    behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                      child: Icon(Icons.close_rounded, size: 15, color: Colors.white54),
-                    ),
-                  ),
-                ] else ...[
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: AnimatedRotation(
-                      turns: _isExpanded ? 0.5 : 0.0,
-                      duration: const Duration(milliseconds: 280),
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 16,
-                        color: Colors.white38,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
+            const Spacer(),
+            if (widget.filters.isNotEmpty)
+              TextButton(
+                onPressed: _clearAll,
+                child: Text('Reset', style: AdvantaText.label.copyWith(color: AdvantaColors.error)),
+              )
+          ],
         ),
-
-        // ── Expandable filter panel ────────────────────────────
-        SizeTransition(
-          sizeFactor: _expandAnim,
-          axisAlignment: -1,
-          child: Container(
-            margin: const EdgeInsets.only(top: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0D2410).withAlpha(230),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AdvantaColors.lightGreen.withAlpha(35),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(80),
-                  blurRadius: 20,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Header row
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: AdvantaColors.primaryGreen.withAlpha(50),
-                            borderRadius: BorderRadius.circular(7),
-                          ),
-                          child: Icon(
-                            Icons.filter_list_rounded,
-                            size: 14,
-                            color: AdvantaColors.lightGreen,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Filter Pencarian',
-                          style: AdvantaText.label.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          '${widget.filters.length} / ${SearchParam.values.length}',
-                          style: AdvantaText.caption.copyWith(
-                            color: Colors.white38,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // ── Section: Lokasi (Region & Kabupaten) ──────────
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-                    child: Row(
-                      children: [
-                        Icon(Icons.place_rounded, size: 12, color: AdvantaColors.goldLight.withAlpha(180)),
-                        const SizedBox(width: 6),
-                        Text(
-                          'LOKASI',
-                          style: AdvantaText.caption.copyWith(
-                            color: AdvantaColors.goldLight.withAlpha(180),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-                    child: Row(
-                      children: [
-                        // Region picker
-                        Expanded(
-                          child: _LocationDropdown(
-                            hint: 'Semua Region',
-                            value: widget.selectedRegion,
-                            items: widget.regions,
-                            icon: Icons.map_outlined,
-                            onChanged: widget.onRegionChanged,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // District picker
-                        Expanded(
-                          child: _LocationDropdown(
-                            hint: 'Semua Kabupaten',
-                            value: widget.selectedDistrict,
-                            items: widget.districts,
-                            icon: Icons.location_city_outlined,
-                            onChanged: widget.onDistrictChanged,
-                            enabled: widget.selectedRegion != null || widget.districts.isNotEmpty,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Thin divider before dynamic filters
-                  Container(
-                    height: 1,
-                    color: Colors.white.withAlpha(12),
-                    margin: const EdgeInsets.fromLTRB(14, 2, 14, 0),
-                  ),
-
-                  // ── Section: Filter Lainnya ───────────────────────
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-                    child: Row(
-                      children: [
-                        Icon(Icons.tune_rounded, size: 12, color: AdvantaColors.lightGreen.withAlpha(180)),
-                        const SizedBox(width: 6),
-                        Text(
-                          'FILTER LAINNYA',
-                          style: AdvantaText.caption.copyWith(
-                            color: AdvantaColors.lightGreen.withAlpha(180),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          '${widget.filters.length} / ${SearchParam.values.length}',
-                          style: AdvantaText.caption.copyWith(color: Colors.white30, fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Filter rows
-                  if (widget.filters.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
-                      child: Row(
-                        children: [
-                          Icon(Icons.info_outline_rounded, size: 13, color: Colors.white24),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Tambah filter untuk mencari lahan',
-                            style: AdvantaText.caption.copyWith(color: Colors.white30),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
-                      itemCount: widget.filters.length,
-                      itemBuilder: (_, i) => _FilterRow(
-                        key: ValueKey(i),
-                        filter: widget.filters[i],
-                        index: i,
-                        usedParams: widget.filters.map((f) => f.param).toSet(),
-                        onRemove: () => _removeFilter(i),
-                        onChanged: widget.onFiltersChanged,
-                      ),
-                    ),
-
-                  // Add filter button
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
-                    child: GestureDetector(
-                      onTap: widget.filters.length < SearchParam.values.length
-                          ? _addFilter
-                          : null,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: widget.filters.length < SearchParam.values.length
-                              ? AdvantaColors.primaryGreen.withAlpha(25)
-                              : Colors.white.withAlpha(8),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: widget.filters.length < SearchParam.values.length
-                                ? AdvantaColors.lightGreen.withAlpha(60)
-                                : Colors.white.withAlpha(12),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.add_rounded,
-                              size: 15,
-                              color: widget.filters.length < SearchParam.values.length
-                                  ? AdvantaColors.lightGreen
-                                  : Colors.white24,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              widget.filters.length < SearchParam.values.length
-                                  ? 'Tambah Filter'
-                                  : 'Semua filter digunakan',
-                              style: AdvantaText.caption.copyWith(
-                                color: widget.filters.length < SearchParam.values.length
-                                    ? AdvantaColors.lightGreen
-                                    : Colors.white24,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        const SizedBox(height: 8),
+        Text(
+          'Tambahkan parameter untuk mencari berdasarkan teks (Sistem akan memberi saran otomatis saat Anda mengetik).',
+          style: AdvantaText.caption.copyWith(color: Colors.white54),
         ),
-      ],
-    );
-  }
+        const SizedBox(height: 16),
 
-  Widget _buildFilterSummaryChips() {
-    final activeFilters = widget.filters.where((f) => f.value.trim().isNotEmpty).toList();
-    final hasRegion   = widget.selectedRegion != null;
-    final hasDistrict = widget.selectedDistrict != null;
-
-    // Build all active chip data: (icon, label, color)
-    final chips = <({IconData icon, String label, Color color})>[];
-
-    if (hasRegion) {
-      chips.add((icon: Icons.map_outlined, label: widget.selectedRegion!, color: AdvantaColors.gold));
-    }
-    if (hasDistrict) {
-      chips.add((icon: Icons.location_city_outlined, label: widget.selectedDistrict!, color: AdvantaColors.gold));
-    }
-    for (final f in activeFilters) {
-      chips.add((icon: f.param.icon, label: '${f.param.label}: ${f.value}', color: AdvantaColors.primaryGreen));
-    }
-
-    if (chips.isEmpty) {
-      final total = (hasRegion ? 1 : 0) + (hasDistrict ? 1 : 0) + widget.filters.length;
-      return Text(
-        '$total filter dipilih',
-        style: AdvantaText.body2.copyWith(color: Colors.white54),
-        overflow: TextOverflow.ellipsis,
-      );
-    }
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: chips.map((c) => Container(
-          margin: const EdgeInsets.only(right: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: c.color.withAlpha(55),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: c.color.withAlpha(120)),
-          ),
-          child: Row(
+        SingleChildScrollView(
+          controller: _scrollController,
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(c.icon, size: 10, color: c.color),
-              const SizedBox(width: 4),
-              Text(
-                c.label,
-                style: AdvantaText.caption.copyWith(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        )).toList(),
-      ),
-    );
-  }
-}
-
-/// Compact dropdown untuk Region / Kabupaten di dalam panel filter
-class _LocationDropdown extends StatelessWidget {
-  final String hint;
-  final String? value;
-  final List<String> items;
-  final IconData icon;
-  final void Function(String?) onChanged;
-  final bool enabled;
-
-  const _LocationDropdown({
-    required this.hint,
-    required this.value,
-    required this.items,
-    required this.icon,
-    required this.onChanged,
-    this.enabled = true,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasValue = value != null;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      height: 38,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        color: hasValue
-            ? AdvantaColors.gold.withAlpha(28)
-            : enabled
-            ? Colors.white.withAlpha(10)
-            : Colors.white.withAlpha(5),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: hasValue
-              ? AdvantaColors.gold.withAlpha(120)
-              : Colors.white.withAlpha(18),
-          width: 1,
-        ),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          isExpanded: true,
-          hint: Row(
-            children: [
-              Icon(icon, size: 12, color: enabled ? Colors.white30 : Colors.white.withAlpha(38)),
-              const SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  hint,
-                  style: AdvantaText.caption.copyWith(
-                    color: enabled ? Colors.white38 : Colors.white.withAlpha(38),
-                    fontSize: 11,
+              if (widget.filters.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text(
+                      'Belum ada parameter pencarian.',
+                      style: AdvantaText.body2.copyWith(color: Colors.white30),
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
+                )
+              else
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: widget.filters.length,
+                  itemBuilder: (_, i) => _FilterRow(
+                    key: ValueKey(i),
+                    filter: widget.filters[i],
+                    index: i,
+                    usedParams: widget.filters.map((f) => f.param).toSet(),
+                    allFields: widget.allFields, // Teruskan ke baris filter
+                    onRemove: () => _removeFilter(i),
+                    onChanged: widget.onFiltersChanged,
+                  ),
+                ),
+
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 8),
+                child: GestureDetector(
+                  onTap: widget.filters.length < SearchParam.values.length ? _addFilter : null,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: widget.filters.length < SearchParam.values.length
+                          ? AdvantaColors.primaryGreen.withAlpha(30)
+                          : Colors.white.withAlpha(5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: widget.filters.length < SearchParam.values.length
+                            ? AdvantaColors.lightGreen.withAlpha(60)
+                            : Colors.white.withAlpha(10),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.add_rounded,
+                          size: 18,
+                          color: widget.filters.length < SearchParam.values.length
+                              ? AdvantaColors.lightGreen
+                              : Colors.white24,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          widget.filters.length < SearchParam.values.length
+                              ? 'Tambah Parameter'
+                              : 'Semua parameter digunakan',
+                          style: AdvantaText.bodyBold.copyWith(
+                            color: widget.filters.length < SearchParam.values.length
+                                ? AdvantaColors.lightGreen
+                                : Colors.white24,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-          value: value,
-          dropdownColor: const Color(0xFF0D2410),
-          style: AdvantaText.caption.copyWith(color: Colors.white, fontSize: 12),
-          icon: Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: 14,
-            color: hasValue ? AdvantaColors.gold : Colors.white30,
-          ),
-          items: [
-            DropdownMenuItem<String>(
-              value: null,
-              child: Text('Semua', style: AdvantaText.caption.copyWith(color: Colors.white54, fontSize: 12)),
-            ),
-            ...items.map((s) => DropdownMenuItem(
-              value: s,
-              child: Text(s, overflow: TextOverflow.ellipsis,
-                  style: AdvantaText.caption.copyWith(color: Colors.white, fontSize: 12)),
-            )),
-          ],
-          onChanged: enabled ? onChanged : null,
         ),
-      ),
+
+      ],
     );
   }
 }
@@ -2485,6 +2915,7 @@ class _FilterRow extends StatefulWidget {
   final SearchFilter filter;
   final int index;
   final Set<SearchParam> usedParams;
+  final List<ParsedFieldData> allFields; // Menerima data
   final VoidCallback onRemove;
   final VoidCallback onChanged;
 
@@ -2493,6 +2924,7 @@ class _FilterRow extends StatefulWidget {
     required this.filter,
     required this.index,
     required this.usedParams,
+    required this.allFields,
     required this.onRemove,
     required this.onChanged,
   });
@@ -2502,19 +2934,7 @@ class _FilterRow extends StatefulWidget {
 }
 
 class _FilterRowState extends State<_FilterRow> {
-  late TextEditingController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: widget.filter.value);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+  // Tidak perlu lagi TextEditingController manual karena Autocomplete yang mengurusnya!
 
   void _showParamPicker() {
     final available = SearchParam.values
@@ -2530,6 +2950,7 @@ class _FilterRowState extends State<_FilterRow> {
         availableParams: available,
         onSelected: (p) {
           setState(() => widget.filter.param = p);
+          widget.filter.value = ''; // Reset nilai ketika parameter berubah
           widget.onChanged();
           Navigator.pop(context);
         },
@@ -2543,7 +2964,7 @@ class _FilterRowState extends State<_FilterRow> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          // ── Param selector button ──────────────────────────
+          // ── Tombol Pilih Parameter ──
           GestureDetector(
             onTap: _showParamPicker,
             child: Container(
@@ -2577,67 +2998,125 @@ class _FilterRowState extends State<_FilterRow> {
           ),
 
           const SizedBox(width: 8),
-
-          // ── "contains" label ──────────────────────────────
-          Text(
-            '≈',
-            style: AdvantaText.body2.copyWith(color: Colors.white30, fontSize: 16),
-          ),
-
+          Text('≈', style: AdvantaText.body2.copyWith(color: Colors.white30, fontSize: 16)),
           const SizedBox(width: 8),
 
-          // ── Value input ───────────────────────────────────
+          // ── Kotak Teks dengan Autocomplete (Pencarian Cerdas) ──
           Expanded(
-            child: Container(
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha(12),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.white.withAlpha(22), width: 1),
-              ),
-              child: TextField(
-                controller: _ctrl,
-                style: AdvantaText.body2.copyWith(color: Colors.white, fontSize: 13),
+            child: Autocomplete<String>(
+              initialValue: TextEditingValue(text: widget.filter.value),
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                // Logika pencarian list saran (suggestions)
+                if (textEditingValue.text.isEmpty) {
+                  return const Iterable<String>.empty();
+                }
+                final query = textEditingValue.text.toLowerCase();
+                final key = widget.filter.param.fieldKey;
 
-                // 1. TAMBAHKAN DUA BARIS INI:
-                textAlignVertical: TextAlignVertical.center,
-                cursorColor: AdvantaColors.lightGreen,
+                // Memfilter data unik yang cocok dengan ketikan user
+                final suggestions = widget.allFields
+                    .map((f) => f.raw[key]?.toString() ?? '')
+                    .where((val) => val.trim().isNotEmpty && val.toLowerCase().contains(query))
+                    .toSet()
+                    .toList();
 
-                decoration: InputDecoration(
-                  hintText: 'nilai…',
-                  hintStyle: AdvantaText.caption.copyWith(color: Colors.white30),
-                  border: InputBorder.none,
-
-                  // 2. TAMBAHKAN BARIS INI:
-                  isDense: true,
-
-                  // 3. SESUAIKAN PADDINGNYA:
-                  contentPadding: const EdgeInsets.only(left: 10, right: 10, bottom: 2),
-
-                  suffixIcon: _ctrl.text.isNotEmpty
-                      ? GestureDetector(
-                    onTap: () {
-                      _ctrl.clear();
-                      widget.filter.value = '';
-                      widget.onChanged();
-                      setState(() {});
-                    },
-                    child: const Icon(Icons.close_rounded, size: 14, color: Colors.white30),
-                  )
-                      : null,
-                ),
-                onChanged: (v) {
-                  widget.filter.value = v;
-                  widget.onChanged();
-                  setState(() {});
-                },
-              ),
+                return suggestions.take(5); // Batasi maksimal 5 saran agar rapi
+              },
+              onSelected: (String selection) {
+                widget.filter.value = selection;
+                widget.onChanged();
+                FocusScope.of(context).unfocus(); // Tutup keyboard
+              },
+              // UI dari kotak input (TextField)
+              fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                return TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  style: AdvantaText.body2.copyWith(color: Colors.white, fontSize: 13),
+                  textAlignVertical: TextAlignVertical.center,
+                  cursorColor: AdvantaColors.lightGreen,
+                  decoration: InputDecoration(
+                    hintText: 'Cari...',
+                    hintStyle: AdvantaText.caption.copyWith(color: Colors.white54),
+                    filled: true,
+                    fillColor: AdvantaColors.midGreen.withAlpha(160),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: AdvantaColors.lightGreen.withAlpha(60)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: Colors.white.withAlpha(30)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: AdvantaColors.lightGreen.withAlpha(180)),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                    suffixIcon: controller.text.isNotEmpty
+                        ? GestureDetector(
+                      onTap: () {
+                        controller.clear();
+                        widget.filter.value = '';
+                        widget.onChanged();
+                      },
+                      child: const Icon(Icons.close_rounded, size: 14, color: Colors.white54),
+                    )
+                        : null,
+                  ),
+                  onChanged: (v) {
+                    widget.filter.value = v;
+                    widget.onChanged();
+                  },
+                  onSubmitted: (v) => onFieldSubmitted(),
+                );
+              },
+              // UI dari List Dropdown Saran Pencarian
+              optionsViewBuilder: (context, onSelected, options) {
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      width: MediaQuery.of(context).size.width - 160, // Sesuaikan sisa lebar layar
+                      margin: const EdgeInsets.only(top: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF132A1C), // Deep Forest
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white.withAlpha(30)),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withAlpha(150), blurRadius: 10, offset: const Offset(0, 4)),
+                        ],
+                      ),
+                      child: ListView.separated(
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        itemCount: options.length,
+                        separatorBuilder: (_, __) => Divider(height: 1, color: Colors.white.withAlpha(10)),
+                        itemBuilder: (context, index) {
+                          final option = options.elementAt(index);
+                          return InkWell(
+                            onTap: () => onSelected(option),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              child: Text(
+                                option,
+                                style: AdvantaText.body2.copyWith(color: AdvantaColors.lightGreen, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
 
           const SizedBox(width: 6),
 
-          // ── Remove button ─────────────────────────────────
+          // ── Tombol Hapus ──
           GestureDetector(
             onTap: widget.onRemove,
             child: Container(
@@ -2648,7 +3127,7 @@ class _FilterRowState extends State<_FilterRow> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: AdvantaColors.error.withAlpha(50), width: 1),
               ),
-              child: Icon(Icons.remove_rounded, size: 15, color: AdvantaColors.error),
+              child: const Icon(Icons.remove_rounded, size: 15, color: AdvantaColors.error),
             ),
           ),
         ],
@@ -2781,237 +3260,6 @@ class _ParamPickerSheet extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ModeChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool active;
-  final Color activeColor;
-  final String? badge;
-  final VoidCallback onTap;
-
-  const _ModeChip({
-    required this.icon,
-    required this.label,
-    required this.active,
-    required this.activeColor,
-    required this.onTap,
-    this.badge,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: active
-              ? LinearGradient(
-            colors: [
-              activeColor,
-              activeColor.withAlpha(200),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          )
-              : null,
-          color: active ? null : Colors.white.withAlpha(16),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: active ? activeColor : Colors.white.withAlpha(30),
-            width: 1,
-          ),
-          boxShadow: active
-              ? [
-            BoxShadow(
-              color: activeColor.withAlpha(100),
-              blurRadius: 14,
-              spreadRadius: -2,
-              offset: const Offset(0, 3),
-            ),
-          ]
-              : [],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white, size: 14),
-            const SizedBox(width: 7),
-            Text(
-              label,
-              style: AdvantaText.label.copyWith(
-                color: Colors.white,
-                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-            if (badge != null) ...[
-              const SizedBox(width: 7),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  badge!,
-                  style: AdvantaText.caption.copyWith(
-                    color: activeColor,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ActionChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _ActionChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withAlpha(22),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: color.withAlpha(130), width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: color.withAlpha(40),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 14),
-            const SizedBox(width: 7),
-            Text(
-              label,
-              style: AdvantaText.label.copyWith(
-                color: color,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 5),
-            Icon(Icons.arrow_forward_ios_rounded, color: color.withAlpha(180), size: 9),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// AUDIT STATUS FILTER CHIP
-// Chip kecil untuk filter Sampun / Jangkep / Dereng di mode chips row
-// ─────────────────────────────────────────────────────────────
-class _AuditFilterChip extends StatelessWidget {
-  final _AuditFilter filter;
-  final _AuditFilter activeFilter;
-  final VoidCallback onTap;
-
-  const _AuditFilterChip({
-    required this.filter,
-    required this.activeFilter,
-    required this.onTap,
-  });
-
-  _AuditFilterStyle get _style {
-    switch (filter) {
-      case _AuditFilter.all:
-        return _AuditFilterStyle(
-          icon: Icons.apps_rounded,
-          label: 'Semua',
-          color: Colors.white70,
-        );
-      case _AuditFilter.sampun:
-        return _AuditFilterStyle(
-          icon: Icons.check_circle_rounded,
-          label: 'Sampun',
-          color: const Color(0xFF43A047),
-        );
-      case _AuditFilter.partial:
-        return _AuditFilterStyle(
-          icon: Icons.timelapse_rounded,
-          label: 'Jangkep',
-          color: const Color(0xFFFFA726),
-        );
-      case _AuditFilter.dereng:
-        return _AuditFilterStyle(
-          icon: Icons.radio_button_unchecked_rounded,
-          label: 'Dereng',
-          color: const Color(0xFFEF5350),
-        );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isActive = filter == activeFilter;
-    final s = _style;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          color: isActive ? s.color.withAlpha(50) : Colors.white.withAlpha(12),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: isActive ? s.color : Colors.white.withAlpha(28),
-            width: isActive ? 1.5 : 1.0,
-          ),
-          boxShadow: isActive
-              ? [BoxShadow(color: s.color.withAlpha(80), blurRadius: 10, offset: const Offset(0, 2))]
-              : [],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(s.icon, size: 13, color: isActive ? s.color : Colors.white54),
-            const SizedBox(width: 5),
-            Text(
-              s.label,
-              style: AdvantaText.label.copyWith(
-                color: isActive ? s.color : Colors.white54,
-                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AuditFilterStyle {
-  final IconData icon;
-  final String label;
-  final Color color;
-  const _AuditFilterStyle({required this.icon, required this.label, required this.color});
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -3359,7 +3607,6 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
   Widget build(BuildContext context) {
     // Sheet ini selalu dark-themed (ditampilkan di atas peta)
     const kBg      = AdvantaColors.deepForest;
-    const kSurface = AdvantaColors.midGreen;
     const kRed     = AdvantaColors.error;
 
     return DraggableScrollableSheet(
@@ -3469,54 +3716,42 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
               // ── Search ────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: kSurface.withAlpha(200),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AdvantaColors.goldLight.withAlpha(30)),
+                child: TextField(
+                  controller: _searchCtrl,
+                  style: AdvantaText.body2.copyWith(color: Colors.white, fontSize: 13),
+                  textAlignVertical: TextAlignVertical.center,
+                  cursorColor: AdvantaColors.lightGreen,
+                  decoration: InputDecoration(
+                    hintText: 'Cari No. Lahan, Petani, FA…',
+                    hintStyle: AdvantaText.body2.copyWith(color: Colors.white54, fontSize: 13),
+                    prefixIcon: const Icon(Icons.search, color: Colors.white54, size: 18),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                    suffixIcon: _query.isNotEmpty
+                        ? GestureDetector(
+                      onTap: () {
+                        _searchCtrl.clear();
+                        setState(() => _query = '');
+                      },
+                      child: const Icon(Icons.clear, color: Colors.white54, size: 16),
+                    )
+                        : null,
+                    filled: true,
+                    fillColor: AdvantaColors.midGreen.withAlpha(200),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: AdvantaColors.goldLight.withAlpha(30)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: AdvantaColors.goldLight.withAlpha(30)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: AdvantaColors.lightGreen.withAlpha(180)),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   ),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 10),
-                      const Icon(Icons.search, color: Colors.white38, size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _searchCtrl,
-                          style: AdvantaText.body2.copyWith(color: Colors.white, fontSize: 13),
-
-                          // 1. Tambahkan perataan vertikal ke tengah
-                          textAlignVertical: TextAlignVertical.center,
-                          cursorColor: AdvantaColors.lightGreen,
-
-                          decoration: InputDecoration(
-                            hintText: 'Cari No. Lahan, Petani, FA…',
-                            hintStyle: AdvantaText.body2.copyWith(color: Colors.white38, fontSize: 13),
-                            border: InputBorder.none,
-
-                            // 2. Pastikan isDense aktif
-                            isDense: true,
-
-                            // 3. Atur padding agar teks tidak terpotong
-                            contentPadding: const EdgeInsets.only(left: 0, right: 10, bottom: 12),
-                          ),
-                          onChanged: (v) => setState(() => _query = v),
-                        ),
-                      ),
-                      if (_query.isNotEmpty)
-                        GestureDetector(
-                          onTap: () {
-                            _searchCtrl.clear();
-                            setState(() => _query = '');
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.all(8),
-                            child: Icon(Icons.clear, color: Colors.white38, size: 14),
-                          ),
-                        ),
-                    ],
-                  ),
+                  onChanged: (v) => setState(() => _query = v),
                 ),
               ),
 
@@ -3842,7 +4077,7 @@ class _MapLoadingScreenState extends State<_MapLoadingScreen>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Kroscek · Field Intelligence',
+                  'Kroscek · Field Support',
                   style: AdvantaText.caption.copyWith(
                     color: AdvantaColors.goldLight.withAlpha(153),
                     letterSpacing: 1.2,

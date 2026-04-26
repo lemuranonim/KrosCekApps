@@ -15,6 +15,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -151,19 +152,28 @@ class FieldCoverageStatus {
       return null;
     }
 
+    // FUNGSI BARU: Mengecek apakah tanggal benar-benar ada (tidak null dan tidak kosong)
+    bool hasDate(dynamic val) {
+      return val != null && val.toString().trim().isNotEmpty;
+    }
+
+    // 1. Cek Fase Vegetatif
     final veg = firstOf(raw['audit_vegetative']);
-    final vegDone = veg != null && veg['date_of_audit'] != null;
+    final vegDone = hasDate(veg?['date_of_audit']);
 
+    // 2. Cek Fase Generatif (PERBAIKAN NAMA KOLOM DI SINI)
     final gen = firstOf(raw['audit_generative']);
-    final gen1Done = gen != null && gen['submitted_at_1'] != null;
-    final gen2Done = gen != null && gen['submitted_at_2'] != null;
-    final gen3Done = gen != null && gen['submitted_at_3'] != null;
+    final gen1Done = hasDate(gen?['date_of_audit_1']);
+    final gen2Done = hasDate(gen?['date_of_audit_2']);
+    final gen3Done = hasDate(gen?['date_of_audit_3']);
 
+    // 3. Cek Fase Pre-Harvest
     final ph = firstOf(raw['audit_pre_harvest']);
-    final phDone = ph != null && ph['audit_date'] != null;
+    final phDone = hasDate(ph?['audit_date']);
 
+    // 4. Cek Fase Harvest
     final hv = firstOf(raw['audit_harvest']);
-    final hvDone = hv != null && hv['date_of_audit'] != null;
+    final hvDone = hasDate(hv?['date_of_audit']);
 
     bool overdue = false;
     final phaseKeys = ['vegetative', 'generative_1', 'generative_2', 'generative_3', 'pre_harvest', 'harvest'];
@@ -177,7 +187,7 @@ class FieldCoverageStatus {
     }
 
     return FieldCoverageStatus(
-      raw: raw, // Simpan data mentah
+      raw: raw,
       fieldNumber: raw['field_number']?.toString() ?? '',
       qaFi: raw['qa_fi']?.toString().trim() ?? '',
       qaSpv: raw['qa_spv']?.toString().trim() ?? '',
@@ -271,12 +281,91 @@ class PhaseCoverage {
 }
 
 // ============================================================
+// FUNGSI HELPER UNTUK MENGHITUNG FASE DINAMIS (TERFILTER)
+// ============================================================
+List<PhaseCoverage> calculateFilteredPhases(List<FieldCoverageStatus> filteredFields, {bool includeUpcoming = false}) {
+  final colors = [AdvantaColors.lightGreen, AdvantaColors.gold, AdvantaColors.midGreen, AdvantaColors.error];
+
+  int vegTotal = 0, vegDone = 0;
+  int genTotal = 0, genDone = 0;
+  int phTotal = 0, phDone = 0;
+  int hvTotal = 0, hvDone = 0;
+
+  for (final f in filteredFields) {
+    // Vegetative
+    final vBadge = DapHelper.getDapBadgeLabel(f.dap, 'vegetative');
+    if (includeUpcoming || vBadge == 'On Going' || vBadge == 'Overdue') {
+      vegTotal++;
+      if (f.vegetativeDone) vegDone++;
+    }
+
+    // Generative
+    bool genRelevant = false;
+    bool genAnyDone = false;
+    for (final gPhase in ['generative_1', 'generative_2', 'generative_3']) {
+      final gBadge = DapHelper.getDapBadgeLabel(f.dap, gPhase);
+      if (includeUpcoming || gBadge == 'On Going' || gBadge == 'Overdue') {
+        genRelevant = true;
+        final done = gPhase == 'generative_1' ? f.gen1Done : gPhase == 'generative_2' ? f.gen2Done : f.gen3Done;
+        if (done) genAnyDone = true;
+      }
+    }
+    if (genRelevant) { genTotal++; if (genAnyDone) genDone++; }
+
+    // Pre-Harvest
+    final phBadge = DapHelper.getDapBadgeLabel(f.dap, 'pre_harvest');
+    if (includeUpcoming || phBadge == 'On Going' || phBadge == 'Overdue') {
+      phTotal++;
+      if (f.preHarvestDone) phDone++;
+    }
+
+    // Harvest
+    final hvBadge = DapHelper.getDapBadgeLabel(f.dap, 'harvest');
+    if (includeUpcoming || hvBadge == 'On Going' || hvBadge == 'Overdue') {
+      hvTotal++;
+      if (f.harvestDone) hvDone++;
+    }
+  }
+
+  return [
+    PhaseCoverage(label: 'Vegetative', shortLabel: 'Veg', color: colors[0], total: vegTotal, done: vegDone),
+    PhaseCoverage(label: 'Generative', shortLabel: 'Gen', color: colors[1], total: genTotal, done: genDone),
+    PhaseCoverage(label: 'Pre-Harvest', shortLabel: 'Pre-H', color: colors[2], total: phTotal, done: phDone),
+    PhaseCoverage(label: 'Harvest', shortLabel: 'Harv', color: colors[3], total: hvTotal, done: hvDone),
+  ];
+}
+
+// ============================================================
 // SECTION B — PROVIDERS
 // ============================================================
 
 final coverageStatusListProvider = FutureProvider<List<FieldCoverageStatus>>((ref) async {
   final rawFields = await ref.watch(masterFieldsProvider.future);
-  return rawFields.map((raw) => FieldCoverageStatus.fromRaw(raw)).toList();
+
+  if (kDebugMode) {
+    print('=== COVERAGE DEBUG ===');
+    print('Raw fields count: ${rawFields.length}');
+    if (rawFields.isNotEmpty) {
+      final f = rawFields.first;
+      print('First: ${f['field_number']} | qa_fi: ${f['qa_fi']} | area: ${f['effective_area_ha']} | planting: ${f['planting_date_pdn']}');
+      print('audit_vegetative: ${f['audit_vegetative'].runtimeType} = ${f['audit_vegetative']}');
+      print('audit_generative: ${f['audit_generative'].runtimeType} = ${f['audit_generative']}');
+      print('audit_pre_harvest: ${f['audit_pre_harvest'].runtimeType} = ${f['audit_pre_harvest']}');
+      print('audit_harvest: ${f['audit_harvest'].runtimeType} = ${f['audit_harvest']}');
+    }
+  }
+
+  final parsed = rawFields.map((raw) => FieldCoverageStatus.fromRaw(raw)).toList();
+
+  if (kDebugMode) {
+    final totalArea = parsed.fold(0.0, (s, f) => s + f.effectiveAreaHa);
+    final overdueCount = parsed.where((f) => f.isOverdue).length;
+    final vegDoneCount = parsed.where((f) => f.vegetativeDone).length;
+    print('Parsed: ${parsed.length} | Area: ${totalArea.toStringAsFixed(1)} ha | Overdue: $overdueCount | VegDone: $vegDoneCount');
+    print('======================');
+  }
+
+  return parsed;
 });
 
 final phaseSummaryProvider = FutureProvider<List<PhaseCoverage>>((ref) async {
@@ -410,29 +499,38 @@ class _ManagerView extends ConsumerStatefulWidget {
 
 class _ManagerViewState extends ConsumerState<_ManagerView> {
   String? _selectedRegion;
+  String? _selectedDistrict; // cascade dari region
   String? _selectedSpv;
   int _expandedAreaIndex = -1;
   bool _showAllFI = false;
+  bool _showAllRegisteredFields = false; // Default: hanya yang wajib audit
 
   @override
   Widget build(BuildContext context) {
     final fieldsAsync = ref.watch(coverageStatusListProvider);
     final fiListAsync = ref.watch(fiCoverageListProvider);
-    final phaseAsync = ref.watch(phaseSummaryProvider);
 
     return fieldsAsync.when(
       loading: () => const _SkeletonLoader(),
       error: (e, _) => _CoverageErrorWidget(error: e.toString()),
       data: (allFields) {
-        // CASCADING LOGIC
+        // CASCADING LOGIC — Region → District → SPV
         final regions = allFields.map((f) => f.region).where((r) => r.isNotEmpty).toSet().toList()..sort();
-        final spvOptions = allFields
+        final districtOptions = allFields
             .where((f) => _selectedRegion == null || f.region == _selectedRegion)
+            .map((f) => f.district).where((d) => d.isNotEmpty).toSet().toList()..sort();
+        final spvOptions = allFields
+            .where((f) {
+          if (_selectedRegion != null && f.region != _selectedRegion) return false;
+          if (_selectedDistrict != null && f.district != _selectedDistrict) return false;
+          return true;
+        })
             .map((f) => f.qaSpv).where((s) => s.isNotEmpty).toSet().toList()..sort();
 
         // Apply filters
         final filtered = allFields.where((f) {
           if (_selectedRegion != null && f.region != _selectedRegion) return false;
+          if (_selectedDistrict != null && f.district != _selectedDistrict) return false;
           if (_selectedSpv != null && f.qaSpv != _selectedSpv) return false;
           return true;
         }).toList();
@@ -464,7 +562,18 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     icon: Icons.map_rounded,
                     onSelected: (v) => setState(() {
                       _selectedRegion = v == 'All Region' ? null : v;
-                      _selectedSpv = null; // Reset SPV on Region Change
+                      _selectedDistrict = null;
+                      _selectedSpv = null;
+                    }),
+                  ),
+                  PremiumFilterChip(
+                    label: _selectedDistrict ?? 'All Kabupaten',
+                    options: ['All Kabupaten', ...districtOptions],
+                    selected: _selectedDistrict,
+                    icon: Icons.location_city_rounded,
+                    onSelected: (v) => setState(() {
+                      _selectedDistrict = v == 'All Kabupaten' ? null : v;
+                      _selectedSpv = null;
                     }),
                   ),
                   PremiumFilterChip(
@@ -474,12 +583,27 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     icon: Icons.supervisor_account_rounded,
                     onSelected: (v) => setState(() => _selectedSpv = v == 'All QA SPV' ? null : v),
                   ),
+                  // Di dalam Row filter:
+                  PremiumFilterChip(
+                    label: _showAllRegisteredFields ? 'Semua Lahan' : 'Target Audit',
+                    options: const ['Target Audit', 'Semua Lahan'],
+                    selected: _showAllRegisteredFields ? 'Semua Lahan' : 'Target Audit',
+                    icon: Icons.visibility_rounded,
+                    onSelected: (v) => setState(() => _showAllRegisteredFields = v == 'Semua Lahan'),
+                  ),
                 ],
                 onRefresh: () => ref.refresh(coverageStatusListProvider),
               ),
             ),
             SliverToBoxAdapter(
               child: _StatsRow(stats: [
+                _StatCard(
+                  icon: Icons.inventory_2_rounded,
+                  iconColor: AdvantaColors.deepForest,
+                  bgColor: Colors.grey[200]!,
+                  value: allFields.length.toString(), // Total database
+                  label: 'Master Lahan',
+                ),
                 _StatCard(icon: Icons.landscape_rounded, iconColor: AdvantaColors.midGreen, bgColor: AdvantaColors.paleGreen, value: _formatHa(totalArea), label: 'Coverage Area'),
                 _StatCard(icon: Icons.supervisor_account_rounded, iconColor: AdvantaColors.midGreen, bgColor: AdvantaColors.paleGreen, value: uniqueSpv.length.toString(), label: 'Active SPV'),
                 _StatCard(icon: Icons.person_rounded, iconColor: AdvantaColors.gold, bgColor: AdvantaColors.goldPale, value: uniqueFI.length.toString(), label: 'Active FI'),
@@ -487,10 +611,11 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
               ]),
             ),
             SliverToBoxAdapter(
-              child: phaseAsync.when(
-                loading: () => const SizedBox(height: 120),
-                error: (_, __) => const SizedBox.shrink(),
-                data: (phases) => _PhaseProgressSection(phases: phases),
+              child: _PhaseProgressSection(
+                phases: calculateFilteredPhases(
+                    filtered,
+                    includeUpcoming: _showAllRegisteredFields // <--- Kirim state toggle di sini
+                ),
               ),
             ),
             SliverToBoxAdapter(
@@ -499,7 +624,26 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(flex: 5, child: _FIRatingPanel(fiList: _showAllFI ? filteredFIList : filteredFIList.take(5).toList(), title: 'FI Rating', subtitle: '${filteredFIList.length} FI', showViewAll: filteredFIList.length > 5, onViewAll: () => setState(() => _showAllFI = !_showAllFI), isShowingAll: _showAllFI)),
+                    Expanded(
+                      flex: 5,
+                      child: _FIRatingPanel(
+                        fiList: _showAllFI ? filteredFIList : filteredFIList.take(5).toList(),
+                        title: 'FI Rating',
+                        subtitle: '${filteredFIList.length} FI',
+                        showViewAll: filteredFIList.length > 5,
+                        onViewAll: () => setState(() => _showAllFI = !_showAllFI),
+                        isShowingAll: _showAllFI,
+                        // 👇 TAMBAHKAN KODE INI AGAR FI RATING BISA DIKLIK 👇
+                        onFiTapped: (fiData) {
+                          showModalBottomSheet(
+                            context: context,
+                            backgroundColor: Colors.transparent,
+                            isScrollControlled: true,
+                            builder: (_) => _FIDetailSheet(fi: fiData),
+                          );
+                        },
+                      ),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(flex: 5, child: _RegionalStructurePanel(regionMap: regionMap, expandedIndex: _expandedAreaIndex, onToggle: (i) => setState(() => _expandedAreaIndex = _expandedAreaIndex == i ? -1 : i))),
                   ],
@@ -541,11 +685,11 @@ class _SPVViewState extends ConsumerState<_SPVView> {
   String? _selectedFi;
   bool _showAllFI = false;
   int _expandedDistrictIndex = -1;
+  bool _showAllRegisteredFields = false; // Default: hanya yang wajib audit
 
   @override
   Widget build(BuildContext context) {
     final fieldsAsync = ref.watch(coverageStatusListProvider);
-    final phaseAsync = ref.watch(phaseSummaryProvider);
 
     return fieldsAsync.when(
       loading: () => const _SkeletonLoader(),
@@ -615,12 +759,27 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     icon: Icons.person_search_rounded,
                     onSelected: (v) => setState(() => _selectedFi = v == 'All QA FI' ? null : v),
                   ),
+                  // Di dalam Row filter:
+                  PremiumFilterChip(
+                    label: _showAllRegisteredFields ? 'Semua Lahan' : 'Target Audit',
+                    options: const ['Target Audit', 'Semua Lahan'],
+                    selected: _showAllRegisteredFields ? 'Semua Lahan' : 'Target Audit',
+                    icon: Icons.visibility_rounded,
+                    onSelected: (v) => setState(() => _showAllRegisteredFields = v == 'Semua Lahan'),
+                  ),
                 ],
                 onRefresh: () => ref.refresh(coverageStatusListProvider),
               ),
             ),
             SliverToBoxAdapter(
               child: _StatsRow(stats: [
+                _StatCard(
+                  icon: Icons.inventory_2_rounded,
+                  iconColor: AdvantaColors.deepForest,
+                  bgColor: Colors.grey[200]!,
+                  value: allFields.length.toString(), // Total database
+                  label: 'Master Lahan',
+                ),
                 _StatCard(icon: Icons.landscape_rounded, iconColor: AdvantaColors.midGreen, bgColor: AdvantaColors.paleGreen, value: _formatHa(totalArea), label: 'Coverage Area'),
                 _StatCard(icon: Icons.people_rounded, iconColor: AdvantaColors.midGreen, bgColor: AdvantaColors.paleGreen, value: uniqueFI.length.toString(), label: 'Active FI'),
                 _StatCard(icon: Icons.check_circle_rounded, iconColor: AdvantaColors.midGreen, bgColor: AdvantaColors.successLight, value: onTrack.toString(), label: 'On Track FI'),
@@ -628,10 +787,11 @@ class _SPVViewState extends ConsumerState<_SPVView> {
               ]),
             ),
             SliverToBoxAdapter(
-              child: phaseAsync.when(
-                loading: () => const SizedBox(height: 120),
-                error: (_, __) => const SizedBox.shrink(),
-                data: (phases) => _PhaseProgressSection(phases: phases),
+              child: _PhaseProgressSection(
+                phases: calculateFilteredPhases(
+                    fields, // <--- Gunakan 'fields', bukan 'filtered'
+                    includeUpcoming: _showAllRegisteredFields
+                ),
               ),
             ),
             SliverToBoxAdapter(
@@ -704,7 +864,6 @@ class _FIViewState extends ConsumerState<_FIView> {
   @override
   Widget build(BuildContext context) {
     final fieldsAsync = ref.watch(coverageStatusListProvider);
-    final phaseAsync = ref.watch(phaseSummaryProvider);
 
     return fieldsAsync.when(
       loading: () => const _SkeletonLoader(),
@@ -796,10 +955,8 @@ class _FIViewState extends ConsumerState<_FIView> {
               ]),
             ),
             SliverToBoxAdapter(
-              child: phaseAsync.when(
-                loading: () => const SizedBox(height: 120),
-                error: (_, __) => const SizedBox.shrink(),
-                data: (phases) => _PhaseProgressSection(phases: phases),
+              child: _PhaseProgressSection(
+                phases: calculateFilteredPhases(fields), // <-- GUNAKAN DATA FIELDS
               ),
             ),
             SliverToBoxAdapter(
@@ -1157,10 +1314,90 @@ class _PhaseProgressSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [const Text('Coverage Progress', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest)), const Spacer(), Text('(All Phases)', style: TextStyle(fontSize: 11, color: Colors.grey[500]))]),
+          Row(children: [
+            const Text('Coverage Progress', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest)),
+            const Spacer(),
+            Text('(All Phases)', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => _showDetailSheet(context),
+              child: const Text('Lihat Detail', style: TextStyle(fontSize: 11, color: AdvantaColors.deepForest, fontWeight: FontWeight.w600)),
+            ),
+          ]),
           const SizedBox(height: 10),
           Row(children: phases.map((p) => Expanded(child: Padding(padding: EdgeInsets.only(right: p == phases.last ? 0 : 12), child: _PhaseBar(phase: p)))).toList()),
         ],
+      ),
+    );
+  }
+
+  void _showDetailSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+        decoration: const BoxDecoration(
+          color: AdvantaColors.softGrey,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: Container(width: 48, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(4)))),
+            const SizedBox(height: 20),
+            const Text('Statistik Cakupan per Fase', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AdvantaColors.deepForest)),
+            const SizedBox(height: 4),
+            Text('Berdasarkan filter wilayah & personel aktif', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+            const SizedBox(height: 24),
+
+            ...phases.map((p) => Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(children: [
+                        Container(width: 12, height: 12, decoration: BoxDecoration(color: p.color, borderRadius: BorderRadius.circular(3))),
+                        const SizedBox(width: 10),
+                        Text(p.label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest)),
+                      ]),
+                      // 👇 MENAMPILKAN PERSENTASE BESAR
+                      Text('${p.pct.toStringAsFixed(1)}%', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: p.color)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                        value: p.pct / 100,
+                        backgroundColor: p.color.withValues(alpha: 0.15),
+                        valueColor: AlwaysStoppedAnimation<Color>(p.color),
+                        minHeight: 12
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // 👇 MENAMPILKAN JUMLAH LAHAN DENGAN TEKS DESKRIPTIF
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('${p.done} dari ${p.total} lahan selesai diaudit',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AdvantaColors.charcoal)),
+                      if (p.total - p.done > 0)
+                        Text('${p.total - p.done} Menunggak',
+                            style: const TextStyle(fontSize: 11, color: AdvantaColors.error, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ],
+              ),
+            )),
+          ],
+        ),
       ),
     );
   }
@@ -1172,7 +1409,35 @@ class _PhaseBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(phase.shortLabel, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AdvantaColors.charcoal)), const SizedBox(height: 2), Text('${phase.pct.toStringAsFixed(0)}%', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: phase.color)), const SizedBox(height: 4), ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: phase.pct / 100, backgroundColor: phase.color.withValues(alpha: 0.15), valueColor: AlwaysStoppedAnimation<Color>(phase.color), minHeight: 6)), const SizedBox(height: 2), Text('${phase.done}/${phase.total}', style: TextStyle(fontSize: 9, color: Colors.grey[500]))]);
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Label Fase (Veg, Gen, dst)
+          Text(phase.shortLabel, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AdvantaColors.charcoal)),
+          const SizedBox(height: 2),
+
+          // Persentase
+          Text('${phase.pct.toStringAsFixed(0)}%',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: phase.color)),
+          const SizedBox(height: 4),
+
+          // Progress Bar
+          ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                  value: phase.pct / 100,
+                  backgroundColor: phase.color.withValues(alpha: 0.15),
+                  valueColor: AlwaysStoppedAnimation<Color>(phase.color),
+                  minHeight: 6
+              )
+          ),
+          const SizedBox(height: 3),
+
+          // 👇 JUMLAH LAHAN (RIIL)
+          Text('${phase.done}/${phase.total} Lahan',
+              style: TextStyle(fontSize: 9, color: Colors.grey[600], fontWeight: FontWeight.w600)),
+        ]
+    );
   }
 }
 
@@ -1259,112 +1524,119 @@ class _FIDetailSheet extends StatelessWidget {
 
     final avatarLetter = fi.name.isNotEmpty ? fi.name[0].toUpperCase() : '?';
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.55,
-      maxChildSize: 0.85,
-      minChildSize: 0.4,
-      builder: (_, scrollCtrl) => Container(
-        decoration: const BoxDecoration(
-          color: AdvantaColors.softGrey,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          children: [
-            // Handle Bar
-            Padding(
-              padding: const EdgeInsets.only(top: 12, bottom: 16),
-              child: Center(child: Container(width: 48, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(4)))),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).pop(), // Menutup saat tap di luar
+      child: GestureDetector(
+        onTap: () {}, // Menahan tap agar tidak tertutup saat konten diklik
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.55,
+          maxChildSize: 0.85,
+          minChildSize: 0.4,
+          builder: (_, scrollCtrl) => Container(
+            decoration: const BoxDecoration(
+              color: AdvantaColors.softGrey,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
+            child: Column(
+              children: [
+                // Handle Bar
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 16),
+                  child: Center(child: Container(width: 48, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(4)))),
+                ),
 
-            // Header Profile
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Container(
-                    width: 50, height: 50,
-                    decoration: BoxDecoration(color: AdvantaColors.deepForest, borderRadius: BorderRadius.circular(14)),
-                    child: Center(child: Text(avatarLetter, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800))),
+                // Header Profile
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 50, height: 50,
+                        decoration: BoxDecoration(color: AdvantaColors.deepForest, borderRadius: BorderRadius.circular(14)),
+                        child: Center(child: Text(avatarLetter, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800))),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(fi.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AdvantaColors.deepForest)),
+                            const SizedBox(height: 2),
+                            Text('${fi.totalFields} Lahan · ${villageEntries.length} Desa', style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(color: fi.statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                        child: Text('${fi.coverageScore.toStringAsFixed(0)}%', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: fi.statusColor)),
+                      )
+                    ],
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(fi.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AdvantaColors.deepForest)),
-                        const SizedBox(height: 2),
-                        Text('${fi.totalFields} Lahan · ${villageEntries.length} Desa', style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500)),
-                      ],
+                ),
+                const SizedBox(height: 20),
+
+                // Info Bar
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Expanded(child: _buildInfoCard('Area Assigned', _formatHa(fi.totalAreaHa), Icons.landscape_rounded, AdvantaColors.midGreen)),
+                      const SizedBox(width: 10),
+                      Expanded(child: _buildInfoCard('Overdue', fi.overdueFields.toString(), Icons.warning_amber_rounded, fi.overdueFields > 0 ? AdvantaColors.error : Colors.grey)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // List Desa yang ditangani
+                Expanded(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                    ),
+                    child: ListView.separated(
+                      controller: scrollCtrl,
+                      padding: const EdgeInsets.all(20),
+                      itemCount: villageEntries.length,
+                      separatorBuilder: (_, __) => Divider(height: 24, color: Colors.grey[100]),
+                      itemBuilder: (_, i) {
+                        final vName = villageEntries[i].key;
+                        final vFields = villageEntries[i].value;
+                        final vScore = vFields.isEmpty ? 0.0 : vFields.map((f) => f.coverageScore).reduce((a, b) => a + b) / vFields.length;
+                        final vColor = vScore >= 85 ? AdvantaColors.success : vScore >= 60 ? const Color(0xFFD4A017) : AdvantaColors.error;
+                        final vOverdue = vFields.where((f) => f.isOverdue).length;
+
+                        return Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(color: AdvantaColors.paleGreen, borderRadius: BorderRadius.circular(10)),
+                              child: const Icon(Icons.holiday_village_rounded, size: 16, color: AdvantaColors.deepForest),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(vName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AdvantaColors.deepForest)),
+                                  const SizedBox(height: 2),
+                                  Text('${vFields.length} lahan${vOverdue > 0 ? ' · $vOverdue overdue' : ''}', style: TextStyle(fontSize: 12, color: vOverdue > 0 ? AdvantaColors.error : Colors.grey[500])),
+                                ],
+                              ),
+                            ),
+                            Text('${vScore.toStringAsFixed(0)}%', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: vColor)),
+                          ],
+                        );
+                      },
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(color: fi.statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                    child: Text('${fi.coverageScore.toStringAsFixed(0)}%', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: fi.statusColor)),
-                  )
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Info Bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Expanded(child: _buildInfoCard('Area Assigned', _formatHa(fi.totalAreaHa), Icons.landscape_rounded, AdvantaColors.midGreen)),
-                  const SizedBox(width: 10),
-                  Expanded(child: _buildInfoCard('Overdue', fi.overdueFields.toString(), Icons.warning_amber_rounded, fi.overdueFields > 0 ? AdvantaColors.error : Colors.grey)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // List Desa yang ditangani
-            Expanded(
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
-                child: ListView.separated(
-                  controller: scrollCtrl,
-                  padding: const EdgeInsets.all(20),
-                  itemCount: villageEntries.length,
-                  separatorBuilder: (_, __) => Divider(height: 24, color: Colors.grey[100]),
-                  itemBuilder: (_, i) {
-                    final vName = villageEntries[i].key;
-                    final vFields = villageEntries[i].value;
-                    final vScore = vFields.isEmpty ? 0.0 : vFields.map((f) => f.coverageScore).reduce((a, b) => a + b) / vFields.length;
-                    final vColor = vScore >= 85 ? AdvantaColors.success : vScore >= 60 ? const Color(0xFFD4A017) : AdvantaColors.error;
-                    final vOverdue = vFields.where((f) => f.isOverdue).length;
-
-                    return Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(color: AdvantaColors.paleGreen, borderRadius: BorderRadius.circular(10)),
-                          child: const Icon(Icons.holiday_village_rounded, size: 16, color: AdvantaColors.deepForest),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(vName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AdvantaColors.deepForest)),
-                              const SizedBox(height: 2),
-                              Text('${vFields.length} lahan${vOverdue > 0 ? ' · $vOverdue overdue' : ''}', style: TextStyle(fontSize: 12, color: vOverdue > 0 ? AdvantaColors.error : Colors.grey[500])),
-                            ],
-                          ),
-                        ),
-                        Text('${vScore.toStringAsFixed(0)}%', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: vColor)),
-                      ],
-                    );
-                  },
-                ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1391,23 +1663,70 @@ class _FIDetailSheet extends StatelessWidget {
   }
 }
 
-class _RegionalStructurePanel extends StatelessWidget {
-  final Map<String, Map<String, dynamic>> regionMap; final int expandedIndex; final ValueChanged<int> onToggle;
+class _RegionalStructurePanel extends StatefulWidget {
+  final Map<String, Map<String, dynamic>> regionMap;
+  final int expandedIndex;
+  final ValueChanged<int> onToggle;
   const _RegionalStructurePanel({required this.regionMap, required this.expandedIndex, required this.onToggle});
 
   @override
+  State<_RegionalStructurePanel> createState() => _RegionalStructurePanelState();
+}
+
+class _RegionalStructurePanelState extends State<_RegionalStructurePanel> {
+  bool _showAll = false;
+
+  @override
   Widget build(BuildContext context) {
-    final entries = regionMap.entries.toList()..sort((a, b) => _avgScore(b.value['fields']).compareTo(_avgScore(a.value['fields'])));
+    final entries = widget.regionMap.entries.toList()
+      ..sort((a, b) => _avgScore(b.value['fields']).compareTo(_avgScore(a.value['fields'])));
+    final visible = _showAll ? entries : entries.take(5).toList();
+
     return Container(
-      padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))]),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Regional Structure', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest)), const SizedBox(height: 8), ...entries.take(5).toList().asMap().entries.map((entry) {
-        final regionName = entry.value.key; final data = entry.value.value; final fields = data['fields'] as List<FieldCoverageStatus>;
-        final score = _avgScore(fields); final area = fields.fold(0.0, (s, f) => s + f.effectiveAreaHa);
-        return _RegionAccordion(name: regionName, score: score, area: area, spvCount: (data['spvSet'] as Set).length, fiCount: (data['fiSet'] as Set).length, fieldCount: fields.length, isExpanded: expandedIndex == entry.key, onToggle: () => onToggle(entry.key), fields: fields);
-      })]),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Text('Regional Structure', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest)),
+            const Spacer(),
+            if (entries.length > 5)
+              GestureDetector(
+                onTap: () => setState(() => _showAll = !_showAll),
+                child: Text(_showAll ? 'Ringkas' : 'Lihat Semua', style: const TextStyle(fontSize: 10, color: AdvantaColors.deepForest, fontWeight: FontWeight.w600)),
+              ),
+          ]),
+          const SizedBox(height: 8),
+          ...visible.asMap().entries.map((entry) {
+            final regionName = entry.value.key;
+            final data = entry.value.value;
+            final fields = data['fields'] as List<FieldCoverageStatus>;
+            final score = _avgScore(fields);
+            final area = fields.fold(0.0, (s, f) => s + f.effectiveAreaHa);
+            return _RegionAccordion(
+              name: regionName,
+              score: score,
+              area: area,
+              spvCount: (data['spvSet'] as Set).length,
+              fiCount: (data['fiSet'] as Set).length,
+              fieldCount: fields.length,
+              isExpanded: widget.expandedIndex == entry.key,
+              onToggle: () => widget.onToggle(entry.key),
+              fields: fields,
+            );
+          }),
+        ],
+      ),
     );
   }
-  double _avgScore(List<FieldCoverageStatus> fields) => fields.isEmpty ? 0 : fields.map((f) => f.coverageScore).reduce((a, b) => a + b) / fields.length;
+
+  double _avgScore(List<FieldCoverageStatus> fields) =>
+      fields.isEmpty ? 0 : fields.map((f) => f.coverageScore).reduce((a, b) => a + b) / fields.length;
 }
 
 class _RegionAccordion extends StatelessWidget {
@@ -1417,36 +1736,231 @@ class _RegionAccordion extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = score >= 85 ? AdvantaColors.success : score >= 60 ? const Color(0xFFD4A017) : AdvantaColors.error;
-    return Column(children: [GestureDetector(onTap: onToggle, child: Container(padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4), child: Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AdvantaColors.deepForest)), Text('$spvCount SPV · $fiCount FI · ${_formatHa(area)}', style: TextStyle(fontSize: 9, color: Colors.grey[500]))])), SizedBox(width: 50, child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text('${score.toStringAsFixed(0)}%', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color)), const SizedBox(height: 2), ClipRRect(borderRadius: BorderRadius.circular(3), child: LinearProgressIndicator(value: score / 100, minHeight: 4, backgroundColor: color.withValues(alpha: 0.15), valueColor: AlwaysStoppedAnimation<Color>(color)))])), const SizedBox(width: 4), AnimatedRotation(turns: isExpanded ? 0.5 : 0, duration: const Duration(milliseconds: 200), child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Colors.grey[400]))]))), if (isExpanded) ..._buildBreakdown(), Divider(height: 1, color: Colors.grey[100])]);
+    return Column(children: [
+      GestureDetector(onTap: onToggle, child: Container(padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4), child: Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AdvantaColors.deepForest)), Text('$spvCount SPV · $fiCount FI · ${_formatHa(area)}', style: TextStyle(fontSize: 9, color: Colors.grey[500]))])), SizedBox(width: 50, child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text('${score.toStringAsFixed(0)}%', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color)), const SizedBox(height: 2), ClipRRect(borderRadius: BorderRadius.circular(3), child: LinearProgressIndicator(value: score / 100, minHeight: 4, backgroundColor: color.withValues(alpha: 0.15), valueColor: AlwaysStoppedAnimation<Color>(color)))])), const SizedBox(width: 4), AnimatedRotation(turns: isExpanded ? 0.5 : 0, duration: const Duration(milliseconds: 200), child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Colors.grey[400]))]))),
+
+      // 👇 PERUBAHAN: Meneruskan `context` ke _buildBreakdown
+      if (isExpanded) ..._buildBreakdown(context),
+
+      Divider(height: 1, color: Colors.grey[100])
+    ]);
   }
-  List<Widget> _buildBreakdown() {
+
+  // 👇 PERUBAHAN: Menambahkan fitur klik dan Bottom Sheet Daftar Field
+  List<Widget> _buildBreakdown(BuildContext context) {
     final map = <String, List<FieldCoverageStatus>>{};
     for (final f in fields) { map.putIfAbsent(f.district.isEmpty ? 'Unknown' : f.district, () => []).add(f); }
+
     return map.entries.map((e) {
       final s = e.value.isEmpty ? 0.0 : e.value.map((f) => f.coverageScore).reduce((a, b) => a + b) / e.value.length;
-      return Padding(padding: const EdgeInsets.fromLTRB(8, 0, 4, 6), child: Row(children: [Container(width: 3, height: 3, decoration: BoxDecoration(color: Colors.grey[400], shape: BoxShape.circle)), const SizedBox(width: 6), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(e.key, style: const TextStyle(fontSize: 10, color: AdvantaColors.charcoal)), Text('${e.value.length} fields', style: TextStyle(fontSize: 8, color: Colors.grey[400]))])), Text('${s.toStringAsFixed(0)}%', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: s >= 85 ? AdvantaColors.success : s >= 60 ? const Color(0xFFD4A017) : AdvantaColors.error))]));
+      return InkWell(
+        onTap: () => _showDistrictFieldsSheet(context, e.key, e.value),
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
+            child: Row(children: [
+              Container(width: 3, height: 3, decoration: BoxDecoration(color: Colors.grey[400], shape: BoxShape.circle)),
+              const SizedBox(width: 6),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(e.key, style: const TextStyle(fontSize: 10, color: AdvantaColors.charcoal, fontWeight: FontWeight.w700)),
+                Text('${e.value.length} fields', style: TextStyle(fontSize: 8, color: Colors.grey[500]))
+              ])),
+              Text('${s.toStringAsFixed(0)}%', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: s >= 85 ? AdvantaColors.success : s >= 60 ? const Color(0xFFD4A017) : AdvantaColors.error)),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right_rounded, size: 12, color: Colors.grey[300])
+            ])
+        ),
+      );
     }).toList();
+  }
+
+  // Fungsi baru untuk memunculkan Bottom Sheet persis seperti QA FI View
+  void _showDistrictFieldsSheet(BuildContext context, String districtName, List<FieldCoverageStatus> distFields) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(context).pop(),
+        child: GestureDetector(
+          onTap: () {},
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.65, maxChildSize: 0.9, minChildSize: 0.4,
+            builder: (_, ctrl) => Container(
+              decoration: const BoxDecoration(color: AdvantaColors.softGrey, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(4)))),
+                        const SizedBox(height: 16),
+                        Text('Fields — $districtName', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AdvantaColors.deepForest)),
+                        const SizedBox(height: 4),
+                        Text('${distFields.length} field · ${distFields.where((f) => f.isOverdue).length} overdue', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+                        const SizedBox(height: 12),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.separated(
+                      controller: ctrl,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      itemCount: distFields.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (_, i) {
+                        final f = distFields[i];
+                        final score = f.coverageScore;
+                        final sc = score >= 85 ? AdvantaColors.success : score >= 60 ? const Color(0xFFD4A017) : AdvantaColors.error;
+
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.pop(context); // Tutup list
+                            FieldDetailBottomSheet.show(context, f.raw); // Buka detail
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.grey[200]!),
+                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
+                            ),
+                            child: Row(
+                              children: [
+                                Container(width: 10, height: 10, decoration: BoxDecoration(color: f.isOverdue ? AdvantaColors.error : sc, shape: BoxShape.circle)),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(f.fieldNumber, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest)),
+                                      const SizedBox(height: 2),
+                                      Text('DAP ${f.dap}${f.isOverdue ? ' · ⚠ Overdue' : ''}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: f.isOverdue ? AdvantaColors.error : Colors.grey[500])),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text('${score.toStringAsFixed(0)}%', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: sc)),
+                                    const SizedBox(height: 4),
+                                    Row(children: [
+                                      _PhaseDot(done: f.vegetativeDone, label: 'V'),
+                                      _PhaseDot(done: f.gen1Done || f.gen2Done || f.gen3Done, label: 'G'),
+                                      _PhaseDot(done: f.preHarvestDone, label: 'P'),
+                                      _PhaseDot(done: f.harvestDone, label: 'H'),
+                                    ]),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
-class _CoverageStructurePanel extends StatelessWidget {
-  final List<MapEntry<String, List<FieldCoverageStatus>>> districts; final int expandedIndex; final ValueChanged<int> onToggle;
+class _CoverageStructurePanel extends StatefulWidget {
+  final List<MapEntry<String, List<FieldCoverageStatus>>> districts;
+  final int expandedIndex;
+  final ValueChanged<int> onToggle;
   const _CoverageStructurePanel({required this.districts, required this.expandedIndex, required this.onToggle});
 
   @override
+  State<_CoverageStructurePanel> createState() => _CoverageStructurePanelState();
+}
+
+class _CoverageStructurePanelState extends State<_CoverageStructurePanel> {
+  bool _showAll = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Coverage Structure', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest)), const SizedBox(height: 8), ...districts.take(4).toList().asMap().entries.map((entry) {
-      final dFields = entry.value.value; final score = dFields.isEmpty ? 0.0 : dFields.map((f) => f.coverageScore).reduce((a, b) => a + b) / dFields.length;
-      final color = score >= 85 ? AdvantaColors.success : score >= 60 ? const Color(0xFFD4A017) : AdvantaColors.error;
-      return Column(children: [GestureDetector(onTap: () => onToggle(entry.key), child: Padding(padding: const EdgeInsets.symmetric(vertical: 7), child: Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(entry.value.key, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)), Text('${dFields.map((f) => f.qaFi).where((s) => s.isNotEmpty).toSet().length} FI · ${dFields.length} Lahan', style: TextStyle(fontSize: 9, color: Colors.grey[500]))])), SizedBox(width: 55, child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text('${score.toStringAsFixed(0)}%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: color)), const SizedBox(height: 2), ClipRRect(borderRadius: BorderRadius.circular(3), child: LinearProgressIndicator(value: score / 100, minHeight: 4, backgroundColor: color.withValues(alpha: 0.15), valueColor: AlwaysStoppedAnimation<Color>(color)))])), const SizedBox(width: 4), AnimatedRotation(turns: expandedIndex == entry.key ? 0.5 : 0, duration: const Duration(milliseconds: 200), child: Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: Colors.grey[300]))]))), if (expandedIndex == entry.key) _buildVillageBreakdown(dFields), Divider(height: 1, color: Colors.grey[100])]);
-    })]));
+    final visible = _showAll ? widget.districts : widget.districts.take(4).toList();
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Text('Coverage Structure', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest)),
+            const Spacer(),
+            if (widget.districts.length > 4)
+              GestureDetector(
+                onTap: () => setState(() => _showAll = !_showAll),
+                child: Text(_showAll ? 'Ringkas' : 'Lihat Semua', style: const TextStyle(fontSize: 10, color: AdvantaColors.deepForest, fontWeight: FontWeight.w600)),
+              ),
+          ]),
+          const SizedBox(height: 8),
+          ...visible.asMap().entries.map((entry) {
+            final dFields = entry.value.value;
+            final score = dFields.isEmpty ? 0.0 : dFields.map((f) => f.coverageScore).reduce((a, b) => a + b) / dFields.length;
+            final color = score >= 85 ? AdvantaColors.success : score >= 60 ? const Color(0xFFD4A017) : AdvantaColors.error;
+            final isExpanded = widget.expandedIndex == entry.key;
+
+            return Column(children: [
+              GestureDetector(
+                onTap: () => widget.onToggle(entry.key),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  child: Row(children: [
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(entry.value.key, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                      Text('${dFields.map((f) => f.qaFi).where((s) => s.isNotEmpty).toSet().length} FI · ${dFields.length} Lahan', style: TextStyle(fontSize: 9, color: Colors.grey[500])),
+                    ])),
+                    SizedBox(width: 55, child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Text('${score.toStringAsFixed(0)}%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: color)),
+                      const SizedBox(height: 2),
+                      ClipRRect(borderRadius: BorderRadius.circular(3), child: LinearProgressIndicator(value: score / 100, minHeight: 4, backgroundColor: color.withValues(alpha: 0.15), valueColor: AlwaysStoppedAnimation<Color>(color))),
+                    ])),
+                    const SizedBox(width: 4),
+                    AnimatedRotation(turns: isExpanded ? 0.5 : 0, duration: const Duration(milliseconds: 200), child: Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: Colors.grey[300])),
+                  ]),
+                ),
+              ),
+              if (isExpanded) _buildVillageBreakdown(dFields),
+              Divider(height: 1, color: Colors.grey[100]),
+            ]);
+          }),
+        ],
+      ),
+    );
   }
+
   Widget _buildVillageBreakdown(List<FieldCoverageStatus> fields) {
     final map = <String, List<FieldCoverageStatus>>{};
     for (final f in fields) { map.putIfAbsent(f.village.isEmpty ? 'Unknown' : f.village, () => []).add(f); }
     return Column(children: map.entries.map((e) {
       final s = e.value.isEmpty ? 0.0 : e.value.map((f) => f.coverageScore).reduce((a, b) => a + b) / e.value.length;
-      return Padding(padding: const EdgeInsets.fromLTRB(8, 0, 4, 5), child: Row(children: [Container(width: 3, height: 3, decoration: BoxDecoration(color: Colors.grey[300], shape: BoxShape.circle)), const SizedBox(width: 6), Expanded(child: Text(e.key, style: const TextStyle(fontSize: 9, color: AdvantaColors.charcoal))), Text('${s.toStringAsFixed(0)}%', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: s >= 85 ? AdvantaColors.success : s >= 60 ? const Color(0xFFD4A017) : AdvantaColors.error))]));
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 4, 5),
+        child: Row(children: [
+          Container(width: 3, height: 3, decoration: BoxDecoration(color: Colors.grey[300], shape: BoxShape.circle)),
+          const SizedBox(width: 6),
+          Expanded(child: Text(e.key, style: const TextStyle(fontSize: 9, color: AdvantaColors.charcoal))),
+          Text('${e.value.length} field', style: TextStyle(fontSize: 9, color: Colors.grey[400])),
+          const SizedBox(width: 8),
+          Text('${s.toStringAsFixed(0)}%', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: s >= 85 ? AdvantaColors.success : s >= 60 ? const Color(0xFFD4A017) : AdvantaColors.error)),
+        ]),
+      );
     }).toList());
   }
 }
@@ -1465,88 +1979,96 @@ class _VillageCard extends StatelessWidget {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.65, maxChildSize: 0.9, minChildSize: 0.4,
-        builder: (_, ctrl) => Container(
-          decoration: const BoxDecoration(color: AdvantaColors.softGrey, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(4)))),
-                    const SizedBox(height: 16),
-                    Text('Fields — $villageName', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AdvantaColors.deepForest)),
-                    const SizedBox(height: 4),
-                    Text('${fields.length} field · ${fields.where((f) => f.isOverdue).length} overdue', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
-                    const SizedBox(height: 12),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView.separated(
-                  controller: ctrl,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  itemCount: fields.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) {
-                    final f = fields[i];
-                    final score = f.coverageScore;
-                    final sc = score >= 85 ? AdvantaColors.success : score >= 60 ? const Color(0xFFD4A017) : AdvantaColors.error;
+      // UBAH BAGIAN BUILDER INI:
+      builder: (_) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(context).pop(),
+        child: GestureDetector(
+          onTap: () {},
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.65, maxChildSize: 0.9, minChildSize: 0.4,
+            builder: (_, ctrl) => Container(
+              decoration: const BoxDecoration(color: AdvantaColors.softGrey, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(4)))),
+                        const SizedBox(height: 16),
+                        Text('Fields — $villageName', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AdvantaColors.deepForest)),
+                        const SizedBox(height: 4),
+                        Text('${fields.length} field · ${fields.where((f) => f.isOverdue).length} overdue', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+                        const SizedBox(height: 12),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.separated(
+                      controller: ctrl,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      itemCount: fields.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (_, i) {
+                        final f = fields[i];
+                        final score = f.coverageScore;
+                        final sc = score >= 85 ? AdvantaColors.success : score >= 60 ? const Color(0xFFD4A017) : AdvantaColors.error;
 
-                    return GestureDetector(
-                      // KONEKSI KE FIELD DETAIL BOTTOM SHEET
-                      onTap: () {
-                        // Tutup list terlebih dahulu (opsional, tergantung preferensi UX)
-                        Navigator.pop(context);
-                        // Buka Detail
-                        FieldDetailBottomSheet.show(context, f.raw);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey[200]!),
-                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(width: 10, height: 10, decoration: BoxDecoration(color: f.isOverdue ? AdvantaColors.error : sc, shape: BoxShape.circle)),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(f.fieldNumber, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest)),
-                                  const SizedBox(height: 2),
-                                  Text('DAP ${f.dap}${f.isOverdue ? ' · ⚠ Overdue' : ''}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: f.isOverdue ? AdvantaColors.error : Colors.grey[500])),
-                                ],
-                              ),
+                        return GestureDetector(
+                          // KONEKSI KE FIELD DETAIL BOTTOM SHEET
+                          onTap: () {
+                            // Tutup list terlebih dahulu (opsional, tergantung preferensi UX)
+                            Navigator.pop(context);
+                            // Buka Detail
+                            FieldDetailBottomSheet.show(context, f.raw);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.grey[200]!),
+                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
                             ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                            child: Row(
                               children: [
-                                Text('${score.toStringAsFixed(0)}%', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: sc)),
-                                const SizedBox(height: 4),
-                                Row(children: [
-                                  _PhaseDot(done: f.vegetativeDone, label: 'V'),
-                                  _PhaseDot(done: f.gen1Done || f.gen2Done || f.gen3Done, label: 'G'),
-                                  _PhaseDot(done: f.preHarvestDone, label: 'P'),
-                                  _PhaseDot(done: f.harvestDone, label: 'H'),
-                                ]),
+                                Container(width: 10, height: 10, decoration: BoxDecoration(color: f.isOverdue ? AdvantaColors.error : sc, shape: BoxShape.circle)),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(f.fieldNumber, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest)),
+                                      const SizedBox(height: 2),
+                                      Text('DAP ${f.dap}${f.isOverdue ? ' · ⚠ Overdue' : ''}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: f.isOverdue ? AdvantaColors.error : Colors.grey[500])),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text('${score.toStringAsFixed(0)}%', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: sc)),
+                                    const SizedBox(height: 4),
+                                    Row(children: [
+                                      _PhaseDot(done: f.vegetativeDone, label: 'V'),
+                                      _PhaseDot(done: f.gen1Done || f.gen2Done || f.gen3Done, label: 'G'),
+                                      _PhaseDot(done: f.preHarvestDone, label: 'P'),
+                                      _PhaseDot(done: f.harvestDone, label: 'H'),
+                                    ]),
+                                  ],
+                                ),
                               ],
                             ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1771,35 +2293,42 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
 
     final recommendedRoute = pendingFields.take(8).toList();
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      maxChildSize: 0.95,
-      minChildSize: 0.5,
-      builder: (_, scrollCtrl) => Container(
-        decoration: const BoxDecoration(
-          color: AdvantaColors.softGrey,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          children: [
-            _buildHandleBar(),
-            _buildHeader(recommendedRoute),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).pop(),
+      child: GestureDetector(
+        onTap: () {},
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          maxChildSize: 0.95,
+          minChildSize: 0.5,
+          builder: (_, scrollCtrl) => Container(
+            decoration: const BoxDecoration(
+              color: AdvantaColors.softGrey,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              children: [
+                _buildHandleBar(),
+                _buildHeader(recommendedRoute),
 
-            if (_isLoadingGps)
-              const Expanded(child: Center(child: CircularProgressIndicator()))
-            else if (recommendedRoute.isEmpty)
-              _buildEmptyState()
-            else
-              Expanded(
-                child: ListView.separated(
-                  controller: scrollCtrl,
-                  padding: const EdgeInsets.all(20),
-                  itemCount: recommendedRoute.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) => _buildRouteCard(recommendedRoute[i], i),
-                ),
-              ),
-          ],
+                if (_isLoadingGps)
+                  const Expanded(child: Center(child: CircularProgressIndicator()))
+                else if (recommendedRoute.isEmpty)
+                  _buildEmptyState()
+                else
+                  Expanded(
+                    child: ListView.separated(
+                      controller: scrollCtrl,
+                      padding: const EdgeInsets.all(20),
+                      itemCount: recommendedRoute.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (_, i) => _buildRouteCard(recommendedRoute[i], i),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -28,6 +28,16 @@ class AbsenCacheManager {
     await prefs.setString(_cacheValidityKey, DateTime.now().toIso8601String());
   }
 
+  // ✅ SOLUSI ERROR 3: Menambahkan fungsi markAbsenAction
+  // Fungsi ini dipanggil ketika user baru saja selesai absen
+  static Future<void> markAbsenAction() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    await prefs.setBool('cachedHasAbsen_$today', true);
+    await setCacheValidity();
+    debugPrint("[AbsenCache] ✅ Action marked as completed");
+  }
+
   static Future<void> invalidateCache() async {
     final prefs = await SharedPreferences.getInstance();
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -48,7 +58,6 @@ class V2EnhancedAbsenService {
   static final _supabase = Supabase.instance.client;
 
   /// 1. CEK STATUS ABSEN HARI INI
-  /// Mengecek apakah user dengan email tersebut sudah absen hari ini.
   static Future<Map<String, dynamic>> checkAbsenStatus({
     required String userEmail,
   }) async {
@@ -65,6 +74,8 @@ class V2EnhancedAbsenService {
             'hasAbsen': hasAbsen,
             'jamAbsen': prefs.getString('cachedJamAbsen_$today'),
             'region': prefs.getString('cachedRegion_$today'),
+            // ✅ SOLUSI LINTER 4: Menambahkan parameter isCache
+            'isCache': true,
           };
         }
       }
@@ -72,7 +83,6 @@ class V2EnhancedAbsenService {
       // --- B. Query ke Supabase ---
       debugPrint("[V2 AbsenService] 🌐 Query ke Supabase...");
 
-      // Gunakan .maybeSingle() untuk mencari 1 data absen hari ini
       final response = await _supabase
           .from('absensi_logs')
           .select('waktu_absen, region')
@@ -81,25 +91,24 @@ class V2EnhancedAbsenService {
           .maybeSingle();
 
       if (response != null) {
-        // Jika data ditemukan (sudah absen)
         final result = {
           'hasAbsen': true,
-          'jamAbsen': response['waktu_absen'].toString().substring(0, 5), // Ambil HH:mm
+          'jamAbsen': response['waktu_absen'].toString().substring(0, 5),
           'region': response['region'],
+          'isCache': false, // Karena ini fresh dari DB
         };
         await _saveToCache(prefs, today, result);
         await AbsenCacheManager.setCacheValidity();
         return result;
       } else {
-        // Jika belum absen
-        final result = {'hasAbsen': false};
+        final result = {'hasAbsen': false, 'isCache': false};
         await _saveToCache(prefs, today, result);
         await AbsenCacheManager.setCacheValidity();
         return result;
       }
     } catch (e) {
       debugPrint("[V2 AbsenService] ❌ Error Check Status: $e");
-      return {'hasAbsen': false, 'error': e.toString()};
+      return {'hasAbsen': false, 'error': e.toString(), 'isCache': false};
     }
   }
 
@@ -117,22 +126,14 @@ class V2EnhancedAbsenService {
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
       final timeNow = DateFormat('HH:mm:ss').format(DateTime.now());
 
-      // --- A. Upload Foto ke Supabase Storage ---
       debugPrint("[V2 AbsenService] 📤 Mengunggah foto...");
-
-      // Bersihkan email dari karakter aneh untuk nama file
       final cleanEmail = userEmail.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
       final fileName = '${cleanEmail}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final imagePath = '$today/$fileName'; // Disusun dalam folder per tanggal
+      final imagePath = '$today/$fileName';
 
-      // Upload file
       await _supabase.storage.from('absensi_photos').upload(imagePath, image);
-
-      // Dapatkan public URL
       final photoUrl = _supabase.storage.from('absensi_photos').getPublicUrl(imagePath);
-      debugPrint("[V2 AbsenService] ✅ Foto berhasil diunggah: $photoUrl");
 
-      // --- B. Insert Data ke Tabel Database ---
       debugPrint("[V2 AbsenService] 💾 Menyimpan log absensi...");
       await _supabase.from('absensi_logs').insert({
         'user_email': userEmail,
@@ -146,7 +147,6 @@ class V2EnhancedAbsenService {
         'photo_url': photoUrl,
       });
 
-      // --- C. Update Cache ---
       final prefs = await SharedPreferences.getInstance();
       final result = {
         'hasAbsen': true,
@@ -177,7 +177,6 @@ class V2EnhancedAbsenService {
     return await checkAbsenStatus(userEmail: userEmail);
   }
 
-  /// Helper untuk menyimpan hasil ke cache
   static Future<void> _saveToCache(
       SharedPreferences prefs,
       String today,

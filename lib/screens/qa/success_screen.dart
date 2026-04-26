@@ -33,7 +33,7 @@ class SuccessScreenState extends State<SuccessScreen> {
         // Gunakan mounted check untuk mencegah error jika widget sudah tidak ada
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const QaScreen()),
+            MaterialPageRoute(builder: (context) => const QAScreen()),
                 (Route<dynamic> route) => false,
           );
         }

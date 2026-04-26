@@ -14,6 +14,9 @@ import 'package:geolocator/geolocator.dart';
 import '../../providers/audit_pre_harvest_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
+import '../../services/session_manager.dart';   // ← NEW
+import '../../theme/app_theme.dart';
+import '../../utils/guest_guard.dart';           // ← NEW
 import 'generative_form_widgets.dart';
 
 // ─── Phase accent color ───────────────────────────────────
@@ -62,9 +65,13 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
   bool _isSaving  = false;
   bool _dataLoaded = false;
 
+  // ── NEW: session untuk GuestGuard ────────────────────────
+  ActiveSession? _session;
+  bool get _isGuest => GuestGuard.isGuest(_session);
+
   // Controllers
-  final _qaFiCtrl        = TextEditingController();
-  final _qaSpvCtrl       = TextEditingController();
+  final _qaFiCtrl         = TextEditingController();
+  final _qaSpvCtrl        = TextEditingController();
   final _discardAreaCtrl  = TextEditingController();
   final _discardReasonCtrl = TextEditingController();
 
@@ -78,6 +85,14 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
   String? _cropCondition;
 
   bool get _isDiscard => _finalDecision == 'D';
+
+  @override
+  void initState() {
+    super.initState();
+    SessionManager.instance.getActiveSession().then((s) {
+      if (mounted) setState(() => _session = s);
+    });
+  }
 
   @override
   void dispose() {
@@ -107,16 +122,14 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
   }
 
   Future<void> _pickDate() async {
+    if (_isGuest) { GuestGuard.blockIfGuest(context, _session); return; }
     final p = await showDatePicker(
       context: context,
       initialDate: _auditDate,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
       builder: (ctx, child) => Theme(
-        data: ThemeData.dark().copyWith(
-          colorScheme: const ColorScheme.dark(
-              primary: _kPhase, surface: kGenSurface),
-        ),
+        data: genDatePickerTheme(ctx, _kPhase),
         child: child!,
       ),
     );
@@ -124,6 +137,7 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
   }
 
   Future<void> _save() async {
+    if (GuestGuard.blockIfGuest(context, _session)) return;
     if (!_formKey.currentState!.validate()) {
       _snack('Periksa kembali isian form', err: true);
       return;
@@ -190,13 +204,16 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
     }
   }
 
-  void _snack(String msg, {bool err = false}) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(msg),
-        backgroundColor: err ? kGenRed : kGenGreen,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ));
+  void _snack(String msg, {bool err = false}) {
+    final theme = Theme.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content        : Text(msg, style: AdvantaText.body2.copyWith(color: Colors.white)),
+      backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
+      behavior       : SnackBarBehavior.floating,
+      shape          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      margin         : const EdgeInsets.all(12),
+    ));
+  }
 
   // ─── BUILD ────────────────────────────────────────────────
   @override
@@ -207,8 +224,7 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
             (f) => f['field_number'] == widget.fieldNumber, orElse: () => {});
 
     return Scaffold(
-      backgroundColor: kGenBg,
-      appBar: buildGenAppBar(
+      appBar: GenAppBar(
         checkpointLabel: 'Pre-Harvest Audit',
         fieldNumber    : widget.fieldNumber,
         isDiscard      : _isDiscard,
@@ -220,7 +236,8 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
         const Center(child: CircularProgressIndicator(color: _kPhase)),
         error: (e, _) =>
             Center(child: Text('Error: $e',
-                style: const TextStyle(color: kGenSub))),
+                style: AdvantaText.body2.copyWith(
+                    color: Theme.of(context).colorScheme.error))),
         data: (audit) {
           if (audit != null) _loadAudit(audit);
           return _buildBody(fd);
@@ -244,6 +261,12 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
                   GenFieldCard(fieldData: fd, accentColor: _kPhase),
                   const SizedBox(height: 14),
 
+                  // ── NEW: Guest read-only banner ──────────────
+                  if (_isGuest) ...[
+                    GuestGuard.banner(),
+                    const SizedBox(height: 8),
+                  ],
+
                   // ── Section: Audit Info ──
                   GenSection(
                     title: 'Informasi Audit',
@@ -259,7 +282,7 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
                         controller : _qaFiCtrl,
                         label      : 'QA FI',
                         hint       : 'Nama QA Field Inspector',
-                        required   : true,
+                        required   : !_isGuest,
                         icon       : Icons.person_outline,
                         accentColor: _kPhase,
                       ),
@@ -268,7 +291,7 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
                         controller : _qaSpvCtrl,
                         label      : 'QA SPV',
                         hint       : 'Nama QA Supervisor',
-                        required   : true,
+                        required   : !_isGuest,
                         icon       : Icons.supervisor_account_outlined,
                         accentColor: _kPhase,
                       ),
@@ -284,19 +307,27 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
                     children: [
                       GenOptionPicker(
                         label      : 'Male Chopping (Rows)',
-                        required   : !_isDiscard,
+                        required   : !_isDiscard && !_isGuest,
                         options    : _maleChoppingOpts,
                         value      : _maleChopping,
-                        onChanged  : (v) => setState(() => _maleChopping = v),
+                        onChanged  : (v) { if (!_isGuest) {
+                          setState(() => _maleChopping = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
                         accentColor: _kPhase,
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
                         label      : 'Crop Condition',
-                        required   : !_isDiscard,
+                        required   : !_isDiscard && !_isGuest,
                         options    : _cropCondOpts,
                         value      : _cropCondition,
-                        onChanged  : (v) => setState(() => _cropCondition = v),
+                        onChanged  : (v) { if (!_isGuest) {
+                          setState(() => _cropCondition = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
                         accentColor: _kPhase,
                       ),
                     ],
@@ -313,7 +344,11 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
                         label      : 'Final Flagging',
                         options    : _finalFlaggingOpts,
                         value      : _finalFlagging,
-                        onChanged  : (v) => setState(() => _finalFlagging = v),
+                        onChanged  : (v) { if (!_isGuest) {
+                          setState(() => _finalFlagging = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
                         accentColor: const Color(0xFF42A5F5),
                       ),
                     ],
@@ -324,14 +359,14 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
                   GenSection(
                     title: 'Keputusan Final',
                     icon : Icons.gavel_outlined,
-                    color: kGenRed,
+                    color: AdvantaColors.error,
                     children: [
                       GenOptionPicker(
                         label      : 'Final Decision',
-                        required   : true,
+                        required   : !_isGuest,
                         options    : _finalDecisionOpts,
                         value      : _finalDecision,
-                        onChanged  : (v) {
+                        onChanged  : (v) { if (!_isGuest) {
                           setState(() {
                             _finalDecision = v;
                             if (v != 'D') {
@@ -339,8 +374,8 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
                               _discardReasonCtrl.clear();
                             }
                           });
-                        },
-                        accentColor: kGenRed,
+                        } else { GuestGuard.blockIfGuest(context, _session); } },
+                        accentColor: AdvantaColors.error,
                       ),
                       if (_isDiscard) ...[
                         const SizedBox(height: 12),
@@ -350,23 +385,23 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
                         ),
                         const SizedBox(height: 14),
                         GenTextField(
-                          controller : _discardAreaCtrl,
-                          label      : 'Discard Area (Ha)',
-                          hint       : 'Luas area discard',
-                          required   : true,
+                          controller  : _discardAreaCtrl,
+                          label       : 'Discard Area (Ha)',
+                          hint        : 'Luas area discard',
+                          required    : !_isGuest,
                           keyboardType: TextInputType.number,
-                          icon       : Icons.crop_landscape_outlined,
-                          accentColor: kGenRed,
+                          icon        : Icons.crop_landscape_outlined,
+                          accentColor : AdvantaColors.error,
                         ),
                         const SizedBox(height: 12),
                         GenTextField(
                           controller : _discardReasonCtrl,
                           label      : 'Discard Reason',
                           hint       : 'Alasan discard...',
-                          required   : true,
+                          required   : !_isGuest,
                           maxLines   : 3,
                           icon       : Icons.notes_outlined,
-                          accentColor: kGenRed,
+                          accentColor: AdvantaColors.error,
                         ),
                       ],
                     ],
@@ -377,11 +412,13 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
           ),
           GenSaveBar(
             isSaving : _isSaving,
-            isDiscard: _isDiscard,
-            saveLabel: _isDiscard
-                ? 'SIMPAN — DISCARD PRE-HARVEST'
-                : 'SIMPAN PRE-HARVEST',
-            onSave   : _save,
+            isDiscard: _isDiscard && !_isGuest,
+            saveLabel: _isGuest
+                ? 'READ-ONLY — TIDAK DAPAT MENYIMPAN'
+                : (_isDiscard ? 'SIMPAN — DISCARD PRE-HARVEST' : 'SIMPAN PRE-HARVEST'),
+            onSave   : _isGuest
+                ? () => GuestGuard.blockIfGuest(context, _session)
+                : _save,
           ),
         ],
       ),

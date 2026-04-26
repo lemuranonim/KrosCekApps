@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import 'dart:isolate';
 import 'dart:ui';
@@ -11,18 +12,20 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'package:open_file/open_file.dart';
 
-// New imports
 import 'package:android_path_provider/android_path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import '../../services/session_manager.dart';
+
+// ── IMPORT TEMA PUSAT ────────────────────────────────
+import '../theme/app_theme.dart';
 
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
   debugPrint("DOWNLOAD_CALLBACK: Task id=$id, status=$status, progress=$progress%");
-
   final SendPort? send = IsolateNameServer.lookupPortByName('downloader_send_port');
   if (send != null) {
     send.send([id, status, progress]);
@@ -39,73 +42,112 @@ class SplashScreen extends StatefulWidget {
 }
 
 class SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _opacityAnimation;
-  late Animation<double> _scaleAnimation;
-  late Animation<Offset> _slideAnimation;
-  String _version = 'Loading...';
-  bool _updateRequired = false;
+    with TickerProviderStateMixin {
 
-  // Download state variables
-  bool _isDownloading = false;
-  double _downloadProgress = 0.0;
-  String _downloadMessage = "";
+  // ── Animation Controllers ─────────────────────────
+  late AnimationController _masterController;
+  late AnimationController _shimmerController;
+  late AnimationController _pulseController;
+
+  late Animation<double>  _logoFade;
+  late Animation<double>  _logoScale;
+  late Animation<Offset>  _logoSlide;
+  late Animation<double>  _taglineFade;
+  late Animation<Offset>  _taglineSlide;
+  late Animation<double>  _dividerWidth;
+  late Animation<double>  _footerFade;
+  late Animation<double>  _shimmer;
+
+  String _version        = 'Loading...';
+  bool   _updateRequired = false;
+
+  // ── Download state ────────────────────────────────
+  bool   _isDownloading         = false;
   String? _downloadTaskId;
-  bool _installationInitiated = false;
-  final ReceivePort _port = ReceivePort();
-  bool _isPortInitialized = false;
+  bool   _installationInitiated = false;
+  final ReceivePort _port       = ReceivePort();
+  bool   _isPortInitialized     = false;
 
   final ValueNotifier<double> _downloadProgressNotifier = ValueNotifier(0.0);
-  final ValueNotifier<String> _downloadMessageNotifier = ValueNotifier("");
+  final ValueNotifier<String> _downloadMessageNotifier  = ValueNotifier('');
 
   @override
   void initState() {
     super.initState();
-
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 2500),
-      vsync: this,
-    );
-
-    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeInOut),
-      ),
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.7, curve: Curves.elasticOut),
-      ),
-    );
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
-      ),
-    );
-
+    _setupAnimations();
     _initializeAndSetupDownloader();
 
-    _controller.forward();
+    _masterController.forward();
+    _shimmerController.repeat();
+    _pulseController.repeat(reverse: true);
+
     _fetchVersion();
 
+    // Mengecek update, lalu lanjut ke pengecekan login jika tidak butuh update
     _checkForUpdate().then((_) {
       if (!_updateRequired && mounted) {
-        Timer(const Duration(milliseconds: 3500), () {
+        Timer(const Duration(milliseconds: 3800), () {
           if (mounted) _checkLoginStatus();
         });
       }
     });
   }
 
+  void _setupAnimations() {
+    // Master: 3.0s total
+    _masterController = AnimationController(
+      duration: const Duration(milliseconds: 3000),
+      vsync  : this,
+    );
+
+    // Shimmer for gold line
+    _shimmerController = AnimationController(
+      duration: const Duration(milliseconds: 1800),
+      vsync  : this,
+    );
+
+    // Pulse for loading indicator
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync  : this,
+    );
+
+    // Logo animations
+    _logoFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _masterController, curve: const Interval(0.0, 0.45, curve: Curves.easeOut)),
+    );
+    _logoScale = Tween<double>(begin: 0.65, end: 1.0).animate(
+      CurvedAnimation(parent: _masterController, curve: const Interval(0.0, 0.50, curve: Curves.easeOutCubic)),
+    );
+    _logoSlide = Tween<Offset>(begin: const Offset(0, -0.15), end: Offset.zero).animate(
+      CurvedAnimation(parent: _masterController, curve: const Interval(0.0, 0.50, curve: Curves.easeOutCubic)),
+    );
+
+    // Tagline
+    _taglineFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _masterController, curve: const Interval(0.35, 0.70, curve: Curves.easeOut)),
+    );
+    _taglineSlide = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
+      CurvedAnimation(parent: _masterController, curve: const Interval(0.35, 0.70, curve: Curves.easeOutCubic)),
+    );
+
+    // Gold divider
+    _dividerWidth = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _masterController, curve: const Interval(0.55, 0.80, curve: Curves.easeOutCubic)),
+    );
+
+    // Footer
+    _footerFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _masterController, curve: const Interval(0.70, 1.0, curve: Curves.easeOut)),
+    );
+
+    // Shimmer & Pulse
+    _shimmer = Tween<double>(begin: -1.0, end: 2.0).animate(
+      CurvedAnimation(parent: _shimmerController, curve: Curves.easeInOut),
+    );
+  }
+
+  // ── Downloader ────────────────────────────────────
   Future<void> _initializeAndSetupDownloader() async {
     try {
       await FlutterDownloader.initialize(debug: true, ignoreSsl: true);
@@ -171,10 +213,7 @@ class SplashScreenState extends State<SplashScreen>
           .doc('version')
           .get();
 
-      if (!snapshot.exists) {
-        debugPrint("Version document not found in Firestore");
-        return;
-      }
+      if (!snapshot.exists) return;
 
       Map<String, dynamic>? data;
       try {
@@ -184,19 +223,13 @@ class SplashScreenState extends State<SplashScreen>
         return;
       }
 
-      if (data == null) {
-        debugPrint("Data from Firestore is null");
-        return;
-      }
+      if (data == null) return;
 
       final latestVersion = data['current_version'] as String?;
       final forceUpdate = data['force_update'] as bool?;
       final downloadUrl = data['download_url'] as String?;
 
-      if (latestVersion == null || downloadUrl == null) {
-        debugPrint("Version or download URL not found");
-        return;
-      }
+      if (latestVersion == null || downloadUrl == null) return;
 
       PackageInfo packageInfo = await PackageInfo.fromPlatform();
       String currentVersion = packageInfo.version;
@@ -224,15 +257,12 @@ class SplashScreenState extends State<SplashScreen>
     dialogSetState(() {
       _isDownloading = true;
       _installationInitiated = false;
-      _downloadProgress = 0.0;
-      _downloadMessage = "Preparing download...";
     });
 
     bool permissionsGranted = await _requestPermissions();
     if (!permissionsGranted) {
       dialogSetState(() {
         _isDownloading = false;
-        _downloadMessage = "Permissions required to download update.";
       });
       onDownloadCancelledOrFailed();
       return;
@@ -245,7 +275,7 @@ class SplashScreenState extends State<SplashScreen>
         await downloadDir.create(recursive: true);
       }
 
-      final String fileName = 'app-update-${DateTime.now().millisecondsSinceEpoch}.apk';
+      final String fileName = 'kroscek-update-${DateTime.now().millisecondsSinceEpoch}.apk';
 
       final taskId = await FlutterDownloader.enqueue(
         url: apkUrl,
@@ -263,13 +293,11 @@ class SplashScreenState extends State<SplashScreen>
       _downloadTaskId = taskId;
 
       dialogSetState(() {
-        _downloadMessage = "Download starting...";
       });
 
     } catch (e) {
       dialogSetState(() {
         _isDownloading = false;
-        _downloadMessage = "Error during download: ${e.toString()}";
       });
       debugPrint("Error during download process: $e");
       onDownloadCancelledOrFailed();
@@ -342,7 +370,6 @@ class SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     setState(() {
-      _downloadMessage = "Opening APK file for installation...";
       _installationInitiated = false;
     });
 
@@ -354,7 +381,6 @@ class SplashScreenState extends State<SplashScreen>
       if (tasks == null || tasks.isEmpty) {
         debugPrint("No task found with ID: $taskId");
         setState(() {
-          _downloadMessage = "Downloaded file not found. Please try again.";
           _isDownloading = false;
         });
         return;
@@ -391,7 +417,6 @@ class SplashScreenState extends State<SplashScreen>
             debugPrint("Intent launched for installation");
 
             setState(() {
-              _downloadMessage = "Installation started. Please follow the system prompts.";
               _installationInitiated = true;
             });
           } catch (intentError) {
@@ -402,13 +427,11 @@ class SplashScreenState extends State<SplashScreen>
               debugPrint("OpenFile result: ${openAnyResult.message}");
 
               setState(() {
-                _downloadMessage = "Installation started. Please follow the system prompts.";
                 _installationInitiated = true;
               });
             } catch (openError) {
               debugPrint("Error opening file: $openError");
               setState(() {
-                _downloadMessage = "Could not open the APK file. Please install manually from: $filePath";
                 _isDownloading = false;
               });
             }
@@ -416,41 +439,79 @@ class SplashScreenState extends State<SplashScreen>
         } else {
           debugPrint("FlutterDownloader.open succeeded");
           setState(() {
-            _downloadMessage = "Installation started. Please follow the system prompts.";
             _installationInitiated = true;
           });
         }
       } else {
         debugPrint("File does not exist at path: $filePath");
         setState(() {
-          _downloadMessage = "Downloaded APK file not found at the expected location.";
           _isDownloading = false;
         });
       }
     } catch (e) {
       debugPrint("Error during installation attempt: $e");
       setState(() {
-        _downloadMessage = "Error during installation: ${e.toString()}";
         _isDownloading = false;
       });
     }
   }
 
+  // ── INI FUNGSI KRUSIAL: Pengecekan status login via SessionManager ────────
+  Future<void> _checkLoginStatus() async {
+    if (_isDownloading || _installationInitiated) return;
+
+    final supabaseUser = Supabase.instance.client.auth.currentUser;
+    final session      = await SessionManager.instance.getActiveSession();
+
+    // Kedua-duanya harus valid — Supabase session + local session
+    final isLoggedIn = supabaseUser != null && session != null;
+    final userRole   = session?.role;
+
+    if (!mounted) return;
+
+    if (isLoggedIn && userRole != null) {
+      switch (userRole.toLowerCase()) {
+        case 'admin':
+          context.go('/admin');
+          break;
+        case 'psp':
+          context.go('/psp');
+          break;
+        case 'hsp':
+          context.go('/hsp');
+          break;
+        case 'psphsp':
+          context.go('/psphsp');
+          break;
+        case 'pi':
+          context.go('/pi');
+          break;
+      // FI, SPV, Dev, Manager, QA → /qa
+        default:
+          context.go('/qa');
+          break;
+      }
+    } else {
+      context.go('/login');
+    }
+  }
+
+  // ── Update Dialog (UI Baru, Logika Lama) ────────────────────────────────
   void _showUpdateDialog(bool forceUpdate, String newVersion, String apkUrl) {
     debugPrint("Showing update dialog: force=$forceUpdate, url=$apkUrl");
 
-    _isDownloading = false;
+    _isDownloading        = false;
     _installationInitiated = false;
-    _downloadProgress = 0.0;
-    _downloadMessage = "";
-    _downloadTaskId = null;
+    _downloadTaskId       = null;
 
     showDialog(
-      context: context,
+      context          : context,
       barrierDismissible: !forceUpdate && !_isDownloading,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
-          builder: (context, StateSetter dialogSetState) {
+          builder: (ctx, StateSetter dialogSetState) {
+
+            // Menggunakan logic handle lanjutan dari yang lama
             void handleNonForcedUpdateContinuation() {
               if (!forceUpdate && mounted) {
                 debugPrint("Non-forced update cancelled or failed, closing dialog and proceeding.");
@@ -471,103 +532,197 @@ class SplashScreenState extends State<SplashScreen>
                 }
               },
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                 child: Dialog(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24.0),
-                  ),
-                  elevation: 0,
+                  shape          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  elevation      : 0,
                   backgroundColor: Colors.transparent,
                   child: Container(
-                    padding: const EdgeInsets.all(24),
+                    padding   : const EdgeInsets.all(0),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Colors.white,
-                          Colors.green.shade50,
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
+                      color       : AdvantaColors.cream,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow   : [
                         BoxShadow(
-                          color: Colors.green.withAlpha(60),
-                          blurRadius: 30,
-                          spreadRadius: 0,
-                          offset: const Offset(0, 10),
+                          color     : AdvantaColors.deepForest.withAlpha(80),
+                          blurRadius: 40,
+                          offset    : const Offset(0, 16),
                         ),
                       ],
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _isDownloading || _installationInitiated
-                            ? _buildProgressHeader(dialogSetState)
-                            : _buildUpdateHeader(),
-
-                        const SizedBox(height: 20),
-
+                      children    : [
+                        // Header strip
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [Colors.green.shade400, Colors.green.shade600],
+                          padding     : const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                          decoration  : const BoxDecoration(
+                            color       : AdvantaColors.primaryGreen,
+                            borderRadius: BorderRadius.only(
+                              topLeft : Radius.circular(20),
+                              topRight: Radius.circular(20),
                             ),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.green.withAlpha(60),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding   : const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color       : AdvantaColors.gold.withAlpha(40),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border      : Border.all(color: AdvantaColors.gold.withAlpha(100)),
+                                ),
+                                child: const Icon(Icons.system_update_rounded, color: AdvantaColors.goldLight, size: 22),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Pembaruan Tersedia',
+                                      style: TextStyle(
+                                        color     : Colors.white,
+                                        fontSize  : 16,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Versi $newVersion',
+                                      style: TextStyle(color: Colors.white.withAlpha(180), fontSize: 13),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (forceUpdate)
+                                Container(
+                                  padding   : const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color       : AdvantaColors.gold,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Text(
+                                    'WAJIB',
+                                    style: TextStyle(
+                                      color     : AdvantaColors.charcoal,
+                                      fontSize  : 11,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+
+                        // Body
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                forceUpdate
+                                    ? 'Pembaruan wajib dipasang untuk melanjutkan penggunaan aplikasi.'
+                                    : 'Versi terbaru tersedia. Disarankan untuk memperbarui agar mendapatkan fitur terkini.',
+                                style: const TextStyle(
+                                  color : AdvantaColors.charcoal,
+                                  fontSize: 14,
+                                  height  : 1.55,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+
+                              // Download progress
+                              ValueListenableBuilder<double>(
+                                valueListenable: _downloadProgressNotifier,
+                                builder: (_, prog, __) {
+                                  if (!_isDownloading) return const SizedBox.shrink();
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(4),
+                                        child: LinearProgressIndicator(
+                                          value          : prog,
+                                          minHeight      : 6,
+                                          backgroundColor: AdvantaColors.primaryGreen.withAlpha(30),
+                                          valueColor     : const AlwaysStoppedAnimation<Color>(AdvantaColors.gold),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      ValueListenableBuilder<String>(
+                                        valueListenable: _downloadMessageNotifier,
+                                        builder: (_, msg, __) => Text(
+                                          msg,
+                                          style: const TextStyle(
+                                            color   : AdvantaColors.primaryGreen,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                    ],
+                                  );
+                                },
+                              ),
+
+                              // Buttons
+                              Row(
+                                children: [
+                                  if (!forceUpdate && !_isDownloading) ...[
+                                    Expanded(
+                                      child: OutlinedButton(
+                                        onPressed: handleNonForcedUpdateContinuation,
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 14),
+                                          shape  : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                          side   : const BorderSide(color: AdvantaColors.midGreen),
+                                        ),
+                                        child: const Text(
+                                          'Nanti',
+                                          style: TextStyle(color: AdvantaColors.primaryGreen, fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                  ],
+                                  Expanded(
+                                    flex: 2,
+                                    child: ElevatedButton(
+                                      onPressed: _isDownloading
+                                          ? null
+                                          : () => _downloadAndInstallUpdate(apkUrl, dialogSetState, handleNonForcedUpdateContinuation),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AdvantaColors.primaryGreen,
+                                        foregroundColor: Colors.white,
+                                        disabledBackgroundColor: AdvantaColors.primaryGreen.withAlpha(100),
+                                        padding  : const EdgeInsets.symmetric(vertical: 14),
+                                        shape    : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        elevation: 0,
+                                      ),
+                                      child: _isDownloading
+                                          ? const SizedBox(
+                                        width : 18,
+                                        height: 18,
+                                        child : CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color      : Colors.white,
+                                        ),
+                                      )
+                                          : const Text(
+                                        'Unduh & Pasang',
+                                        style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.3),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                          child: Text(
-                            "Version $newVersion",
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
                         ),
-                        const SizedBox(height: 20),
-
-                        if (!_isDownloading && !_installationInitiated)
-                          Text(
-                            forceUpdate
-                                ? "Pembaruan diperlukan untuk melanjutkan"
-                                : "Versi baru tersedia. Update sekarang?",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey.shade800,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-
-                        if (_isDownloading || _installationInitiated) ...[
-                          const SizedBox(height: 25),
-                          _buildProgressIndicator(),
-                        ],
-
-                        const SizedBox(height: 25),
-
-                        if (!_isDownloading && !_installationInitiated) ...[
-                          _buildActionButtons(forceUpdate, apkUrl, dialogSetState, handleNonForcedUpdateContinuation),
-                        ],
-
-                        if (_installationInitiated)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 15.0),
-                            child: Text(
-                              "Ikuti petunjuk sistem untuk menyelesaikan instalasi",
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                            ),
-                          ),
                       ],
                     ),
                   ),
@@ -590,656 +745,333 @@ class SplashScreenState extends State<SplashScreen>
     });
   }
 
-  Widget _buildUpdateHeader() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.green.shade400, Colors.green.shade600],
-        ),
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.green.withAlpha(100),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: const Icon(
-        Icons.system_update_rounded,
-        color: Colors.white,
-        size: 48,
-      ),
-    );
-  }
+  @override
+  void dispose() {
+    _masterController.dispose();
+    _shimmerController.dispose();
+    _pulseController.dispose();
 
-  Widget _buildProgressHeader(StateSetter setState) {
-    IconData icon;
-    List<Color> colors;
-
-    if (_installationInitiated) {
-      icon = Icons.android_rounded;
-      colors = [Colors.green.shade400, Colors.green.shade600];
-    } else if (_downloadProgress >= 1.0) {
-      icon = Icons.check_circle_rounded;
-      colors = [Colors.green.shade400, Colors.green.shade600];
-    } else {
-      icon = Icons.download_rounded;
-      colors = [Colors.blue.shade400, Colors.blue.shade600];
+    if (_isPortInitialized) {
+      IsolateNameServer.removePortNameMapping('downloader_send_port');
     }
+    _port.close();
+    _downloadProgressNotifier.dispose();
+    _downloadMessageNotifier.dispose();
+    super.dispose();
+  }
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: colors),
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: colors[0].withAlpha(100),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
+  // ── BUILD (TERINTEGRASI DENGAN THEME) ───────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    // Warna adaptif untuk Background Splash
+    final bgColors = isDark
+        ? [AdvantaColors.deepForest, const Color(0xFF112E20), const Color(0xFF0A2318)] // Corporate Luxury
+        : [AdvantaColors.cream, AdvantaColors.softGrey, const Color(0xFFE0E3E0)]; // High Readability Light Mode
+
+    // Warna adaptif untuk teks
+    final mainTextColor = isDark ? Colors.white : AdvantaColors.deepForest;
+    final subTextColor = isDark ? Colors.white.withAlpha(170) : AdvantaColors.midGreen;
+    final accentLineColor = isDark ? AdvantaColors.gold : AdvantaColors.primaryGreen;
+
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: Stack(
+        children: [
+          // ── 1. Background Dinamis ─────
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: bgColors,
+                  stops: const [0.0, 0.6, 1.0],
+                ),
+              ),
+            ),
+          ),
+
+          // ── 2. Subtle geometric pattern ─
+          Positioned.fill(
+            child: CustomPaint(painter: _HexPatternPainter(isDark)),
+          ),
+
+          // ── 3. Accent arc top-right ──────────
+          Positioned(
+            top: -size.width * 0.35,
+            right: -size.width * 0.35,
+            child: Container(
+              width: size.width * 0.9,
+              height: size.width * 0.9,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: accentLineColor.withAlpha(isDark ? 25 : 15),
+                  width: 1.5,
+                ),
+              ),
+            ),
+          ),
+
+          // ── 5. Main Content ───────────────────────
+          SafeArea(
+            child: AnimatedBuilder(
+              animation: _masterController,
+              builder: (_, __) {
+                return Column(
+                  children: [
+                    SizedBox(height: size.height * 0.10),
+                    Opacity(
+                      opacity: _logoFade.value,
+                      child: Transform.translate(
+                        offset: Offset(0, _logoSlide.value.dy * 60),
+                        child: Transform.scale(
+                          scale: _logoScale.value,
+                          child: _buildLogoBlock(mainTextColor, subTextColor, isDark),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: size.height * 0.045),
+                    _buildAnimatedDivider(accentLineColor),
+                    SizedBox(height: size.height * 0.04),
+                    Opacity(
+                      opacity: _taglineFade.value,
+                      child: Transform.translate(
+                        offset: Offset(0, _taglineSlide.value.dy * 40),
+                        child: _buildTagline(isDark),
+                      ),
+                    ),
+                    const Spacer(),
+                    Opacity(
+                      opacity: _footerFade.value,
+                      child: _buildLoadingSection(accentLineColor, mainTextColor),
+                    ),
+                    SizedBox(height: size.height * 0.07),
+                    Opacity(
+                      opacity: _footerFade.value,
+                      child: _buildFooter(mainTextColor, accentLineColor),
+                    ),
+                    const SizedBox(height: 28),
+                  ],
+                );
+              },
+            ),
           ),
         ],
-      ),
-      child: Icon(
-        icon,
-        color: Colors.white,
-        size: 48,
       ),
     );
   }
 
-  Widget _buildProgressIndicator() {
-    return ValueListenableBuilder<double>(
-      valueListenable: _downloadProgressNotifier,
-      builder: (context, progress, _) {
-        return ValueListenableBuilder<String>(
-          valueListenable: _downloadMessageNotifier,
-          builder: (context, message, _) {
-            return Column(
-              children: [
-                if (_isDownloading && !_installationInitiated) ...[
-                  Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      SizedBox(
-                        height: 100,
-                        width: 100,
-                        child: CircularProgressIndicator(
-                          value: progress,
-                          backgroundColor: Colors.grey.shade200,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                              progress >= 1.0 ? Colors.green.shade600 : Colors.blue.shade600
-                          ),
-                          strokeWidth: 10,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withAlpha(25),
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          "${(progress * 100).toInt()}%",
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: progress >= 1.0 ? Colors.green.shade800 : Colors.blue.shade800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                ],
-
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.blue.shade200,
-                      width: 1,
-                    ),
-                  ),
-                  child: Text(
-                    "Proses download sedang berlangsung, cek di bilah notifikasi.\n*Jika download selesai, cek apk di folder download (file manager).",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.blue.shade800,
-                      fontStyle: FontStyle.italic,
-                      height: 1.4,
-                    ),
-                  ),
+  Widget _buildLogoBlock(Color mainText, Color subText, bool isDark) {
+    return Column(
+      children: [
+        Container(
+          width: 120, height: 120,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: (isDark ? AdvantaColors.gold : AdvantaColors.primaryGreen).withAlpha(60), width: 1.5),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [AdvantaColors.primaryGreen, AdvantaColors.deepForest],
                 ),
-                const SizedBox(height: 20),
-
-                if (message.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(message).withAlpha(25),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _getStatusColor(message).withAlpha(76),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _getStatusIcon(message),
-                          color: _getStatusColor(message),
-                          size: 22,
-                        ),
-                        const SizedBox(width: 10),
-                        Flexible(
-                          child: Text(
-                            message,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: _getStatusColor(message),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AdvantaColors.lightGreen.withAlpha(isDark ? 60 : 20),
+                    blurRadius: 24, spreadRadius: 2,
                   ),
-              ],
-            );
-          },
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(22),
+                child: SvgPicture.asset(
+                  'assets/logo_kc.svg',
+                  placeholderBuilder: (_) => const Icon(Icons.agriculture_rounded, color: Colors.white, size: 36),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 28),
+        Text('KROSCEK', style: TextStyle(color: mainText, fontSize: 34, fontWeight: FontWeight.w900, letterSpacing: 6)),
+        const SizedBox(height: 8),
+        Text('Crop Inspection and Check Result', style: TextStyle(color: subText, fontSize: 13, letterSpacing: 2.5)),
+      ],
+    );
+  }
+
+  Widget _buildAnimatedDivider(Color accentColor) {
+    return AnimatedBuilder(
+      animation: _shimmerController,
+      builder: (_, __) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 60),
+          child: SizedBox(
+            height: 2,
+            child: LayoutBuilder(
+              builder: (_, constraints) {
+                final w = constraints.maxWidth * _dividerWidth.value;
+                return Center(
+                  child: ShaderMask(
+                    shaderCallback: (bounds) => LinearGradient(
+                      colors: [
+                        Colors.transparent,
+                        accentColor,
+                        AdvantaColors.goldLight,
+                        accentColor,
+                        Colors.transparent,
+                      ],
+                      stops: [
+                        0.0,
+                        (_shimmer.value - 0.3).clamp(0.0, 1.0),
+                        _shimmer.value.clamp(0.0, 1.0),
+                        (_shimmer.value + 0.3).clamp(0.0, 1.0),
+                        1.0,
+                      ],
+                    ).createShader(bounds),
+                    child: Container(width: w, height: 2, color: Colors.white),
+                  ),
+                );
+              },
+            ),
+          ),
         );
       },
     );
   }
 
-  Color _getStatusColor(String message) {
-    if (message.contains("failed") || message.contains("Error") || message.contains("Gagal")) {
-      return Colors.red.shade700;
-    } else if (message.contains("complete") || message.contains("Installation started")) {
-      return Colors.green.shade700;
-    } else if (message.contains("paused")) {
-      return Colors.orange.shade700;
-    } else {
-      return Colors.blue.shade700;
-    }
-  }
-
-  IconData _getStatusIcon(String message) {
-    if (message.contains("failed") || message.contains("Error") || message.contains("Gagal")) {
-      return Icons.error_outline_rounded;
-    } else if (message.contains("complete") || message.contains("Installation started")) {
-      return Icons.check_circle_outline_rounded;
-    } else if (message.contains("paused")) {
-      return Icons.pause_circle_outline_rounded;
-    } else if (message.contains("Preparing")) {
-      return Icons.settings_rounded;
-    } else {
-      return Icons.info_outline_rounded;
-    }
-  }
-
-  Widget _buildActionButtons(bool forceUpdate, String apkUrl, StateSetter setState, VoidCallback onCancelCallback) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildTagline(bool isDark) {
+    final badgeColor = isDark ? AdvantaColors.gold : AdvantaColors.primaryGreen;
+    return Column(
       children: [
-        if (!forceUpdate)
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withAlpha(40),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: OutlinedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: BorderSide(color: Colors.grey.shade300, width: 2),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  backgroundColor: Colors.white,
-                ),
-                child: Text(
-                  "Nanti",
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey.shade700,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: badgeColor.withAlpha(80)),
+            borderRadius: BorderRadius.circular(4),
           ),
-        if (!forceUpdate) const SizedBox(width: 15),
-
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              gradient: LinearGradient(
-                colors: [Colors.green.shade400, Colors.green.shade600],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.green.withAlpha(80),
-                  blurRadius: 12,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: ElevatedButton(
-              onPressed: () {
-                _downloadAndInstallUpdate(apkUrl, setState, onCancelCallback);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                elevation: 0,
-                shadowColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(
-                _downloadMessage.contains("failed") || _downloadMessage.contains("Error") || _downloadMessage.contains("Gagal")
-                    ? "Coba Lagi"
-                    : "Update Sekarang",
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 6, height: 6, decoration: BoxDecoration(color: badgeColor, shape: BoxShape.circle)),
+              const SizedBox(width: 10),
+              Text('INSPECTIONS APP', style: TextStyle(color: badgeColor, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 2.0)),
+              const SizedBox(width: 10),
+              Container(width: 6, height: 6, decoration: BoxDecoration(color: badgeColor, shape: BoxShape.circle)),
+            ],
           ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Solusi Audit Lahan\nBerbasis Data Real-Time',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: isDark ? Colors.white.withAlpha(200) : AdvantaColors.charcoal, fontSize: 15, height: 1.7),
         ),
       ],
     );
   }
 
-  Future<void> _checkLoginStatus() async {
-    if (_isDownloading || _installationInitiated) {
-      debugPrint("Update process active, _checkLoginStatus deferred.");
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    final userRole = prefs.getString('userRole');
-
-    if (!mounted) return;
-
-    debugPrint("Checking login status: isLoggedIn=$isLoggedIn, userRole=$userRole");
-
-    if (isLoggedIn && userRole != null) {
-      switch (userRole) {
-        case 'admin':
-          context.go('/admin');
-          break;
-        case 'psp':
-          context.go('/psp');
-          break;
-        case 'hsp':
-          context.go('/hsp');
-          break;
-        case 'psphsp':
-          context.go('/psphsp');
-          break;
-        default:
-          context.go('/qa');
-          break;
-      }
-    } else {
-      context.go('/login');
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-
-    if (_isPortInitialized) {
-      IsolateNameServer.removePortNameMapping('downloader_send_port');
-    }
-
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-
-    return Scaffold(
-      body: Container(
-        width: size.width,
-        height: size.height,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.green.shade700,
-              Colors.green.shade800,
-              Colors.green.shade900,
-            ],
-          ),
-        ),
-        child: Stack(
+  Widget _buildLoadingSection(Color accentColor, Color textColor) {
+    return AnimatedBuilder(
+      animation: _pulseController,
+      builder: (_, __) {
+        return Column(
           children: [
-            // Decorative Background Circles
-            Positioned(
-              top: -100,
-              right: -100,
-              child: Container(
-                width: 300,
-                height: 300,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withAlpha(12),
-                ),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(3, (i) {
+                final delay = i * 0.33;
+                final t = ((_pulseController.value - delay) % 1.0).abs();
+                final opacity = Curves.easeInOut.transform((t < 0.5 ? t * 2 : (1 - t) * 2).clamp(0.3, 1.0));
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 5),
+                  width: 8, height: 8,
+                  decoration: BoxDecoration(color: accentColor.withAlpha((opacity * 255).round()), shape: BoxShape.circle),
+                );
+              }),
             ),
-            Positioned(
-              bottom: -150,
-              left: -120,
-              child: Container(
-                width: 350,
-                height: 350,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withAlpha(7),
-                ),
-              ),
-            ),
-            Positioned(
-              top: size.height * 0.3,
-              right: -80,
-              child: Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withAlpha(5),
-                ),
-              ),
-            ),
-
-            // Main Content
-            Center(
-              child: AnimatedBuilder(
-                animation: _controller,
-                builder: (context, child) {
-                  return Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Logo dengan Multiple Animations
-                      Opacity(
-                        opacity: _opacityAnimation.value,
-                        child: Transform.scale(
-                          scale: _scaleAnimation.value,
-                          child: SlideTransition(
-                            position: _slideAnimation,
-                            child: Container(
-                              padding: const EdgeInsets.all(5),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    Colors.white.withAlpha(76),
-                                    Colors.white.withAlpha(25),
-                                  ],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withAlpha(76),
-                                    blurRadius: 30,
-                                    spreadRadius: 5,
-                                    offset: const Offset(0, 10),
-                                  ),
-                                ],
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.white,
-                                ),
-                                child: CircleAvatar(
-                                  radius: 70,
-                                  backgroundColor: Colors.green.shade100,
-                                  backgroundImage: const AssetImage('assets/logo.png'),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      SizedBox(height: size.height * 0.05),
-
-                      // App Title dengan Gradient Text Effect
-                      Opacity(
-                        opacity: _opacityAnimation.value,
-                        child: SlideTransition(
-                          position: _slideAnimation,
-                          child: ShaderMask(
-                            shaderCallback: (bounds) => LinearGradient(
-                              colors: [
-                                Colors.white,
-                                Colors.white.withAlpha(229),
-                              ],
-                            ).createShader(bounds),
-                            child: const Text(
-                              'Crop Inspection',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 32,
-                                letterSpacing: 1.2,
-                                shadows: [
-                                  Shadow(
-                                    color: Colors.black26,
-                                    blurRadius: 10,
-                                    offset: Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      // Subtitle
-                      Opacity(
-                        opacity: _opacityAnimation.value,
-                        child: SlideTransition(
-                          position: _slideAnimation,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withAlpha(38),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: Colors.white.withAlpha(76),
-                                width: 1,
-                              ),
-                            ),
-                            child: Text(
-                              'and Check Result',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white.withAlpha(229),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 18,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      SizedBox(height: size.height * 0.15),
-
-                      // Loading Indicator dengan Premium Style
-                      Opacity(
-                        opacity: _opacityAnimation.value,
-                        child: Column(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withAlpha(25),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withAlpha(51),
-                                    blurRadius: 20,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                              child: SizedBox(
-                                width: 32,
-                                height: 32,
-                                child: CircularProgressIndicator(
-                                  valueColor: const AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                  strokeWidth: 3,
-                                  backgroundColor: Colors.white.withAlpha(76),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            Text(
-                              'Ngrantos sekedap...',
-                              style: TextStyle(
-                                color: Colors.white.withAlpha(204),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      SizedBox(height: size.height * 0.08),
-
-                      // Footer Information
-                      Opacity(
-                        opacity: _opacityAnimation.value,
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 180,
-                              height: 1,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Colors.transparent,
-                                    Colors.white.withAlpha(102),
-                                    Colors.transparent,
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              '© 2024 Tim Cengoh',
-                              style: TextStyle(
-                                color: Colors.white.withAlpha(204),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Ahli Huru-Hara',
-                              style: TextStyle(
-                                color: Colors.white.withAlpha(153),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withAlpha(25),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: Colors.white.withAlpha(51),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.info_outline_rounded,
-                                    size: 14,
-                                    color: Colors.white.withAlpha(204),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Version $_version',
-                                    style: TextStyle(
-                                      color: Colors.white.withAlpha(204),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 0.3,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
+            const SizedBox(height: 14),
+            Text('Memuat sistem...', style: TextStyle(color: textColor.withAlpha(120), fontSize: 12, letterSpacing: 1.5)),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
+
+  Widget _buildFooter(Color textColor, Color accentColor) {
+    return Column(
+      children: [
+        Container(width: 48, height: 1, color: accentColor.withAlpha(60)),
+        const SizedBox(height: 14),
+        Text('© 2024-${DateTime.now().year} Advanta Seeds Indonesia', style: TextStyle(color: textColor.withAlpha(100), fontSize: 11)),
+        const SizedBox(height: 6),
+        if (_version.isNotEmpty)
+          Text('v$_version', style: TextStyle(color: accentColor, fontSize: 11, fontWeight: FontWeight.w700)),
+      ],
+    );
+  }
+}
+
+// Tambahkan penyesuaian parameter warna ke HexPatternPainter
+class _HexPatternPainter extends CustomPainter {
+  final bool isDark;
+  _HexPatternPainter(this.isDark);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = isDark ? const Color(0x06FFFFFF) : const Color(0x06000000)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
+
+    const r   = 28.0;
+    const h   = r * 1.732; // sqrt(3) * r
+    const col = r * 1.5;
+
+    int row = 0;
+    for (double y = -h; y < size.height + h; y += h) {
+      final offset = (row % 2 == 0) ? 0.0 : col;
+      for (double x = -col + offset; x < size.width + col; x += col * 2) {
+        _drawHex(canvas, paint, Offset(x, y), r);
+      }
+      row++;
+    }
+  }
+
+  void _drawHex(Canvas canvas, Paint paint, Offset center, double r) {
+    final path = Path();
+    for (int i = 0; i < 6; i++) {
+      final angle = (i * 60 - 30) * 3.14159 / 180;
+      final px    = center.dx + r * _cos(angle);
+      final py    = center.dy + r * _sin(angle);
+      if (i == 0) {
+        path.moveTo(px, py);
+      } else {
+        path.lineTo(px, py);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  static double _cos(double x) {
+    x = x % (2 * 3.14159265);
+    return 1 - x * x / 2 + x * x * x * x / 24;
+  }
+
+  static double _sin(double x) {
+    x = x % (2 * 3.14159265);
+    return x - x * x * x / 6 + x * x * x * x * x / 120;
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

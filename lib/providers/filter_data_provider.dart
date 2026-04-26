@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'master_fields_provider.dart';
 
 // ============================================================================
-// 1. PROVIDER REGION
+// 1. REGIONS — semua region unik dari master fields
 // ============================================================================
 final uniqueRegionsProvider = Provider<List<String>>((ref) {
   final allFields = ref.watch(masterFieldsProvider).value ?? [];
@@ -15,15 +15,16 @@ final uniqueRegionsProvider = Provider<List<String>>((ref) {
 });
 
 // ============================================================================
-// 2. PROVIDER DISTRICT (🌟 HANYA Difilter Berdasarkan Region)
+// 2. DISTRICTS — difilter berdasarkan region yang dipilih
+//    Jika selectedRegion null/'All', tampilkan semua district
 // ============================================================================
-// Kita hapus DistrictFilterParams dan langsung pakai String? selectedRegion
 final uniqueDistrictsProvider = Provider.family<List<String>, String?>((ref, selectedRegion) {
   final allFields = ref.watch(masterFieldsProvider).value ?? [];
-  return allFields.where((field) {
+  return allFields
+      .where((field) {
     if (selectedRegion == null || selectedRegion == 'All') return true;
-    final region = field['region']?.toString().trim().toLowerCase() ?? '';
-    return region == selectedRegion.toLowerCase();
+    final region = field['region']?.toString().trim() ?? '';
+    return region.toLowerCase() == selectedRegion.toLowerCase();
   })
       .map((e) => e['district_kab']?.toString().trim() ?? '')
       .where((e) => e.isNotEmpty)
@@ -33,21 +34,93 @@ final uniqueDistrictsProvider = Provider.family<List<String>, String?>((ref, sel
 });
 
 // ============================================================================
-// 3. PROVIDER QA SPV (Difilter berdasarkan Region DAN District)
+// 3. SUB-DISTRICTS (Kecamatan) — difilter berdasarkan region + district
+// ============================================================================
+class DistrictFilterParams {
+  final String? region;
+  final String? district;
+  const DistrictFilterParams({this.region, this.district});
+
+  @override
+  bool operator ==(Object other) =>
+      other is DistrictFilterParams && other.region == region && other.district == district;
+
+  @override
+  int get hashCode => region.hashCode ^ district.hashCode;
+}
+
+final uniqueSubDistrictsProvider = Provider.family<List<String>, DistrictFilterParams>((ref, params) {
+  final allFields = ref.watch(masterFieldsProvider).value ?? [];
+  return allFields
+      .where((field) {
+    final region = field['region']?.toString().trim() ?? '';
+    final district = field['district_kab']?.toString().trim() ?? '';
+    final matchRegion = params.region == null || params.region == 'All' ||
+        region.toLowerCase() == params.region!.toLowerCase();
+    final matchDistrict = params.district == null || params.district == 'All' ||
+        district.toLowerCase() == params.district!.toLowerCase();
+    return matchRegion && matchDistrict;
+  })
+      .map((e) => e['sub_district_kec']?.toString().trim() ?? '')
+      .where((e) => e.isNotEmpty)
+      .toSet()
+      .toList()
+    ..sort();
+});
+
+// ============================================================================
+// 4. VILLAGES — difilter berdasarkan region + district + sub-district
+// ============================================================================
+class VillageFilterParams {
+  final String? region;
+  final String? district;
+  final String? subDistrict;
+  const VillageFilterParams({this.region, this.district, this.subDistrict});
+
+  @override
+  bool operator ==(Object other) =>
+      other is VillageFilterParams &&
+          other.region == region &&
+          other.district == district &&
+          other.subDistrict == subDistrict;
+
+  @override
+  int get hashCode => region.hashCode ^ district.hashCode ^ subDistrict.hashCode;
+}
+
+final uniqueVillagesProvider = Provider.family<List<String>, VillageFilterParams>((ref, params) {
+  final allFields = ref.watch(masterFieldsProvider).value ?? [];
+  return allFields
+      .where((field) {
+    final region = field['region']?.toString().trim() ?? '';
+    final district = field['district_kab']?.toString().trim() ?? '';
+    final subDistrict = field['sub_district_kec']?.toString().trim() ?? '';
+    final matchRegion = params.region == null || params.region == 'All' ||
+        region.toLowerCase() == params.region!.toLowerCase();
+    final matchDistrict = params.district == null || params.district == 'All' ||
+        district.toLowerCase() == params.district!.toLowerCase();
+    final matchSub = params.subDistrict == null || params.subDistrict == 'All' ||
+        subDistrict.toLowerCase() == params.subDistrict!.toLowerCase();
+    return matchRegion && matchDistrict && matchSub;
+  })
+      .map((e) => e['village_desa']?.toString().trim() ?? '')
+      .where((e) => e.isNotEmpty)
+      .toSet()
+      .toList()
+    ..sort();
+});
+
+// ============================================================================
+// 5. QA SPV — difilter berdasarkan region + district
 // ============================================================================
 class QAFilterParams {
   final String? region;
   final String? district;
-
-  QAFilterParams({this.region, this.district});
+  const QAFilterParams({this.region, this.district});
 
   @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is QAFilterParams &&
-        other.region == region &&
-        other.district == district;
-  }
+  bool operator ==(Object other) =>
+      other is QAFilterParams && other.region == region && other.district == district;
 
   @override
   int get hashCode => region.hashCode ^ district.hashCode;
@@ -57,39 +130,51 @@ final uniqueQAProvider = Provider.family<List<String>, QAFilterParams>((ref, fil
   final allFields = ref.watch(masterFieldsProvider).value ?? [];
   final qas = <String>{};
 
-  for (var field in allFields) {
-    final region = field['region']?.toString().trim().toLowerCase() ?? '';
-    final district = field['district_kab']?.toString().trim().toLowerCase() ?? '';
+  for (final field in allFields) {
+    final region = field['region']?.toString().trim() ?? '';
+    final district = field['district_kab']?.toString().trim() ?? '';
 
-    // Cek kecocokan Region dan District
-    bool matchRegion = (filterParams.region == null || filterParams.region == 'All' || region == filterParams.region!.toLowerCase());
-    bool matchDistrict = (filterParams.district == null || filterParams.district == 'All' || district == filterParams.district!.toLowerCase());
+    final matchRegion = filterParams.region == null ||
+        filterParams.region == 'All' ||
+        region.toLowerCase() == filterParams.region!.toLowerCase();
+    final matchDistrict = filterParams.district == null ||
+        filterParams.district == 'All' ||
+        district.toLowerCase() == filterParams.district!.toLowerCase();
 
     if (matchRegion && matchDistrict) {
-      // Ambil QA dari master_fields (field baru)
       final qaFi = field['qa_fi']?.toString().trim();
       final qaSpv = field['qa_spv']?.toString().trim();
-      
       if (qaFi != null && qaFi.isNotEmpty) qas.add(qaFi);
       if (qaSpv != null && qaSpv.isNotEmpty) qas.add(qaSpv);
-
-      // Tetap cek audit untuk data historis jika diperlukan
-      final audits = [
-        field['audit_vegetative'],
-        field['audit_generative'],
-        field['audit_pre_harvest'],
-        field['audit_harvest'],
-      ];
-
-      for (var auditList in audits) {
-        if (auditList is List && auditList.isNotEmpty) {
-          final audit = auditList[0];
-          final spv = audit['qa_spv']?.toString().trim();
-          if (spv != null && spv.isNotEmpty) qas.add(spv);
-        }
-      }
     }
   }
 
   return qas.toList()..sort();
+});
+
+// ============================================================================
+// 6. QA FI ONLY — untuk filter SPV view (hanya FI, bukan SPV)
+// ============================================================================
+final uniqueFIProvider = Provider.family<List<String>, QAFilterParams>((ref, filterParams) {
+  final allFields = ref.watch(masterFieldsProvider).value ?? [];
+  final fis = <String>{};
+
+  for (final field in allFields) {
+    final region = field['region']?.toString().trim() ?? '';
+    final district = field['district_kab']?.toString().trim() ?? '';
+
+    final matchRegion = filterParams.region == null ||
+        filterParams.region == 'All' ||
+        region.toLowerCase() == filterParams.region!.toLowerCase();
+    final matchDistrict = filterParams.district == null ||
+        filterParams.district == 'All' ||
+        district.toLowerCase() == filterParams.district!.toLowerCase();
+
+    if (matchRegion && matchDistrict) {
+      final qaFi = field['qa_fi']?.toString().trim();
+      if (qaFi != null && qaFi.isNotEmpty) fis.add(qaFi);
+    }
+  }
+
+  return fis.toList()..sort();
 });
