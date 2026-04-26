@@ -145,7 +145,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   final _manualLngCtrl     = TextEditingController();
 
   DateTime _auditDateUser = DateTime.now();
-  DateTime? _revPlantingDate = DateTime.now(); // Untuk Rev Planting Date
+  DateTime? _revPlantingDate; // Untuk Rev Planting Date
 
   String? _cropUniformity;    // Pengganti _cropCondition
   String? _cropHealth;        // Variabel baru
@@ -351,7 +351,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
 
 
 
-  void _loadAudit(Map<String, dynamic> audit) {
+  void _loadAudit(Map<String, dynamic> audit, Map<String, dynamic> fieldData) {
     if (_dataLoaded) return;
     _dataLoaded = true;
     _qaFiCtrl.text          = audit['qa_fi']  ?? '';
@@ -374,6 +374,12 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
 
     if (audit['rev_planting_date'] != null) {
       try { _revPlantingDate = DateTime.parse(audit['rev_planting_date']); } catch (_) {}
+    } else {
+      // Fallback to planting_date_pdn if audit has no rev_planting_date
+      final pdn = fieldData['planting_date_pdn'];
+      if (pdn != null) {
+        try { _revPlantingDate = DateTime.parse(pdn.toString()); } catch (_) {}
+      }
     }
 
     setState(() {
@@ -815,7 +821,24 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
               style: AdvantaText.body2.copyWith(color: Theme.of(context).colorScheme.error)),
         ),
         data   : (audit) {
-          if (audit != null) _loadAudit(audit);
+          if (audit != null) {
+            _loadAudit(audit, fieldData);
+          } else {
+            // New audit logic for default value
+            if (!_dataLoaded && fieldData.isNotEmpty) {
+              _dataLoaded = true;
+              final pdn = fieldData['planting_date_pdn'];
+              if (pdn != null) {
+                try {
+                  _revPlantingDate = DateTime.parse(pdn.toString());
+                } catch (_) {
+                  _revPlantingDate = DateTime.now();
+                }
+              } else {
+                _revPlantingDate = DateTime.now();
+              }
+            }
+          }
           return _buildBody(fieldData, isDiscard);
         },
       ),
