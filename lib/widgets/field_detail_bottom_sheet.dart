@@ -51,6 +51,13 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
   late String? _finalPlantingDate; // Menyimpan tanggal yang fix dipakai
   late bool _isPlantingDateRevisied; // Penanda untuk UI (Warna emas jika revisi)
 
+  // ── Penentu Tipe Crop berdasarkan Hybrid ────────────────────
+  bool get _isSweetCorn {
+    final hybrid = widget.field['hybrid']?.toString().toUpperCase().trim() ?? '';
+    // Jika hybrid adalah AX01, AX02, AX03, atau AX04, maka ini Sweet Corn
+    return ['AX01', 'AX02', 'AX03', 'AX04'].contains(hybrid);
+  }
+
   // 2. TAMBAHKAN INIT STATE INI
   @override
   void initState() {
@@ -81,30 +88,59 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
     _recommendedPhase = DapHelper.getRecommendedPhase(_dap);
   }
 
-  // ── Phase data lokal untuk menghindari error ──────────────────
-  static const _phaseKeys = [
-    'vegetative',
-    'generative_1',
-    'generative_2',
-    'generative_3',
-    'pre_harvest',
-    'harvest',
-  ];
+  // ── Phase data dinamis menyesuaikan tipe crop ──────────────────
+  List<String> get _phaseKeys {
+    if (_isSweetCorn) {
+      return [
+        'vegetative', 'generative_1', 'generative_2', 'generative_3',
+        'generative_4', 'generative_5', 'pre_harvest', 'harvest'
+      ];
+    }
+    // Default / Field Corn (FC)
+    return [
+      'vegetative', 'generative_1', 'generative_2', 'generative_3',
+      'pre_harvest', 'harvest'
+    ];
+  }
 
-  List<String> get _phaseLabels => [
-    'Vegetatif', 'Generatif CP1', 'Generatif CP2',
-    'Generatif CP3', 'Pre-Harvest', 'Harvest'
-  ];
+  List<String> get _phaseLabels {
+    if (_isSweetCorn) {
+      return [
+        'Vegetatif', 'Generatif CP1', 'Generatif CP2', 'Generatif CP3',
+        'Generatif CP4', 'Generatif CP5', 'Pre-Harvest', 'Harvest'
+      ];
+    }
+    return [
+      'Vegetatif', 'Generatif CP1', 'Generatif CP2', 'Generatif CP3',
+      'Pre-Harvest', 'Harvest'
+    ];
+  }
 
-  List<IconData> get _phaseIcons => [
-    Icons.grass_rounded, Icons.spa_rounded, Icons.spa_rounded,
-    Icons.spa_rounded, Icons.content_cut_rounded, Icons.agriculture_rounded
-  ];
+  List<IconData> get _phaseIcons {
+    if (_isSweetCorn) {
+      return [
+        Icons.grass_rounded, Icons.spa_rounded, Icons.spa_rounded, Icons.spa_rounded,
+        Icons.spa_rounded, Icons.spa_rounded, Icons.content_cut_rounded, Icons.agriculture_rounded
+      ];
+    }
+    return [
+      Icons.grass_rounded, Icons.spa_rounded, Icons.spa_rounded,
+      Icons.spa_rounded, Icons.content_cut_rounded, Icons.agriculture_rounded
+    ];
+  }
 
-  List<Color> get _phaseColors => [
-    const Color(0xFF43A047), const Color(0xFF7B61FF), const Color(0xFF7B61FF),
-    const Color(0xFF7B61FF), const Color(0xFFE65100), const Color(0xFFD4A017)
-  ];
+  List<Color> get _phaseColors {
+    if (_isSweetCorn) {
+      return [
+        const Color(0xFF43A047), const Color(0xFF7B61FF), const Color(0xFF7B61FF), const Color(0xFF7B61FF),
+        const Color(0xFF7B61FF), const Color(0xFF7B61FF), const Color(0xFFE65100), const Color(0xFFD4A017)
+      ];
+    }
+    return [
+      const Color(0xFF43A047), const Color(0xFF7B61FF), const Color(0xFF7B61FF),
+      const Color(0xFF7B61FF), const Color(0xFFE65100), const Color(0xFFD4A017)
+    ];
+  }
 
   String _getPhaseLabel(String key) {
     final index = _phaseKeys.indexOf(key);
@@ -793,7 +829,16 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
                 onTap: () async {
                   final fieldData = widget.field;
                   Navigator.pop(context);
-                  await context.push('/inspect/$phaseKey/$fieldNumber');
+
+                  // LOGIKA ROUTING:
+                  if (_isSweetCorn) {
+                    // Arahkan ke form khusus Sweet Corn
+                    await context.push('/inspect_sc/$phaseKey/$fieldNumber');
+                  } else {
+                    // Arahkan ke form reguler/lama
+                    await context.push('/inspect/$phaseKey/$fieldNumber');
+                  }
+
                   widget.onInspectDone?.call(fieldData);
                 },
               ),

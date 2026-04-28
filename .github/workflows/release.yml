@@ -81,5 +81,5 @@ jobs:
               \"latest_version\": \"${VERSION}\",
               \"min_version\": \"${VERSION}\",
               \"apk_url\": \"${APK_URL}\",
-              \"force_update\": false
+              \"force_update\": true
             }"

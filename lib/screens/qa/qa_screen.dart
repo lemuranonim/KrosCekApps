@@ -79,6 +79,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
   bool _isLegendVisible = false;
   bool _isSpeedDialOpen = false;
 
+  // ── Polygon overlay ────────────────────────────────────
+  double _currentZoom = 8.0;
+  bool _showPolygons  = true; // toggle on/off oleh user
+
   // ── State Minggu Kerja ──────────────────────────────────
   late List<Map<String, dynamic>> _workWeeks; // UBAH JADI dynamic
   late Map<String, dynamic> _selectedWeek;    // UBAH JADI dynamic
@@ -1043,8 +1047,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   // ─── MAP ─────────────────────────────────────────────────
   Widget _buildMap(List<ParsedFieldData> fieldsData) {
-    final uncoordRaw = fieldsData.where((f) => f.isDefault).map((f) => f.raw).toList();
+    final uncoordRaw  = fieldsData.where((f) => f.isDefault).map((f) => f.raw).toList();
     final coordFields = fieldsData.where((f) => !f.isDefault).toList();
+
+    // Field yang punya WKT polygon (untuk layer polygon)
+    final polygonFields = fieldsData
+        .where((f) => f.geometryWkt != null && f.geometryWkt!.isNotEmpty)
+        .toList();
 
     return FlutterMap(
       mapController: _mapController,
@@ -1052,6 +1061,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
         initialCenter: const LatLng(-7.5, 112.5),
         initialZoom  : 8.0,
         maxZoom      : 18.0,
+        // ── Lacak perubahan zoom untuk polygon visibility ──
+        onMapEvent: (event) {
+          if (event is MapEventMove || event is MapEventScrollWheelZoom) {
+            final newZoom = _mapController.camera.zoom;
+            if ((newZoom - _currentZoom).abs() > 0.3) {
+              setState(() => _currentZoom = newZoom);
+            }
+          }
+        },
         onTap: (_, __) {
           if (_isLegendVisible || _isSpeedDialOpen) {
             setState(() {
@@ -1063,6 +1081,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
         },
       ),
       children: [
+        // ── 1. Tile Layer (basemap) ────────────────────────
         TileLayer(
           urlTemplate: _isSatellite
               ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
@@ -1070,6 +1089,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
           userAgentPackageName: 'com.kroscek.app',
           maxNativeZoom: 18,
         ),
+
+        // ── 2. Polygon Layer (tampil saat zoom >= 14) ──────
+        // Render di bawah marker agar marker tetap terlihat di atas
+        if (_showPolygons && _currentZoom >= 14.0 && polygonFields.isNotEmpty)
+          _buildPolygonLayer(polygonFields),
+
+        // ── 3. User location marker ────────────────────────
         if (_userLocation != null)
           MarkerLayer(
             markers: [
@@ -1081,6 +1107,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
               ),
             ],
           ),
+
+        // ── 4. Uncoord stack marker ────────────────────────
         if (uncoordRaw.length > 4)
           MarkerLayer(
             markers: [
@@ -1095,6 +1123,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
               ),
             ],
           ),
+
+        // ── 5. Field markers (cluster) ────────────────────
         MarkerClusterLayerWidget(
           options: MarkerClusterLayerOptions(
             maxClusterRadius: 45,
@@ -1121,13 +1151,16 @@ class _QAScreenState extends ConsumerState<QAScreen>
       final isSelected = _selectedFieldNumbers.contains(fn);
       final isCorrected = f.isCorrected;
 
-      // ── BARU: parse audit status ──
+      // Parse audit status
       final auditStatus = AuditStatusHelper.fromRaw(f.raw);
 
       result.add(Marker(
         point: LatLng(f.lat, f.lng),
-        width: isCorrected ? 52 : 46,
-        height: isCorrected ? 52 : 46,
+        // Perbesar sedikit box-nya untuk memberi ruang bagi ujung pin dan bayangan
+        width: 56,
+        height: 56,
+        // Penting: Memastikan titik koordinat berada di ujung paling bawah widget ini
+        alignment: Alignment.topCenter,
         child: GestureDetector(
           onTap: () {
             if (_workMode == _WorkMode.mass) {
@@ -1149,57 +1182,74 @@ class _QAScreenState extends ConsumerState<QAScreen>
             }
           },
           child: Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
             children: [
-              Container(
-                width: isCorrected ? 52 : 46,
-                height: isCorrected ? 52 : 46,
-                decoration: BoxDecoration(
-                  color: isSelected ? AdvantaColors.primaryGreen : color,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected
-                        ? Colors.white
-                        : isCorrected
-                        ? AdvantaColors.gold
-                        : Colors.white70,
-                    width: isSelected ? 3.0 : isCorrected ? 2.5 : 1.8,
-                  ),
-                  boxShadow: (isSelected || isCorrected)
-                      ? [
-                    BoxShadow(
-                      color: (isSelected
-                          ? AdvantaColors.primaryGreen
-                          : AdvantaColors.gold)
-                          .withAlpha(140),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                      : null,
-                ),
-                child: Center(
-                  child: isSelected
-                      ? const Icon(Icons.check_rounded,
-                      color: Colors.white, size: 18)
-                      : Text(
-                    '$projectedDap', // Tampilkan angka proyeksi
-                    style: AdvantaText.caption.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      height: 1.0,
+              // ── 1. BENTUK MAP PIN (TEARDROP) ───────────────────
+              // Posisikan sedikit ke bawah agar ujung jarumnya mendekati batas bawah
+              Positioned(
+                bottom: 8,
+                child: Transform.rotate(
+                  // Putar 45 derajat (dalam radian)
+                  angle: 45 * (3.14159265359 / 180),
+                  child: Container(
+                    width: isCorrected ? 38 : 34,
+                    height: isCorrected ? 38 : 34,
+                    decoration: BoxDecoration(
+                      color: isSelected ? AdvantaColors.primaryGreen : color,
+                      // Membuat 3 sudut bulat, 1 sudut lancip (ujung bawah pin)
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20),
+                        bottomLeft: Radius.circular(20),
+                        bottomRight: Radius.circular(3), // Ujung lancip
+                      ),
+                      border: Border.all(
+                        color: isSelected
+                            ? Colors.white
+                            : isCorrected
+                            ? AdvantaColors.gold
+                            : Colors.white,
+                        width: isSelected ? 3.0 : 2.0,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(120),
+                          blurRadius: 6,
+                          offset: const Offset(2, 2),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
 
-              // Badge koreksi (existing — tidak berubah)
+              // ── 2. ANGKA DAP ATAU ICON CENTANG ─────────────────
+              Positioned(
+                // 1. Turunkan posisinya (misal dari 24 ke 20 atau 18)
+                bottom: 18,
+                child: isSelected
+                // Besarkan sedikit ukuran icon centangnya jika terpilih
+                    ? const Icon(Icons.check_rounded, color: Colors.white, size: 22)
+                    : Text(
+                  '$projectedDap',
+                  style: AdvantaText.caption.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14, // 2. Tambahkan ukuran font di sini agar lebih besar
+                    height: 1.0,
+                  ),
+                ),
+              ),
+
+              // ── 3. BADGE KOREKSI (C) ───────────────────────────
               if (isCorrected && !isSelected)
                 Positioned(
-                  top: 0,
-                  right: 0,
+                  top: 8,   // <-- Turunkan sedikit agar menempel dengan pin
+                  right: 8, // <-- Geser ke dalam sedikit
                   child: Container(
-                    width: 15,
-                    height: 15,
+                    width: 16, // <-- Bisa dibesarkan sedikit ke 16 jika terasa kecil
+                    height: 16,
                     decoration: BoxDecoration(
                       color: AdvantaColors.gold,
                       shape: BoxShape.circle,
@@ -1223,13 +1273,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   ),
                 ),
 
-              // ── BARU: Audit status dot di pojok KIRI ATAS ──
-              // Hanya tampil jika belum audit (Dereng/Dereng Jangkep)
-              // sehingga marker tetap bersih untuk yang sudah Sampun
+              // ── 4. AUDIT STATUS DOT ────────────────────────────
               if (!isSelected)
                 Positioned(
-                  top: 0,
-                  left: 0,
+                  top: 8,  // <-- Turunkan posisinya supaya tidak melayang di udara
+                  left: 8, // <-- Geser agak ke kanan supaya pas di sisi kepala pin
                   child: MarkerAuditDot(
                     auditStatus: auditStatus,
                     dap: f.dap,
@@ -1263,6 +1311,67 @@ class _QAScreenState extends ConsumerState<QAScreen>
       ),
     ),
   );
+
+  // ─── WKT POLYGON HELPERS ──────────────────────────────
+
+  /// Parse WKT POLYGON string → [List] of [LatLng] untuk flutter_map.
+  /// Format WKT: POLYGON((lng lat, lng lat, ...))
+  /// Catatan: urutan WKT adalah X(lng) dulu, baru Y(lat).
+  List<LatLng> _parseWktToLatLngs(String wkt) {
+    final match = RegExp(
+      r'POLYGON\s*\(\((.+?)\)\)',
+      caseSensitive: false,
+    ).firstMatch(wkt);
+    if (match == null) return [];
+
+    final result = <LatLng>[];
+    for (final pair in match.group(1)!.split(',')) {
+      final parts = pair.trim().split(RegExp(r'\s+'));
+      if (parts.length < 2) continue;
+      final lng = double.tryParse(parts[0]);
+      final lat = double.tryParse(parts[1]);
+      if (lat != null && lng != null) {
+        result.add(LatLng(lat, lng));
+      }
+    }
+    return result;
+  }
+
+  /// Build PolygonLayer dari semua field yang punya geometryWkt.
+  /// Hanya ditampilkan saat zoom >= 14 agar tidak berantakan di zoom jauh.
+  PolygonLayer _buildPolygonLayer(List<ParsedFieldData> fieldsData) {
+    final polygons = <Polygon>[];
+
+    for (final f in fieldsData) {
+      if (f.geometryWkt == null) continue;
+
+      final points = _parseWktToLatLngs(f.geometryWkt!);
+      if (points.length < 3) continue;
+
+      // Warna polygon berdasarkan sumber koordinat
+      final Color borderColor;
+      final Color fillColor;
+
+      if (f.isCorrected) {
+        // Koreksi manual QA → gold/kuning
+        borderColor = AdvantaColors.gold;
+        fillColor   = AdvantaColors.gold.withAlpha(40);
+      } else {
+        // Dari polygon WKT / koordinat biasa → hijau
+        borderColor = AdvantaColors.lightGreen;
+        fillColor   = AdvantaColors.primaryGreen.withAlpha(35);
+      }
+
+      polygons.add(Polygon(
+        points           : points,
+        color            : fillColor,
+        borderColor      : borderColor,
+        borderStrokeWidth: 1.5,
+      ));
+    }
+
+    return PolygonLayer(polygons: polygons);
+  }
 
   Widget _buildInitialLoadingScreen() => _MapLoadingScreen(shimmerAnim: _shimmerAnim);
 
@@ -1563,6 +1672,17 @@ class _QAScreenState extends ConsumerState<QAScreen>
           onTap : () => setState(() {
             _isLegendVisible = !_isLegendVisible;
           }),
+          ),
+          (
+          icon  : _showPolygons
+              ? Icons.pentagon_rounded
+              : Icons.pentagon_outlined,
+          label : _currentZoom < 14.0 && _showPolygons
+              ? 'Polygon (zoom in)'
+              : 'Polygon',
+          color : AdvantaColors.primaryGreen,
+          active: _showPolygons,
+          onTap : () => setState(() => _showPolygons = !_showPolygons),
           ),
           (
           icon  : _isSatellite ? Icons.map_outlined : Icons.satellite_alt_outlined,

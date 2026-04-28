@@ -25,6 +25,8 @@ import 'screens/admin/audit_dashboard.dart';
 import 'screens/admin/notifications_management.dart';
 // Edit Field Screen
 import 'screens/qa/edit_field_screen.dart';
+// SC
+import 'screens/inspection/form_vegetative_sc.dart';
 
 // New Refactor Screens
 import 'screens/inspection/form_vegetative.dart';
@@ -190,6 +192,56 @@ final router = GoRouter(
     GoRoute(
       path: '/coverage',
       builder: (context, state) => const CoverageScreen(),
+    ),
+
+    // --- SWEET CORN (SC) INSPECTION ROUTES ---
+    GoRoute(
+      path: '/inspect_sc/vegetative/:fieldNumber',
+      builder: (context, state) => FormVegetativeSC(
+        fieldNumber: state.pathParameters['fieldNumber']!,
+      ),
+    ),
+    GoRoute(
+      path: '/inspect_sc/generative_1/:fieldNumber',
+      builder: (context, state) => FormGenerative1SC(
+        fieldNumber: state.pathParameters['fieldNumber']!,
+      ),
+    ),
+    GoRoute(
+      path: '/inspect_sc/generative_2/:fieldNumber',
+      builder: (context, state) => FormGenerative2SC(
+        fieldNumber: state.pathParameters['fieldNumber']!,
+      ),
+    ),
+    GoRoute(
+      path: '/inspect_sc/generative_3/:fieldNumber',
+      builder: (context, state) => FormGenerative3SC(
+        fieldNumber: state.pathParameters['fieldNumber']!,
+      ),
+    ),
+    GoRoute(
+      path: '/inspect_sc/generative_4/:fieldNumber',
+      builder: (context, state) => FormGenerative4SC(
+        fieldNumber: state.pathParameters['fieldNumber']!,
+      ),
+    ),
+    GoRoute(
+      path: '/inspect_sc/generative_5/:fieldNumber',
+      builder: (context, state) => FormGenerative5SC(
+        fieldNumber: state.pathParameters['fieldNumber']!,
+      ),
+    ),
+    GoRoute(
+      path: '/inspect_sc/pre_harvest/:fieldNumber',
+      builder: (context, state) => FormPreHarvestSC(
+        fieldNumber: state.pathParameters['fieldNumber']!,
+      ),
+    ),
+    GoRoute(
+      path: '/inspect_sc/harvest/:fieldNumber',
+      builder: (context, state) => FormHarvestSC(
+        fieldNumber: state.pathParameters['fieldNumber']!,
+      ),
     ),
   ],
   redirect: (context, state) async {
