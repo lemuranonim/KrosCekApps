@@ -27,6 +27,13 @@ import 'screens/admin/notifications_management.dart';
 import 'screens/qa/edit_field_screen.dart';
 // SC
 import 'screens/inspection/form_vegetative_sc.dart';
+import 'screens/inspection/form_generative_1_sc.dart';
+import 'screens/inspection/form_generative_2_sc.dart';
+import 'screens/inspection/form_generative_3_sc.dart';
+import 'screens/inspection/form_generative_4_sc.dart';
+import 'screens/inspection/form_generative_5_sc.dart';
+import 'screens/inspection/form_pre_harvest_sc.dart';
+import 'screens/inspection/form_harvest_sc.dart';
 
 // New Refactor Screens
 import 'screens/inspection/form_vegetative.dart';
