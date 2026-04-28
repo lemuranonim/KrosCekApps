@@ -32,18 +32,36 @@ class DapHelper {
     }
   }
 
+  /// Helper untuk cek apakah hybrid adalah Sweet Corn
+  static bool isSweetCorn(String? hybrid) {
+    final h = hybrid?.toUpperCase().trim() ?? '';
+    return ['AX01', 'AX02', 'AX03', 'AX04'].contains(h);
+  }
+
   /// Menentukan fase yang direkomendasikan berdasarkan batas "On Going" terbaru
-  static String getRecommendedPhase(int dap) {
+  static String getRecommendedPhase(int dap, {String? hybrid}) {
+    final bool sc = isSweetCorn(hybrid);
+
     if (dap <= 35) return 'vegetative';
     if (dap <= 54) return 'generative_1';
     if (dap <= 59) return 'generative_2';
     if (dap <= 65) return 'generative_3';
-    if (dap <= 90) return 'pre_harvest';
+    
+    if (sc) {
+      if (dap <= 72) return 'generative_4';
+      if (dap <= 80) return 'generative_5';
+      if (dap <= 90) return 'pre_harvest';
+    } else {
+      if (dap <= 90) return 'pre_harvest';
+    }
+    
     return 'harvest';
   }
 
   /// Badge label berdasarkan rentang fixed dari Manajemen
-  static String getDapBadgeLabel(int dap, String phaseKey) {
+  static String getDapBadgeLabel(int dap, String phaseKey, {String? hybrid}) {
+    final bool sc = isSweetCorn(hybrid);
+
     switch (phaseKey) {
       case 'vegetative':
         if (dap < 7) return 'Upcoming';
@@ -61,12 +79,24 @@ class DapHelper {
         if (dap < 60) return 'Upcoming';
         if (dap <= 65) return 'On Going';
         return 'Overdue';
+      case 'generative_4':
+        if (!sc) return 'Unknown';
+        if (dap < 66) return 'Upcoming';
+        if (dap <= 72) return 'On Going';
+        return 'Overdue';
+      case 'generative_5':
+        if (!sc) return 'Unknown';
+        if (dap < 73) return 'Upcoming';
+        if (dap <= 80) return 'On Going';
+        return 'Overdue';
       case 'pre_harvest':
-        if (dap < 71) return 'Upcoming';
+        final int startDap = sc ? 81 : 71;
+        if (dap < startDap) return 'Upcoming';
         if (dap <= 90) return 'On Going';
         return 'Overdue';
       case 'harvest':
-        if (dap < 95) return 'Upcoming';
+        final int startDap = sc ? 91 : 95;
+        if (dap < startDap) return 'Upcoming';
         if (dap <= 105) return 'On Going';
         return 'Overdue';
       default:
@@ -85,11 +115,19 @@ class DapHelper {
   }
 
   /// Menentukan warna marker Peta berdasarkan batas fase (Rekomendasi)
-  static Color getDapMarkerColor(int dap) {
+  static Color getDapMarkerColor(int dap, {String? hybrid}) {
+    final bool sc = isSweetCorn(hybrid);
+
     if (dap <= 35) return Colors.grey;            // Vegetative
     if (dap <= 54) return Colors.yellow.shade700; // Gen-1
     if (dap <= 59) return Colors.orange;          // Gen-2
     if (dap <= 65) return Colors.red;             // Gen-3
+    
+    if (sc) {
+      if (dap <= 72) return Colors.purple;        // Gen-4 (Contoh warna baru)
+      if (dap <= 80) return Colors.pink;          // Gen-5 (Contoh warna baru)
+    }
+
     if (dap <= 90) return Colors.brown;           // Pre-Harvest
     return Colors.green;                          // Harvest
   }

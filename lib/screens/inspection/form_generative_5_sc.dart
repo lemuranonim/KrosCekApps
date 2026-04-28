@@ -1,4 +1,8 @@
 // lib/screens/inspection/form_generative_5_sc.dart
+//
+// GENERATIVE AUDIT 5 — Final Audit
+// ─────────────────────────────────────────────────────────
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -9,7 +13,7 @@ import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/guest_guard.dart';
-import 'generative_form_widgets.dart';
+import 'sc_form_widgets.dart';
 
 const Color kGen5Color = Color(0xFFE53935); // Merah karena ini Final Audit
 
@@ -27,14 +31,18 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
   bool _dataLoaded         = false;
   ActiveSession? _session;
 
+  // Controllers
   final _qaFiCtrl          = TextEditingController();
   final _qaSpvCtrl         = TextEditingController();
   final _discardAreaCtrl   = TextEditingController();
   final _discardReasonCtrl = TextEditingController();
+  final _remarksCtrl       = TextEditingController();
 
+  // Dates
   DateTime _auditDate = DateTime.now();
   DateTime? _closedOutDate;
 
+  // Dropdowns
   String? _femaleShed;
   String? _offtypeM;
   String? _offtypeF;
@@ -64,6 +72,7 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
     _qaSpvCtrl.dispose();
     _discardAreaCtrl.dispose();
     _discardReasonCtrl.dispose();
+    _remarksCtrl.dispose();
     super.dispose();
   }
 
@@ -74,6 +83,7 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
     _qaSpvCtrl.text          = audit['qa_spv']  ?? '';
     _discardAreaCtrl.text    = audit['pld_area_ha_5']?.toString() ?? '';
     _discardReasonCtrl.text  = audit['pld_reason_5'] ?? '';
+    _remarksCtrl.text        = audit['remarks_5'] ?? '';
 
     if (audit['date_of_audit_5'] != null) {
       try { _auditDate = DateTime.parse(audit['date_of_audit_5']); } catch (_) {}
@@ -98,17 +108,41 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
   }
 
   Future<void> _pickAuditDate() async {
-    if (_isGuest) return;
+    if (_isGuest) { GuestGuard.blockIfGuest(context, _session); return; }
     final p = await showDatePicker(
-      context: context, initialDate: _auditDate,
-      firstDate: DateTime(2020), lastDate: DateTime.now(),
+      context: context,
+      initialDate: _auditDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (ctx, child) => Theme(
+        data: genDatePickerTheme(ctx, kGen5Color),
+        child: child!,
+      ),
     );
     if (p != null) setState(() => _auditDate = p);
   }
 
+  Future<void> _pickClosedDate() async {
+    if (_isGuest) { GuestGuard.blockIfGuest(context, _session); return; }
+    final p = await showDatePicker(
+      context: context,
+      initialDate: _closedOutDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      builder: (ctx, child) => Theme(
+        data: genDatePickerTheme(ctx, kGen5Color),
+        child: child!,
+      ),
+    );
+    if (p != null) setState(() => _closedOutDate = p);
+  }
+
   Future<void> _save() async {
     if (GuestGuard.blockIfGuest(context, _session)) return;
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      _snack('Periksa kembali isian form', err: true);
+      return;
+    }
 
     setState(() => _isSaving = true);
     try {
@@ -126,11 +160,18 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
         'detasseling_assesment_5' : _detasseling,
         'isolation_problem_5'     : _isolationProblem,
         'affected_other_field_5'  : _affectedOther,
-        'closed_out_date_5'       : _closedOutDate != null ? DateFormat('yyyy-MM-dd').format(_closedOutDate!) : null,
+        'closed_out_date_5'       : _closedOutDate != null 
+            ? DateFormat('yyyy-MM-dd').format(_closedOutDate!) 
+            : null,
         'final_flagging_5'        : _finalFlagging,
         'final_decision_5'        : _finalDecision,
-        'pld_area_ha_5'           : _isDiscard ? double.tryParse(_discardAreaCtrl.text.replaceAll(',', '.')) : null,
-        'pld_reason_5'            : _isDiscard ? _discardReasonCtrl.text.trim() : null,
+        'pld_area_ha_5'           : _isDiscard 
+            ? double.tryParse(_discardAreaCtrl.text.replaceAll(',', '.')) 
+            : null,
+        'pld_reason_5'            : _isDiscard 
+            ? _discardReasonCtrl.text.trim() 
+            : null,
+        'remarks_5'               : _remarksCtrl.text.trim(),
         'qa_fi_5'                 : _qaFiCtrl.text.trim(),
         'qa_spv'                  : _qaSpvCtrl.text.trim(),
         'submitted_at_5'          : now.toIso8601String(),
@@ -138,38 +179,86 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
       };
 
       final svc = ref.read(supabaseServiceProvider);
-      await svc.upsertGenerativeCheckpoint(fieldNumber: widget.fieldNumber, checkpoint: 5, data: data);
+      await svc.upsertGenerativeCheckpoint(
+        fieldNumber: widget.fieldNumber,
+        checkpoint: 5,
+        data: data,
+      );
+
+      // Activity Logging
+      double lat = 0, lng = 0;
+      try {
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 5)),
+        );
+        lat = pos.latitude;
+        lng = pos.longitude;
+      } catch (_) {}
+
+      final att = ref.read(attendanceProvider);
+      if (att.isCheckedIn && att.attendanceId != null) {
+        await svc.logActivity(
+          attendanceId: att.attendanceId!,
+          userId: _qaFiCtrl.text.trim().isNotEmpty
+              ? _qaFiCtrl.text.trim() : 'unknown',
+          fieldNumber: widget.fieldNumber,
+          phase: 'generative_5',
+          actionType: 'single_submit',
+          lat: lat, lng: lng,
+        );
+      }
 
       if (mounted) {
         ref.invalidate(masterFieldsProvider);
         ref.invalidate(generativeAuditProvider(widget.fieldNumber));
-        Navigator.pop(context);
+        _snack('Generative Audit 5 (Final) berhasil disimpan ✓');
+        await Future.delayed(const Duration(milliseconds: 600));
+        if (mounted) Navigator.pop(context);
       }
     } catch (e) {
-      // Handle error
+      if (mounted) _snack('Gagal menyimpan: $e', err: true);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  void _snack(String msg, {bool err = false}) {
+    final theme = Theme.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg,
+          style: AdvantaText.body2.copyWith(color: Colors.white)),
+      backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10)),
+      margin: const EdgeInsets.all(12),
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     final auditAsync = ref.watch(generativeAuditProvider(widget.fieldNumber));
     final fields     = ref.watch(masterFieldsProvider).value ?? [];
-    final fd         = fields.firstWhere((f) => f['field_number'] == widget.fieldNumber, orElse: () => {});
+    final fieldData  = fields.firstWhere(
+            (f) => f['field_number'] == widget.fieldNumber,
+        orElse: () => {});
 
     return Scaffold(
       appBar: GenAppBar(
         checkpointLabel: 'Audit 5 (SC) – Final Audit',
-        fieldNumber: widget.fieldNumber, isDiscard: _isDiscard, accentColor: kGen5Color,
+        fieldNumber: widget.fieldNumber,
+        isDiscard: _isDiscard,
+        accentColor: kGen5Color,
         onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(child: CircularProgressIndicator(color: kGen5Color)),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (audit) {
           if (audit != null) _loadAudit(audit);
-          return _buildBody(fd);
+          return _buildBody(fieldData);
         },
       ),
     );
@@ -182,23 +271,306 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
         children: [
           Expanded(
             child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   GenFieldCard(fieldData: fd, accentColor: kGen5Color),
+                  const SizedBox(height: 8),
+
+                  if (_isGuest) ...[
+                    GuestGuard.banner(),
+                    const SizedBox(height: 8),
+                  ],
+
+                  // ── Section: Audit Info ──
+                  GenSection(
+                    title: 'Informasi Audit',
+                    icon: Icons.assignment_outlined,
+                    color: kGen5Color,
+                    children: [
+                      GenDateTile(
+                          label: 'Tanggal Audit',
+                          date: _auditDate,
+                          onTap: _pickAuditDate),
+                      const SizedBox(height: 12),
+                      GenTextField(
+                        controller: _qaFiCtrl,
+                        label: 'QA FI',
+                        hint: 'Nama QA Field Inspector',
+                        required: !_isGuest,
+                        icon: Icons.person_outline,
+                        accentColor: kGen5Color,
+                      ),
+                      const SizedBox(height: 12),
+                      GenTextField(
+                        controller: _qaSpvCtrl,
+                        label: 'QA SPV',
+                        hint: 'Nama QA Supervisor',
+                        required: !_isGuest,
+                        icon: Icons.supervisor_account_outlined,
+                        accentColor: kGen5Color,
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
 
-                  // Gunakan UI yang persis sama dengan form_generative_3.dart lama,
-                  // hanya saja pastikan mapping database JSON-nya menembak ke `_5` (seperti logika `_save()` di atas).
-                  // ... (Isi UI Dropdown Final Decision, PLD Area, dll)
+                  // ── Section: Penilaian Process ──
+                  GenSection(
+                    title: 'Penilaian Process',
+                    icon: Icons.grass_outlined,
+                    color: kGen5Color,
+                    children: [
+                      // Female Shedding
+                      GenOptionPicker(
+                        label: 'Female Shedding',
+                        required: !_isDiscard && !_isGuest,
+                        options: genFemaleShedOpts,
+                        value: _femaleShed,
+                        onChanged: (v) { if (!_isGuest) {
+                          setState(() => _femaleShed = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: kGen5Color,
+                      ),
+                      const SizedBox(height: 14),
 
+                      // Offtype M & F
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: GenOptionPicker(
+                              label: 'Offtype M',
+                              required: !_isDiscard && !_isGuest,
+                              options: genOfftypeOpts,
+                              value: _offtypeM,
+                              onChanged: (v) { if (!_isGuest) {
+                                setState(() => _offtypeM = v);
+                              } else {
+                                GuestGuard.blockIfGuest(context, _session);
+                              } },
+                              accentColor: kGen5Color,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: GenOptionPicker(
+                              label: 'Offtype F',
+                              required: !_isDiscard && !_isGuest,
+                              options: genOfftypeOpts,
+                              value: _offtypeF,
+                              onChanged: (v) { if (!_isGuest) {
+                                setState(() => _offtypeF = v);
+                              } else {
+                                GuestGuard.blockIfGuest(context, _session);
+                              } },
+                              accentColor: kGen5Color,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // LSV Status
+                      GenOptionPicker(
+                        label: 'LSV Status',
+                        required: !_isDiscard && !_isGuest,
+                        options: genLsvOpts,
+                        value: _lsv,
+                        onChanged: (v) { if (!_isGuest) {
+                          setState(() => _lsv = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: kGen5Color,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Crop Uniformity
+                      GenOptionPicker(
+                        label: 'Crop Uniformity',
+                        required: !_isDiscard && !_isGuest,
+                        options: genCropCondOpts,
+                        value: _cropUniformity,
+                        onChanged: (v) { if (!_isGuest) {
+                          setState(() => _cropUniformity = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: kGen5Color,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Crop Health
+                      GenOptionPicker(
+                        label: 'Crop Health',
+                        required: !_isDiscard && !_isGuest,
+                        options: genCropCondOpts,
+                        value: _cropHealth,
+                        onChanged: (v) { if (!_isGuest) {
+                          setState(() => _cropHealth = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: kGen5Color,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Section: Detasseling & Isolasi ──
+                  GenSection(
+                    title: 'Detasseling & Isolasi',
+                    icon: Icons.agriculture_outlined,
+                    color: const Color(0xFFAB47BC),
+                    children: [
+                      GenOptionPicker(
+                        label: 'Detasseling Assessment',
+                        required: !_isDiscard && !_isGuest,
+                        options: genDetasselingOpts,
+                        value: _detasseling,
+                        onChanged: (v) { if (!_isGuest) {
+                          setState(() => _detasseling = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: const Color(0xFFAB47BC),
+                      ),
+                      const SizedBox(height: 14),
+
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: GenOptionPicker(
+                              label: 'Isolation Problem',
+                              options: genAffectedOpts,
+                              value: _isolationProblem,
+                              onChanged: (v) { if (!_isGuest) {
+                                setState(() => _isolationProblem = v);
+                              } else {
+                                GuestGuard.blockIfGuest(context, _session);
+                              } },
+                              accentColor: const Color(0xFFAB47BC),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: GenOptionPicker(
+                              label: 'Affected Other Field',
+                              options: genAffectedOpts,
+                              value: _affectedOther,
+                              onChanged: (v) { if (!_isGuest) {
+                                setState(() => _affectedOther = v);
+                              } else {
+                                GuestGuard.blockIfGuest(context, _session);
+                              } },
+                              accentColor: const Color(0xFFAB47BC),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      GenDateTileNullable(
+                        label: 'Closed Out Date (Opsional)',
+                        date: _closedOutDate,
+                        onTap: _pickClosedDate,
+                        onClear: _isGuest
+                            ? () => GuestGuard.blockIfGuest(context, _session)
+                            : () => setState(() => _closedOutDate = null),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Section: Keputusan Final ──
+                  GenSection(
+                    title: 'Keputusan Final',
+                    icon: Icons.gavel_outlined,
+                    color: kGen5Color,
+                    children: [
+                      GenOptionPicker(
+                        label: 'Final Flagging',
+                        options: genFlaggingOpts,
+                        value: _finalFlagging,
+                        onChanged: (v) { if (!_isGuest) {
+                          setState(() => _finalFlagging = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: const Color(0xFF42A5F5),
+                      ),
+                      const SizedBox(height: 14),
+
+                      GenOptionPicker(
+                        label: 'Final Decision',
+                        required: !_isGuest,
+                        options: genFinalDecisionOpts,
+                        value: _finalDecision,
+                        onChanged: (v) {
+                          if (_isGuest) {
+                            GuestGuard.blockIfGuest(context, _session);
+                            return;
+                          }
+                          setState(() {
+                            _finalDecision = v;
+                            if (v != 'D') {
+                              _discardAreaCtrl.clear();
+                              _discardReasonCtrl.clear();
+                            }
+                          });
+                        },
+                        accentColor: kGen5Color,
+                      ),
+
+                      if (_isDiscard && !_isGuest) ...[
+                        const SizedBox(height: 14),
+                        const GenDiscardBanner(
+                          message: 'Final Decision Discard — isi Discard Area & Reason sebelum menyimpan.',
+                        ),
+                        const SizedBox(height: 14),
+                        GenTextField(
+                          controller: _discardAreaCtrl,
+                          label: 'Discard Area (Ha)',
+                          hint: 'Luas area discard',
+                          required: true,
+                          keyboardType: TextInputType.number,
+                          icon: Icons.crop_landscape_outlined,
+                          accentColor: kGen5Color,
+                        ),
+                        const SizedBox(height: 12),
+                        GenTextField(
+                          controller: _discardReasonCtrl,
+                          label: 'Discard Reason',
+                          hint: 'Alasan discard...',
+                          required: true,
+                          maxLines: 3,
+                          icon: Icons.notes_outlined,
+                          accentColor: kGen5Color,
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      GenTextField(
+                        controller: _remarksCtrl,
+                        label: 'Remarks',
+                        hint: 'Catatan tambahan...',
+                        maxLines: 2,
+                        icon: Icons.comment_outlined,
+                        accentColor: kGen5Color,
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
           GenSaveBar(
-            isSaving: _isSaving, isDiscard: _isDiscard && !_isGuest,
+            isSaving: _isSaving,
+            isDiscard: _isDiscard && !_isGuest,
             saveLabel: _isGuest ? 'READ-ONLY' : (_isDiscard ? 'SIMPAN — DISCARD' : 'SIMPAN GEN-5 (FINAL)'),
             onSave: _isGuest ? () => GuestGuard.blockIfGuest(context, _session) : _save,
           ),

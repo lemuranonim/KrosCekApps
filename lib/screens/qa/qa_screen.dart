@@ -1150,6 +1150,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
       final fn = f.raw['field_number']?.toString() ?? '';
       final isSelected = _selectedFieldNumbers.contains(fn);
       final isCorrected = f.isCorrected;
+      final bool isSc = DapHelper.isSweetCorn(f.raw['hybrid']?.toString());
 
       // Parse audit status
       final auditStatus = AuditStatusHelper.fromRaw(f.raw);
@@ -1185,6 +1186,31 @@ class _QAScreenState extends ConsumerState<QAScreen>
             alignment: Alignment.center,
             clipBehavior: Clip.none,
             children: [
+              // ── 0. GOLDEN HALO (FOR SC ONLY) ───────────────────
+              if (isSc && !isSelected)
+                Positioned(
+                  bottom: 12,
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AdvantaColors.gold.withAlpha(220),
+                          blurRadius: 18,
+                          spreadRadius: 3,
+                        ),
+                        BoxShadow(
+                          color: AdvantaColors.gold.withAlpha(150),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
               // ── 1. BENTUK MAP PIN (TEARDROP) ───────────────────
               // Posisikan sedikit ke bawah agar ujung jarumnya mendekati batas bawah
               Positioned(
@@ -1931,6 +1957,50 @@ class _QAScreenState extends ConsumerState<QAScreen>
               ),
             );
           }),
+          Divider(color: AdvantaColors.goldLight.withAlpha(25), height: 14),
+          // Sweet Corn Halo Legend
+          Row(
+            children: [
+              Container(
+                width: 11,
+                height: 11,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AdvantaColors.gold.withAlpha(220),
+                      blurRadius: 8,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 9),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Sweet Corn (SC)',
+                    style: AdvantaText.caption.copyWith(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      height: 1.2,
+                    ),
+                  ),
+                  Text(
+                    'Marker bercahaya emas',
+                    style: AdvantaText.caption.copyWith(
+                      color: Colors.white38,
+                      fontSize: 9,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
           Divider(color: AdvantaColors.goldLight.withAlpha(25), height: 14),
           // Corrected marker
           Row(

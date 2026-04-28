@@ -14,7 +14,7 @@ import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart';   // ← NEW
 import '../../theme/app_theme.dart';
 import '../../utils/guest_guard.dart';           // ← NEW
-import 'generative_form_widgets.dart';
+import 'sc_form_widgets.dart';
 
 class FormGenerative2SC extends ConsumerStatefulWidget {
   final String fieldNumber;
@@ -40,6 +40,8 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
   DateTime _auditDate = DateTime.now();
 
   // Dropdowns
+  String? _nst;
+  String? _roguingStatus;
   String? _femaleShed;
   String? _offtypeM;
   String? _offtypeF;
@@ -75,13 +77,15 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
       try { _auditDate = DateTime.parse(audit['date_of_audit_2']); } catch (_) {}
     }
     setState(() {
-      _femaleShed   = audit['female_shedding_2'];
-      _offtypeM     = audit['offtype_m_2'];
-      _offtypeF     = audit['offtype_f_2'];
-      _lsv          = audit['lsv_status_2'];
+      _nst            = audit['nst_2'];
+      _roguingStatus  = audit['roguing_status_2'];
+      _femaleShed     = audit['female_shedding_2'];
+      _offtypeM       = audit['offtype_m_2'];
+      _offtypeF       = audit['offtype_f_2'];
+      _lsv            = audit['lsv_status_2'];
       _cropUniformity = audit['crop_uniformity_2'];
-      _cropHealth   = audit['crop_health_2'];
-      _actionNeeded = audit['action_needed_2'];
+      _cropHealth     = audit['crop_health_2'];
+      _actionNeeded   = audit['action_needed_2'];
     });
   }
 
@@ -115,12 +119,14 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
         'field_number'      : widget.fieldNumber,
         'date_of_audit_2'   : DateFormat('yyyy-MM-dd').format(_auditDate),
         'week_of_audit_2'   : calcAuditWeek(_auditDate),
+        'nst_2'             : _nst,
         'female_shedding_2' : _femaleShed,
         'offtype_m_2'       : _offtypeM,
         'offtype_f_2'       : _offtypeF,
+        'roguing_status_2'  : _roguingStatus,
         'lsv_status_2'      : _lsv,
-        'crop_uniformity_2'  : _cropUniformity,
-        'crop_health_2'      : _cropHealth,
+        'crop_uniformity_2' : _cropUniformity,
+        'crop_health_2'     : _cropHealth,
         'action_needed_2'   : _actionNeeded,
         'qa_fi_2'           : _qaFiCtrl.text.trim(),
         'qa_spv'            : _qaSpvCtrl.text.trim(),
@@ -278,6 +284,22 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
                     icon:  Icons.grass_outlined,
                     color: kGen2Color,
                     children: [
+                      // NST
+                      GenOptionPicker(
+                        label: 'NST',
+                        required: !isDiscard && !_isGuest,
+                        options: genNSTOpts,
+                        value: _nst,
+                        onChanged: (v) { if (!_isGuest) {
+                          setState(() => _nst = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: kGen2Color,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Female Shedding
                       GenOptionPicker(
                         label:       'Female Shedding',
                         required:    !isDiscard && !_isGuest,
@@ -292,6 +314,7 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
                       ),
                       const SizedBox(height: 14),
 
+                      // Offtype M & F
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -327,6 +350,23 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
                         ],
                       ),
                       const SizedBox(height: 14),
+
+                      // Roguing Status
+                      GenOptionPicker(
+                        label: 'Roguing Status',
+                        required: !isDiscard && !_isGuest,
+                        options: genRoguingStatusOpts,
+                        value: _roguingStatus,
+                        onChanged: (v) { if (!_isGuest) {
+                          setState(() => _roguingStatus = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: kGen2Color,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // LSV Status
                       GenOptionPicker(
                         label:       'LSV Status',
                         required:    !isDiscard && !_isGuest,
@@ -340,6 +380,8 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
                         accentColor: kGen2Color,
                       ),
                       const SizedBox(height: 14),
+
+                      // Crop Uniformity
                       GenOptionPicker(
                         label:       'Crop Uniformity',
                         required:    !isDiscard && !_isGuest,
@@ -353,6 +395,8 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
                         accentColor: kGen1Color,
                       ),
                       const SizedBox(height: 14),
+
+                      // Crop Health
                       GenOptionPicker(
                         label:       'Crop Health',
                         required:    !isDiscard && !_isGuest,

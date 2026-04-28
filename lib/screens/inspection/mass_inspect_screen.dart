@@ -17,7 +17,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
 import '../../theme/app_theme.dart';
-import 'generative_form_widgets.dart';
+import 'fc_form_widgets.dart';
 
 // ─── Phase accent colors ──────────────────────────────────
 const _kVeg  = Color(0xFF78909C);
@@ -206,6 +206,14 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   String? _gen3Lsv, _gen3CropCond, _gen3Detasseling;
   String? _gen3IsolationStatus, _gen3AffectedOther, _gen3Flagging, _gen3FinalDecision;
 
+  // ── Generative 4 (SC Only) ────────────────────────────────
+  String? _gen4FemaleShed, _gen4OfftypeM, _gen4OfftypeF;
+  String? _gen4Lsv, _gen4CropCond, _gen4ActionNeeded;
+
+  // ── Generative 5 (SC Only) ────────────────────────────────
+  String? _gen5FemaleShed, _gen5OfftypeM, _gen5OfftypeF;
+  String? _gen5Lsv, _gen5CropCond, _gen5ActionNeeded;
+
   // ── Pre-Harvest ───────────────────────────────────────────
   final _preHDiscardAreaCtrl   = TextEditingController();
   final _preHDiscardReasonCtrl = TextEditingController();
@@ -224,6 +232,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       case 'generative_1': return _kGen1;
       case 'generative_2': return _kGen2;
       case 'generative_3': return _kGen3;
+      case 'generative_4': return Colors.purple;
+      case 'generative_5': return Colors.pink;
       case 'pre_harvest' : return _kPreH;
       case 'harvest'     : return _kHarv;
       default            : return AdvantaColors.mutedGrey;
@@ -236,6 +246,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       case 'generative_1': return 'Generative Audit 1 – Readiness';
       case 'generative_2': return 'Generative Audit 2 – Process';
       case 'generative_3': return 'Generative Audit 3 – Final';
+      case 'generative_4': return 'Generative Audit 4 – Process (SC)';
+      case 'generative_5': return 'Generative Audit 5 – Process (SC)';
       case 'pre_harvest' : return 'Pre-Harvest Audit';
       case 'harvest'     : return 'Harvest Audit';
       default            : return widget.targetPhase.replaceAll('_', ' ').toUpperCase();
@@ -248,6 +260,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       case 'generative_1': return _gen1ActionNeeded == 'G';
       case 'generative_2': return _gen2ActionNeeded == 'G';
       case 'generative_3': return _gen3FinalDecision == 'D';
+      case 'generative_4': return _gen4ActionNeeded == 'G';
+      case 'generative_5': return _gen5ActionNeeded == 'G';
       case 'pre_harvest' : return _preHFinalDecision == 'D';
       default            : return false;
     }
@@ -440,6 +454,40 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'submitted_at_3'         : nowStr,
               'fase'                   : 'generative_3',
               'is_mass_submit_3'       : true,
+            });
+
+          case 'generative_4':
+            rec.addAll({
+              'date_of_audit_4'  : dateStr,
+              'week_of_audit_4'  : week,
+              'qa_fi_4'          : _qaFiCtrl.text.trim(),
+              'qa_spv'           : _qaSpvCtrl.text.trim(),
+              'female_shedding_4': _gen4FemaleShed,
+              'offtype_m_4'      : _gen4OfftypeM,
+              'offtype_f_4'      : _gen4OfftypeF,
+              'lsv_status_4'     : _gen4Lsv,
+              'crop_condition_4' : _gen4CropCond,
+              'action_needed_4'  : _gen4ActionNeeded,
+              'submitted_at_4'   : nowStr,
+              'fase'             : 'generative_4',
+              'is_mass_submit_4' : true,
+            });
+
+          case 'generative_5':
+            rec.addAll({
+              'date_of_audit_5'  : dateStr,
+              'week_of_audit_5'  : week,
+              'qa_fi_5'          : _qaFiCtrl.text.trim(),
+              'qa_spv'           : _qaSpvCtrl.text.trim(),
+              'female_shedding_5': _gen5FemaleShed,
+              'offtype_m_5'      : _gen5OfftypeM,
+              'offtype_f_5'      : _gen5OfftypeF,
+              'lsv_status_5'     : _gen5Lsv,
+              'crop_condition_5' : _gen5CropCond,
+              'action_needed_5'  : _gen5ActionNeeded,
+              'submitted_at_5'   : nowStr,
+              'fase'             : 'generative_5',
+              'is_mass_submit_5' : true,
             });
 
           case 'pre_harvest':
@@ -704,6 +752,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       case 'generative_1': return _buildGen1Fields();
       case 'generative_2': return _buildGen2Fields();
       case 'generative_3': return _buildGen3Fields(context);
+      case 'generative_4': return _buildGen4Fields();
+      case 'generative_5': return _buildGen5Fields();
       case 'pre_harvest' : return _buildPreHarvestFields();
       case 'harvest'     : return _buildHarvestFields(context);
       default            : return [];
@@ -1240,6 +1290,162 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               controller: _gen3DiscardReasonCtrl, label: 'Discard Reason',
               hint: 'Alasan discard...', required: true,
               maxLines: 3, icon: Icons.notes_outlined, accentColor: AdvantaColors.error,
+            ),
+          ],
+        ],
+      ),
+    ];
+  }
+
+  // ── GENERATIVE 4 ──────────────────────────────────────────
+  List<Widget> _buildGen4Fields() {
+    final color = Colors.purple;
+    final isD = _gen4ActionNeeded == 'G';
+    return [
+      GenSection(
+        title: 'Penilaian Audit (SC CP4)',
+        icon : Icons.spa_outlined,
+        color: color,
+        children: [
+          GenOptionPicker(
+            label: 'Female Shedding', required: !isD,
+            options: _genFemaleShedOpts, value: _gen4FemaleShed,
+            onChanged: (v) => setState(() => _gen4FemaleShed = v),
+            accentColor: color,
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: GenOptionPicker(
+                  label: 'Offtype M', required: !isD,
+                  options: _genOfftypeOpts, value: _gen4OfftypeM,
+                  onChanged: (v) => setState(() => _gen4OfftypeM = v),
+                  accentColor: color,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: GenOptionPicker(
+                  label: 'Offtype F', required: !isD,
+                  options: _genOfftypeOpts, value: _gen4OfftypeF,
+                  onChanged: (v) => setState(() => _gen4OfftypeF = v),
+                  accentColor: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          GenOptionPicker(
+            label: 'LSV Status', required: !isD,
+            options: _genLsvOpts, value: _gen4Lsv,
+            onChanged: (v) => setState(() => _gen4Lsv = v),
+            accentColor: color,
+          ),
+          const SizedBox(height: 14),
+          GenOptionPicker(
+            label: 'Crop Condition', required: !isD,
+            options: _genCropCondOpts, value: _gen4CropCond,
+            onChanged: (v) => setState(() => _gen4CropCond = v),
+            accentColor: color,
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      GenSection(
+        title: 'Action Needed',
+        icon : Icons.gavel_outlined,
+        color: AdvantaColors.error,
+        children: [
+          GenOptionPickerLong(
+            label: 'Action Needed', required: true,
+            options: _genActionNeededOpts, value: _gen4ActionNeeded,
+            onChanged: (v) => setState(() => _gen4ActionNeeded = v),
+            accentColor: AdvantaColors.error,
+          ),
+          if (isD) ...[
+            const SizedBox(height: 12),
+            const GenDiscardBanner(
+              message: 'Action Discard Full dipilih — hanya field wajib (QA FI, SPV, Tanggal) yang harus diisi.',
+            ),
+          ],
+        ],
+      ),
+    ];
+  }
+
+  // ── GENERATIVE 5 ──────────────────────────────────────────
+  List<Widget> _buildGen5Fields() {
+    final color = Colors.pink;
+    final isD = _gen5ActionNeeded == 'G';
+    return [
+      GenSection(
+        title: 'Penilaian Audit (SC CP5)',
+        icon : Icons.spa_outlined,
+        color: color,
+        children: [
+          GenOptionPicker(
+            label: 'Female Shedding', required: !isD,
+            options: _genFemaleShedOpts, value: _gen5FemaleShed,
+            onChanged: (v) => setState(() => _gen5FemaleShed = v),
+            accentColor: color,
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: GenOptionPicker(
+                  label: 'Offtype M', required: !isD,
+                  options: _genOfftypeOpts, value: _gen5OfftypeM,
+                  onChanged: (v) => setState(() => _gen5OfftypeM = v),
+                  accentColor: color,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: GenOptionPicker(
+                  label: 'Offtype F', required: !isD,
+                  options: _genOfftypeOpts, value: _gen5OfftypeF,
+                  onChanged: (v) => setState(() => _gen5OfftypeF = v),
+                  accentColor: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          GenOptionPicker(
+            label: 'LSV Status', required: !isD,
+            options: _genLsvOpts, value: _gen5Lsv,
+            onChanged: (v) => setState(() => _gen5Lsv = v),
+            accentColor: color,
+          ),
+          const SizedBox(height: 14),
+          GenOptionPicker(
+            label: 'Crop Condition', required: !isD,
+            options: _genCropCondOpts, value: _gen5CropCond,
+            onChanged: (v) => setState(() => _gen5CropCond = v),
+            accentColor: color,
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      GenSection(
+        title: 'Action Needed',
+        icon : Icons.gavel_outlined,
+        color: AdvantaColors.error,
+        children: [
+          GenOptionPickerLong(
+            label: 'Action Needed', required: true,
+            options: _genActionNeededOpts, value: _gen5ActionNeeded,
+            onChanged: (v) => setState(() => _gen5ActionNeeded = v),
+            accentColor: AdvantaColors.error,
+          ),
+          if (isD) ...[
+            const SizedBox(height: 12),
+            const GenDiscardBanner(
+              message: 'Action Discard Full dipilih — hanya field wajib (QA FI, SPV, Tanggal) yang harus diisi.',
             ),
           ],
         ],

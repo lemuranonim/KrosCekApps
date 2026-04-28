@@ -54,8 +54,14 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
   // ── Penentu Tipe Crop berdasarkan Hybrid ────────────────────
   bool get _isSweetCorn {
     final hybrid = widget.field['hybrid']?.toString().toUpperCase().trim() ?? '';
-    // Jika hybrid adalah AX01, AX02, AX03, atau AX04, maka ini Sweet Corn
+    // SC (Sweet Corn) strictly: AX01, AX02, AX03, AX04
     return ['AX01', 'AX02', 'AX03', 'AX04'].contains(hybrid);
+  }
+
+  bool get _isPSP {
+    final hybrid = widget.field['hybrid']?.toString().toUpperCase().trim() ?? '';
+    // PSP (Next): ASF**
+    return hybrid.startsWith('ASF');
   }
 
   // 2. TAMBAHKAN INIT STATE INI
@@ -85,7 +91,7 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
 
     // 3. Hitung DAP dan Rekomendasi Fase
     _dap = DapHelper.calculateDAP(_finalPlantingDate);
-    _recommendedPhase = DapHelper.getRecommendedPhase(_dap);
+    _recommendedPhase = DapHelper.getRecommendedPhase(_dap, hybrid: widget.field['hybrid']?.toString());
   }
 
   // ── Phase data dinamis menyesuaikan tipe crop ──────────────────
@@ -94,6 +100,13 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
       return [
         'vegetative', 'generative_1', 'generative_2', 'generative_3',
         'generative_4', 'generative_5', 'pre_harvest', 'harvest'
+      ];
+    }
+    if (_isPSP) {
+      // PSP logic (sementara disamakan dengan FC atau sesuai kebutuhan nanti)
+      return [
+        'vegetative', 'generative_1', 'generative_2', 'generative_3',
+        'pre_harvest', 'harvest'
       ];
     }
     // Default / Field Corn (FC)
@@ -108,6 +121,12 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
       return [
         'Vegetatif', 'Generatif CP1', 'Generatif CP2', 'Generatif CP3',
         'Generatif CP4', 'Generatif CP5', 'Pre-Harvest', 'Harvest'
+      ];
+    }
+    if (_isPSP) {
+      return [
+        'Vegetatif (PSP)', 'Generatif CP1', 'Generatif CP2', 'Generatif CP3',
+        'Pre-Harvest', 'Harvest'
       ];
     }
     return [
@@ -176,6 +195,8 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
       case 'generative_1': return status.gen1Done;
       case 'generative_2': return status.gen2Done;
       case 'generative_3': return status.gen3Done;
+      case 'generative_4': return status.gen4Done; // tambah field di FieldAuditStatus
+      case 'generative_5': return status.gen5Done;
       case 'pre_harvest': return status.preHarvest == SingleAuditStatus.sampun;
       case 'harvest': return status.harvest == SingleAuditStatus.sampun;
       default: return false;
@@ -344,6 +365,7 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
             dap: dap,
             recommendedPhase: _getPhaseLabel(recommendedPhase),
             phaseColors: _phaseColors,
+            hybrid: field['hybrid']?.toString(),
           ),
           Builder(builder: (context) {
             final auditStatus = AuditStatusHelper.fromRaw(field);
@@ -641,10 +663,12 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
   // 👇 SILAKAN PASTE FUNGSI INI DI BAWAH _buildHistoriTab 👇
   List<Widget> _buildPhaseTimeline(int dap, Map<String, dynamic> field, ThemeData theme, bool isDark) {
     final phaseToAudit = {
-      'vegetative'  : 'audit_vegetative',
+      'vegetative': 'audit_vegetative',
       'generative_1': 'audit_generative',
       'generative_2': 'audit_generative',
       'generative_3': 'audit_generative',
+      'generative_4': 'audit_generative',
+      'generative_5': 'audit_generative',
       'pre_harvest' : 'audit_pre_harvest',
       'harvest'     : 'audit_harvest',
     };
@@ -697,6 +721,12 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
           break;
         case 'generative_3':
           hasData = auditStatus.gen3Done;
+          break;
+        case 'generative_4':
+          hasData = auditStatus.gen4Done;
+          break;
+        case 'generative_5':
+          hasData = auditStatus.gen5Done;
           break;
         case 'pre_harvest':
           hasData = auditStatus.preHarvest == SingleAuditStatus.sampun;
@@ -804,7 +834,7 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
               translatedBadge = 'Selesai';
               badgeColor = AdvantaColors.success;
             } else {
-              final rawBadge = DapHelper.getDapBadgeLabel(dap, phaseKey);
+              final rawBadge = DapHelper.getDapBadgeLabel(dap, phaseKey, hybrid: widget.field['hybrid']?.toString());
               badgeColor = DapHelper.getDapBadgeColor(rawBadge);
 
               switch (rawBadge.toLowerCase()) {
@@ -828,14 +858,22 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
                 isDark: isDark,
                 onTap: () async {
                   final fieldData = widget.field;
-                  Navigator.pop(context);
 
                   // LOGIKA ROUTING:
+                  if (_isPSP) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Modul PSP (ASF) akan segera hadir.')),
+                    );
+                    return;
+                  }
+
+                  Navigator.pop(context);
+
                   if (_isSweetCorn) {
-                    // Arahkan ke form khusus Sweet Corn
+                    // Arahkan ke form khusus Sweet Corn (AX01-04)
                     await context.push('/inspect_sc/$phaseKey/$fieldNumber');
                   } else {
-                    // Arahkan ke form reguler/lama
+                    // Arahkan ke form reguler/lama (AX non 01-04 atau lainnya)
                     await context.push('/inspect/$phaseKey/$fieldNumber');
                   }
 
@@ -913,32 +951,44 @@ class _DapProgressBar extends StatelessWidget {
   final int dap;
   final String recommendedPhase;
   final List<Color> phaseColors;
+  final String? hybrid;
 
   const _DapProgressBar({
     required this.dap,
     required this.recommendedPhase,
     required this.phaseColors,
+    this.hybrid,
   });
-
-  static const _limits = [35, 54, 59, 65, 90, 105];
-  static const _labels = ['Veg', 'G1', 'G2', 'G3', 'Pre-H', 'Harvest'];
 
   @override
   Widget build(BuildContext context) {
+    final bool isSc = hybrid?.toUpperCase().trim() == 'AX01' ||
+        hybrid?.toUpperCase().trim() == 'AX02' ||
+        hybrid?.toUpperCase().trim() == 'AX03' ||
+        hybrid?.toUpperCase().trim() == 'AX04';
+
+    final List<int> limits = isSc
+        ? [35, 54, 59, 65, 72, 80, 90, 105]
+        : [35, 54, 59, 65, 90, 105];
+
+    final List<String> labels = isSc
+        ? ['Veg', 'G1', 'G2', 'G3', 'G4', 'G5', 'Pre-H', 'Harv']
+        : ['Veg', 'G1', 'G2', 'G3', 'Pre-H', 'Harvest'];
+
     int activeSeg = 0;
-    for (int i = 0; i < _limits.length; i++) {
-      if (dap > (i == 0 ? 0 : _limits[i - 1])) activeSeg = i;
+    for (int i = 0; i < limits.length; i++) {
+      if (dap > (i == 0 ? 0 : limits[i - 1])) activeSeg = i;
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          children: List.generate(_labels.length, (i) {
+          children: List.generate(labels.length, (i) {
             final isActive = i == activeSeg;
             return Expanded(
               child: Text(
-                _labels[i],
+                labels[i],
                 textAlign: TextAlign.center,
                 style: AdvantaText.caption.copyWith(
                   fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
@@ -955,9 +1005,9 @@ class _DapProgressBar extends StatelessWidget {
           child: SizedBox(
             height: 6,
             child: Row(
-              children: List.generate(_limits.length, (i) {
-                final segStart = i == 0 ? 0 : _limits[i - 1];
-                final segEnd   = _limits[i];
+              children: List.generate(limits.length, (i) {
+                final segStart = i == 0 ? 0 : limits[i - 1];
+                final segEnd   = limits[i];
                 final segWidth = segEnd - segStart;
 
                 double fill = 0.0;

@@ -1,9 +1,9 @@
-// lib/screens/inspection/form_pre_harvest.dart
+// lib/screens/inspection/form_pre_harvest_sc.dart
 //
-// PRE-HARVEST AUDIT — Premium redesign
+// PRE-HARVEST AUDIT — Premium redesign (SC Version)
 // Kolom: Audit Date · Audit Week · Male Chopping Rows ·
-//        Final Flagging · Final Decision · Crop Condition ·
-//        Discard Area (Ha) · Discard Reason
+//        Final Flagging · Final Decision · Crop Uniformity ·
+//        Crop Health · Discard Area (Ha) · Discard Reason · Remarks
 // DB table: audit_pre_harvest
 // ─────────────────────────────────────────────────────────
 
@@ -14,10 +14,10 @@ import 'package:geolocator/geolocator.dart';
 import '../../providers/audit_pre_harvest_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
-import '../../services/session_manager.dart';   // ← NEW
+import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
-import '../../utils/guest_guard.dart';           // ← NEW
-import 'generative_form_widgets.dart';
+import '../../utils/guest_guard.dart';
+import 'sc_form_widgets.dart';
 
 // ─── Phase accent color ───────────────────────────────────
 const _kPhase = Color(0xFF26C6DA); // Cyan — Pre-Harvest
@@ -74,6 +74,7 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
   final _qaSpvCtrl        = TextEditingController();
   final _discardAreaCtrl  = TextEditingController();
   final _discardReasonCtrl = TextEditingController();
+  final _remarksCtrl      = TextEditingController();
 
   // Date
   DateTime _auditDate = DateTime.now();
@@ -82,7 +83,8 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
   String? _maleChopping;
   String? _finalFlagging;
   String? _finalDecision;
-  String? _cropCondition;
+  String? _cropUniformity;
+  String? _cropHealth;
 
   bool get _isDiscard => _finalDecision == 'D';
 
@@ -100,6 +102,7 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
     _qaSpvCtrl.dispose();
     _discardAreaCtrl.dispose();
     _discardReasonCtrl.dispose();
+    _remarksCtrl.dispose();
     super.dispose();
   }
 
@@ -110,6 +113,7 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
     _qaSpvCtrl.text       = a['qa_spv'] ?? '';
     _discardAreaCtrl.text  = a['discard_area_ha']?.toString() ?? '';
     _discardReasonCtrl.text = a['discard_reason'] ?? '';
+    _remarksCtrl.text     = a['remarks'] ?? '';
     if (a['audit_date'] != null) {
       try { _auditDate = DateTime.parse(a['audit_date']); } catch (_) {}
     }
@@ -117,7 +121,8 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
       _maleChopping  = a['male_chopping_rows'];
       _finalFlagging = a['final_flagging'];
       _finalDecision = a['final_decision'];
-      _cropCondition = a['crop_condition'];
+      _cropUniformity = a['crop_uniformity'] ?? a['crop_condition'];
+      _cropHealth     = a['crop_health']     ?? a['crop_condition'];
     });
   }
 
@@ -151,13 +156,15 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
         'male_chopping_rows': _maleChopping,
         'final_flagging'    : _finalFlagging,
         'final_decision'    : _finalDecision,
-        'crop_condition'    : _cropCondition,
+        'crop_uniformity'   : _cropUniformity,
+        'crop_health'       : _cropHealth,
         'discard_area_ha'   : _isDiscard
             ? double.tryParse(_discardAreaCtrl.text.replaceAll(',', '.'))
             : null,
         'discard_reason'    : _isDiscard
             ? _discardReasonCtrl.text.trim()
             : null,
+        'remarks'           : _remarksCtrl.text.trim(),
         'qa_fi'             : _qaFiCtrl.text.trim(),
         'qa_spv'            : _qaSpvCtrl.text.trim(),
         'fase'              : 'Pre-Harvest',
@@ -225,7 +232,7 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
 
     return Scaffold(
       appBar: GenAppBar(
-        checkpointLabel: 'Pre-Harvest Audit',
+        checkpointLabel: 'Pre-Harvest Audit (SC)',
         fieldNumber    : widget.fieldNumber,
         isDiscard      : _isDiscard,
         accentColor    : _kPhase,
@@ -319,12 +326,25 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Crop Condition',
+                        label      : 'Crop Uniformity',
                         required   : !_isDiscard && !_isGuest,
                         options    : _cropCondOpts,
-                        value      : _cropCondition,
+                        value      : _cropUniformity,
                         onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _cropCondition = v);
+                          setState(() => _cropUniformity = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: _kPhase,
+                      ),
+                      const SizedBox(height: 14),
+                      GenOptionPicker(
+                        label      : 'Crop Health',
+                        required   : !_isDiscard && !_isGuest,
+                        options    : _cropCondOpts,
+                        value      : _cropHealth,
+                        onChanged  : (v) { if (!_isGuest) {
+                          setState(() => _cropHealth = v);
                         } else {
                           GuestGuard.blockIfGuest(context, _session);
                         } },
@@ -404,6 +424,15 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
                           accentColor: AdvantaColors.error,
                         ),
                       ],
+                      const SizedBox(height: 12),
+                      GenTextField(
+                        controller  : _remarksCtrl,
+                        label       : 'Remarks',
+                        hint        : 'Catatan tambahan...',
+                        maxLines    : 2,
+                        icon        : Icons.comment_outlined,
+                        accentColor : _kPhase,
+                      ),
                     ],
                   ),
                 ],

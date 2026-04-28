@@ -14,7 +14,7 @@ import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart';   // ← NEW
 import '../../theme/app_theme.dart';
 import '../../utils/guest_guard.dart';           // ← NEW
-import 'generative_form_widgets.dart';
+import 'sc_form_widgets.dart';
 
 class FormGenerative3SC extends ConsumerStatefulWidget {
   final String fieldNumber;
@@ -46,12 +46,15 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
   String? _femaleShed;
   String? _offtypeM;
   String? _offtypeF;
+  String? _roguingStatus;
   String? _lsv;
-  String? _cropCond;
+  String? _cropUniformity;
+  String? _cropHealth;
   String? _detasseling;
   String? _isolationStatus;
   String? _affectedOther;
   String? _flagging;
+  String? _actionNeeded;
   String? _finalDecision;
 
   // ── NEW ──────────────────────────────────────────────────
@@ -94,12 +97,15 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
       _femaleShed      = audit['female_shedding_3'];
       _offtypeM        = audit['offtype_m_3'];
       _offtypeF        = audit['offtype_f_3'];
+      _roguingStatus   = audit['roguing_status_3'];
       _lsv             = audit['lsv_status_3'];
-      _cropCond        = audit['crop_condition_3'];
+      _cropUniformity  = audit['crop_uniformity_3'];
+      _cropHealth      = audit['crop_health_3'];
       _detasseling     = audit['detasseling_assesment_3']; // DB column typo preserved
       _isolationStatus = audit['isolation_status_3'];
       _affectedOther   = audit['affected_other_field_3'];
       _flagging        = audit['flagging'];
+      _actionNeeded    = audit['action_needed_3'];
       _finalDecision   = audit['final_decision_3'];
     });
   }
@@ -152,8 +158,10 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
         'female_shedding_3'       : _femaleShed,
         'offtype_m_3'             : _offtypeM,
         'offtype_f_3'             : _offtypeF,
+        'roguing_status_3'        : _roguingStatus,
         'lsv_status_3'            : _lsv,
-        'crop_condition_3'        : _cropCond,
+        'crop_uniformity_3'       : _cropUniformity,
+        'crop_health_3'           : _cropHealth,
         'detasseling_assesment_3' : _detasseling, // DB column typo preserved
         'isolation_status_3'      : _isolationStatus,
         'affected_other_field_3'  : _affectedOther,
@@ -168,7 +176,7 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
         'discard_reason_3'        : _isDiscard
             ? _discardReasonCtrl.text.trim()
             : null,
-        'action_needed_3'         : _isDiscard ? 'G' : 'A',
+        'action_needed_3'         : _actionNeeded,
         'qa_fi_3'                 : _qaFiCtrl.text.trim(),
         'qa_spv'                  : _qaSpvCtrl.text.trim(),
         'submitted_at_3'          : now.toIso8601String(),
@@ -317,12 +325,13 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
                   ),
                   const SizedBox(height: 12),
 
-                  // ── Section: Penilaian Tanaman ──
+                  // ── Section: Penilaian Process ──
                   GenSection(
-                    title: 'Penilaian Tanaman',
-                    icon:  Icons.grass,
+                    title: 'Penilaian Process',
+                    icon:  Icons.grass_outlined,
                     color: kGen3Color,
                     children: [
+                      // Female Shedding
                       GenOptionPicker(
                         label:       'Female Shedding',
                         required:    !_isDiscard && !_isGuest,
@@ -337,6 +346,7 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
                       ),
                       const SizedBox(height: 14),
 
+                      // Offtype M & F
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -372,6 +382,23 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
                         ],
                       ),
                       const SizedBox(height: 14),
+
+                      // Roguing Status
+                      GenOptionPicker(
+                        label: 'Roguing Status',
+                        required: !_isDiscard && !_isGuest,
+                        options: genRoguingStatusOpts,
+                        value: _roguingStatus,
+                        onChanged: (v) { if (!_isGuest) {
+                          setState(() => _roguingStatus = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: kGen3Color,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // LSV Status
                       GenOptionPicker(
                         label:       'LSV Status',
                         required:    !_isDiscard && !_isGuest,
@@ -385,13 +412,30 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
                         accentColor: kGen3Color,
                       ),
                       const SizedBox(height: 14),
+
+                      // Crop Uniformity
                       GenOptionPicker(
-                        label:       'Crop Condition',
+                        label:       'Crop Uniformity',
                         required:    !_isDiscard && !_isGuest,
                         options:     genCropCondOpts,
-                        value:       _cropCond,
+                        value:       _cropUniformity,
                         onChanged:   (v) { if (!_isGuest) {
-                          setState(() => _cropCond = v);
+                          setState(() => _cropUniformity = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: kGen3Color,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Crop Health
+                      GenOptionPicker(
+                        label:       'Crop Health',
+                        required:    !_isDiscard && !_isGuest,
+                        options:     genCropCondOpts,
+                        value:       _cropHealth,
+                        onChanged:   (v) { if (!_isGuest) {
+                          setState(() => _cropHealth = v);
                         } else {
                           GuestGuard.blockIfGuest(context, _session);
                         } },
@@ -462,6 +506,28 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
                         onClear: _isGuest
                             ? () => GuestGuard.blockIfGuest(context, _session)
                             : () => setState(() => _closedOutDate = null),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Section: Action Needed ──
+                  GenSection(
+                    title: 'Action Needed',
+                    icon:  Icons.notification_important_outlined,
+                    color: kGen3Color,
+                    children: [
+                      GenOptionPickerLong(
+                        label:       'Action Needed',
+                        required:    !_isGuest,
+                        options:     genActionNeededOpts,
+                        value:       _actionNeeded,
+                        onChanged:   (v) { if (!_isGuest) {
+                          setState(() => _actionNeeded = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: kGen3Color,
                       ),
                     ],
                   ),

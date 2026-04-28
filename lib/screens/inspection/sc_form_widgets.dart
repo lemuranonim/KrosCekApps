@@ -54,6 +54,12 @@ const genRoguingOpts = [
   GenOpt('C', 'C – Done'),
 ];
 
+const genRoguingStatusOpts = [
+  GenOpt('A', 'Not Yet'),
+  GenOpt('B', 'On Going'),
+  GenOpt('C', 'Done'),
+];
+
 const genLsvOpts = [
   GenOpt('A', 'A – None'),
   GenOpt('B', 'B – Low'),
@@ -74,6 +80,11 @@ const genFemaleShedOpts = [
   GenOpt('B', 'B – >0 <2'),
   GenOpt('C', 'C – ≥2 <5'),
   GenOpt('D', 'D – ≥5'),
+];
+
+const genNSTOpts = [
+  GenOpt('Y', 'Found'),
+  GenOpt('N', 'Not Found'),
 ];
 
 const genOfftypeOpts = [

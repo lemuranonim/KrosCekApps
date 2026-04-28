@@ -14,7 +14,7 @@ import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart';   // ← NEW
 import '../../theme/app_theme.dart';
 import '../../utils/guest_guard.dart';           // ← NEW
-import 'generative_form_widgets.dart';
+import 'fc_form_widgets.dart';
 
 class FormGenerative3 extends ConsumerStatefulWidget {
   final String fieldNumber;

@@ -17,7 +17,7 @@ import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart';   // ← NEW
 import '../../theme/app_theme.dart';
 import '../../utils/guest_guard.dart';           // ← NEW
-import 'generative_form_widgets.dart';
+import 'sc_form_widgets.dart';
 
 // ─── Phase accent color ───────────────────────────────────
 const _kPhase = Color(0xFFFF7043); // Deep Orange — Harvest
@@ -81,6 +81,7 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
   // Controllers
   final _qaFiCtrl  = TextEditingController();
   final _qaSpvCtrl = TextEditingController();
+  final _remarksCtrl = TextEditingController();
 
   // Date
   DateTime  _auditDate         = DateTime.now();
@@ -88,7 +89,8 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
 
   // Dropdowns
   String? _earCondition;
-  String? _cropCondition;
+  String? _cropUniformity;
+  String? _cropHealth;
   String? _statusDowngrade;
   String? _reasonDowngrade;
   String? _downgradeFlagging;
@@ -109,6 +111,7 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
   void dispose() {
     _qaFiCtrl.dispose();
     _qaSpvCtrl.dispose();
+    _remarksCtrl.dispose();
     super.dispose();
   }
 
@@ -117,6 +120,7 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
     _dataLoaded = true;
     _qaFiCtrl.text  = a['qa_fi']  ?? '';
     _qaSpvCtrl.text = a['qa_spv'] ?? '';
+    _remarksCtrl.text = a['remarks'] ?? '';
     if (a['date_of_audit'] != null) {
       try { _auditDate = DateTime.parse(a['date_of_audit']); } catch (_) {}
     }
@@ -127,7 +131,8 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
     }
     setState(() {
       _earCondition      = a['ear_condition_observation']?.toString();
-      _cropCondition     = a['crop_condition'];
+      _cropUniformity    = a['crop_uniformity'] ?? a['crop_condition'];
+      _cropHealth        = a['crop_health']     ?? a['crop_condition'];
       _statusDowngrade   = a['status_downgrade'];
       _reasonDowngrade   = a['reason_downgrade'];
       _downgradeFlagging = a['downgrade_flagging'];
@@ -177,7 +182,8 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
         'date_of_audit'              : DateFormat('yyyy-MM-dd').format(_auditDate),
         'audit_week'                 : calcAuditWeek(_auditDate),
         'ear_condition_observation'  : _earCondition,
-        'crop_condition'             : _cropCondition,
+        'crop_uniformity'            : _cropUniformity,
+        'crop_health'                : _cropHealth,
         'status_downgrade'           : _showDowngrade ? _statusDowngrade : null,
         'reason_downgrade'           : _showDowngrade ? _reasonDowngrade : null,
         'downgrade_flagging'         : _showDowngrade ? _downgradeFlagging : null,
@@ -185,6 +191,7 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
             ? DateFormat('yyyy-MM-dd').format(_downgradeFlagDate!)
             : null,
         'final_flagging'             : _finalFlagging,
+        'remarks'                    : _remarksCtrl.text.trim(),
         'qa_fi'                      : _qaFiCtrl.text.trim(),
         'qa_spv'                     : _qaSpvCtrl.text.trim(),
         'fase'                       : 'Harvest',
@@ -252,7 +259,7 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
 
     return Scaffold(
       appBar: GenAppBar(
-        checkpointLabel: 'Harvest Audit',
+        checkpointLabel: 'Harvest Audit (SC)',
         fieldNumber    : widget.fieldNumber,
         isDiscard      : false,
         accentColor    : _kPhase,
@@ -346,12 +353,25 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Crop Condition',
+                        label      : 'Crop Uniformity',
                         required   : !_isGuest,
                         options    : _cropCondOpts,
-                        value      : _cropCondition,
+                        value      : _cropUniformity,
                         onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _cropCondition = v);
+                          setState(() => _cropUniformity = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: _kPhase,
+                      ),
+                      const SizedBox(height: 14),
+                      GenOptionPicker(
+                        label      : 'Crop Health',
+                        required   : !_isGuest,
+                        options    : _cropCondOpts,
+                        value      : _cropHealth,
+                        onChanged  : (v) { if (!_isGuest) {
+                          setState(() => _cropHealth = v);
                         } else {
                           GuestGuard.blockIfGuest(context, _session);
                         } },
@@ -382,6 +402,15 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
                           GuestGuard.blockIfGuest(context, _session);
                         } },
                         accentColor: const Color(0xFF42A5F5),
+                      ),
+                      const SizedBox(height: 12),
+                      GenTextField(
+                        controller  : _remarksCtrl,
+                        label       : 'Remarks',
+                        hint        : 'Catatan tambahan...',
+                        maxLines    : 2,
+                        icon        : Icons.comment_outlined,
+                        accentColor : _kPhase,
                       ),
                     ],
                   ),
@@ -505,7 +534,7 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
 
                   // Status downgrade (Yes/No)
                   GenOptionPicker(
-                    label      : 'Status Downgrade',
+                    label      : 'Downgrade Flagging',
                     options    : _statusDowngradeOpts,
                     value      : _statusDowngrade,
                     onChanged  : (v) { if (!_isGuest) {
@@ -533,7 +562,7 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
 
                   // Downgrade flagging (RFI/RFD)
                   GenOptionPicker(
-                    label      : 'Downgrade Flagging',
+                    label      : 'Flagging Downgrade',
                     options    : _downgradeFlaggingOpts,
                     value      : _downgradeFlagging,
                     onChanged  : (v) { if (!_isGuest) {
