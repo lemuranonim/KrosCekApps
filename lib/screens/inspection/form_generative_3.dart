@@ -47,7 +47,8 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
   String? _offtypeM;
   String? _offtypeF;
   String? _lsv;
-  String? _cropCond;
+  String? _cropUniformity;
+  String? _cropHealth;
   String? _detasseling;
   String? _isolationStatus;
   String? _affectedOther;
@@ -95,7 +96,8 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
       _offtypeM        = audit['offtype_m_3'];
       _offtypeF        = audit['offtype_f_3'];
       _lsv             = audit['lsv_status_3'];
-      _cropCond        = audit['crop_condition_3'];
+      _cropUniformity = audit['crop_uniformity_3'];
+      _cropHealth     = audit['crop_health_3'];
       _detasseling     = audit['detasseling_assesment_3']; // DB column typo preserved
       _isolationStatus = audit['isolation_status_3'];
       _affectedOther   = audit['affected_other_field_3'];
@@ -153,7 +155,8 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
         'offtype_m_3'             : _offtypeM,
         'offtype_f_3'             : _offtypeF,
         'lsv_status_3'            : _lsv,
-        'crop_condition_3'        : _cropCond,
+        'crop_uniformity_3'       : _cropUniformity,
+        'crop_health_3'           : _cropHealth,
         'detasseling_assesment_3' : _detasseling, // DB column typo preserved
         'isolation_status_3'      : _isolationStatus,
         'affected_other_field_3'  : _affectedOther,
@@ -386,12 +389,25 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label:       'Crop Condition',
+                        label:       'Crop Uniformity',
                         required:    !_isDiscard && !_isGuest,
-                        options:     genCropCondOpts,
-                        value:       _cropCond,
+                        options:     genCropUniformityOpts,
+                        value:       _cropUniformity,
                         onChanged:   (v) { if (!_isGuest) {
-                          setState(() => _cropCond = v);
+                          setState(() => _cropUniformity = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: kGen3Color,
+                      ),
+                      const SizedBox(height: 14),
+                      GenOptionPicker(
+                        label:       'Crop Health',
+                        required:    !_isDiscard && !_isGuest,
+                        options:     genCropHealthOpts,
+                        value:       _cropHealth,
+                        onChanged:   (v) { if (!_isGuest) {
+                          setState(() => _cropHealth = v);
                         } else {
                           GuestGuard.blockIfGuest(context, _session);
                         } },

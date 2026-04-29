@@ -65,11 +65,11 @@ const _previousCropOpts = [
   GenOpt('NC',  'Not Corn'),
 ];
 
-const _finalDecisionOpts = [
+const _decisionOpts = [
   GenOpt('A', 'A – Pass'),
   GenOpt('B', 'B – Pass with Note'),
   GenOpt('C', 'C – Hold'),
-  GenOpt('D', 'D – Discard'),
+  GenOpt('D', 'D – PLD'),
 ];
 
 const _actionNeededOpts = [
@@ -88,7 +88,7 @@ const _pldReasonOpts = [
   GenOpt('D', 'D – No Field'),
 ];
 
-const _finalFlaggingOpts = [
+const _flaggingOpts = [
   GenOpt('GF',  'GF'),
   GenOpt('RFI', 'RFI'),
   GenOpt('RFD', 'RFD'),
@@ -159,10 +159,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   String? _offtypeM;
   String? _offtypeF;
   String? _poiAccuracy;
-  String? _finalDecision;
+  String? _decision;
   String? _actionNeeded;
   String? _pldReason;
-  String? _finalFlagging;
+  String? _flagging;
 
   bool _isGeocodingExisting = false;
   bool _isCapturingGps      = false;
@@ -395,10 +395,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       _offtypeM         = audit['offtype_in_male'];
       _offtypeF         = audit['offtype_in_female'];
       _poiAccuracy      = audit['poi_accuracy'];
-      _finalDecision    = audit['final_decision'];
+      _decision         = audit['decision'];
       _actionNeeded     = audit['action_needed'];
       _pldReason        = audit['pld_reason'];
-      _finalFlagging    = audit['final_flagging'];
+      _flagging         = audit['flagging'];
     });
   }
 
@@ -729,10 +729,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
         'offtype_in_male'           : _offtypeM,
         'offtype_in_female'         : _offtypeF,
         'poi_accuracy'              : _poiAccuracy,
-        'final_decision'            : _finalDecision,
+        'decision'                  : _decision,
         'action_needed'             : _actionNeeded,
-        'pld_reason'                : _finalDecision == 'D' ? _pldReason : null,
-        'final_flagging'            : _finalFlagging,
+        'pld_reason'                : _decision == 'D' ? _pldReason : null,
+        'flagging'                  : _flagging,
         'remarks'                   : _remarksCtrl.text.trim(),
         'fase'                      : 'vegetative',
         'updated_at'                : now.toIso8601String(),
@@ -804,7 +804,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadExistingGeocode(rawCoord));
     }
 
-    final isDiscard = _finalDecision == 'D';
+    final isDiscard = _decision == 'D';
 
     return Scaffold(
       appBar: GenAppBar(
@@ -1129,13 +1129,13 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                     color: AdvantaColors.error,
                     children: [
                       GenOptionPicker(
-                        label      : 'Final Decision',
+                        label      : 'Decision',
                         required   : !_isGuest,
-                        options    : _finalDecisionOpts,
-                        value      : _finalDecision,
+                        options    : _decisionOpts,
+                        value      : _decision,
                         onChanged  : (v) { if (!_isGuest) {
                           setState(() {
-                          _finalDecision = v;
+                          _decision = v;
                           if (v != 'D') _pldReason = null;
                         });
                         } else {
@@ -1146,7 +1146,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                       if (isDiscard) ...[
                         const SizedBox(height: 12),
                         const GenDiscardBanner(
-                          message: 'Mode Discard aktif — pastikan PLD Reason terisi sebelum menyimpan.',
+                          message: 'Mode PLD aktif — pastikan PLD Reason terisi sebelum menyimpan.',
                         ),
                         const SizedBox(height: 14),
                         GenOptionPicker(
@@ -1176,11 +1176,11 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Final Flagging',
-                        options    : _finalFlaggingOpts,
-                        value      : _finalFlagging,
+                        label      : 'Flagging',
+                        options    : _flaggingOpts,
+                        value      : _flagging,
                         onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _finalFlagging = v);
+                          setState(() => _flagging = v);
                         } else {
                           GuestGuard.blockIfGuest(context, _session);
                         } },
@@ -1216,7 +1216,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
             isDiscard: isDiscard && !_isGuest,
             saveLabel: _isGuest
                 ? 'READ-ONLY — TIDAK DAPAT MENYIMPAN'
-                : (isDiscard ? 'SIMPAN — DISCARD' : 'SIMPAN VEGETATIVE'),
+                : (isDiscard ? 'SIMPAN — PLD' : 'SIMPAN VEGETATIVE'),
             onSave   : _isGuest
                 ? () => GuestGuard.blockIfGuest(context, _session)
                 : _saveAudit,

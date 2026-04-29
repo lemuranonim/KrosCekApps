@@ -838,7 +838,7 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
               badgeColor = DapHelper.getDapBadgeColor(rawBadge);
 
               switch (rawBadge.toLowerCase()) {
-                case 'overdue': translatedBadge = 'Lewat Tenggat'; break;
+                case 'overdue': translatedBadge = 'Terlambat'; break;
                 case 'upcoming': translatedBadge = 'Akan Datang'; break;
                 case 'on going':translatedBadge = 'Sedang Berjalan'; break;
                 default:        translatedBadge = rawBadge;
@@ -1521,7 +1521,7 @@ class _DapCalculationBox extends StatelessWidget {
 
   String _translateBadge(String rawBadge) {
     switch (rawBadge.toLowerCase()) {
-      case 'overdue': return 'Lewat Tenggat';
+      case 'overdue': return 'Terlambat';
       case 'upcoming': return 'Akan Datang';
       case 'on going':return 'Sedang Berjalan';
       default:        return rawBadge;

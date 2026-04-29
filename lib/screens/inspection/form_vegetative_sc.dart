@@ -43,11 +43,11 @@ const _cropUniformityOpts = [
 ];
 
 const _cropHealthOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('1', '1 – 1%'),
+  GenOpt('2', '2 – 2%'),
+  GenOpt('3', '3 – 3%'),
+  GenOpt('4', '4 – 4%'),
+  GenOpt('5', '5 – 5%'),
 ];
 
 const _offtypeOpts = [
@@ -65,11 +65,11 @@ const _previousCropOpts = [
   GenOpt('NC',  'Not Corn'),
 ];
 
-const _finalDecisionOpts = [
+const _decisionOpts = [
   GenOpt('A', 'A – Pass'),
   GenOpt('B', 'B – Pass with Note'),
   GenOpt('C', 'C – Hold'),
-  GenOpt('D', 'D – Discard'),
+  GenOpt('D', 'D – PLD'),
 ];
 
 const _actionNeededOpts = [
@@ -159,7 +159,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
   String? _offtypeM;
   String? _offtypeF;
   String? _poiAccuracy;
-  String? _finalDecision;
+  String? _decision;
   String? _actionNeeded;
   String? _pldReason;
   String? _flagging;
@@ -395,7 +395,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
       _offtypeM         = audit['offtype_in_male'];
       _offtypeF         = audit['offtype_in_female'];
       _poiAccuracy      = audit['poi_accuracy'];
-      _finalDecision    = audit['final_decision'];
+      _decision         = audit['decision'];
       _actionNeeded     = audit['action_needed'];
       _pldReason        = audit['pld_reason'];
       _flagging         = audit['flagging'];
@@ -729,9 +729,9 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
         'offtype_in_male'           : _offtypeM,
         'offtype_in_female'         : _offtypeF,
         'poi_accuracy'              : _poiAccuracy,
-        'final_decision'            : _finalDecision,
+        'decision'            : _decision,
         'action_needed'             : _actionNeeded,
-        'pld_reason'                : _finalDecision == 'D' ? _pldReason : null,
+        'pld_reason'                : _decision == 'D' ? _pldReason : null,
         'flagging'                  : _flagging,
         'remarks'                   : _remarksCtrl.text.trim(),
         'fase'                      : 'vegetative',
@@ -804,7 +804,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadExistingGeocode(rawCoord));
     }
 
-    final isDiscard = _finalDecision == 'D';
+    final isDiscard = _decision == 'D';
 
     return Scaffold(
       appBar: GenAppBar(
@@ -1129,13 +1129,13 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
                     color: AdvantaColors.error,
                     children: [
                       GenOptionPicker(
-                        label      : 'Final Decision',
+                        label      : 'Decision',
                         required   : !_isGuest,
-                        options    : _finalDecisionOpts,
-                        value      : _finalDecision,
+                        options    : _decisionOpts,
+                        value      : _decision,
                         onChanged  : (v) { if (!_isGuest) {
                           setState(() {
-                          _finalDecision = v;
+                          _decision = v;
                           if (v != 'D') _pldReason = null;
                         });
                         } else {
@@ -1146,7 +1146,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
                       if (isDiscard) ...[
                         const SizedBox(height: 12),
                         const GenDiscardBanner(
-                          message: 'Mode Discard aktif — pastikan PLD Reason terisi sebelum menyimpan.',
+                          message: 'Mode PLD aktif — pastikan PLD Reason terisi sebelum menyimpan.',
                         ),
                         const SizedBox(height: 14),
                         GenOptionPicker(
@@ -1216,7 +1216,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
             isDiscard: isDiscard && !_isGuest,
             saveLabel: _isGuest
                 ? 'READ-ONLY — TIDAK DAPAT MENYIMPAN'
-                : (isDiscard ? 'SIMPAN — DISCARD' : 'SIMPAN VEGETATIVE (SC)'),
+                : (isDiscard ? 'SIMPAN — PLD' : 'SIMPAN VEGETATIVE (SC)'),
             onSave   : _isGuest
                 ? () => GuestGuard.blockIfGuest(context, _session)
                 : _saveAudit,

@@ -385,7 +385,7 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
                       GenOptionPicker(
                         label:       'Crop Uniformity',
                         required:    !isDiscard && !_isGuest,
-                        options:     genCropCondOpts,
+                        options:     genCropUniformityOpts,
                         value:       _cropUniformity,
                         onChanged:   (v) { if (!_isGuest) {
                           setState(() => _cropUniformity = v);
@@ -400,7 +400,7 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
                       GenOptionPicker(
                         label:       'Crop Health',
                         required:    !isDiscard && !_isGuest,
-                        options:     genCropCondOpts,
+                        options:     genCropHealthOpts,
                         value:       _cropHealth,
                         onChanged:   (v) { if (!_isGuest) {
                           setState(() => _cropHealth = v);

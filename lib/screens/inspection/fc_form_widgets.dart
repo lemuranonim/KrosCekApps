@@ -67,7 +67,15 @@ const genLsvOpts = [
   GenOpt('D', 'D – High'),
 ];
 
-const genCropCondOpts = [
+const genCropUniformityOpts = [
+  GenOpt('1', '1 – Very Poor'),
+  GenOpt('2', '2 – Poor'),
+  GenOpt('3', '3 – Fair'),
+  GenOpt('4', '4 – Good'),
+  GenOpt('5', '5 – Best'),
+];
+
+const genCropHealthOpts = [
   GenOpt('1', '1 – Very Poor'),
   GenOpt('2', '2 – Poor'),
   GenOpt('3', '3 – Fair'),

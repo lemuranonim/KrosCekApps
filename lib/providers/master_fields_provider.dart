@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 import '../services/supabase_service.dart';
 import '../services/supabase_auth_service.dart';
 import '../services/session_manager.dart';
@@ -83,9 +84,11 @@ class ParsedFieldData {
   final int dap;
 
   /// Raw WKT string dari kolom geometry_wkt, jika ada.
-  /// Digunakan untuk menggambar polygon overlay di map screen.
-  /// Null jika lahan belum memiliki data polygon.
   final String? geometryWkt;
+
+  /// Koordinat polygon yang sudah diparse dari WKT.
+  /// Disimpan di sini agar tidak perlu parse ulang di thread utama (UI).
+  final List<LatLng>? polygonPoints;
 
   ParsedFieldData({
     required this.raw,
@@ -96,6 +99,7 @@ class ParsedFieldData {
     required this.isFromPolygon,
     required this.dap,
     this.geometryWkt,
+    this.polygonPoints,
   });
 }
 
@@ -112,33 +116,39 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
         !(lat == 0.0 && lng == 0.0);
   }
 
-  // ── Helper: parse centroid dari WKT POLYGON ───────────────
-  // Format WKT: POLYGON((lng lat, lng lat, ...))
-  // Urutan: X (lng) dulu, baru Y (lat) — berbeda dengan LatLng!
-  Map<String, double>? parseWktCentroid(String? wkt) {
-    if (wkt == null || wkt.trim().isEmpty) return null;
+  // ── Helper: parse WKT POLYGON → List<LatLng> ──────────────
+  List<LatLng> parseWktToLatLngs(String wkt) {
     final match = RegExp(
       r'POLYGON\s*\(\((.+?)\)\)',
       caseSensitive: false,
     ).firstMatch(wkt);
-    if (match == null) return null;
+    if (match == null) return [];
 
-    final pairs = match.group(1)!.split(',');
-    double sumLng = 0, sumLat = 0;
-    int count = 0;
-
-    for (final pair in pairs) {
+    final result = <LatLng>[];
+    for (final pair in match.group(1)!.split(',')) {
       final parts = pair.trim().split(RegExp(r'\s+'));
       if (parts.length < 2) continue;
       final lng = double.tryParse(parts[0]);
       final lat = double.tryParse(parts[1]);
-      if (lng == null || lat == null) continue;
-      sumLng += lng;
-      sumLat += lat;
-      count++;
+      if (lat != null && lng != null) {
+        result.add(LatLng(lat, lng));
+      }
     }
-    if (count == 0) return null;
-    return {'lat': sumLat / count, 'lng': sumLng / count};
+    return result;
+  }
+
+  // ── Helper: parse centroid dari WKT POLYGON ───────────────
+  Map<String, double>? parseWktCentroid(String? wkt) {
+    if (wkt == null || wkt.trim().isEmpty) return null;
+    final points = parseWktToLatLngs(wkt);
+    if (points.isEmpty) return null;
+
+    double sumLng = 0, sumLat = 0;
+    for (final p in points) {
+      sumLng += p.longitude;
+      sumLat += p.latitude;
+    }
+    return {'lat': sumLat / points.length, 'lng': sumLng / points.length};
   }
   // ─────────────────────────────────────────────────────────
 
@@ -147,16 +157,20 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
     final geometryWkt     = f['geometry_wkt']?.toString();
     final rawCoord        = f['coordinate']?.toString();
 
+    // Parse Polygon Points
+    List<LatLng>? parsedPolygon;
+    if (geometryWkt != null && geometryWkt.isNotEmpty) {
+      parsedPolygon = parseWktToLatLngs(geometryWkt);
+    }
+    
     // Inisialisasi langsung non-nullable dengan nilai default (PRIORITAS 4).
-    // Tiap prioritas yang berhasil akan override + set isDef = false.
-    // Pendekatan ini menghindari nullable, !, dan ?? sekaligus.
     double finalLat    = -7.637017;
     double finalLng    = 112.8272303;
     bool isDef         = true;
     bool isCorrected   = false;
     bool isFromPolygon = false;
 
-    // ── PRIORITAS 1: correction_tagging (koreksi manual QA) ──
+    // ── PRIORITAS 1: correction_tagging ──
     if (correctionCoord != null &&
         correctionCoord.trim().isNotEmpty &&
         correctionCoord.contains(',')) {
@@ -172,7 +186,7 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
       }
     }
 
-    // ── PRIORITAS 2: geometry_wkt → centroid polygon ──────────
+    // ── PRIORITAS 2: centroid polygon ──────────
     if (!isCorrected) {
       final centroid = parseWktCentroid(geometryWkt);
       if (centroid != null) {
@@ -187,7 +201,7 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
       }
     }
 
-    // ── PRIORITAS 3: coordinate (titik point lama) ────────────
+    // ── PRIORITAS 3: coordinate ────────────
     if (!isCorrected && !isFromPolygon) {
       if (rawCoord != null &&
           rawCoord.trim().isNotEmpty &&
@@ -204,12 +218,7 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
       }
     }
 
-    // ── PRIORITAS 4: sudah ter-handle oleh nilai inisialisasi ─
-    // isDef tetap true jika tidak ada prioritas di atas yang berhasil.
-
     // ── Hitung DAP ────────────────────────────────────────────
-    // Cek rev_planting_date dari audit_vegetative dulu,
-    // baru fallback ke planting_date_pdn
     String? finalPlantingDate;
     final vegRow = f['audit_vegetative'];
     if (vegRow != null) {
@@ -231,7 +240,8 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
       isCorrected  : isCorrected,
       isFromPolygon: isFromPolygon,
       dap          : DapHelper.calculateDAP(finalPlantingDate),
-      geometryWkt  : geometryWkt,  // simpan raw WKT untuk polygon overlay
+      geometryWkt  : geometryWkt,
+      polygonPoints: (parsedPolygon != null && parsedPolygon.length >= 3) ? parsedPolygon : null,
     );
   }).toList();
 }

@@ -280,10 +280,24 @@ class PhaseCoverage {
   });
 }
 
+class PhaseSummary {
+  final List<PhaseCoverage> phases;
+  final int totalFields;
+  final int targetFields;
+  final int upcomingFields;
+
+  const PhaseSummary({
+    required this.phases,
+    required this.totalFields,
+    required this.targetFields,
+    required this.upcomingFields,
+  });
+}
+
 // ============================================================
 // FUNGSI HELPER UNTUK MENGHITUNG FASE DINAMIS (TERFILTER)
 // ============================================================
-List<PhaseCoverage> calculateFilteredPhases(List<FieldCoverageStatus> filteredFields, {bool includeUpcoming = false}) {
+PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields, {bool includeUpcoming = false}) {
   final colors = [AdvantaColors.lightGreen, AdvantaColors.gold, AdvantaColors.midGreen, AdvantaColors.error];
 
   int vegTotal = 0, vegDone = 0;
@@ -291,9 +305,15 @@ List<PhaseCoverage> calculateFilteredPhases(List<FieldCoverageStatus> filteredFi
   int phTotal = 0, phDone = 0;
   int hvTotal = 0, hvDone = 0;
 
+  int targetCount = 0;
+  int upcomingCount = 0;
+
   for (final f in filteredFields) {
+    bool isFieldTarget = false;
+
     // Vegetative
     final vBadge = DapHelper.getDapBadgeLabel(f.dap, 'vegetative');
+    if (vBadge == 'On Going' || vBadge == 'Overdue') isFieldTarget = true;
     if (includeUpcoming || vBadge == 'On Going' || vBadge == 'Overdue') {
       vegTotal++;
       if (f.vegetativeDone) vegDone++;
@@ -304,6 +324,7 @@ List<PhaseCoverage> calculateFilteredPhases(List<FieldCoverageStatus> filteredFi
     bool genAnyDone = false;
     for (final gPhase in ['generative_1', 'generative_2', 'generative_3']) {
       final gBadge = DapHelper.getDapBadgeLabel(f.dap, gPhase);
+      if (gBadge == 'On Going' || gBadge == 'Overdue') isFieldTarget = true;
       if (includeUpcoming || gBadge == 'On Going' || gBadge == 'Overdue') {
         genRelevant = true;
         final done = gPhase == 'generative_1' ? f.gen1Done : gPhase == 'generative_2' ? f.gen2Done : f.gen3Done;
@@ -314,6 +335,7 @@ List<PhaseCoverage> calculateFilteredPhases(List<FieldCoverageStatus> filteredFi
 
     // Pre-Harvest
     final phBadge = DapHelper.getDapBadgeLabel(f.dap, 'pre_harvest');
+    if (phBadge == 'On Going' || phBadge == 'Overdue') isFieldTarget = true;
     if (includeUpcoming || phBadge == 'On Going' || phBadge == 'Overdue') {
       phTotal++;
       if (f.preHarvestDone) phDone++;
@@ -321,18 +343,30 @@ List<PhaseCoverage> calculateFilteredPhases(List<FieldCoverageStatus> filteredFi
 
     // Harvest
     final hvBadge = DapHelper.getDapBadgeLabel(f.dap, 'harvest');
+    if (hvBadge == 'On Going' || hvBadge == 'Overdue') isFieldTarget = true;
     if (includeUpcoming || hvBadge == 'On Going' || hvBadge == 'Overdue') {
       hvTotal++;
       if (f.harvestDone) hvDone++;
     }
+
+    if (isFieldTarget) {
+      targetCount++;
+    } else {
+      upcomingCount++;
+    }
   }
 
-  return [
-    PhaseCoverage(label: 'Vegetative', shortLabel: 'Veg', color: colors[0], total: vegTotal, done: vegDone),
-    PhaseCoverage(label: 'Generative', shortLabel: 'Gen', color: colors[1], total: genTotal, done: genDone),
-    PhaseCoverage(label: 'Pre-Harvest', shortLabel: 'Pre-H', color: colors[2], total: phTotal, done: phDone),
-    PhaseCoverage(label: 'Harvest', shortLabel: 'Harv', color: colors[3], total: hvTotal, done: hvDone),
-  ];
+  return PhaseSummary(
+    phases: [
+      PhaseCoverage(label: 'Vegetative', shortLabel: 'Veg', color: colors[0], total: vegTotal, done: vegDone),
+      PhaseCoverage(label: 'Generative', shortLabel: 'Gen', color: colors[1], total: genTotal, done: genDone),
+      PhaseCoverage(label: 'Pre-Harvest', shortLabel: 'Pre-H', color: colors[2], total: phTotal, done: phDone),
+      PhaseCoverage(label: 'Harvest', shortLabel: 'Harv', color: colors[3], total: hvTotal, done: hvDone),
+    ],
+    totalFields: filteredFields.length,
+    targetFields: targetCount,
+    upcomingFields: upcomingCount,
+  );
 }
 
 // ============================================================
@@ -368,44 +402,9 @@ final coverageStatusListProvider = FutureProvider<List<FieldCoverageStatus>>((re
   return parsed;
 });
 
-final phaseSummaryProvider = FutureProvider<List<PhaseCoverage>>((ref) async {
+final phaseSummaryProvider = FutureProvider<PhaseSummary>((ref) async {
   final fields = await ref.watch(coverageStatusListProvider.future);
-  final colors = [AdvantaColors.lightGreen, AdvantaColors.gold, AdvantaColors.midGreen, AdvantaColors.error];
-
-  int vegTotal = 0, vegDone = 0;
-  int genTotal = 0, genDone = 0;
-  int phTotal = 0, phDone = 0;
-  int hvTotal = 0, hvDone = 0;
-
-  for (final f in fields) {
-    final vBadge = DapHelper.getDapBadgeLabel(f.dap, 'vegetative');
-    if (vBadge == 'On Going' || vBadge == 'Overdue') { vegTotal++; if (f.vegetativeDone) vegDone++; }
-
-    bool genRelevant = false;
-    bool genAnyDone = false;
-    for (final gPhase in ['generative_1', 'generative_2', 'generative_3']) {
-      final gBadge = DapHelper.getDapBadgeLabel(f.dap, gPhase);
-      if (gBadge == 'On Going' || gBadge == 'Overdue') {
-        genRelevant = true;
-        final done = gPhase == 'generative_1' ? f.gen1Done : gPhase == 'generative_2' ? f.gen2Done : f.gen3Done;
-        if (done) genAnyDone = true;
-      }
-    }
-    if (genRelevant) { genTotal++; if (genAnyDone) genDone++; }
-
-    final phBadge = DapHelper.getDapBadgeLabel(f.dap, 'pre_harvest');
-    if (phBadge == 'On Going' || phBadge == 'Overdue') { phTotal++; if (f.preHarvestDone) phDone++; }
-
-    final hvBadge = DapHelper.getDapBadgeLabel(f.dap, 'harvest');
-    if (hvBadge == 'On Going' || hvBadge == 'Overdue') { hvTotal++; if (f.harvestDone) hvDone++; }
-  }
-
-  return [
-    PhaseCoverage(label: 'Vegetative', shortLabel: 'Veg', color: colors[0], total: vegTotal, done: vegDone),
-    PhaseCoverage(label: 'Generative', shortLabel: 'Gen', color: colors[1], total: genTotal, done: genDone),
-    PhaseCoverage(label: 'Pre-Harvest', shortLabel: 'Pre-H', color: colors[2], total: phTotal, done: phDone),
-    PhaseCoverage(label: 'Harvest', shortLabel: 'Harv', color: colors[3], total: hvTotal, done: hvDone),
-  ];
+  return calculateFilteredPhases(fields);
 });
 
 final fiCoverageListProvider = FutureProvider<List<FICoverage>>((ref) async {
@@ -612,7 +611,7 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
             ),
             SliverToBoxAdapter(
               child: _PhaseProgressSection(
-                phases: calculateFilteredPhases(
+                summary: calculateFilteredPhases(
                     filtered,
                     includeUpcoming: _showAllRegisteredFields // <--- Kirim state toggle di sini
                 ),
@@ -788,7 +787,7 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             ),
             SliverToBoxAdapter(
               child: _PhaseProgressSection(
-                phases: calculateFilteredPhases(
+                summary: calculateFilteredPhases(
                     fields, // <--- Gunakan 'fields', bukan 'filtered'
                     includeUpcoming: _showAllRegisteredFields
                 ),
@@ -956,7 +955,7 @@ class _FIViewState extends ConsumerState<_FIView> {
             ),
             SliverToBoxAdapter(
               child: _PhaseProgressSection(
-                phases: calculateFilteredPhases(fields), // <-- GUNAKAN DATA FIELDS
+                summary: calculateFilteredPhases(fields), // <-- GUNAKAN DATA FIELDS
               ),
             ),
             SliverToBoxAdapter(
@@ -1303,11 +1302,12 @@ class _StatCard extends StatelessWidget {
 }
 
 class _PhaseProgressSection extends StatelessWidget {
-  final List<PhaseCoverage> phases;
-  const _PhaseProgressSection({required this.phases});
+  final PhaseSummary summary;
+  const _PhaseProgressSection({required this.summary});
 
   @override
   Widget build(BuildContext context) {
+    final phases = summary.phases;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8), padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))]),
@@ -1317,21 +1317,56 @@ class _PhaseProgressSection extends StatelessWidget {
           Row(children: [
             const Text('Coverage Progress', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest)),
             const Spacer(),
-            Text('(All Phases)', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-            const SizedBox(width: 8),
             GestureDetector(
               onTap: () => _showDetailSheet(context),
               child: const Text('Lihat Detail', style: TextStyle(fontSize: 11, color: AdvantaColors.deepForest, fontWeight: FontWeight.w600)),
             ),
           ]),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
+
+          // INFO RINGKASAN LAHAN
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: AdvantaColors.softGrey,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildMiniInfo('Master Lahan', summary.totalFields.toString(), AdvantaColors.deepForest),
+                _buildDivider(),
+                _buildMiniInfo('Target Audit', summary.targetFields.toString(), AdvantaColors.midGreen),
+                _buildDivider(),
+                _buildMiniInfo('Akan Datang', summary.upcomingFields.toString(), Colors.blue[700]!),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
           Row(children: phases.map((p) => Expanded(child: Padding(padding: EdgeInsets.only(right: p == phases.last ? 0 : 12), child: _PhaseBar(phase: p)))).toList()),
         ],
       ),
     );
   }
 
+  Widget _buildMiniInfo(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: color)),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: Colors.grey[600])),
+      ],
+    );
+  }
+
+  Widget _buildDivider() {
+    return Container(width: 1, height: 20, color: Colors.grey[300]);
+  }
+
   void _showDetailSheet(BuildContext context) {
+    final phases = summary.phases;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1389,7 +1424,7 @@ class _PhaseProgressSection extends StatelessWidget {
                       Text('${p.done} dari ${p.total} lahan selesai diaudit',
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AdvantaColors.charcoal)),
                       if (p.total - p.done > 0)
-                        Text('${p.total - p.done} Menunggak',
+                        Text('${p.total - p.done} Terlambat',
                             style: const TextStyle(fontSize: 11, color: AdvantaColors.error, fontWeight: FontWeight.bold)),
                     ],
                   ),

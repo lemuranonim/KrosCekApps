@@ -43,7 +43,8 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
   String? _readiness;
   String? _roguing;
   String? _lsv;
-  String? _cropCond;
+  String? _cropUniformity;
+  String? _cropHealth;
   String? _actionNeeded;
 
   // ── NEW ──────────────────────────────────────────────────
@@ -77,7 +78,8 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
       _readiness    = audit['readiness_status_1'];
       _roguing      = audit['roguing_status_1'];
       _lsv          = audit['lsv_status_1'];
-      _cropCond     = audit['crop_condition_1'];
+      _cropUniformity = audit['crop_uniformity_1'];
+      _cropHealth     = audit['crop_health_1'];
       _actionNeeded = audit['action_needed_1'];
     });
   }
@@ -119,7 +121,8 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
         'readiness_status_1' : _readiness,
         'roguing_status_1'   : _roguing,
         'lsv_status_1'       : _lsv,
-        'crop_condition_1'   : _cropCond,
+        'crop_uniformity_1'   : _cropUniformity,
+        'crop_health_1'       : _cropHealth,
         'action_needed_1'    : _actionNeeded,
         'qa_fi_1'            : _qaFiCtrl.text.trim(),
         'qa_spv'             : _qaSpvCtrl.text.trim(),
@@ -320,12 +323,25 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label:       'Crop Condition',
+                        label:       'Crop Uniformity',
                         required:    !isDiscard && !_isGuest,
-                        options:     genCropCondOpts,
-                        value:       _cropCond,
+                        options:     genCropUniformityOpts,
+                        value:       _cropUniformity,
                         onChanged:   (v) { if (!_isGuest) {
-                          setState(() => _cropCond = v);
+                          setState(() => _cropUniformity = v);
+                        } else {
+                          GuestGuard.blockIfGuest(context, _session);
+                        } },
+                        accentColor: kGen1Color,
+                      ),
+                      const SizedBox(height: 14),
+                      GenOptionPicker(
+                        label:       'Crop Health',
+                        required:    !isDiscard && !_isGuest,
+                        options:     genCropHealthOpts,
+                        value:       _cropHealth,
+                        onChanged:   (v) { if (!_isGuest) {
+                          setState(() => _cropHealth = v);
                         } else {
                           GuestGuard.blockIfGuest(context, _session);
                         } },

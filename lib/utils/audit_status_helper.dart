@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────
 
 import 'package:flutter/foundation.dart';
+import 'active_phase_filter.dart';
 
 enum SingleAuditStatus { sampun, dereng }
 
@@ -59,13 +60,49 @@ class FieldAuditStatus {
 
   bool isActivePhaseDone(int dap) {
     if (dap <= 35) return vegetative == SingleAuditStatus.sampun;
-    
+
     // Batas Generatif dinamis: SC s/d 80 DAP, FC s/d 65 DAP
     final int generativeEnd = isSweetCorn ? 80 : 65;
-    if (dap <= generativeEnd) return generative == GenerativeAuditStatus.sampun;
-    
+    if (dap <= generativeEnd) {
+      if (dap < 50) return false; // Upcoming Gen
+      if (dap <= 54) return gen1Done;
+      if (dap <= 59) return gen2Done;
+      if (dap <= 65) return gen3Done;
+      if (isSweetCorn) {
+        if (dap <= 72) return gen4Done;
+        if (dap <= 80) return gen5Done;
+      }
+      return generative == GenerativeAuditStatus.sampun;
+    }
+
     if (dap <= 90) return preHarvest == SingleAuditStatus.sampun;
     return harvest == SingleAuditStatus.sampun;
+  }
+
+  /// Menentukan apakah audit sudah selesai untuk fase tertentu pada DAP tertentu.
+  /// Sangat berguna untuk logika "Time Traveller" agar status Sampun/Dereng
+  /// menyesuaikan dengan sub-fase (terutama di Generatif).
+  bool isAuditDoneFor(ActivePhaseView phase, int dap) {
+    switch (phase) {
+      case ActivePhaseView.vegetative:
+        return vegetative == SingleAuditStatus.sampun;
+      case ActivePhaseView.generative:
+        if (dap < 50) return false;
+        if (dap <= 54) return gen1Done;
+        if (dap <= 59) return gen2Done;
+        if (dap <= 65) return gen3Done;
+        if (isSweetCorn) {
+          if (dap <= 72) return gen4Done;
+          if (dap <= 80) return gen5Done;
+        }
+        return generative == GenerativeAuditStatus.sampun;
+      case ActivePhaseView.preHarvest:
+        return preHarvest == SingleAuditStatus.sampun;
+      case ActivePhaseView.harvest:
+        return harvest == SingleAuditStatus.sampun;
+      case ActivePhaseView.auto:
+        return isActivePhaseDone(dap);
+    }
   }
 }
 

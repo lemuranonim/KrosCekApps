@@ -23,7 +23,7 @@ class FieldListView extends StatefulWidget {
   final List<ParsedFieldData> fieldsData;
   final LatLng? userLocation;
   final double topPadding;
-  final Color Function(int dap) getMarkerColor;
+  final Color Function(int dap, {String? hybrid}) getMarkerColor;
   final void Function(List<Map<String, dynamic>> uncoordFields) onUncoordBannerTap;
   final void Function(double lat, double lng) onNavigateTap;
 
@@ -35,6 +35,9 @@ class FieldListView extends StatefulWidget {
 
   final ActivePhaseView activePhase;
   final ValueChanged<ActivePhaseView> onPhaseChanged;
+
+  /// Selisih hari untuk proyeksi DAP (Time Traveller)
+  final int deltaDays;
 
   const FieldListView({
     super.key,
@@ -49,6 +52,7 @@ class FieldListView extends StatefulWidget {
     required this.onFieldTap,
     required this.activePhase,
     required this.onPhaseChanged,
+    this.deltaDays = 0,
     this.scrollController,
   });
 
@@ -59,7 +63,7 @@ class FieldListView extends StatefulWidget {
       BuildContext context, {
         required List<ParsedFieldData> fieldsData,
         required LatLng? userLocation,
-        required Color Function(int dap) getMarkerColor,
+        required Color Function(int dap, {String? hybrid}) getMarkerColor,
         required void Function(List<Map<String, dynamic>> uncoordFields) onUncoordBannerTap,
         required void Function(double lat, double lng) onNavigateTap,
         required bool isMassMode,
@@ -67,6 +71,7 @@ class FieldListView extends StatefulWidget {
         required void Function(ParsedFieldData field) onFieldTap,
         required ActivePhaseView activePhase,
         required ValueChanged<ActivePhaseView> onPhaseChanged,
+        int deltaDays = 0,
       }) {
     showModalBottomSheet(
       context: context,
@@ -204,6 +209,7 @@ class FieldListView extends StatefulWidget {
                             onFieldTap(f);
                             setSheetState(() {});
                           },
+                          deltaDays: deltaDays,
                         ),
                       ),
                     ],
@@ -234,15 +240,15 @@ class _FieldListViewState extends State<FieldListView> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Filter berdasarkan DAP
+    // 1. Filter berdasarkan DAP (Simulasi DAP jika deltaDays != 0)
     final filteredData = widget.fieldsData.where((f) {
       if (_activeFilter == 'Semua') return true;
-      final dap = f.dap;
+      final projectedDap = f.dap + widget.deltaDays;
       switch (_activeFilter) {
-        case 'Vegetative (≤35 DAP)':   return dap <= 35;
-        case 'Generative (36-65 DAP)': return dap > 35 && dap <= 65;
-        case 'Pre-Harvest (66-90 DAP)':return dap > 65 && dap <= 90;
-        case 'Harvest (>90 DAP)':      return dap > 90;
+        case 'Vegetative (≤35 DAP)':   return projectedDap <= 35;
+        case 'Generative (36-65 DAP)': return projectedDap > 35 && projectedDap <= 65;
+        case 'Pre-Harvest (66-90 DAP)':return projectedDap > 65 && projectedDap <= 90;
+        case 'Harvest (>90 DAP)':      return projectedDap > 90;
         default:                       return true;
       }
     }).toList();
@@ -301,6 +307,7 @@ class _FieldListViewState extends State<FieldListView> {
               final item = withDistance[idx];
               final f = item.data;
               final fn = f.raw['field_number'] ?? '-';
+              final projectedDap = f.dap + widget.deltaDays;
 
               final isSelected = widget.selectedFieldNumbers.contains(fn);
               final distKm = (item.distance / 1000).toStringAsFixed(1);
@@ -317,6 +324,7 @@ class _FieldListViewState extends State<FieldListView> {
                 distM: distM,
                 distance: item.distance,
                 auditStatus: auditStatus,
+                projectedDap: projectedDap,
               );
             },
           ),
@@ -334,6 +342,7 @@ class _FieldListViewState extends State<FieldListView> {
     required int distM,
     required double distance,
     required FieldAuditStatus auditStatus,
+    required int projectedDap,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -349,16 +358,16 @@ class _FieldListViewState extends State<FieldListView> {
             width: isSelected ? 1.5 : 1.0,
           ),
         ),
-        // Left Border warna sesuai status audit fase aktif
+        // Left Border warna sesuai status audit fase aktif (Gunakan projectedDap)
         child: AuditStatusLeftBorder(
           auditStatus: auditStatus,
-          dap: f.dap,
+          dap: projectedDap,
           activePhase: widget.activePhase,
           borderRadius: AdvantaRadius.cardRadius,
           child: ListTile(
             onTap: () => widget.onFieldTap(f),
             contentPadding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
-            leading: _buildDapAvatar(f.dap, isSelected),
+            leading: _buildDapAvatar(projectedDap, f.raw['hybrid']?.toString(), isSelected),
             title: Row(
               children: [
                 Expanded(
@@ -373,7 +382,7 @@ class _FieldListViewState extends State<FieldListView> {
                 ),
                 // Badge status fase aktif — pakai widget.activePhase
                 // yang sudah sinkron dengan _sheetPhase dari showSheet
-                _buildActivePhaseBadge(auditStatus, f.dap),
+                _buildActivePhaseBadge(auditStatus, projectedDap),
               ],
             ),
             subtitle: Column(
@@ -434,7 +443,7 @@ class _FieldListViewState extends State<FieldListView> {
   Widget _buildActivePhaseBadge(FieldAuditStatus auditStatus, int dap) {
     final phase = widget.activePhase;
     final resolvedPhase =
-    phase == ActivePhaseView.auto ? _dapToPhase(dap) : phase;
+    phase == ActivePhaseView.auto ? _dapToPhase(dap, auditStatus.isSweetCorn) : phase;
 
     if (resolvedPhase == ActivePhaseView.generative) {
       return AuditStatusBadge.generative(
@@ -447,9 +456,10 @@ class _FieldListViewState extends State<FieldListView> {
     }
   }
 
-  ActivePhaseView _dapToPhase(int dap) {
-    if (dap <= 35)  return ActivePhaseView.vegetative;
-    if (dap <= 65)  return ActivePhaseView.generative;
+  ActivePhaseView _dapToPhase(int dap, bool isSc) {
+    if (dap <= 35) return ActivePhaseView.vegetative;
+    final int generativeEnd = isSc ? 80 : 65;
+    if (dap <= generativeEnd) return ActivePhaseView.generative;
     if (dap <= 90) return ActivePhaseView.preHarvest;
     return ActivePhaseView.harvest;
   }
@@ -528,9 +538,9 @@ class _FieldListViewState extends State<FieldListView> {
     );
   }
 
-  Widget _buildDapAvatar(int dap, bool isSelected) {
+  Widget _buildDapAvatar(int dap, String? hybrid, bool isSelected) {
     final color =
-    isSelected ? AdvantaColors.lightGreen : widget.getMarkerColor(dap);
+    isSelected ? AdvantaColors.lightGreen : widget.getMarkerColor(dap, hybrid: hybrid);
     return Container(
       width: 40,
       height: 40,

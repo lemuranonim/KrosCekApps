@@ -222,54 +222,29 @@ class AuditStatusLeftBorder extends StatelessWidget {
   });
 
   Color _resolveColor() {
-    switch (activePhase) {
-      case ActivePhaseView.vegetative:
-        return auditStatus.vegetative == SingleAuditStatus.sampun
-            ? AuditStatusColors.sampun
-            : AuditStatusColors.dereng;
+    final phase = activePhase == ActivePhaseView.auto
+        ? _dapToPhase(dap)
+        : activePhase;
 
-      case ActivePhaseView.generative:
-        switch (auditStatus.generative) {
-          case GenerativeAuditStatus.sampun:
-            return AuditStatusColors.sampun;
-          case GenerativeAuditStatus.derengJangkep:
-            return AuditStatusColors.derengJangkep;
-          case GenerativeAuditStatus.derengBlas:
-            return AuditStatusColors.dereng;
-        }
+    final bool isDone = auditStatus.isAuditDoneFor(phase, dap);
 
-      case ActivePhaseView.preHarvest:
-        return auditStatus.preHarvest == SingleAuditStatus.sampun
-            ? AuditStatusColors.sampun
-            : AuditStatusColors.dereng;
+    if (isDone) return AuditStatusColors.sampun;
 
-      case ActivePhaseView.harvest:
-        return auditStatus.harvest == SingleAuditStatus.sampun
-            ? AuditStatusColors.sampun
-            : AuditStatusColors.dereng;
-
-      case ActivePhaseView.auto:
-      // Tentukan berdasarkan DAP
-        if (dap <= 35) {
-          return auditStatus.vegetative == SingleAuditStatus.sampun
-              ? AuditStatusColors.sampun
-              : AuditStatusColors.dereng;
-        } else if (dap <= 65) {
-          switch (auditStatus.generative) {
-            case GenerativeAuditStatus.sampun:      return AuditStatusColors.sampun;
-            case GenerativeAuditStatus.derengJangkep: return AuditStatusColors.derengJangkep;
-            case GenerativeAuditStatus.derengBlas:  return AuditStatusColors.dereng;
-          }
-        } else if (dap <= 90) {
-          return auditStatus.preHarvest == SingleAuditStatus.sampun
-              ? AuditStatusColors.sampun
-              : AuditStatusColors.dereng;
-        } else {
-          return auditStatus.harvest == SingleAuditStatus.sampun
-              ? AuditStatusColors.sampun
-              : AuditStatusColors.dereng;
-        }
+    // Untuk Generative, kita beri warna oranye jika ada progress tapi belum jangkep
+    if (phase == ActivePhaseView.generative &&
+        auditStatus.generative == GenerativeAuditStatus.derengJangkep) {
+      return AuditStatusColors.derengJangkep;
     }
+
+    return AuditStatusColors.dereng;
+  }
+
+  ActivePhaseView _dapToPhase(int d) {
+    if (d <= 35) return ActivePhaseView.vegetative;
+    final int generativeEnd = auditStatus.isSweetCorn ? 80 : 65;
+    if (d <= generativeEnd) return ActivePhaseView.generative;
+    if (d <= 90) return ActivePhaseView.preHarvest;
+    return ActivePhaseView.harvest;
   }
 
   @override
@@ -463,40 +438,25 @@ class MarkerAuditDot extends StatelessWidget {
         ? _dapToPhase(dap)
         : activePhase;
 
-    switch (phase) {
-      case ActivePhaseView.vegetative:
-        return auditStatus.vegetative == SingleAuditStatus.sampun
-            ? _MarkerAuditState.sampun
-            : _MarkerAuditState.derengBlas;
+    // GUNAKAN HELPER BARU: mengecek apakah audit sudah selesai untuk
+    // sub-fase yang sedang aktif (terutama di Generatif).
+    final bool isDone = auditStatus.isAuditDoneFor(phase, dap);
 
-      case ActivePhaseView.generative:
-        switch (auditStatus.generative) {
-          case GenerativeAuditStatus.sampun:
-            return _MarkerAuditState.sampun;
-          case GenerativeAuditStatus.derengJangkep:
-            return _MarkerAuditState.derengJangkep;
-          case GenerativeAuditStatus.derengBlas:
-            return _MarkerAuditState.derengBlas;
-        }
+    if (isDone) return _MarkerAuditState.sampun;
 
-      case ActivePhaseView.preHarvest:
-        return auditStatus.preHarvest == SingleAuditStatus.sampun
-            ? _MarkerAuditState.sampun
-            : _MarkerAuditState.derengBlas;
-
-      case ActivePhaseView.harvest:
-        return auditStatus.harvest == SingleAuditStatus.sampun
-            ? _MarkerAuditState.sampun
-            : _MarkerAuditState.derengBlas;
-
-      default:
-        return _MarkerAuditState.derengBlas;
+    // Jika belum selesai, cek apakah ada progress sebagian (khusus generatif)
+    if (phase == ActivePhaseView.generative &&
+        auditStatus.generative == GenerativeAuditStatus.derengJangkep) {
+      return _MarkerAuditState.derengJangkep;
     }
+
+    return _MarkerAuditState.derengBlas;
   }
 
   ActivePhaseView _dapToPhase(int d) {
-    if (d <= 35)  return ActivePhaseView.vegetative;
-    if (d <= 65)  return ActivePhaseView.generative;
+    if (d <= 35) return ActivePhaseView.vegetative;
+    final int generativeEnd = auditStatus.isSweetCorn ? 80 : 65;
+    if (d <= generativeEnd) return ActivePhaseView.generative;
     if (d <= 90) return ActivePhaseView.preHarvest;
     return ActivePhaseView.harvest;
   }

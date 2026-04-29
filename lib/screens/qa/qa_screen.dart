@@ -103,6 +103,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
   ActivePhaseView _activePhaseView = ActivePhaseView.auto;
   _AuditFilter _auditFilter = _AuditFilter.all;
 
+  // ── Cache for filtered fields ──────────────────────────
+  List<ParsedFieldData>? _cachedFilteredFields;
+  Object? _lastFilterKey;
+
+  // ── Cache for markers ──────────────────────────────────
+  List<Marker>? _cachedMarkers;
+  Object? _lastMarkerKey;
+
   // FUNGSI BARU: Menghitung proyeksi DAP berdasarkan minggu yang dipilih
   int _getProjectedDap(int currentDap) {
     if (_selectedWeek.isEmpty || _selectedWeek['startDate'] == null) {
@@ -125,11 +133,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   // FUNGSI BARU: Mengecek apakah lahan masuk jendela operasional pada minggu yang dipilih
-  bool _isFieldActiveInSelectedWeek(int currentDap) {
+  bool _isFieldActiveInSelectedWeek(ParsedFieldData f) {
     // Jika "Semua Minggu" dipilih, kembalikan true (biarkan filter fase normal yang bekerja)
     if (_selectedWeek.isEmpty || _selectedWeek['startDate'] == null || _selectedWeek['endDate'] == null) {
       return true;
     }
+
+    final int currentDap = f.dap;
+    final bool isSc = DapHelper.isSweetCorn(f.raw['hybrid']?.toString());
 
     final startDate = _selectedWeek['startDate'] as DateTime;
     final endDate = _selectedWeek['endDate'] as DateTime;
@@ -143,24 +154,29 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final dapAtStart = currentDap + normalizedStart.difference(normalizedToday).inDays;
     final dapAtEnd = currentDap + normalizedEnd.difference(normalizedToday).inDays;
 
-    // Tentukan target range DAP berdasarkan _activePhaseView
+    // Tentukan target range DAP berdasarkan _activePhaseView (Aware akan Sweet Corn)
     List<List<int>> targetRanges = [];
     switch (_activePhaseView) {
       case ActivePhaseView.vegetative:
         targetRanges = [[7, 35]];
         break;
       case ActivePhaseView.generative:
-        targetRanges = [[50, 65]]; // Gabungan Gen 1, 2, 3
+        targetRanges = [[50, isSc ? 80 : 65]]; // Gabungan Gen 1 s/d Gen 3 (atau 5 untuk SC)
         break;
       case ActivePhaseView.preHarvest:
-        targetRanges = [[71, 90]];
+        targetRanges = [[isSc ? 81 : 71, 90]];
         break;
       case ActivePhaseView.harvest:
-        targetRanges = [[95, 105]];
+        targetRanges = [[isSc ? 91 : 95, 105]];
         break;
       case ActivePhaseView.auto:
       // Jika Semua Fase (Auto), targetnya adalah semua jendela waktu operasional
-        targetRanges = [[7, 35], [50, 65], [71, 90], [95, 105]];
+        targetRanges = [
+          [7, 35],
+          [50, isSc ? 80 : 65],
+          [isSc ? 81 : 71, 90],
+          [isSc ? 91 : 95, 105]
+        ];
         break;
     }
 
@@ -485,11 +501,33 @@ class _QAScreenState extends ConsumerState<QAScreen>
     Color(0xFF43A047), // Harvest      >100
   ];
 
-  Color _markerColor(int dap) {
-    return DapHelper.getDapMarkerColor(dap);
+  Color _markerColor(int dap, {String? hybrid}) {
+    return DapHelper.getDapMarkerColor(dap, hybrid: hybrid);
   }
 
   // ─── Helpers ────────────────────────────────────────────
+  List<ParsedFieldData> _getFilteredFields(List<ParsedFieldData> allParsed) {
+    // Buat key unik berdasarkan semua parameter filter
+    final filterKey = [
+      allParsed.length,
+      _selectedRegion,
+      _selectedDistrict,
+      _activeFilters.length,
+      _activeFilters.map((f) => '${f.param.fieldKey}:${f.value}').join(','),
+      _selectedWeek['label'],
+      _activePhaseView,
+      _auditFilter,
+    ].join('|');
+
+    if (_cachedFilteredFields != null && _lastFilterKey == filterKey) {
+      return _cachedFilteredFields!;
+    }
+
+    _lastFilterKey = filterKey;
+    _cachedFilteredFields = _filterFields(allParsed);
+    return _cachedFilteredFields!;
+  }
+
   List<ParsedFieldData> _filterFields(List<ParsedFieldData> allParsed) {
     final selRegion   = _selectedRegion?.trim().toLowerCase();
     final selDistrict = _selectedDistrict?.trim().toLowerCase();
@@ -521,7 +559,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
       if (_selectedWeek.isNotEmpty) {
         // Jika user memilih minggu spesifik, cek apakah lahan ini punya hari aktif
         // di fase tersebut pada rentang hari Senin-Minggu.
-        if (!_isFieldActiveInSelectedWeek(f.dap)) return false;
+        if (!_isFieldActiveInSelectedWeek(f)) return false;
       } else {
         // Jika "Semua Minggu" dipilih, filter persis menggunakan DAP hari ini
         if (_activePhaseView != ActivePhaseView.auto) {
@@ -537,10 +575,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
         switch (_auditFilter) {
           case _AuditFilter.sampun:
-            if (!_isAuditSampun(auditStatus, phaseToCheck)) return false;
+            // Gunakan isAuditDoneFor dengan projectedDap agar granularity generatif terjaga
+            if (!auditStatus.isAuditDoneFor(phaseToCheck, projectedDap)) return false;
             break;
           case _AuditFilter.dereng:
-            if (_isAuditSampun(auditStatus, phaseToCheck)) return false;
+            if (auditStatus.isAuditDoneFor(phaseToCheck, projectedDap)) return false;
             if (phaseToCheck == ActivePhaseView.generative &&
                 auditStatus.generative == GenerativeAuditStatus.derengJangkep) {
               return false;
@@ -567,15 +606,6 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return ActivePhaseView.harvest;
   }
 
-  bool _isAuditSampun(FieldAuditStatus s, ActivePhaseView phase) {
-    switch (phase) {
-      case ActivePhaseView.vegetative:  return s.vegetative == SingleAuditStatus.sampun;
-      case ActivePhaseView.generative:  return s.generative == GenerativeAuditStatus.sampun;
-      case ActivePhaseView.preHarvest:  return s.preHarvest == SingleAuditStatus.sampun;
-      case ActivePhaseView.harvest:     return s.harvest == SingleAuditStatus.sampun;
-      case ActivePhaseView.auto:        return false;
-    }
-  }
 
   void _fitBounds(List<ParsedFieldData> fields) {
     if (fields.isEmpty) return;
@@ -648,8 +678,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
           // ── 1. MAP ─────────────────────────────────────────
           parsedMapAsync.when(
             data: (parsedFields) {
-              final filtered = _filterFields(parsedFields);
-              return _buildMap(filtered); // Selalu tampilkan map
+              final filtered = _getFilteredFields(parsedFields);
+              return _buildMap(filtered, parsedFields); // Selalu tampilkan map
             },
             loading: () => const SizedBox.expand(),
             error: (e, _) => _buildError(e.toString()),
@@ -1046,13 +1076,38 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   // ─── MAP ─────────────────────────────────────────────────
-  Widget _buildMap(List<ParsedFieldData> fieldsData) {
+  List<Marker> _getMarkers(List<ParsedFieldData> fieldsData, List<ParsedFieldData> allFields) {
+    final uncoordRawCount = allFields.where((f) => f.isDefault).length;
+    final dataToMark = uncoordRawCount > 4 
+        ? fieldsData.where((f) => !f.isDefault).toList()
+        : fieldsData;
+
+    // Buat key untuk cache marker
+    final markerKey = [
+      dataToMark.length,
+      _selectedFieldNumbers.length,
+      _workMode,
+      _activePhaseView,
+      // Kita asumsikan jika dataToMark is different, markers need update
+      // Jika butuh lebih presisi, tambahkan hash atau first/last id
+    ].join('|');
+
+    if (_cachedMarkers != null && _lastMarkerKey == markerKey) {
+      return _cachedMarkers!;
+    }
+
+    _lastMarkerKey = markerKey;
+    _cachedMarkers = _buildMarkers(dataToMark);
+    return _cachedMarkers!;
+  }
+
+  Widget _buildMap(List<ParsedFieldData> fieldsData, List<ParsedFieldData> allFields) {
     final uncoordRaw  = fieldsData.where((f) => f.isDefault).map((f) => f.raw).toList();
-    final coordFields = fieldsData.where((f) => !f.isDefault).toList();
+    // final coordFields = fieldsData.where((f) => !f.isDefault).toList();
 
     // Field yang punya WKT polygon (untuk layer polygon)
     final polygonFields = fieldsData
-        .where((f) => f.geometryWkt != null && f.geometryWkt!.isNotEmpty)
+        .where((f) => f.polygonPoints != null)
         .toList();
 
     return FlutterMap(
@@ -1061,11 +1116,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
         initialCenter: const LatLng(-7.5, 112.5),
         initialZoom  : 8.0,
         maxZoom      : 18.0,
-        // ── Lacak perubahan zoom untuk polygon visibility ──
+        // ── Optimasi: Kurangi frekuensi rebuild saat zoom ──
         onMapEvent: (event) {
           if (event is MapEventMove || event is MapEventScrollWheelZoom) {
             final newZoom = _mapController.camera.zoom;
-            if ((newZoom - _currentZoom).abs() > 0.3) {
+            // Hanya rebuild jika zoom berubah signifikan (> 0.5)
+            if ((newZoom - _currentZoom).abs() > 0.5) {
               setState(() => _currentZoom = newZoom);
             }
           }
@@ -1088,6 +1144,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
               : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.kroscek.app',
           maxNativeZoom: 18,
+          // Optimasi: Gunakan cache untuk tile jika memungkinkan (bawaan flutter_map)
         ),
 
         // ── 2. Polygon Layer (tampil saat zoom >= 14) ──────
@@ -1131,9 +1188,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
             size            : const Size(46, 46),
             alignment       : Alignment.center,
             padding         : const EdgeInsets.all(50),
-            markers         : _buildMarkers(
-              uncoordRaw.length > 4 ? coordFields : fieldsData,
+            // Optimasi cluster: matikan animasi jika marker terlalu banyak
+            animationsOptions: const AnimationsOptions(
+              zoom: Duration.zero,
+              fitBound: Duration.zero,
+              centerMarker: Duration.zero,
+              spiderfy: Duration.zero,
             ),
+            markers         : _getMarkers(fieldsData, allFields),
             builder         : (ctx, markers) => _buildCluster(markers.length),
           ),
         ),
@@ -1146,171 +1208,169 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
     for (final f in fieldsData) {
       final projectedDap = _getProjectedDap(f.dap);
-      final color = _markerColor(f.dap);
+      final hybrid = f.raw['hybrid']?.toString();
+      final color = _markerColor(projectedDap, hybrid: hybrid); // Gunakan projectedDap & hybrid
       final fn = f.raw['field_number']?.toString() ?? '';
       final isSelected = _selectedFieldNumbers.contains(fn);
       final isCorrected = f.isCorrected;
-      final bool isSc = DapHelper.isSweetCorn(f.raw['hybrid']?.toString());
+      final bool isSc = DapHelper.isSweetCorn(hybrid);
 
       // Parse audit status
       final auditStatus = AuditStatusHelper.fromRaw(f.raw);
 
       result.add(Marker(
         point: LatLng(f.lat, f.lng),
-        // Perbesar sedikit box-nya untuk memberi ruang bagi ujung pin dan bayangan
         width: 56,
         height: 56,
-        // Penting: Memastikan titik koordinat berada di ujung paling bawah widget ini
         alignment: Alignment.topCenter,
-        child: GestureDetector(
-          onTap: () {
-            if (_workMode == _WorkMode.mass) {
-              setState(() {
-                if (isSelected) {
-                  _selectedFieldNumbers.remove(fn);
-                } else {
-                  _selectedFieldNumbers.add(fn);
-                }
-              });
-            } else {
-              FieldDetailBottomSheet.show(
-                context,
-                f.raw,
-                onInspectDone: (fieldData) {
-                  FieldDetailBottomSheet.show(context, fieldData);
-                },
-              );
-            }
-          },
-          child: Stack(
-            alignment: Alignment.center,
-            clipBehavior: Clip.none,
-            children: [
-              // ── 0. GOLDEN HALO (FOR SC ONLY) ───────────────────
-              if (isSc && !isSelected)
-                Positioned(
-                  bottom: 12,
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AdvantaColors.gold.withAlpha(220),
-                          blurRadius: 18,
-                          spreadRadius: 3,
-                        ),
-                        BoxShadow(
-                          color: AdvantaColors.gold.withAlpha(150),
-                          blurRadius: 8,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              // ── 1. BENTUK MAP PIN (TEARDROP) ───────────────────
-              // Posisikan sedikit ke bawah agar ujung jarumnya mendekati batas bawah
-              Positioned(
-                bottom: 8,
-                child: Transform.rotate(
-                  // Putar 45 derajat (dalam radian)
-                  angle: 45 * (3.14159265359 / 180),
-                  child: Container(
-                    width: isCorrected ? 38 : 34,
-                    height: isCorrected ? 38 : 34,
-                    decoration: BoxDecoration(
-                      color: isSelected ? AdvantaColors.primaryGreen : color,
-                      // Membuat 3 sudut bulat, 1 sudut lancip (ujung bawah pin)
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(20),
-                        topRight: Radius.circular(20),
-                        bottomLeft: Radius.circular(20),
-                        bottomRight: Radius.circular(3), // Ujung lancip
+        child: RepaintBoundary(
+          child: GestureDetector(
+            onTap: () {
+              if (_workMode == _WorkMode.mass) {
+                setState(() {
+                  if (isSelected) {
+                    _selectedFieldNumbers.remove(fn);
+                  } else {
+                    _selectedFieldNumbers.add(fn);
+                  }
+                });
+              } else {
+                FieldDetailBottomSheet.show(
+                  context,
+                  f.raw,
+                  onInspectDone: (fieldData) {
+                    FieldDetailBottomSheet.show(context, fieldData);
+                  },
+                );
+              }
+            },
+            child: Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                // ── 0. GOLDEN HALO (FOR SC ONLY) ───────────────────
+                if (isSc && !isSelected)
+                  Positioned(
+                    bottom: 12,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AdvantaColors.gold.withAlpha(220),
+                            blurRadius: 18,
+                            spreadRadius: 3,
+                          ),
+                          BoxShadow(
+                            color: AdvantaColors.gold.withAlpha(150),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                          ),
+                        ],
                       ),
-                      border: Border.all(
-                        color: isSelected
-                            ? Colors.white
-                            : isCorrected
-                            ? AdvantaColors.gold
-                            : Colors.white,
-                        width: isSelected ? 3.0 : 2.0,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withAlpha(120),
-                          blurRadius: 6,
-                          offset: const Offset(2, 2),
-                        ),
-                      ],
                     ),
                   ),
-                ),
-              ),
 
-              // ── 2. ANGKA DAP ATAU ICON CENTANG ─────────────────
-              Positioned(
-                // 1. Turunkan posisinya (misal dari 24 ke 20 atau 18)
-                bottom: 18,
-                child: isSelected
-                // Besarkan sedikit ukuran icon centangnya jika terpilih
-                    ? const Icon(Icons.check_rounded, color: Colors.white, size: 22)
-                    : Text(
-                  '$projectedDap',
-                  style: AdvantaText.caption.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14, // 2. Tambahkan ukuran font di sini agar lebih besar
-                    height: 1.0,
-                  ),
-                ),
-              ),
-
-              // ── 3. BADGE KOREKSI (C) ───────────────────────────
-              if (isCorrected && !isSelected)
+                // ── 1. BENTUK MAP PIN (TEARDROP) ───────────────────
                 Positioned(
-                  top: 8,   // <-- Turunkan sedikit agar menempel dengan pin
-                  right: 8, // <-- Geser ke dalam sedikit
-                  child: Container(
-                    width: 16, // <-- Bisa dibesarkan sedikit ke 16 jika terasa kecil
-                    height: 16,
-                    decoration: BoxDecoration(
-                      color: AdvantaColors.gold,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                            color: AdvantaColors.gold.withAlpha(136),
-                            blurRadius: 4),
-                      ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        'C',
-                        style: AdvantaText.caption.copyWith(
-                          color: AdvantaColors.charcoal,
-                          fontSize: 8,
-                          fontWeight: FontWeight.bold,
-                          height: 1.0,
+                  bottom: 8,
+                  child: Transform.rotate(
+                    angle: 45 * (3.14159265359 / 180),
+                    child: Container(
+                      width: isCorrected ? 38 : 34,
+                      height: isCorrected ? 38 : 34,
+                      decoration: BoxDecoration(
+                        color: isSelected ? AdvantaColors.primaryGreen : color,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(20),
+                          topRight: Radius.circular(20),
+                          bottomLeft: Radius.circular(20),
+                          bottomRight: Radius.circular(3), // Ujung lancip
                         ),
+                        border: Border.all(
+                          color: isSelected
+                              ? Colors.white
+                              : isCorrected
+                              ? AdvantaColors.gold
+                              : Colors.white,
+                          width: isSelected ? 3.0 : 2.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(120),
+                            blurRadius: 6,
+                            offset: const Offset(2, 2),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
 
-              // ── 4. AUDIT STATUS DOT ────────────────────────────
-              if (!isSelected)
+                // ── 2. ANGKA DAP ATAU ICON CENTANG ─────────────────
                 Positioned(
-                  top: 8,  // <-- Turunkan posisinya supaya tidak melayang di udara
-                  left: 8, // <-- Geser agak ke kanan supaya pas di sisi kepala pin
-                  child: MarkerAuditDot(
-                    auditStatus: auditStatus,
-                    dap: f.dap,
-                    activePhase: _activePhaseView,
+                  bottom: 18,
+                  child: isSelected
+                      ? const Icon(Icons.check_rounded, color: Colors.white, size: 22)
+                      : Text(
+                    '$projectedDap',
+                    style: AdvantaText.caption.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      height: 1.0,
+                    ),
                   ),
                 ),
-            ],
+
+                // ── 3. BADGE KOREKSI (C) ───────────────────────────
+                if (isCorrected && !isSelected)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: AdvantaColors.gold,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                              color: AdvantaColors.gold.withAlpha(136),
+                              blurRadius: 4),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          'C',
+                          style: AdvantaText.caption.copyWith(
+                            color: AdvantaColors.charcoal,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                            height: 1.0,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // ── 4. AUDIT STATUS DOT ────────────────────────────
+                if (!isSelected)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: MarkerAuditDot(
+                      auditStatus: auditStatus,
+                      dap: projectedDap, // <--- Gunakan projectedDap
+                      activePhase: _activePhaseView == ActivePhaseView.auto
+                          ? _dapToPhaseView(projectedDap) // Tentukan fase simulasi
+                          : _activePhaseView,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ));
@@ -1338,40 +1398,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
     ),
   );
 
-  // ─── WKT POLYGON HELPERS ──────────────────────────────
-
-  /// Parse WKT POLYGON string → [List] of [LatLng] untuk flutter_map.
-  /// Format WKT: POLYGON((lng lat, lng lat, ...))
-  /// Catatan: urutan WKT adalah X(lng) dulu, baru Y(lat).
-  List<LatLng> _parseWktToLatLngs(String wkt) {
-    final match = RegExp(
-      r'POLYGON\s*\(\((.+?)\)\)',
-      caseSensitive: false,
-    ).firstMatch(wkt);
-    if (match == null) return [];
-
-    final result = <LatLng>[];
-    for (final pair in match.group(1)!.split(',')) {
-      final parts = pair.trim().split(RegExp(r'\s+'));
-      if (parts.length < 2) continue;
-      final lng = double.tryParse(parts[0]);
-      final lat = double.tryParse(parts[1]);
-      if (lat != null && lng != null) {
-        result.add(LatLng(lat, lng));
-      }
-    }
-    return result;
-  }
-
-  /// Build PolygonLayer dari semua field yang punya geometryWkt.
+  /// Build PolygonLayer dari semua field yang punya polygonPoints.
   /// Hanya ditampilkan saat zoom >= 14 agar tidak berantakan di zoom jauh.
   PolygonLayer _buildPolygonLayer(List<ParsedFieldData> fieldsData) {
     final polygons = <Polygon>[];
 
     for (final f in fieldsData) {
-      if (f.geometryWkt == null) continue;
+      if (f.polygonPoints == null) continue;
 
-      final points = _parseWktToLatLngs(f.geometryWkt!);
+      final points = f.polygonPoints!;
       if (points.length < 3) continue;
 
       // Warna polygon berdasarkan sumber koordinat
@@ -1633,6 +1668,16 @@ class _QAScreenState extends ConsumerState<QAScreen>
             setState(() => _isSpeedDialOpen = false);
             _speedDialCtrl.reverse();
 
+            // Hitung deltaDays untuk Time Traveller
+            int deltaDays = 0;
+            if (_selectedWeek.isNotEmpty && _selectedWeek['startDate'] != null) {
+              final targetDate = _selectedWeek['startDate'] as DateTime;
+              final today = DateTime.now();
+              final normalizedTarget = DateTime(targetDate.year, targetDate.month, targetDate.day);
+              final normalizedToday = DateTime(today.year, today.month, today.day);
+              deltaDays = normalizedTarget.difference(normalizedToday).inDays;
+            }
+
             // Ambil data lahan dan tampilkan Bottom Sheet
             ref.read(parsedMapFieldsProvider).whenData((allFields) {
               final filtered = _filterFields(allFields);
@@ -1669,10 +1714,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     );
                   }
                 },
-                activePhase: _activePhaseView,          // ← TAMBAH
-                onPhaseChanged: (phase) {               // ← TAMBAH
+                activePhase: _activePhaseView,
+                onPhaseChanged: (phase) {
                   setState(() => _activePhaseView = phase);
                 },
+                deltaDays: deltaDays, // <── TERUSKAN DELTA DAYS
               );
             });
           },
