@@ -62,7 +62,7 @@ jobs:
           cache: true
 
       - name: Build APK release via Shorebird
-        run: shorebird release android --artifact apk --force
+        run: shorebird release android --artifact apk
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
 
