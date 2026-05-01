@@ -164,6 +164,7 @@ flutter:
     - assets/gadm41_IDN_4.json
     - assets/logo_kc.svg
     - .env
+    - shorebird.yaml
 
 # Letakkan ini di bagian paling bawah file pubspec.yaml Anda
 flutter_launcher_icons:
