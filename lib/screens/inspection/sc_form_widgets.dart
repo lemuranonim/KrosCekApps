@@ -755,65 +755,84 @@ class GenOptionPickerLong extends StatelessWidget {
     final subColor    = context.genSub;
     final isDark      = Theme.of(context).brightness == Brightness.dark;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          required ? '$label *' : label,
-          style: AdvantaText.caption.copyWith(
-              color: subColor, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        ...options.map((opt) {
-          final isSel = value == opt.value;
-          return GestureDetector(
-            onTap: () => onChanged(isSel ? null : opt.value),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 130),
-              margin:  const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isSel
-                    ? accent.withAlpha(isDark ? 55 : 25)
-                    : bgColor,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: isSel ? accent : borderColor,
-                  width: isSel ? 1.5 : 1.0,
-                ),
-              ),
-              child: Row(
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 130),
-                    width:  18,
-                    height: 18,
-                    decoration: BoxDecoration(
-                      color:  isSel ? accent : Colors.transparent,
-                      shape:  BoxShape.circle,
-                      border: Border.all(
-                        color: isSel ? accent : borderColor,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: isSel
-                        ? const Icon(Icons.check, color: Colors.white, size: 11)
-                        : null,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    opt.label,
-                    style: AdvantaText.body2.copyWith(
-                      color:      isSel ? accent : subColor,
-                      fontWeight: isSel ? FontWeight.w600 : FontWeight.normal,
-                    ),
-                  ),
-                ],
-              ),
+    return FormField<String>(
+      initialValue: value,
+      validator: required
+          ? (v) => (v == null || v.isEmpty) ? 'Wajib dipilih' : null
+          : null,
+      builder: (state) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              required ? '$label *' : label,
+              style: AdvantaText.caption.copyWith(
+                  color: subColor, fontWeight: FontWeight.w600),
             ),
-          );
-        }),
-      ],
+            const SizedBox(height: 8),
+            ...options.map((opt) {
+              final isSel = value == opt.value;
+              return GestureDetector(
+                onTap: () {
+                  final next = isSel ? null : opt.value;
+                  onChanged(next);
+                  state.didChange(next);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 130),
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isSel
+                        ? accent.withAlpha(isDark ? 55 : 25)
+                        : bgColor,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isSel ? accent : borderColor,
+                      width: isSel ? 1.5 : 1.0,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 130),
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: isSel ? accent : Colors.transparent,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSel ? accent : borderColor,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: isSel
+                            ? const Icon(Icons.check, color: Colors.white, size: 11)
+                            : null,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        opt.label,
+                        style: AdvantaText.body2.copyWith(
+                          color: isSel ? accent : subColor,
+                          fontWeight: isSel ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            if (state.hasError) ...[
+              const SizedBox(height: 4),
+              Text(
+                state.errorText!,
+                style: AdvantaText.caption.copyWith(color: AdvantaColors.error),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }

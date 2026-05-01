@@ -425,7 +425,7 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
                     children: [
                       GenOptionPicker(
                         label:       'Detasseling Assessment',
-                        required:    !_isDiscard && !_isGuest,
+                        required:    !_isGuest,
                         options:     genDetasselingOpts,
                         value:       _detasseling,
                         onChanged:   (v) { if (!_isGuest) {
@@ -491,6 +491,7 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
                     children: [
                       GenOptionPicker(
                         label:       'Flagging',
+                        required:    !_isGuest,
                         options:     genFlaggingOpts,
                         value:       _flagging,
                         onChanged:   (v) { if (!_isGuest) {

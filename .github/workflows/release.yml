@@ -56,13 +56,20 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build APK release
-        run: flutter build apk --release
+      - name: Setup Shorebird
+        uses: shorebirdtech/setup-shorebird@v1
+        with:
+          cache: true
+
+      - name: Build APK release via Shorebird
+        run: shorebird release android --artifact apk --force
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
 
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/app/outputs/flutter-apk/app-release.apk
+          files: build/app/outputs/apk/release/app-release.apk
           name: "KROSCEK v${{ steps.version.outputs.version }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

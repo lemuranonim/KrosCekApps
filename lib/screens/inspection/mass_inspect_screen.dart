@@ -808,7 +808,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           const SizedBox(height: 14),
           GenTextField(
             controller: _vegCoDetasselingCtrl, label: 'Co Detasseling',
-            hint: 'Nama Co Detasseling',
+            hint: 'Nama Co Detasseling', required: true,
             icon: Icons.group_outlined, accentColor: const Color(0xFF26A69A),
           ),
         ],
@@ -917,14 +917,14 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ],
           const SizedBox(height: 14),
           GenOptionPickerLong(
-            label: 'Action Needed',
+            label: 'Action Needed', required: true,
             options: _vegActionNeededOpts, value: _vegActionNeeded,
             onChanged: (v) => setState(() => _vegActionNeeded = v),
             accentColor: AdvantaColors.error,
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Final Flagging',
+            label: 'Final Flagging', required: true,
             options: _vegFinalFlaggingOpts, value: _vegFinalFlagging,
             onChanged: (v) => setState(() => _vegFinalFlagging = v),
             accentColor: AdvantaColors.error,
@@ -1247,7 +1247,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
         color: const Color(0xFF42A5F5),
         children: [
           GenOptionPicker(
-            label: 'Flagging',
+            label: 'Flagging', required: !isD,
             options: _genFlaggingOpts, value: _gen3Flagging,
             onChanged: (v) => setState(() => _gen3Flagging = v),
             accentColor: const Color(0xFF42A5F5),

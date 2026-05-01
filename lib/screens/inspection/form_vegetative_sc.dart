@@ -928,6 +928,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
                         controller : _coDetasselingCtrl,
                         label      : 'Co Detasseling',
                         hint       : 'Nama Co Detasseling',
+                        required   : !_isGuest,
                         icon       : Icons.group_outlined,
                         accentColor: _kPhaseVeg,
                       ),
@@ -1165,6 +1166,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
                       const SizedBox(height: 14),
                       GenOptionPickerLong(
                         label      : 'Action Needed',
+                        required   : !_isGuest,
                         options    : _actionNeededOpts,
                         value      : _actionNeeded,
                         onChanged  : (v) { if (!_isGuest) {
@@ -1177,6 +1179,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
                       const SizedBox(height: 14),
                       GenOptionPicker(
                         label      : 'Flagging',
+                        required   : !_isGuest,
                         options    : _flaggingOpts,
                         value      : _flagging,
                         onChanged  : (v) { if (!_isGuest) {

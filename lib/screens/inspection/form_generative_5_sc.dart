@@ -429,7 +429,7 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                     children: [
                       GenOptionPicker(
                         label: 'Detasseling Assessment',
-                        required: !_isDiscard && !_isGuest,
+                        required: !_isGuest,
                         options: genDetasselingOpts,
                         value: _detasseling,
                         onChanged: (v) { if (!_isGuest) {
@@ -495,6 +495,7 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                     children: [
                       GenOptionPicker(
                         label: 'Final Flagging',
+                        required: !_isGuest,
                         options: genFlaggingOpts,
                         value: _finalFlagging,
                         onChanged: (v) { if (!_isGuest) {
