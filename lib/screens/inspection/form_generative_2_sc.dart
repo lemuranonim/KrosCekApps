@@ -398,7 +398,7 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
 
                       // Crop Health
                       GenOptionPicker(
-                        label:       'Crop Health',
+                        label:       'Crop Health (Bulai, Hawar) % dari Populasi',
                         required:    !isDiscard && !_isGuest,
                         options:     genCropHealthOpts,
                         value:       _cropHealth,

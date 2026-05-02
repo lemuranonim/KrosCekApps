@@ -366,7 +366,7 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Crop Health',
+                        label      : 'Crop Health (Bulai, Hawar) % dari Populasi',
                         required   : !_isGuest,
                         options    : _cropCondOpts,
                         value      : _cropHealth,

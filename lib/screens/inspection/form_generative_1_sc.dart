@@ -336,7 +336,7 @@ class _FormGenerative1SCState extends ConsumerState<FormGenerative1SC> {
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label:       'Crop Health',
+                        label:       'Crop Health (Bulai, Hawar) % dari Populasi',
                         required:    !isDiscard && !_isGuest,
                         options:     genCropHealthOpts,
                         value:       _cropHealth,

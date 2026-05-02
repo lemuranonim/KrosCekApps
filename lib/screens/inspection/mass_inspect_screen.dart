@@ -1,13 +1,6 @@
 // lib/screens/inspection/mass_inspect_screen.dart
 //
 // MASS INSPECTION SCREEN — Bulk Insert / Update untuk semua fase audit
-// Field-per-fase IDENTIK dengan form individual masing-masing fase:
-//   • vegetative       → form_vegetative.dart
-//   • generative_1     → form_generative_1.dart
-//   • generative_2     → form_generative_2.dart
-//   • generative_3     → form_generative_3.dart
-//   • pre_harvest      → form_pre_harvest.dart
-//   • harvest          → form_harvest.dart
 // ─────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
@@ -28,7 +21,7 @@ const _kPreH = Color(0xFF26C6DA);
 const _kHarv = Color(0xFFFF7043);
 
 // ─────────────────────────────────────────────────────────
-// OPTION LISTS — identik dengan masing-masing form individu
+// OPTION LISTS
 // ─────────────────────────────────────────────────────────
 
 // — Vegetative —
@@ -43,7 +36,6 @@ const _vegCropUniformityOpts = [
   GenOpt('1', '1 – Very Poor'), GenOpt('2', '2 – Poor'), GenOpt('3', '3 – Fair'),
   GenOpt('4', '4 – Good'), GenOpt('5', '5 – Best'),
 ];
-
 const _vegCropHealthOpts = [
   GenOpt('1', '1 – Very Poor'), GenOpt('2', '2 – Poor'), GenOpt('3', '3 – Fair'),
   GenOpt('4', '4 – Good'), GenOpt('5', '5 – Best'),
@@ -88,10 +80,22 @@ const _genLsvOpts = [
   GenOpt('A', 'A – None'), GenOpt('B', 'B – Low'),
   GenOpt('C', 'C – Moderate'), GenOpt('D', 'D – High'),
 ];
-const _genCropCondOpts = [
+// Crop Uniformity — sama untuk FC dan SC
+const _genCropUniformityOpts = [
   GenOpt('1', '1 – Very Poor'), GenOpt('2', '2 – Poor'), GenOpt('3', '3 – Fair'),
   GenOpt('4', '4 – Good'), GenOpt('5', '5 – Best'),
 ];
+// Crop Health FC — Very Poor s/d Best
+const _genCropHealthFCOpts = [
+  GenOpt('1', '1 – Very Poor'), GenOpt('2', '2 – Poor'), GenOpt('3', '3 – Fair'),
+  GenOpt('4', '4 – Good'), GenOpt('5', '5 – Best'),
+];
+// Crop Health SC — persentase 1%–5%
+const _genCropHealthSCOpts = [
+  GenOpt('1', '1 – 1%'), GenOpt('2', '2 – 2%'), GenOpt('3', '3 – 3%'),
+  GenOpt('4', '4 – 4%'), GenOpt('5', '5 – 5%'),
+];
+
 const _genOfftypeOpts = [
   GenOpt('A', 'A – 0%–1%'), GenOpt('B', 'B – 1%–3%'),
   GenOpt('C', 'C – 3%–5%'), GenOpt('D', 'D – >5%'),
@@ -125,7 +129,11 @@ const _genFlaggingOpts   = [
 const _preHMaleChoppingOpts = [
   GenOpt('A', 'A – Complete'), GenOpt('B', 'B – Not Complete'),
 ];
-const _preHCropCondOpts = [
+const _preHCropUniformityOpts = [
+  GenOpt('1', '1 – Very Poor'), GenOpt('2', '2 – Poor'), GenOpt('3', '3 – Fair'),
+  GenOpt('4', '4 – Good'), GenOpt('5', '5 – Best'),
+];
+const _preHCropHealthOpts = [
   GenOpt('1', '1 – Very Poor'), GenOpt('2', '2 – Poor'), GenOpt('3', '3 – Fair'),
   GenOpt('4', '4 – Good'), GenOpt('5', '5 – Best'),
 ];
@@ -142,7 +150,11 @@ const _preHFinalDecisionOpts = [
 const _harvEarCondOpts = [
   GenOpt('2', 'Stage 2'), GenOpt('3', 'Stage 3'), GenOpt('4', 'Stage 4'),
 ];
-const _harvCropCondOpts = [
+const _harvCropUniformityOpts = [
+  GenOpt('1', '1 – Very Poor'), GenOpt('2', '2 – Poor'), GenOpt('3', '3 – Fair'),
+  GenOpt('4', '4 – Good'), GenOpt('5', '5 – Best'),
+];
+const _harvCropHealthOpts = [
   GenOpt('1', '1 – Very Poor'), GenOpt('2', '2 – Poor'), GenOpt('3', '3 – Fair'),
   GenOpt('4', '4 – Good'), GenOpt('5', '5 – Best'),
 ];
@@ -192,37 +204,37 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   String? _vegFinalDecision, _vegActionNeeded, _vegPldReason, _vegFinalFlagging;
 
   // ── Generative 1 ──────────────────────────────────────────
-  String? _gen1Readiness, _gen1Roguing, _gen1Lsv, _gen1CropCond, _gen1ActionNeeded;
+  String? _gen1Readiness, _gen1Roguing, _gen1Lsv, _gen1CropUniformity, _gen1CropHealth, _gen1ActionNeeded;
 
   // ── Generative 2 ──────────────────────────────────────────
   String? _gen2FemaleShed, _gen2OfftypeM, _gen2OfftypeF;
-  String? _gen2Lsv, _gen2CropCond, _gen2ActionNeeded;
+  String? _gen2Lsv, _gen2CropUniformity, _gen2CropHealth, _gen2ActionNeeded;
 
   // ── Generative 3 ──────────────────────────────────────────
   final _gen3DiscardAreaCtrl   = TextEditingController();
   final _gen3DiscardReasonCtrl = TextEditingController();
   DateTime? _gen3ClosedOutDate;
   String? _gen3FemaleShed, _gen3OfftypeM, _gen3OfftypeF;
-  String? _gen3Lsv, _gen3CropCond, _gen3Detasseling;
+  String? _gen3Lsv, _gen3CropUniformity, _gen3CropHealth, _gen3Detasseling;
   String? _gen3IsolationStatus, _gen3AffectedOther, _gen3Flagging, _gen3FinalDecision;
 
   // ── Generative 4 (SC Only) ────────────────────────────────
   String? _gen4FemaleShed, _gen4OfftypeM, _gen4OfftypeF;
-  String? _gen4Lsv, _gen4CropCond, _gen4ActionNeeded;
+  String? _gen4Lsv, _gen4CropUniformity, _gen4CropHealth, _gen4ActionNeeded;
 
   // ── Generative 5 (SC Only) ────────────────────────────────
   String? _gen5FemaleShed, _gen5OfftypeM, _gen5OfftypeF;
-  String? _gen5Lsv, _gen5CropCond, _gen5ActionNeeded;
+  String? _gen5Lsv, _gen5CropUniformity, _gen5CropHealth, _gen5ActionNeeded;
 
   // ── Pre-Harvest ───────────────────────────────────────────
   final _preHDiscardAreaCtrl   = TextEditingController();
   final _preHDiscardReasonCtrl = TextEditingController();
-  String? _preHMaleChopping, _preHCropCondition, _preHFinalFlagging, _preHFinalDecision;
+  String? _preHMaleChopping, _preHCropUniformity, _preHCropHealth, _preHFinalFlagging, _preHFinalDecision;
 
   // ── Harvest ───────────────────────────────────────────────
   DateTime? _harvDowngradeFlagDate;
   bool      _harvShowDowngrade = false;
-  String? _harvEarCondition, _harvCropCondition;
+  String? _harvEarCondition, _harvCropUniformity, _harvCropHealth;
   String? _harvStatusDowngrade, _harvReasonDowngrade, _harvDowngradeFlagging, _harvFinalFlagging;
 
   // ── Helpers ───────────────────────────────────────────────
@@ -270,9 +282,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   @override
   void dispose() {
     _qaFiCtrl.dispose(); _qaSpvCtrl.dispose();
-    _vegSowingRatioFCtrl.dispose();
-    _vegSowingRatioMCtrl.dispose(); _vegCoDetasselingCtrl.dispose();
-    _vegRemarksCtrl.dispose();
+    _vegSowingRatioFCtrl.dispose(); _vegSowingRatioMCtrl.dispose();
+    _vegCoDetasselingCtrl.dispose(); _vegRemarksCtrl.dispose();
     _gen3DiscardAreaCtrl.dispose(); _gen3DiscardReasonCtrl.dispose();
     _preHDiscardAreaCtrl.dispose(); _preHDiscardReasonCtrl.dispose();
     super.dispose();
@@ -293,8 +304,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     final p = await showDatePicker(
       context: context,
       initialDate: _vegRevPlantingDate ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      firstDate: DateTime(2020), lastDate: DateTime.now(),
       builder: (ctx, child) =>
           Theme(data: genDatePickerTheme(ctx, _kVeg), child: child!),
     );
@@ -354,7 +364,6 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
 
         switch (widget.targetPhase) {
           case 'vegetative':
-          // Ambil effective_area_ha dari data lahan saat ini
             final rawArea = field['effective_area_ha'];
             final effectiveArea = rawArea is num
                 ? rawArea.toDouble()
@@ -367,10 +376,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'qa_fi'                     : _qaFiCtrl.text.trim(),
               'qa_spv'                    : _qaSpvCtrl.text.trim(),
               'co_detasseling'            : _vegCoDetasselingCtrl.text.trim(),
-
-              // UBAH: Gunakan effectiveArea dari database
               'field_size_by_audit_ha'    : effectiveArea,
-
               'male_split_by_audit'       : _vegMaleSplit,
               'sowing_ratio_by_audit'     :
               '${_vegSowingRatioFCtrl.text.trim()}:${_vegSowingRatioMCtrl.text.trim()}',
@@ -378,7 +384,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'previous_crop_by_audit'    : _vegPreviousCrop,
               'one_seed_per_hole'         : _vegOneSeedPerHole,
               'isolation_problem_by_audit': _vegIsolationProblem,
-              'rev_planting_date'         : _vegRevPlantingDate != null ? DateFormat('yyyy-MM-dd').format(_vegRevPlantingDate!) : null,
+              'rev_planting_date'         : _vegRevPlantingDate != null
+                  ? DateFormat('yyyy-MM-dd').format(_vegRevPlantingDate!) : null,
               'crop_uniformity'           : _vegCropUniformity,
               'crop_health'               : _vegCropHealth,
               'roguing_status'            : _vegRoguingStatus,
@@ -397,18 +404,19 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
 
           case 'generative_1':
             rec.addAll({
-              'date_of_audit_1'   : dateStr,
-              'week_of_audit_1'   : week,
-              'qa_fi_1'           : _qaFiCtrl.text.trim(),
-              'qa_spv'            : _qaSpvCtrl.text.trim(),
-              'readiness_status_1': _gen1Readiness,
-              'roguing_status_1'  : _gen1Roguing,
-              'lsv_status_1'      : _gen1Lsv,
-              'crop_condition_1'  : _gen1CropCond,
-              'action_needed_1'   : _gen1ActionNeeded,
-              'submitted_at_1'    : nowStr,
-              'fase'              : 'generative_1',
-              'is_mass_submit_1'  : true,
+              'date_of_audit_1'    : dateStr,
+              'week_of_audit_1'    : week,
+              'qa_fi_1'            : _qaFiCtrl.text.trim(),
+              'qa_spv'             : _qaSpvCtrl.text.trim(),
+              'readiness_status_1' : _gen1Readiness,
+              'roguing_status_1'   : _gen1Roguing,
+              'lsv_status_1'       : _gen1Lsv,
+              'crop_uniformity_1'  : _gen1CropUniformity,
+              'crop_health_1'      : _gen1CropHealth,
+              'action_needed_1'    : _gen1ActionNeeded,
+              'submitted_at_1'     : nowStr,
+              'fase'               : 'generative_1',
+              'is_mass_submit_1'   : true,
             });
 
           case 'generative_2':
@@ -421,7 +429,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'offtype_m_2'      : _gen2OfftypeM,
               'offtype_f_2'      : _gen2OfftypeF,
               'lsv_status_2'     : _gen2Lsv,
-              'crop_condition_2' : _gen2CropCond,
+              'crop_uniformity_2': _gen2CropUniformity,
+              'crop_health_2'    : _gen2CropHealth,
               'action_needed_2'  : _gen2ActionNeeded,
               'submitted_at_2'   : nowStr,
               'fase'             : 'generative_2',
@@ -439,7 +448,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'offtype_m_3'            : _gen3OfftypeM,
               'offtype_f_3'            : _gen3OfftypeF,
               'lsv_status_3'           : _gen3Lsv,
-              'crop_condition_3'       : _gen3CropCond,
+              'crop_uniformity_3'      : _gen3CropUniformity,
+              'crop_health_3'          : _gen3CropHealth,
               'detasseling_assesment_3': _gen3Detasseling,
               'isolation_status_3'     : _gen3IsolationStatus,
               'affected_other_field_3' : _gen3AffectedOther,
@@ -466,7 +476,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'offtype_m_4'      : _gen4OfftypeM,
               'offtype_f_4'      : _gen4OfftypeF,
               'lsv_status_4'     : _gen4Lsv,
-              'crop_condition_4' : _gen4CropCond,
+              'crop_uniformity_4': _gen4CropUniformity,
+              'crop_health_4'    : _gen4CropHealth,
               'action_needed_4'  : _gen4ActionNeeded,
               'submitted_at_4'   : nowStr,
               'fase'             : 'generative_4',
@@ -483,7 +494,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'offtype_m_5'      : _gen5OfftypeM,
               'offtype_f_5'      : _gen5OfftypeF,
               'lsv_status_5'     : _gen5Lsv,
-              'crop_condition_5' : _gen5CropCond,
+              'crop_uniformity_5': _gen5CropUniformity,
+              'crop_health_5'    : _gen5CropHealth,
               'action_needed_5'  : _gen5ActionNeeded,
               'submitted_at_5'   : nowStr,
               'fase'             : 'generative_5',
@@ -498,7 +510,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'qa_fi'           : _qaFiCtrl.text.trim(),
               'qa_spv'          : _qaSpvCtrl.text.trim(),
               'male_chopping_rows': _preHMaleChopping,
-              'crop_condition'  : _preHCropCondition,
+              'crop_uniformity' : _preHCropUniformity,
+              'crop_health'     : _preHCropHealth,
               'final_flagging'  : _preHFinalFlagging,
               'final_decision'  : _preHFinalDecision,
               'discard_area_ha' : isDPH
@@ -515,7 +528,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'qa_fi'                      : _qaFiCtrl.text.trim(),
               'qa_spv'                     : _qaSpvCtrl.text.trim(),
               'ear_condition_observation'  : _harvEarCondition,
-              'crop_condition'             : _harvCropCondition,
+              'crop_uniformity'            : _harvCropUniformity,
+              'crop_health'                : _harvCropHealth,
               'status_downgrade'           : _harvShowDowngrade ? _harvStatusDowngrade : null,
               'reason_downgrade'           : _harvShowDowngrade ? _harvReasonDowngrade : null,
               'downgrade_flagging'         : _harvShowDowngrade ? _harvDowngradeFlagging : null,
@@ -656,7 +670,6 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       key : _formKey,
       child: Column(
         children: [
-          // Info banner
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             color  : _phaseColor.withAlpha(26),
@@ -707,7 +720,6 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  // ── Phase-specific ──
                   ..._buildPhaseFields(context),
 
                   const SizedBox(height: 12),
@@ -1002,7 +1014,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     );
   }
 
-  // ── GENERATIVE 1 ──────────────────────────────────────────
+  // ── GENERATIVE 1 (FC — Crop Health: Very Poor–Best) ───────
   List<Widget> _buildGen1Fields() {
     final isD = _gen1ActionNeeded == 'G';
     return [
@@ -1033,9 +1045,16 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Condition', required: !isD,
-            options: _genCropCondOpts, value: _gen1CropCond,
-            onChanged: (v) => setState(() => _gen1CropCond = v),
+            label: 'Crop Uniformity', required: !isD,
+            options: _genCropUniformityOpts, value: _gen1CropUniformity,
+            onChanged: (v) => setState(() => _gen1CropUniformity = v),
+            accentColor: _kGen1,
+          ),
+          const SizedBox(height: 14),
+          GenOptionPicker(
+            label: 'Crop Health', required: !isD,
+            options: _genCropHealthFCOpts, value: _gen1CropHealth,
+            onChanged: (v) => setState(() => _gen1CropHealth = v),
             accentColor: _kGen1,
           ),
         ],
@@ -1063,7 +1082,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     ];
   }
 
-  // ── GENERATIVE 2 ──────────────────────────────────────────
+  // ── GENERATIVE 2 (FC — Crop Health: Very Poor–Best) ───────
   List<Widget> _buildGen2Fields() {
     final isD = _gen2ActionNeeded == 'G';
     return [
@@ -1110,9 +1129,16 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Condition', required: !isD,
-            options: _genCropCondOpts, value: _gen2CropCond,
-            onChanged: (v) => setState(() => _gen2CropCond = v),
+            label: 'Crop Uniformity', required: !isD,
+            options: _genCropUniformityOpts, value: _gen2CropUniformity,
+            onChanged: (v) => setState(() => _gen2CropUniformity = v),
+            accentColor: _kGen2,
+          ),
+          const SizedBox(height: 14),
+          GenOptionPicker(
+            label: 'Crop Health', required: !isD,
+            options: _genCropHealthFCOpts, value: _gen2CropHealth,
+            onChanged: (v) => setState(() => _gen2CropHealth = v),
             accentColor: _kGen2,
           ),
         ],
@@ -1140,7 +1166,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     ];
   }
 
-  // ── GENERATIVE 3 ──────────────────────────────────────────
+  // ── GENERATIVE 3 (FC — Crop Health: Very Poor–Best) ───────
   List<Widget> _buildGen3Fields(BuildContext context) {
     final isD = _gen3FinalDecision == 'D';
     return [
@@ -1187,9 +1213,16 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Condition', required: !isD,
-            options: _genCropCondOpts, value: _gen3CropCond,
-            onChanged: (v) => setState(() => _gen3CropCond = v),
+            label: 'Crop Uniformity', required: !isD,
+            options: _genCropUniformityOpts, value: _gen3CropUniformity,
+            onChanged: (v) => setState(() => _gen3CropUniformity = v),
+            accentColor: _kGen3,
+          ),
+          const SizedBox(height: 14),
+          GenOptionPicker(
+            label: 'Crop Health', required: !isD,
+            options: _genCropHealthFCOpts, value: _gen3CropHealth,
+            onChanged: (v) => setState(() => _gen3CropHealth = v),
             accentColor: _kGen3,
           ),
         ],
@@ -1297,7 +1330,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     ];
   }
 
-  // ── GENERATIVE 4 ──────────────────────────────────────────
+  // ── GENERATIVE 4 (SC Only — Crop Health: 1%–5%) ───────────
   List<Widget> _buildGen4Fields() {
     final color = Colors.purple;
     final isD = _gen4ActionNeeded == 'G';
@@ -1345,9 +1378,17 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Condition', required: !isD,
-            options: _genCropCondOpts, value: _gen4CropCond,
-            onChanged: (v) => setState(() => _gen4CropCond = v),
+            label: 'Crop Uniformity', required: !isD,
+            options: _genCropUniformityOpts, value: _gen4CropUniformity,
+            onChanged: (v) => setState(() => _gen4CropUniformity = v),
+            accentColor: color,
+          ),
+          const SizedBox(height: 14),
+          // SC: Crop Health = 1%–5%
+          GenOptionPicker(
+            label: 'Crop Health (SC)', required: !isD,
+            options: _genCropHealthSCOpts, value: _gen4CropHealth,
+            onChanged: (v) => setState(() => _gen4CropHealth = v),
             accentColor: color,
           ),
         ],
@@ -1375,7 +1416,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     ];
   }
 
-  // ── GENERATIVE 5 ──────────────────────────────────────────
+  // ── GENERATIVE 5 (SC Only — Crop Health: 1%–5%) ───────────
   List<Widget> _buildGen5Fields() {
     final color = Colors.pink;
     final isD = _gen5ActionNeeded == 'G';
@@ -1423,9 +1464,17 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Condition', required: !isD,
-            options: _genCropCondOpts, value: _gen5CropCond,
-            onChanged: (v) => setState(() => _gen5CropCond = v),
+            label: 'Crop Uniformity', required: !isD,
+            options: _genCropUniformityOpts, value: _gen5CropUniformity,
+            onChanged: (v) => setState(() => _gen5CropUniformity = v),
+            accentColor: color,
+          ),
+          const SizedBox(height: 14),
+          // SC: Crop Health = 1%–5%
+          GenOptionPicker(
+            label: 'Crop Health (SC)', required: !isD,
+            options: _genCropHealthSCOpts, value: _gen5CropHealth,
+            onChanged: (v) => setState(() => _gen5CropHealth = v),
             accentColor: color,
           ),
         ],
@@ -1470,9 +1519,16 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Condition', required: !isD,
-            options: _preHCropCondOpts, value: _preHCropCondition,
-            onChanged: (v) => setState(() => _preHCropCondition = v),
+            label: 'Crop Uniformity', required: !isD,
+            options: _preHCropUniformityOpts, value: _preHCropUniformity,
+            onChanged: (v) => setState(() => _preHCropUniformity = v),
+            accentColor: _kPreH,
+          ),
+          const SizedBox(height: 14),
+          GenOptionPicker(
+            label: 'Crop Health', required: !isD,
+            options: _preHCropHealthOpts, value: _preHCropHealth,
+            onChanged: (v) => setState(() => _preHCropHealth = v),
             accentColor: _kPreH,
           ),
         ],
@@ -1551,9 +1607,16 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Condition', required: true,
-            options: _harvCropCondOpts, value: _harvCropCondition,
-            onChanged: (v) => setState(() => _harvCropCondition = v),
+            label: 'Crop Uniformity', required: true,
+            options: _harvCropUniformityOpts, value: _harvCropUniformity,
+            onChanged: (v) => setState(() => _harvCropUniformity = v),
+            accentColor: _kHarv,
+          ),
+          const SizedBox(height: 14),
+          GenOptionPicker(
+            label: 'Crop Health', required: true,
+            options: _harvCropHealthOpts, value: _harvCropHealth,
+            onChanged: (v) => setState(() => _harvCropHealth = v),
             accentColor: _kHarv,
           ),
         ],

@@ -1025,7 +1025,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Crop Health', // Field baru
+                        label      : 'Crop Health (Bulai, Hawar) % dari Populasi', // Field baru
                         required   : !isDiscard && !_isGuest,
                         options    : _cropHealthOpts,
                         value      : _cropHealth,
