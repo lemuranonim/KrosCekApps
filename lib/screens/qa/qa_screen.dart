@@ -11,6 +11,8 @@
 //     AdvantaColors.deepForest / midGreen sesuai dark palette
 // ─────────────────────────────────────────────────────────
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -91,6 +93,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
   LatLng? _userLocation;
   bool _isLocating = false;
   bool _gpsEnabled = false;
+  StreamSubscription<Position>? _positionSub;
 
   // ── Loading / Refresh overlay ─────────────────────────
   bool _isRefreshing = false;
@@ -154,31 +157,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final dapAtStart = currentDap + normalizedStart.difference(normalizedToday).inDays;
     final dapAtEnd = currentDap + normalizedEnd.difference(normalizedToday).inDays;
 
-    // Tentukan target range DAP berdasarkan _activePhaseView (Aware akan Sweet Corn)
-    List<List<int>> targetRanges = [];
-    switch (_activePhaseView) {
-      case ActivePhaseView.vegetative:
-        targetRanges = [[7, 35]];
-        break;
-      case ActivePhaseView.generative:
-        targetRanges = [[50, isSc ? 80 : 65]]; // Gabungan Gen 1 s/d Gen 3 (atau 5 untuk SC)
-        break;
-      case ActivePhaseView.preHarvest:
-        targetRanges = [[isSc ? 81 : 71, 90]];
-        break;
-      case ActivePhaseView.harvest:
-        targetRanges = [[isSc ? 91 : 95, 105]];
-        break;
-      case ActivePhaseView.auto:
-      // Jika Semua Fase (Auto), targetnya adalah semua jendela waktu operasional
-        targetRanges = [
-          [7, 35],
-          [50, isSc ? 80 : 65],
-          [isSc ? 81 : 71, 90],
-          [isSc ? 91 : 95, 105]
-        ];
-        break;
-    }
+    // Tentukan target range DAP berdasarkan fase operasional FC/SC.
+    final targetRanges = DapHelper.getOperationalRanges(
+      _activePhaseView,
+      hybrid: isSc ? 'AX01' : null,
+    );
 
     // Cek apakah range umur lahan [dapAtStart - dapAtEnd] bersinggungan dengan target fase
     for (final range in targetRanges) {
@@ -388,6 +371,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   @override
   void dispose() {
+    _positionSub?.cancel();
     _shimmerCtrl.dispose();
     _refreshSpinCtrl.dispose();
     _speedDialCtrl.dispose();
@@ -428,11 +412,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
     }
 
     await _fetchAndMoveToUser(centerMap: true);
+    _startLocationStream();
   }
 
   Future<void> _fetchAndMoveToUser({bool centerMap = false}) async {
     if (_isLocating) return;
-    if (!mounted) setState(() => _isLocating = true);
+    if (mounted) setState(() => _isLocating = true);
 
     try {
       final pos = await Geolocator.getCurrentPosition(
@@ -457,6 +442,25 @@ class _QAScreenState extends ConsumerState<QAScreen>
         _isLocating = false;
       });
     }
+  }
+
+  void _startLocationStream() {
+    _positionSub?.cancel();
+    _positionSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      ),
+    ).listen((pos) {
+      if (!mounted) return;
+      setState(() {
+        _userLocation = LatLng(pos.latitude, pos.longitude);
+        _gpsEnabled = true;
+      });
+    }, onError: (_) {
+      if (!mounted) return;
+      setState(() => _gpsEnabled = false);
+    });
   }
 
   Future<void> _goToUserLocation() async {
@@ -536,7 +540,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
       // ── Proyeksi DAP untuk Visual Marker ──
       final int projectedDap = _getProjectedDap(f.dap);
       final ActivePhaseView projectedPhase = _activePhaseView == ActivePhaseView.auto
-          ? _dapToPhaseView(projectedDap)
+          ? _dapToPhaseView(projectedDap, hybrid: f.raw['hybrid']?.toString())
           : _activePhaseView;
 
       // ── Region, District, & Multi-param filters (TETAP SAMA) ──
@@ -563,7 +567,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
       } else {
         // Jika "Semua Minggu" dipilih, filter persis menggunakan DAP hari ini
         if (_activePhaseView != ActivePhaseView.auto) {
-          if (_dapToPhaseView(f.dap) != _activePhaseView) return false;
+          if (!DapHelper.isDapInPhaseView(
+            f.dap,
+            _activePhaseView,
+            hybrid: f.raw['hybrid']?.toString(),
+          )) {
+            return false;
+          }
         }
       }
 
@@ -599,11 +609,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   // Helper: resolve phase dari DAP (duplikat dari MarkerAuditDot, tapi perlu di state level)
-  ActivePhaseView _dapToPhaseView(int dap) {
-    if (dap <= 35)  return ActivePhaseView.vegetative;
-    if (dap <= 65)  return ActivePhaseView.generative;
-    if (dap <= 90) return ActivePhaseView.preHarvest;
-    return ActivePhaseView.harvest;
+  ActivePhaseView _dapToPhaseView(int dap, {String? hybrid}) {
+    return DapHelper.getActivePhaseView(dap, hybrid: hybrid);
   }
 
 
@@ -1365,7 +1372,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       auditStatus: auditStatus,
                       dap: projectedDap, // <--- Gunakan projectedDap
                       activePhase: _activePhaseView == ActivePhaseView.auto
-                          ? _dapToPhaseView(projectedDap) // Tentukan fase simulasi
+                          ? _dapToPhaseView(projectedDap, hybrid: hybrid) // Tentukan fase simulasi
                           : _activePhaseView,
                     ),
                   ),

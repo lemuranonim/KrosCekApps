@@ -22,6 +22,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'active_phase_filter.dart';
+import 'dap_helper.dart';
 
 enum SingleAuditStatus { sampun, dereng }
 
@@ -59,24 +60,9 @@ class FieldAuditStatus {
           harvest == SingleAuditStatus.dereng;
 
   bool isActivePhaseDone(int dap) {
-    if (dap <= 35) return vegetative == SingleAuditStatus.sampun;
-
-    // Batas Generatif dinamis: SC s/d 80 DAP, FC s/d 65 DAP
-    final int generativeEnd = isSweetCorn ? 80 : 65;
-    if (dap <= generativeEnd) {
-      if (dap < 50) return false; // Upcoming Gen
-      if (dap <= 54) return gen1Done;
-      if (dap <= 59) return gen2Done;
-      if (dap <= 65) return gen3Done;
-      if (isSweetCorn) {
-        if (dap <= 72) return gen4Done;
-        if (dap <= 80) return gen5Done;
-      }
-      return generative == GenerativeAuditStatus.sampun;
-    }
-
-    if (dap <= 90) return preHarvest == SingleAuditStatus.sampun;
-    return harvest == SingleAuditStatus.sampun;
+    final hybrid = isSweetCorn ? 'AX01' : null;
+    final phase = DapHelper.getActivePhaseView(dap, hybrid: hybrid);
+    return isAuditDoneFor(phase, dap);
   }
 
   /// Menentukan apakah audit sudah selesai untuk fase tertentu pada DAP tertentu.
@@ -87,21 +73,33 @@ class FieldAuditStatus {
       case ActivePhaseView.vegetative:
         return vegetative == SingleAuditStatus.sampun;
       case ActivePhaseView.generative:
-        if (dap < 50) return false;
-        if (dap <= 54) return gen1Done;
-        if (dap <= 59) return gen2Done;
-        if (dap <= 65) return gen3Done;
-        if (isSweetCorn) {
-          if (dap <= 72) return gen4Done;
-          if (dap <= 80) return gen5Done;
-        }
-        return generative == GenerativeAuditStatus.sampun;
+        return _isGenerativeAuditDoneForDap(dap);
       case ActivePhaseView.preHarvest:
         return preHarvest == SingleAuditStatus.sampun;
       case ActivePhaseView.harvest:
         return harvest == SingleAuditStatus.sampun;
       case ActivePhaseView.auto:
         return isActivePhaseDone(dap);
+    }
+  }
+
+  bool _isGenerativeAuditDoneForDap(int dap) {
+    final hybrid = isSweetCorn ? 'AX01' : null;
+    final phaseKey = DapHelper.getRecommendedPhase(dap, hybrid: hybrid);
+
+    switch (phaseKey) {
+      case 'generative_1':
+        return gen1Done;
+      case 'generative_2':
+        return gen2Done;
+      case 'generative_3':
+        return gen3Done;
+      case 'generative_4':
+        return isSweetCorn ? gen4Done : generative == GenerativeAuditStatus.sampun;
+      case 'generative_5':
+        return isSweetCorn ? gen5Done : generative == GenerativeAuditStatus.sampun;
+      default:
+        return generative == GenerativeAuditStatus.sampun;
     }
   }
 }

@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../utils/audit_status_helper.dart';
 import '../utils/active_phase_filter.dart';
+import '../utils/dap_helper.dart';
 
 // ═══════════════════════════════════════════════════════════
 // BAGIAN 1 — WARNA & LABEL STATUS
@@ -63,6 +64,18 @@ class AuditProgressDots extends StatelessWidget {
         partial: false,
         tooltip: 'Generatif CP3',
       ),
+      if (status.isSweetCorn)
+        _DotConfig(
+          done: status.gen4Done,
+          partial: false,
+          tooltip: 'Generatif CP4',
+        ),
+      if (status.isSweetCorn)
+        _DotConfig(
+          done: status.gen5Done,
+          partial: false,
+          tooltip: 'Generatif CP5',
+        ),
       _DotConfig(
         done: status.preHarvest == SingleAuditStatus.sampun,
         partial: false,
@@ -240,11 +253,10 @@ class AuditStatusLeftBorder extends StatelessWidget {
   }
 
   ActivePhaseView _dapToPhase(int d) {
-    if (d <= 35) return ActivePhaseView.vegetative;
-    final int generativeEnd = auditStatus.isSweetCorn ? 80 : 65;
-    if (d <= generativeEnd) return ActivePhaseView.generative;
-    if (d <= 90) return ActivePhaseView.preHarvest;
-    return ActivePhaseView.harvest;
+    return DapHelper.getActivePhaseView(
+      d,
+      hybrid: auditStatus.isSweetCorn ? 'AX01' : null,
+    );
   }
 
   @override
@@ -454,18 +466,27 @@ class MarkerAuditDot extends StatelessWidget {
   }
 
   ActivePhaseView _dapToPhase(int d) {
-    if (d <= 35) return ActivePhaseView.vegetative;
-    final int generativeEnd = auditStatus.isSweetCorn ? 80 : 65;
-    if (d <= generativeEnd) return ActivePhaseView.generative;
-    if (d <= 90) return ActivePhaseView.preHarvest;
-    return ActivePhaseView.harvest;
+    return DapHelper.getActivePhaseView(
+      d,
+      hybrid: auditStatus.isSweetCorn ? 'AX01' : null,
+    );
   }
 
   // Hitung berapa CP generatif yang selesai (untuk label X/3)
-  int get _genDoneCount =>
-      [auditStatus.gen1Done, auditStatus.gen2Done, auditStatus.gen3Done]
-          .where((v) => v)
-          .length;
+  int get _genDoneCount {
+    final cps = auditStatus.isSweetCorn
+        ? [
+            auditStatus.gen1Done,
+            auditStatus.gen2Done,
+            auditStatus.gen3Done,
+            auditStatus.gen4Done,
+            auditStatus.gen5Done,
+          ]
+        : [auditStatus.gen1Done, auditStatus.gen2Done, auditStatus.gen3Done];
+    return cps.where((v) => v).length;
+  }
+
+  int get _genTotalCount => auditStatus.isSweetCorn ? 5 : 3;
 
   @override
   Widget build(BuildContext context) {
@@ -502,7 +523,7 @@ class MarkerAuditDot extends StatelessWidget {
         ),
         child: Center(
           child: Text(
-            '$done/3',
+            '$done/$_genTotalCount',
             style: const TextStyle(
               fontSize: 6,
               fontWeight: FontWeight.w900,
