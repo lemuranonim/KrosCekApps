@@ -11,6 +11,8 @@
 //     AdvantaColors.deepForest / midGreen sesuai dark palette
 // ─────────────────────────────────────────────────────────
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -91,6 +93,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
   LatLng? _userLocation;
   bool _isLocating = false;
   bool _gpsEnabled = false;
+  StreamSubscription<Position>? _positionSub;
 
   // ── Loading / Refresh overlay ─────────────────────────
   bool _isRefreshing = false;
@@ -388,6 +391,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   @override
   void dispose() {
+    _positionSub?.cancel();
     _shimmerCtrl.dispose();
     _refreshSpinCtrl.dispose();
     _speedDialCtrl.dispose();
@@ -428,11 +432,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
     }
 
     await _fetchAndMoveToUser(centerMap: true);
+    _startLocationStream();
   }
 
   Future<void> _fetchAndMoveToUser({bool centerMap = false}) async {
     if (_isLocating) return;
-    if (!mounted) setState(() => _isLocating = true);
+    if (mounted) setState(() => _isLocating = true);
 
     try {
       final pos = await Geolocator.getCurrentPosition(
@@ -457,6 +462,25 @@ class _QAScreenState extends ConsumerState<QAScreen>
         _isLocating = false;
       });
     }
+  }
+
+  void _startLocationStream() {
+    _positionSub?.cancel();
+    _positionSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      ),
+    ).listen((pos) {
+      if (!mounted) return;
+      setState(() {
+        _userLocation = LatLng(pos.latitude, pos.longitude);
+        _gpsEnabled = true;
+      });
+    }, onError: (_) {
+      if (!mounted) return;
+      setState(() => _gpsEnabled = false);
+    });
   }
 
   Future<void> _goToUserLocation() async {
