@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 class DapHelper {
   /// Menghitung DAP (Days After Planting) dari string tanggal tanam.
   static int calculateDAP(String? plantingDateString) {
-    if (plantingDateString == null || plantingDateString.trim().isEmpty) return 0;
+    if (plantingDateString == null || plantingDateString.trim().isEmpty) {
+      return 0;
+    }
     try {
       DateTime plantingDate;
       if (plantingDateString.contains('/')) {
@@ -24,7 +26,8 @@ class DapHelper {
       }
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
-      final plantingDateOnly = DateTime(plantingDate.year, plantingDate.month, plantingDate.day);
+      final plantingDateOnly =
+          DateTime(plantingDate.year, plantingDate.month, plantingDate.day);
       return today.difference(plantingDateOnly).inDays;
     } catch (e) {
       debugPrint('Error calculating DAP: $e');
@@ -42,11 +45,20 @@ class DapHelper {
   static String getRecommendedPhase(int dap, {String? hybrid}) {
     final bool sc = isSweetCorn(hybrid);
 
+    if (!sc) {
+      if (dap < 50) return 'vegetative';
+      if (dap <= 54) return 'generative_1';
+      if (dap <= 59) return 'generative_2';
+      if (dap <= 70) return 'generative_3';
+      if (dap <= 94) return 'pre_harvest';
+      return 'harvest';
+    }
+
     if (dap <= 35) return 'vegetative';
     if (dap <= 54) return 'generative_1';
     if (dap <= 59) return 'generative_2';
     if (dap <= 65) return 'generative_3';
-    
+
     if (sc) {
       if (dap <= 72) return 'generative_4';
       if (dap <= 80) return 'generative_5';
@@ -54,7 +66,7 @@ class DapHelper {
     } else {
       if (dap <= 90) return 'pre_harvest';
     }
-    
+
     return 'harvest';
   }
 
@@ -66,7 +78,8 @@ class DapHelper {
       case 'vegetative':
         if (dap < 7) return 'Upcoming';
         if (dap <= 35) return 'On Going';
-        return 'Overdue';
+        if (dap <= 49) return 'Overdue';
+        return 'Unknown';
       case 'generative_1':
         if (dap < 50) return 'Upcoming';
         if (dap <= 54) return 'On Going';
@@ -78,6 +91,7 @@ class DapHelper {
       case 'generative_3':
         if (dap < 60) return 'Upcoming';
         if (dap <= 65) return 'On Going';
+        if (!sc) return dap <= 70 ? 'Overdue' : 'Unknown';
         return 'Overdue';
       case 'generative_4':
         if (!sc) return 'Unknown';
@@ -93,6 +107,7 @@ class DapHelper {
         final int startDap = sc ? 81 : 71;
         if (dap < startDap) return 'Upcoming';
         if (dap <= 90) return 'On Going';
+        if (!sc) return dap <= 94 ? 'Overdue' : 'Unknown';
         return 'Overdue';
       case 'harvest':
         final int startDap = sc ? 91 : 95;
@@ -107,10 +122,14 @@ class DapHelper {
   /// Warna badge berdasarkan status
   static Color getDapBadgeColor(String badgeLabel) {
     switch (badgeLabel) {
-      case 'On Going': return Colors.green.shade600;
-      case 'Upcoming': return Colors.blue.shade500;
-      case 'Overdue': return Colors.red.shade600;
-      default: return Colors.grey;
+      case 'On Going':
+        return Colors.green.shade600;
+      case 'Upcoming':
+        return Colors.blue.shade500;
+      case 'Overdue':
+        return Colors.red.shade600;
+      default:
+        return Colors.grey;
     }
   }
 
@@ -118,17 +137,26 @@ class DapHelper {
   static Color getDapMarkerColor(int dap, {String? hybrid}) {
     final bool sc = isSweetCorn(hybrid);
 
-    if (dap <= 35) return Colors.grey;            // Vegetative
-    if (dap <= 54) return Colors.yellow.shade700; // Gen-1
-    if (dap <= 59) return Colors.orange;          // Gen-2
-    if (dap <= 65) return Colors.red;             // Gen-3
-    
-    if (sc) {
-      if (dap <= 72) return Colors.purple;        // Gen-4 (Contoh warna baru)
-      if (dap <= 80) return Colors.pink;          // Gen-5 (Contoh warna baru)
+    if (!sc) {
+      if (dap < 50) return Colors.grey; // Vegetative
+      if (dap <= 54) return Colors.yellow.shade700; // Gen-1
+      if (dap <= 59) return Colors.orange; // Gen-2
+      if (dap <= 70) return Colors.red; // Gen-3
+      if (dap <= 94) return Colors.brown; // Pre-Harvest
+      return Colors.green; // Harvest
     }
 
-    if (dap <= 90) return Colors.brown;           // Pre-Harvest
-    return Colors.green;                          // Harvest
+    if (dap <= 35) return Colors.grey; // Vegetative
+    if (dap <= 54) return Colors.yellow.shade700; // Gen-1
+    if (dap <= 59) return Colors.orange; // Gen-2
+    if (dap <= 65) return Colors.red; // Gen-3
+
+    if (sc) {
+      if (dap <= 72) return Colors.purple; // Gen-4 (Contoh warna baru)
+      if (dap <= 80) return Colors.pink; // Gen-5 (Contoh warna baru)
+    }
+
+    if (dap <= 90) return Colors.brown; // Pre-Harvest
+    return Colors.green; // Harvest
   }
 }

@@ -121,8 +121,8 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
       _maleChopping  = a['male_chopping_rows'];
       _finalFlagging = a['final_flagging'];
       _finalDecision = a['final_decision'];
-      _cropUniformity = a['crop_uniformity'] ?? a['crop_condition'];
-      _cropHealth     = a['crop_health']     ?? a['crop_condition'];
+      _cropUniformity = a['crop_uniformity'];
+      _cropHealth     = a['crop_health'];
     });
   }
 

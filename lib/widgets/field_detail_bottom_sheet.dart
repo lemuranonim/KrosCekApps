@@ -19,17 +19,19 @@ class FieldDetailBottomSheet extends ConsumerStatefulWidget {
   });
 
   static void show(
-      BuildContext context,
-      Map<String, dynamic> field, {
-        void Function(Map<String, dynamic>)? onInspectDone,
-      }) {
+    BuildContext context,
+    Map<String, dynamic> field, {
+    void Function(Map<String, dynamic>)? onInspectDone,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       useSafeArea: true,
-      isDismissible: true, // KUNCI: Memastikan klik di luar (area transparan) menutup sheet
-      enableDrag: true,    // KUNCI: Memastikan sheet bisa di-swipe ke bawah untuk tutup
+      isDismissible:
+          true, // KUNCI: Memastikan klik di luar (area transparan) menutup sheet
+      enableDrag:
+          true, // KUNCI: Memastikan sheet bisa di-swipe ke bawah untuk tutup
       builder: (_) => FieldDetailBottomSheet(
         field: field,
         onInspectDone: onInspectDone,
@@ -42,24 +44,28 @@ class FieldDetailBottomSheet extends ConsumerStatefulWidget {
       _FieldDetailBottomSheetState();
 }
 
-class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet> {
+class _FieldDetailBottomSheetState
+    extends ConsumerState<FieldDetailBottomSheet> {
   int _tab = 0; // 0: Info, 1: Histori, 2: Aksi
 
   // 1. TAMBAHKAN VARIABEL STATE INI
   late int _dap;
   late String _recommendedPhase;
   late String? _finalPlantingDate; // Menyimpan tanggal yang fix dipakai
-  late bool _isPlantingDateRevisied; // Penanda untuk UI (Warna emas jika revisi)
+  late bool
+      _isPlantingDateRevisied; // Penanda untuk UI (Warna emas jika revisi)
 
   // ── Penentu Tipe Crop berdasarkan Hybrid ────────────────────
   bool get _isSweetCorn {
-    final hybrid = widget.field['hybrid']?.toString().toUpperCase().trim() ?? '';
+    final hybrid =
+        widget.field['hybrid']?.toString().toUpperCase().trim() ?? '';
     // SC (Sweet Corn) strictly: AX01, AX02, AX03, AX04
     return ['AX01', 'AX02', 'AX03', 'AX04'].contains(hybrid);
   }
 
   bool get _isPSP {
-    final hybrid = widget.field['hybrid']?.toString().toUpperCase().trim() ?? '';
+    final hybrid =
+        widget.field['hybrid']?.toString().toUpperCase().trim() ?? '';
     // PSP (Next): ASF**
     return hybrid.startsWith('ASF');
   }
@@ -91,73 +97,122 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
 
     // 3. Hitung DAP dan Rekomendasi Fase
     _dap = DapHelper.calculateDAP(_finalPlantingDate);
-    _recommendedPhase = DapHelper.getRecommendedPhase(_dap, hybrid: widget.field['hybrid']?.toString());
+    _recommendedPhase = DapHelper.getRecommendedPhase(_dap,
+        hybrid: widget.field['hybrid']?.toString());
   }
 
   // ── Phase data dinamis menyesuaikan tipe crop ──────────────────
   List<String> get _phaseKeys {
     if (_isSweetCorn) {
       return [
-        'vegetative', 'generative_1', 'generative_2', 'generative_3',
-        'generative_4', 'generative_5', 'pre_harvest', 'harvest'
+        'vegetative',
+        'generative_1',
+        'generative_2',
+        'generative_3',
+        'generative_4',
+        'generative_5',
+        'pre_harvest',
+        'harvest'
       ];
     }
     if (_isPSP) {
       // PSP logic (sementara disamakan dengan FC atau sesuai kebutuhan nanti)
       return [
-        'vegetative', 'generative_1', 'generative_2', 'generative_3',
-        'pre_harvest', 'harvest'
+        'vegetative',
+        'generative_1',
+        'generative_2',
+        'generative_3',
+        'pre_harvest',
+        'harvest'
       ];
     }
     // Default / Field Corn (FC)
     return [
-      'vegetative', 'generative_1', 'generative_2', 'generative_3',
-      'pre_harvest', 'harvest'
+      'vegetative',
+      'generative_1',
+      'generative_2',
+      'generative_3',
+      'pre_harvest',
+      'harvest'
     ];
   }
 
   List<String> get _phaseLabels {
     if (_isSweetCorn) {
       return [
-        'Vegetatif', 'Generatif CP1', 'Generatif CP2', 'Generatif CP3',
-        'Generatif CP4', 'Generatif CP5', 'Pre-Harvest', 'Harvest'
+        'Vegetatif',
+        'Generatif CP1',
+        'Generatif CP2',
+        'Generatif CP3',
+        'Generatif CP4',
+        'Generatif CP5',
+        'Pre-Harvest',
+        'Harvest'
       ];
     }
     if (_isPSP) {
       return [
-        'Vegetatif (PSP)', 'Generatif CP1', 'Generatif CP2', 'Generatif CP3',
-        'Pre-Harvest', 'Harvest'
+        'Vegetatif (PSP)',
+        'Generatif CP1',
+        'Generatif CP2',
+        'Generatif CP3',
+        'Pre-Harvest',
+        'Harvest'
       ];
     }
     return [
-      'Vegetatif', 'Generatif CP1', 'Generatif CP2', 'Generatif CP3',
-      'Pre-Harvest', 'Harvest'
+      'Vegetatif',
+      'Generatif CP1',
+      'Generatif CP2',
+      'Generatif CP3',
+      'Pre-Harvest',
+      'Harvest'
     ];
   }
 
   List<IconData> get _phaseIcons {
     if (_isSweetCorn) {
       return [
-        Icons.grass_rounded, Icons.spa_rounded, Icons.spa_rounded, Icons.spa_rounded,
-        Icons.spa_rounded, Icons.spa_rounded, Icons.content_cut_rounded, Icons.agriculture_rounded
+        Icons.grass_rounded,
+        Icons.spa_rounded,
+        Icons.spa_rounded,
+        Icons.spa_rounded,
+        Icons.spa_rounded,
+        Icons.spa_rounded,
+        Icons.content_cut_rounded,
+        Icons.agriculture_rounded
       ];
     }
     return [
-      Icons.grass_rounded, Icons.spa_rounded, Icons.spa_rounded,
-      Icons.spa_rounded, Icons.content_cut_rounded, Icons.agriculture_rounded
+      Icons.grass_rounded,
+      Icons.spa_rounded,
+      Icons.spa_rounded,
+      Icons.spa_rounded,
+      Icons.content_cut_rounded,
+      Icons.agriculture_rounded
     ];
   }
 
   List<Color> get _phaseColors {
     if (_isSweetCorn) {
       return [
-        const Color(0xFF43A047), const Color(0xFF7B61FF), const Color(0xFF7B61FF), const Color(0xFF7B61FF),
-        const Color(0xFF7B61FF), const Color(0xFF7B61FF), const Color(0xFFE65100), const Color(0xFFD4A017)
+        const Color(0xFF43A047),
+        const Color(0xFF7B61FF),
+        const Color(0xFF7B61FF),
+        const Color(0xFF7B61FF),
+        const Color(0xFF7B61FF),
+        const Color(0xFF7B61FF),
+        const Color(0xFFE65100),
+        const Color(0xFFD4A017)
       ];
     }
     return [
-      const Color(0xFF43A047), const Color(0xFF7B61FF), const Color(0xFF7B61FF),
-      const Color(0xFF7B61FF), const Color(0xFFE65100), const Color(0xFFD4A017)
+      const Color(0xFF43A047),
+      const Color(0xFF7B61FF),
+      const Color(0xFF7B61FF),
+      const Color(0xFF7B61FF),
+      const Color(0xFFE65100),
+      const Color(0xFFD4A017)
     ];
   }
 
@@ -180,26 +235,40 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
 
   Color _flagColor(String? flag) {
     switch (flag?.toLowerCase()) {
-      case 'green':  return AdvantaColors.success;
-      case 'yellow': return AdvantaColors.gold; // Ganti .warning dengan .gold
-      case 'red':    return AdvantaColors.error;
-      case 'black':  return AdvantaColors.charcoal;
-      default:       return AdvantaColors.mutedGrey;
+      case 'green':
+        return AdvantaColors.success;
+      case 'yellow':
+        return AdvantaColors.gold; // Ganti .warning dengan .gold
+      case 'red':
+        return AdvantaColors.error;
+      case 'black':
+        return AdvantaColors.charcoal;
+      default:
+        return AdvantaColors.mutedGrey;
     }
   }
 
   // Fungsi untuk mengecek apakah sebuah fase spesifik sudah diaudit
   bool _isPhaseAudited(String phaseKey, FieldAuditStatus status) {
     switch (phaseKey) {
-      case 'vegetative': return status.vegetative == SingleAuditStatus.sampun;
-      case 'generative_1': return status.gen1Done;
-      case 'generative_2': return status.gen2Done;
-      case 'generative_3': return status.gen3Done;
-      case 'generative_4': return status.gen4Done; // tambah field di FieldAuditStatus
-      case 'generative_5': return status.gen5Done;
-      case 'pre_harvest': return status.preHarvest == SingleAuditStatus.sampun;
-      case 'harvest': return status.harvest == SingleAuditStatus.sampun;
-      default: return false;
+      case 'vegetative':
+        return status.vegetative == SingleAuditStatus.sampun;
+      case 'generative_1':
+        return status.gen1Done;
+      case 'generative_2':
+        return status.gen2Done;
+      case 'generative_3':
+        return status.gen3Done;
+      case 'generative_4':
+        return status.gen4Done; // tambah field di FieldAuditStatus
+      case 'generative_5':
+        return status.gen5Done;
+      case 'pre_harvest':
+        return status.preHarvest == SingleAuditStatus.sampun;
+      case 'harvest':
+        return status.harvest == SingleAuditStatus.sampun;
+      default:
+        return false;
     }
   }
 
@@ -211,7 +280,8 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
       return;
     }
 
-    final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    final url =
+        Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } else {
@@ -226,16 +296,17 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
   // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final field           = widget.field;
-    final fieldNumber     = field['field_number']?.toString() ?? '';
-    final flag            = field['flagging_final']?.toString();
+    final field = widget.field;
+    final fieldNumber = field['field_number']?.toString() ?? '';
+    final flag = field['flagging_final']?.toString();
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
     // KUNCI 1: GestureDetector Terluar (Menangkap klik di area transparan)
     return GestureDetector(
-      behavior: HitTestBehavior.opaque, // Pastikan area transparan tetap bisa diklik
+      behavior:
+          HitTestBehavior.opaque, // Pastikan area transparan tetap bisa diklik
       onTap: () => Navigator.pop(context), // Perintah menutup sheet
       child: DraggableScrollableSheet(
         initialChildSize: 0.60,
@@ -246,7 +317,8 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
         builder: (ctx, scrollCtrl) {
           // KUNCI 2: GestureDetector Dalam (Melindungi konten dari perintah tutup)
           return GestureDetector(
-            onTap: () {}, // Kosongkan agar menyerap klik (klik tidak diteruskan ke luar)
+            onTap:
+                () {}, // Kosongkan agar menyerap klik (klik tidak diteruskan ke luar)
             child: Container(
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
@@ -261,9 +333,11 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _DragHandle(isDark: isDark),
-                      _buildHeader(fieldNumber, _dap, _recommendedPhase, flag, field, theme, isDark),
+                      _buildHeader(fieldNumber, _dap, _recommendedPhase, flag,
+                          field, theme, isDark),
                       _buildTabBar(theme, isDark),
-                      _buildContent(_dap, _recommendedPhase, fieldNumber, field, theme, isDark),
+                      _buildContent(_dap, _recommendedPhase, fieldNumber, field,
+                          theme, isDark),
                     ],
                   ),
                 ),
@@ -277,21 +351,21 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
 
   // ── HEADER ────────────────────────────────────────────────
   Widget _buildHeader(
-      String fieldNumber,
-      int dap,
-      String recommendedPhase,
-      String? flag,
-      Map<String, dynamic> field,
-      ThemeData theme,
-      bool isDark,
-      ) {
+    String fieldNumber,
+    int dap,
+    String recommendedPhase,
+    String? flag,
+    Map<String, dynamic> field,
+    ThemeData theme,
+    bool isDark,
+  ) {
     final markerColor = DapHelper.getDapMarkerColor(dap);
-    final farmName    = _fmt(field['farmer_name']);
-    final region      = _fmt(field['region']);
-    final district    = _fmt(field['district_kab']);
+    final farmName = _fmt(field['farmer_name']);
+    final region = _fmt(field['region']);
+    final district = _fmt(field['district_kab']);
 
     final coordStr = field['coordinate']?.toString() ?? '';
-    final corrStr  = field['correction_tagging']?.toString() ?? '';
+    final corrStr = field['correction_tagging']?.toString() ?? '';
 
     double? targetLat, targetLng;
     if (corrStr.contains(',')) {
@@ -331,7 +405,8 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
                         Expanded(
                           child: Text(
                             'Field #$fieldNumber',
-                            style: AdvantaText.heading2.copyWith(color: theme.colorScheme.onSurface),
+                            style: AdvantaText.heading2
+                                .copyWith(color: theme.colorScheme.onSurface),
                           ),
                         ),
                         _buildNavButton(targetLat, targetLng),
@@ -341,15 +416,18 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
                       ],
                     ),
                     const SizedBox(height: 4.0),
-                    Text(farmName, style: AdvantaText.label.copyWith(color: textSubColor)),
+                    Text(farmName,
+                        style: AdvantaText.label.copyWith(color: textSubColor)),
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        Icon(Icons.location_on_outlined, color: textSubColor, size: 11),
+                        Icon(Icons.location_on_outlined,
+                            color: textSubColor, size: 11),
                         const SizedBox(width: 3),
                         Text(
                           '$district · $region',
-                          style: AdvantaText.caption.copyWith(color: textSubColor),
+                          style:
+                              AdvantaText.caption.copyWith(color: textSubColor),
                         ),
                       ],
                     ),
@@ -369,10 +447,12 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
           ),
           Builder(builder: (context) {
             final auditStatus = AuditStatusHelper.fromRaw(field);
-            final isRecPhaseAudited = _isPhaseAudited(recommendedPhase, auditStatus);
+            final isRecPhaseAudited =
+                _isPhaseAudited(recommendedPhase, auditStatus);
 
             return _DapCalculationBox(
-              plantingDate: _finalPlantingDate, // <-- Pakai _finalPlantingDate yang sudah difilter
+              plantingDate:
+                  _finalPlantingDate, // <-- Pakai _finalPlantingDate yang sudah difilter
               dap: dap,
               phaseKey: recommendedPhase,
               isAudited: isRecPhaseAudited,
@@ -399,11 +479,13 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
         ),
         child: Row(
           children: [
-            const Icon(Icons.directions_outlined, color: AdvantaColors.primaryGreen, size: 14),
+            const Icon(Icons.directions_outlined,
+                color: AdvantaColors.primaryGreen, size: 14),
             const SizedBox(width: 4),
             Text(
               'RUTE',
-              style: AdvantaText.label.copyWith(color: AdvantaColors.primaryGreen, fontSize: 10),
+              style: AdvantaText.label
+                  .copyWith(color: AdvantaColors.primaryGreen, fontSize: 10),
             ),
           ],
         ),
@@ -435,7 +517,7 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
 
   // ── TAB BAR ───────────────────────────────────────────────
   Widget _buildTabBar(ThemeData theme, bool isDark) {
-    const tabs     = ['Info Lahan', 'Histori', 'Mulai Inspeksi'];
+    const tabs = ['Info Lahan', 'Histori', 'Mulai Inspeksi'];
     const tabIcons = [
       Icons.info_outline_rounded,
       Icons.history_rounded,
@@ -447,12 +529,14 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AdvantaColors.deepForest.withAlpha(100) : AdvantaColors.softGrey,
+        color: isDark
+            ? AdvantaColors.deepForest.withAlpha(100)
+            : AdvantaColors.softGrey,
         border: Border(bottom: BorderSide(color: borderColor)),
       ),
       child: Row(
         children: List.generate(3, (i) {
-          final active     = _tab == i;
+          final active = _tab == i;
           final activeColor = i == 2
               ? AdvantaColors.lightGreen
               : (isDark ? AdvantaColors.goldLight : theme.colorScheme.primary);
@@ -500,13 +584,13 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
   // ── CONTENT ROUTER ────────────────────────────────────────
   // ── CONTENT ROUTER ────────────────────────────────────────
   Widget _buildContent(
-      int dap,
-      String recommendedPhase,
-      String fieldNumber,
-      Map<String, dynamic> field,
-      ThemeData theme,
-      bool isDark,
-      ) {
+    int dap,
+    String recommendedPhase,
+    String fieldNumber,
+    Map<String, dynamic> field,
+    ThemeData theme,
+    bool isDark,
+  ) {
     Widget activeTab;
     switch (_tab) {
       case 0:
@@ -516,12 +600,14 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
         activeTab = _buildHistoriTab(dap, field, theme, isDark);
         break;
       default:
-        activeTab = _buildAksiTab(dap, recommendedPhase, fieldNumber, theme, isDark);
+        activeTab =
+            _buildAksiTab(dap, recommendedPhase, fieldNumber, theme, isDark);
     }
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 180),
-      transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+      transitionBuilder: (child, anim) =>
+          FadeTransition(opacity: anim, child: child),
       child: KeyedSubtree(key: ValueKey(_tab), child: activeTab),
     );
   }
@@ -529,7 +615,8 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
   // ──────────────────────────────────────────────────────────
   // TAB 0 — INFO LAHAN
   // ──────────────────────────────────────────────────────────
-  Widget _buildInfoTab(Map<String, dynamic> field, ThemeData theme, bool isDark) {
+  Widget _buildInfoTab(
+      Map<String, dynamic> field, ThemeData theme, bool isDark) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 32.0),
       child: Column(
@@ -537,68 +624,94 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
           _SectionCard(
             title: 'Identitas Lahan',
             icon: Icons.badge_outlined,
-            theme: theme, isDark: isDark,
+            theme: theme,
+            isDark: isDark,
             children: [
               _Row2Col(
-                left: _InfoCell('Season', _fmt(field['season']), theme: theme, isDark: isDark),
-                right: _InfoCell('Tipe', _fmt(field['type']), theme: theme, isDark: isDark),
+                left: _InfoCell('Season', _fmt(field['season']),
+                    theme: theme, isDark: isDark),
+                right: _InfoCell('Tipe', _fmt(field['type']),
+                    theme: theme, isDark: isDark),
               ),
               _Row2Col(
-                left: _InfoCell('Hybrid', _fmt(field['hybrid']), theme: theme, isDark: isDark),
-                right: _InfoCell('Planting Ratio', _fmt(field['planting_ratio']), theme: theme, isDark: isDark),
+                left: _InfoCell('Hybrid', _fmt(field['hybrid']),
+                    theme: theme, isDark: isDark),
+                right: _InfoCell(
+                    'Planting Ratio', _fmt(field['planting_ratio']),
+                    theme: theme, isDark: isDark),
               ),
               _Row2Col(
-                left: _InfoCell('Jarak Tanam', _fmt(field['planting_space']), theme: theme, isDark: isDark),
-                right: _InfoCell('Standing Crops', _fmt(field['standing_crops']), theme: theme, isDark: isDark),
+                left: _InfoCell('Jarak Tanam', _fmt(field['planting_space']),
+                    theme: theme, isDark: isDark),
+                right: _InfoCell(
+                    'Standing Crops', _fmt(field['standing_crops']),
+                    theme: theme, isDark: isDark),
               ),
             ],
           ),
           const SizedBox(height: 10.0),
-
           _SectionCard(
             title: 'Area & Tanaman',
             icon: Icons.crop_landscape_outlined,
-            theme: theme, isDark: isDark,
+            theme: theme,
+            isDark: isDark,
             children: [
               _Row3Col(
-                a: _InfoCell('Total Area', '${_fmt(field['total_area_planted_ha'])} Ha', theme: theme, isDark: isDark),
-                b: _InfoCell('Discard', '${_fmt(field['discard_area_ha'])} Ha', theme: theme, isDark: isDark),
-                c: _InfoCell('Efektif', '${_fmt(field['effective_area_ha'])} Ha', highlight: true, theme: theme, isDark: isDark),
+                a: _InfoCell(
+                    'Total Area', '${_fmt(field['total_area_planted_ha'])} Ha',
+                    theme: theme, isDark: isDark),
+                b: _InfoCell('Discard', '${_fmt(field['discard_area_ha'])} Ha',
+                    theme: theme, isDark: isDark),
+                c: _InfoCell(
+                    'Efektif', '${_fmt(field['effective_area_ha'])} Ha',
+                    highlight: true, theme: theme, isDark: isDark),
               ),
               _Row3Col(
-                a: _InfoCell('Hasil Panen', '${_fmt(field['harvested_area_ha'])} Ha', theme: theme, isDark: isDark),
-                b: _InfoCell('Qty Panen', '${_fmt(field['harvested_qty_kg'])} Kg', theme: theme, isDark: isDark),
-                c: _InfoCell('Prev Crop', _fmt(field['previous_crop_data_a_b']), theme: theme, isDark: isDark),
+                a: _InfoCell(
+                    'Hasil Panen', '${_fmt(field['harvested_area_ha'])} Ha',
+                    theme: theme, isDark: isDark),
+                b: _InfoCell(
+                    'Qty Panen', '${_fmt(field['harvested_qty_kg'])} Kg',
+                    theme: theme, isDark: isDark),
+                c: _InfoCell('Prev Crop', _fmt(field['previous_crop_data_a_b']),
+                    theme: theme, isDark: isDark),
               ),
             ],
           ),
           const SizedBox(height: 10.0),
-
           _SectionCard(
             title: 'Penanggung Jawab',
             icon: Icons.people_alt_outlined,
-            theme: theme, isDark: isDark,
+            theme: theme,
+            isDark: isDark,
             children: [
               _Row2Col(
-                left: _InfoCell('Petani', _fmt(field['farmer_name']), theme: theme, isDark: isDark),
-                right: _InfoCell('Grower', _fmt(field['grower']), theme: theme, isDark: isDark),
+                left: _InfoCell('Petani', _fmt(field['farmer_name']),
+                    theme: theme, isDark: isDark),
+                right: _InfoCell('Grower', _fmt(field['grower']),
+                    theme: theme, isDark: isDark),
               ),
               _Row2Col(
-                left: _InfoCell('FA', _fmt(field['fa']), theme: theme, isDark: isDark),
-                right: _InfoCell('SPV', _fmt(field['field_spv']), theme: theme, isDark: isDark),
+                left: _InfoCell('FA', _fmt(field['fa']),
+                    theme: theme, isDark: isDark),
+                right: _InfoCell('SPV', _fmt(field['field_spv']),
+                    theme: theme, isDark: isDark),
               ),
               _Row2Col(
-                left: _InfoCell('QA FI', _fmt(field['qa_fi']), theme: theme, isDark: isDark),
-                right: _InfoCell('QA SPV', _fmt(field['qa_spv']), theme: theme, isDark: isDark),
+                left: _InfoCell('QA FI', _fmt(field['qa_fi']),
+                    theme: theme, isDark: isDark),
+                right: _InfoCell('QA SPV', _fmt(field['qa_spv']),
+                    theme: theme, isDark: isDark),
               ),
               _Row2Col(
-                left: _InfoCell('Area Manager', _fmt(field['area_manager']), theme: theme, isDark: isDark),
-                right: _InfoCell('Corr. Tag', _fmt(field['correction_tagging']), theme: theme, isDark: isDark),
+                left: _InfoCell('Area Manager', _fmt(field['area_manager']),
+                    theme: theme, isDark: isDark),
+                right: _InfoCell('Corr. Tag', _fmt(field['correction_tagging']),
+                    theme: theme, isDark: isDark),
               ),
             ],
           ),
           const SizedBox(height: 10.0),
-
           _SectionCard(
             title: 'Lokasi',
             icon: Icons.place_outlined,
@@ -608,7 +721,8 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
             action: InkWell(
               onTap: () {
                 Navigator.pop(context); // Tutup bottom sheet
-                context.push('/edit-field', extra: field); // Pindah ke halaman edit
+                context.push('/edit-field',
+                    extra: field); // Pindah ke halaman edit
               },
               borderRadius: BorderRadius.circular(6),
               child: Container(
@@ -621,11 +735,13 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.edit_rounded, color: AdvantaColors.gold, size: 12),
+                    const Icon(Icons.edit_rounded,
+                        color: AdvantaColors.gold, size: 12),
                     const SizedBox(width: 4),
                     Text(
                       'EDIT',
-                      style: AdvantaText.label.copyWith(color: AdvantaColors.gold, fontSize: 10),
+                      style: AdvantaText.label
+                          .copyWith(color: AdvantaColors.gold, fontSize: 10),
                     ),
                   ],
                 ),
@@ -633,16 +749,22 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
             ),
             children: [
               _Row2Col(
-                left: _InfoCell('Provinsi', _fmt(field['prov']), theme: theme, isDark: isDark),
-                right: _InfoCell('Kabupaten', _fmt(field['district_kab']), theme: theme, isDark: isDark),
+                left: _InfoCell('Provinsi', _fmt(field['prov']),
+                    theme: theme, isDark: isDark),
+                right: _InfoCell('Kabupaten', _fmt(field['district_kab']),
+                    theme: theme, isDark: isDark),
               ),
               _Row2Col(
-                left: _InfoCell('Kecamatan', _fmt(field['sub_district_kec']), theme: theme, isDark: isDark),
-                right: _InfoCell('Desa', _fmt(field['village_desa']), theme: theme, isDark: isDark),
+                left: _InfoCell('Kecamatan', _fmt(field['sub_district_kec']),
+                    theme: theme, isDark: isDark),
+                right: _InfoCell('Desa', _fmt(field['village_desa']),
+                    theme: theme, isDark: isDark),
               ),
-              _InfoCell('Dusun', _fmt(field['hamlet_dusun']), theme: theme, isDark: isDark),
+              _InfoCell('Dusun', _fmt(field['hamlet_dusun']),
+                  theme: theme, isDark: isDark),
               const SizedBox(height: 4),
-              _InfoCell('Koordinat', _fmt(field['coordinate']), theme: theme, isDark: isDark),
+              _InfoCell('Koordinat', _fmt(field['coordinate']),
+                  theme: theme, isDark: isDark),
             ],
           ),
         ],
@@ -653,7 +775,8 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
   // ──────────────────────────────────────────────────────────
   // TAB 1 — HISTORI INSPEKSI
   // ──────────────────────────────────────────────────────────
-  Widget _buildHistoriTab(int dap, Map<String, dynamic> field, ThemeData theme, bool isDark) {
+  Widget _buildHistoriTab(
+      int dap, Map<String, dynamic> field, ThemeData theme, bool isDark) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 32.0),
       child: Column(children: _buildPhaseTimeline(dap, field, theme, isDark)),
@@ -661,7 +784,8 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
   }
 
   // 👇 SILAKAN PASTE FUNGSI INI DI BAWAH _buildHistoriTab 👇
-  List<Widget> _buildPhaseTimeline(int dap, Map<String, dynamic> field, ThemeData theme, bool isDark) {
+  List<Widget> _buildPhaseTimeline(
+      int dap, Map<String, dynamic> field, ThemeData theme, bool isDark) {
     final phaseToAudit = {
       'vegetative': 'audit_vegetative',
       'generative_1': 'audit_generative',
@@ -669,8 +793,8 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
       'generative_3': 'audit_generative',
       'generative_4': 'audit_generative',
       'generative_5': 'audit_generative',
-      'pre_harvest' : 'audit_pre_harvest',
-      'harvest'     : 'audit_harvest',
+      'pre_harvest': 'audit_pre_harvest',
+      'harvest': 'audit_harvest',
     };
 
     // Gunakan AuditStatusHelper sebagai single source of truth
@@ -681,7 +805,7 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
       final phaseKey = _phaseKeys[i];
       final auditKey = phaseToAudit[phaseKey]!;
       final auditData = _auditMap(auditKey);
-      final color  = _phaseColors[i];
+      final color = _phaseColors[i];
       final isLast = i == _phaseKeys.length - 1;
 
       String? auditDate;
@@ -691,20 +815,25 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
       if (phaseKey.startsWith('generative_')) {
         final cp = phaseKey.split('_')[1];
         auditDate = auditData?['date_of_audit_$cp']?.toString();
-        auditWeek = auditData?['audit_week_$cp']?.toString() ?? auditData?['audit_week']?.toString();
-        decision  = auditData?['final_decision_$cp']?.toString() ?? auditData?['action_needed_$cp']?.toString();
+        auditWeek = auditData?['audit_week_$cp']?.toString() ??
+            auditData?['audit_week']?.toString();
+        decision = auditData?['final_decision_$cp']?.toString() ??
+            auditData?['action_needed_$cp']?.toString();
       } else if (phaseKey == 'vegetative') {
         auditDate = auditData?['date_of_audit']?.toString();
         auditWeek = auditData?['audit_week']?.toString();
-        decision  = auditData?['final_decision']?.toString() ?? auditData?['flagging']?.toString();
+        decision = auditData?['final_decision']?.toString() ??
+            auditData?['flagging']?.toString();
       } else if (phaseKey == 'pre_harvest') {
         auditDate = auditData?['audit_date']?.toString();
         auditWeek = auditData?['audit_week']?.toString();
-        decision  = auditData?['final_decision']?.toString() ?? auditData?['flagging']?.toString();
+        decision = auditData?['final_decision']?.toString() ??
+            auditData?['flagging']?.toString();
       } else {
         auditDate = auditData?['date_of_audit']?.toString();
         auditWeek = auditData?['audit_week']?.toString();
-        decision  = auditData?['final_decision']?.toString() ?? auditData?['flagging']?.toString();
+        decision = auditData?['final_decision']?.toString() ??
+            auditData?['flagging']?.toString();
       }
 
       // Penentuan apakah fase sudah selesai
@@ -762,13 +891,8 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
   // ──────────────────────────────────────────────────────────
   // TAB 2 — AKSI / MULAI INSPEKSI
   // ──────────────────────────────────────────────────────────
-  Widget _buildAksiTab(
-      int dap,
-      String recommendedPhase,
-      String fieldNumber,
-      ThemeData theme,
-      bool isDark
-      ) {
+  Widget _buildAksiTab(int dap, String recommendedPhase, String fieldNumber,
+      ThemeData theme, bool isDark) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 32.0),
       child: Column(
@@ -778,25 +902,34 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
           Container(
             padding: const EdgeInsets.all(12.0),
             decoration: BoxDecoration(
-              color: isDark ? AdvantaColors.midGreen.withAlpha(80) : AdvantaColors.paleGreen,
+              color: isDark
+                  ? AdvantaColors.midGreen.withAlpha(80)
+                  : AdvantaColors.paleGreen,
               borderRadius: AdvantaRadius.cardRadius,
               border: Border.all(
-                color: isDark ? AdvantaColors.goldLight : AdvantaColors.primaryGreen,
+                color: isDark
+                    ? AdvantaColors.goldLight
+                    : AdvantaColors.primaryGreen,
               ),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(Icons.info_outline_rounded,
-                    color: isDark ? AdvantaColors.goldLight : AdvantaColors.primaryGreen, size: 16),
+                    color: isDark
+                        ? AdvantaColors.goldLight
+                        : AdvantaColors.primaryGreen,
+                    size: 16),
                 const SizedBox(width: 10.0),
                 Expanded(
                   child: Text(
                     'DAP saat ini: $dap hari. Fase rekomendasi: '
-                        '${_getPhaseLabel(recommendedPhase)}. '
-                        'Anda tetap bebas memilih fase lain.',
+                    '${_getPhaseLabel(recommendedPhase)}. '
+                    'Anda tetap bebas memilih fase lain.',
                     style: AdvantaText.caption.copyWith(
-                      color: isDark ? AdvantaColors.goldLight : AdvantaColors.primaryGreen,
+                      color: isDark
+                          ? AdvantaColors.goldLight
+                          : AdvantaColors.primaryGreen,
                       height: 1.5,
                     ),
                   ),
@@ -811,17 +944,17 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
             'PILIH FASE INSPEKSI',
             style: AdvantaText.label.copyWith(
                 letterSpacing: 1.5,
-                color: isDark ? AdvantaColors.goldLight : AdvantaColors.mutedGrey
-            ),
+                color:
+                    isDark ? AdvantaColors.goldLight : AdvantaColors.mutedGrey),
           ),
           const SizedBox(height: 10.0),
 
           // Phase buttons
           ...List.generate(_phaseKeys.length, (i) {
             final phaseKey = _phaseKeys[i];
-            final color    = _phaseColors[i];
-            final label    = _phaseLabels[i];
-            final icon     = _phaseIcons[i];
+            final color = _phaseColors[i];
+            final label = _phaseLabels[i];
+            final icon = _phaseIcons[i];
 
             final isRecommended = recommendedPhase == phaseKey;
             final auditStatus = AuditStatusHelper.fromRaw(widget.field);
@@ -834,14 +967,22 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
               translatedBadge = 'Selesai';
               badgeColor = AdvantaColors.success;
             } else {
-              final rawBadge = DapHelper.getDapBadgeLabel(dap, phaseKey, hybrid: widget.field['hybrid']?.toString());
+              final rawBadge = DapHelper.getDapBadgeLabel(dap, phaseKey,
+                  hybrid: widget.field['hybrid']?.toString());
               badgeColor = DapHelper.getDapBadgeColor(rawBadge);
 
               switch (rawBadge.toLowerCase()) {
-                case 'overdue': translatedBadge = 'Terlambat'; break;
-                case 'upcoming': translatedBadge = 'Akan Datang'; break;
-                case 'on going':translatedBadge = 'Sedang Berjalan'; break;
-                default:        translatedBadge = rawBadge;
+                case 'overdue':
+                  translatedBadge = 'Terlambat';
+                  break;
+                case 'upcoming':
+                  translatedBadge = 'Akan Datang';
+                  break;
+                case 'on going':
+                  translatedBadge = 'Sedang Berjalan';
+                  break;
+                default:
+                  translatedBadge = rawBadge;
               }
             }
 
@@ -862,7 +1003,8 @@ class _FieldDetailBottomSheetState extends ConsumerState<FieldDetailBottomSheet>
                   // LOGIKA ROUTING:
                   if (_isPSP) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Modul PSP (ASF) akan segera hadir.')),
+                      const SnackBar(
+                          content: Text('Modul PSP (ASF) akan segera hadir.')),
                     );
                     return;
                   }
@@ -967,9 +1109,8 @@ class _DapProgressBar extends StatelessWidget {
         hybrid?.toUpperCase().trim() == 'AX03' ||
         hybrid?.toUpperCase().trim() == 'AX04';
 
-    final List<int> limits = isSc
-        ? [35, 54, 59, 65, 72, 80, 90, 105]
-        : [35, 54, 59, 65, 90, 105];
+    final List<int> limits =
+        isSc ? [35, 54, 59, 65, 72, 80, 90, 105] : [49, 54, 59, 70, 94, 105];
 
     final List<String> labels = isSc
         ? ['Veg', 'G1', 'G2', 'G3', 'G4', 'G5', 'Pre-H', 'Harv']
@@ -992,14 +1133,15 @@ class _DapProgressBar extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: AdvantaText.caption.copyWith(
                   fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-                  color: isActive ? phaseColors[i] : AdvantaColors.mutedGrey.withAlpha(120),
+                  color: isActive
+                      ? phaseColors[i]
+                      : AdvantaColors.mutedGrey.withAlpha(120),
                 ),
               ),
             );
           }),
         ),
         const SizedBox(height: 4),
-
         ClipRRect(
           borderRadius: BorderRadius.circular(4.0),
           child: SizedBox(
@@ -1007,7 +1149,7 @@ class _DapProgressBar extends StatelessWidget {
             child: Row(
               children: List.generate(limits.length, (i) {
                 final segStart = i == 0 ? 0 : limits[i - 1];
-                final segEnd   = limits[i];
+                final segEnd = limits[i];
                 final segWidth = segEnd - segStart;
 
                 double fill = 0.0;
@@ -1037,7 +1179,6 @@ class _DapProgressBar extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 5),
-
         Row(
           children: [
             Text(
@@ -1050,7 +1191,8 @@ class _DapProgressBar extends StatelessWidget {
             const SizedBox(width: 8.0),
             Text(
               '· Rekomendasi: $recommendedPhase',
-              style: AdvantaText.caption.copyWith(color: AdvantaColors.mutedGrey),
+              style:
+                  AdvantaText.caption.copyWith(color: AdvantaColors.mutedGrey),
             ),
           ],
         ),
@@ -1082,19 +1224,27 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     // Menentukan warna background berdasarkan mode (Edit vs Normal)
     final bgColor = isEditable
-        ? AdvantaColors.gold.withAlpha(isDark ? 25 : 40) // Highlight emas transparan
-        : (isDark ? AdvantaColors.deepForest.withAlpha(100) : AdvantaColors.softGrey);
+        ? AdvantaColors.gold
+            .withAlpha(isDark ? 25 : 40) // Highlight emas transparan
+        : (isDark
+            ? AdvantaColors.deepForest.withAlpha(100)
+            : AdvantaColors.softGrey);
 
     // Menentukan warna garis tepi (border)
     final borderColor = isEditable
-        ? AdvantaColors.gold.withAlpha(isDark ? 80 : 120) // Border emas yang lebih tegas
+        ? AdvantaColors.gold
+            .withAlpha(isDark ? 80 : 120) // Border emas yang lebih tegas
         : (isDark ? Colors.white12 : Colors.black12);
 
     return Container(
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: AdvantaRadius.cardRadius,
-        border: Border.all(color: borderColor, width: isEditable ? 1.5 : 1.0), // Border sedikit lebih tebal jika bisa diedit
+        border: Border.all(
+            color: borderColor,
+            width: isEditable
+                ? 1.5
+                : 1.0), // Border sedikit lebih tebal jika bisa diedit
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1103,19 +1253,26 @@ class _SectionCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
             child: Row(
               children: [
-                Icon(
-                    icon,
-                    color: isEditable ? AdvantaColors.gold : (isDark ? AdvantaColors.goldLight : theme.colorScheme.primary),
-                    size: 14
-                ),
+                Icon(icon,
+                    color: isEditable
+                        ? AdvantaColors.gold
+                        : (isDark
+                            ? AdvantaColors.goldLight
+                            : theme.colorScheme.primary),
+                    size: 14),
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
                     title.toUpperCase(),
                     style: AdvantaText.label.copyWith(
-                      color: isEditable ? AdvantaColors.gold : (isDark ? AdvantaColors.goldLight : theme.colorScheme.primary),
+                      color: isEditable
+                          ? AdvantaColors.gold
+                          : (isDark
+                              ? AdvantaColors.goldLight
+                              : theme.colorScheme.primary),
                       letterSpacing: 0.8,
-                      fontWeight: isEditable ? FontWeight.bold : FontWeight.normal,
+                      fontWeight:
+                          isEditable ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
                 ),
@@ -1144,7 +1301,8 @@ class _InfoCell extends StatelessWidget {
   final ThemeData theme;
   final bool isDark;
 
-  const _InfoCell(this.label, this.value, {this.highlight = false, required this.theme, required this.isDark});
+  const _InfoCell(this.label, this.value,
+      {this.highlight = false, required this.theme, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
@@ -1155,13 +1313,18 @@ class _InfoCell extends StatelessWidget {
         children: [
           Text(
             label,
-            style: AdvantaText.caption.copyWith(color: isDark ? Colors.white54 : AdvantaColors.mutedGrey),
+            style: AdvantaText.caption.copyWith(
+                color: isDark ? Colors.white54 : AdvantaColors.mutedGrey),
           ),
           const SizedBox(height: 2),
           Text(
             value,
             style: AdvantaText.body2.copyWith(
-              color: highlight ? (isDark ? AdvantaColors.goldLight : theme.colorScheme.primary) : theme.colorScheme.onSurface,
+              color: highlight
+                  ? (isDark
+                      ? AdvantaColors.goldLight
+                      : theme.colorScheme.primary)
+                  : theme.colorScheme.onSurface,
               fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
             ),
           ),
@@ -1256,13 +1419,17 @@ class _PhaseTimelineItem extends StatelessWidget {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: hasData ? color.withAlpha(46) : (isDark ? Colors.white10 : Colors.black12),
+                  color: hasData
+                      ? color.withAlpha(46)
+                      : (isDark ? Colors.white10 : Colors.black12),
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: hasData ? color : borderColor,
                     width: hasData ? 2.0 : 1.0,
                   ),
-                  boxShadow: hasData ? [BoxShadow(color: color.withAlpha(76), blurRadius: 8)] : null,
+                  boxShadow: hasData
+                      ? [BoxShadow(color: color.withAlpha(76), blurRadius: 8)]
+                      : null,
                 ),
                 child: Icon(
                   hasData ? Icons.check_rounded : icon,
@@ -1284,14 +1451,17 @@ class _PhaseTimelineItem extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10.0),
-
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
             child: Container(
               padding: const EdgeInsets.all(12.0),
               decoration: BoxDecoration(
-                color: hasData ? color.withAlpha(15) : (isDark ? Colors.white.withAlpha(5) : AdvantaColors.softGrey),
+                color: hasData
+                    ? color.withAlpha(15)
+                    : (isDark
+                        ? Colors.white.withAlpha(5)
+                        : AdvantaColors.softGrey),
                 borderRadius: AdvantaRadius.cardRadius,
                 border: Border.all(
                   color: hasData ? color.withAlpha(64) : borderColor,
@@ -1305,14 +1475,17 @@ class _PhaseTimelineItem extends StatelessWidget {
                       Text(
                         label,
                         style: AdvantaText.label.copyWith(
-                          color: hasData ? theme.colorScheme.onSurface : AdvantaColors.mutedGrey,
+                          color: hasData
+                              ? theme.colorScheme.onSurface
+                              : AdvantaColors.mutedGrey,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const Spacer(),
                       if (hasData)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
                             color: color.withAlpha(38),
                             borderRadius: AdvantaRadius.chipRadius,
@@ -1328,7 +1501,8 @@ class _PhaseTimelineItem extends StatelessWidget {
                         )
                       else
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
                             color: isDark ? Colors.white10 : Colors.black12,
                             borderRadius: AdvantaRadius.chipRadius,
@@ -1336,7 +1510,9 @@ class _PhaseTimelineItem extends StatelessWidget {
                           child: Text(
                             'BELUM',
                             style: AdvantaText.caption.copyWith(
-                              color: isDark ? Colors.white54 : AdvantaColors.mutedGrey,
+                              color: isDark
+                                  ? Colors.white54
+                                  : AdvantaColors.mutedGrey,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.5,
                             ),
@@ -1348,12 +1524,17 @@ class _PhaseTimelineItem extends StatelessWidget {
                     const SizedBox(height: 8.0),
                     Row(
                       children: [
-                        Icon(Icons.calendar_today_outlined, size: 10, color: AdvantaColors.mutedGrey),
+                        Icon(Icons.calendar_today_outlined,
+                            size: 10, color: AdvantaColors.mutedGrey),
                         const SizedBox(width: 4),
-                        Text(auditDate!, style: AdvantaText.caption.copyWith(color: theme.colorScheme.onSurface)),
+                        Text(auditDate!,
+                            style: AdvantaText.caption
+                                .copyWith(color: theme.colorScheme.onSurface)),
                         if (auditWeek != null) ...[
                           const SizedBox(width: 8),
-                          Text('Week $auditWeek', style: AdvantaText.caption.copyWith(color: AdvantaColors.mutedGrey)),
+                          Text('Week $auditWeek',
+                              style: AdvantaText.caption
+                                  .copyWith(color: AdvantaColors.mutedGrey)),
                         ],
                       ],
                     ),
@@ -1375,7 +1556,8 @@ class _PhaseTimelineItem extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       'Belum ada data inspeksi',
-                      style: AdvantaText.caption.copyWith(color: AdvantaColors.mutedGrey),
+                      style: AdvantaText.caption
+                          .copyWith(color: AdvantaColors.mutedGrey),
                     ),
                   ],
                 ],
@@ -1424,10 +1606,14 @@ class _PhaseActionButton extends StatelessWidget {
               : (isDark ? Colors.white.withAlpha(8) : AdvantaColors.softGrey),
           borderRadius: AdvantaRadius.cardRadius,
           border: Border.all(
-            color: isRecommended ? color.withAlpha(115) : (isDark ? Colors.white12 : Colors.black12),
+            color: isRecommended
+                ? color.withAlpha(115)
+                : (isDark ? Colors.white12 : Colors.black12),
             width: isRecommended ? 1.5 : 1.0,
           ),
-          boxShadow: isRecommended ? [BoxShadow(color: color.withAlpha(38), blurRadius: 12)] : null,
+          boxShadow: isRecommended
+              ? [BoxShadow(color: color.withAlpha(38), blurRadius: 12)]
+              : null,
         ),
         child: Row(
           children: [
@@ -1441,7 +1627,6 @@ class _PhaseActionButton extends StatelessWidget {
               child: Icon(icon, color: color, size: 19),
             ),
             const SizedBox(width: 14.0),
-
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1450,16 +1635,21 @@ class _PhaseActionButton extends StatelessWidget {
                     children: [
                       Text(
                         label,
-                        style: AdvantaText.bodyBold.copyWith(color: theme.colorScheme.onSurface),
+                        style: AdvantaText.bodyBold
+                            .copyWith(color: theme.colorScheme.onSurface),
                       ),
                       if (isRecommended) ...[
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(
-                            color: isDark ? AdvantaColors.successLight.withAlpha(40) : AdvantaColors.paleGreen,
+                            color: isDark
+                                ? AdvantaColors.successLight.withAlpha(40)
+                                : AdvantaColors.paleGreen,
                             borderRadius: AdvantaRadius.chipRadius,
-                            border: Border.all(color: AdvantaColors.lightGreen.withAlpha(100)),
+                            border: Border.all(
+                                color: AdvantaColors.lightGreen.withAlpha(100)),
                           ),
                           child: Text(
                             '★ Rekomendasi',
@@ -1475,13 +1665,14 @@ class _PhaseActionButton extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     badge,
-                    style: AdvantaText.caption.copyWith(color: badgeColor, fontWeight: FontWeight.w600),
+                    style: AdvantaText.caption.copyWith(
+                        color: badgeColor, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
             ),
-
-            Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white54 : Colors.black38, size: 20),
+            Icon(Icons.chevron_right_rounded,
+                color: isDark ? Colors.white54 : Colors.black38, size: 20),
           ],
         ),
       ),
@@ -1521,16 +1712,22 @@ class _DapCalculationBox extends StatelessWidget {
 
   String _translateBadge(String rawBadge) {
     switch (rawBadge.toLowerCase()) {
-      case 'overdue': return 'Terlambat';
-      case 'upcoming': return 'Akan Datang';
-      case 'on going':return 'Sedang Berjalan';
-      default:        return rawBadge;
+      case 'overdue':
+        return 'Terlambat';
+      case 'upcoming':
+        return 'Akan Datang';
+      case 'on going':
+        return 'Sedang Berjalan';
+      default:
+        return rawBadge;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (plantingDate == null || plantingDate!.isEmpty) return const SizedBox.shrink();
+    if (plantingDate == null || plantingDate!.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     final dateStr = _formatDate(plantingDate);
     final todayStr = DateFormat('dd MMM yyyy', 'id_ID').format(DateTime.now());
@@ -1551,7 +1748,9 @@ class _DapCalculationBox extends StatelessWidget {
       margin: const EdgeInsets.only(top: 14.0),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? AdvantaColors.deepForest.withAlpha(100) : AdvantaColors.softGrey,
+        color: isDark
+            ? AdvantaColors.deepForest.withAlpha(100)
+            : AdvantaColors.softGrey,
         borderRadius: AdvantaRadius.cardRadius,
         border: Border.all(color: badgeColor.withAlpha(80), width: 1.5),
       ),
@@ -1560,8 +1759,12 @@ class _DapCalculationBox extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(isAudited ? Icons.check_circle_outline : Icons.calculate_outlined,
-                  size: 14, color: badgeColor),
+              Icon(
+                  isAudited
+                      ? Icons.check_circle_outline
+                      : Icons.calculate_outlined,
+                  size: 14,
+                  color: badgeColor),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -1598,12 +1801,16 @@ class _DapCalculationBox extends StatelessWidget {
               // ── BAGIAN INI YANG BERUBAH ──
               _buildNode(
                   Icons.eco_rounded,
-                  isRevisied ? 'Tgl Tanam (Rev)' : 'Tgl Tanam', // Ganti label jika direvisi
+                  isRevisied
+                      ? 'Tgl Tanam (Rev)'
+                      : 'Tgl Tanam', // Ganti label jika direvisi
                   dateStr,
-                  themeColor: isRevisied ? AdvantaColors.gold : (isDark ? Colors.white : Colors.black87)
-              ),
+                  themeColor: isRevisied
+                      ? AdvantaColors.gold
+                      : (isDark ? Colors.white : Colors.black87)),
               _buildMath('+ $dap Hari', badgeColor),
-              _buildNode(Icons.event_available_rounded, 'Hari Ini', todayStr, themeColor: isDark ? Colors.white : Colors.black87),
+              _buildNode(Icons.event_available_rounded, 'Hari Ini', todayStr,
+                  themeColor: isDark ? Colors.white : Colors.black87),
             ],
           ),
           const SizedBox(height: 8),
@@ -1612,14 +1819,16 @@ class _DapCalculationBox extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.info_outline_rounded, size: 12, color: AdvantaColors.mutedGrey),
+              Icon(Icons.info_outline_rounded,
+                  size: 12, color: AdvantaColors.mutedGrey),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   isAudited
                       ? 'Inspeksi untuk fase rekomendasi ini sudah diselesaikan. Status aman.'
                       : 'Lahan dihitung Terlewat (Overdue) jika umur melampaui batas maksimal tanpa ada riwayat audit.',
-                  style: AdvantaText.caption.copyWith(color: AdvantaColors.mutedGrey, fontSize: 9, height: 1.3),
+                  style: AdvantaText.caption.copyWith(
+                      color: AdvantaColors.mutedGrey, fontSize: 9, height: 1.3),
                 ),
               ),
             ],
@@ -1629,13 +1838,18 @@ class _DapCalculationBox extends StatelessWidget {
     );
   }
 
-  Widget _buildNode(IconData icon, String title, String value, {required Color themeColor}) {
+  Widget _buildNode(IconData icon, String title, String value,
+      {required Color themeColor}) {
     return Column(
       children: [
         Icon(icon, size: 18, color: AdvantaColors.mutedGrey),
         const SizedBox(height: 4),
-        Text(title, style: AdvantaText.caption.copyWith(color: AdvantaColors.mutedGrey, fontSize: 10)),
-        Text(value, style: AdvantaText.bodyBold.copyWith(fontSize: 12, color: themeColor)),
+        Text(title,
+            style: AdvantaText.caption
+                .copyWith(color: AdvantaColors.mutedGrey, fontSize: 10)),
+        Text(value,
+            style:
+                AdvantaText.bodyBold.copyWith(fontSize: 12, color: themeColor)),
       ],
     );
   }

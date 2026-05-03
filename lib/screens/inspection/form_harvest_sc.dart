@@ -2,7 +2,7 @@
 //
 // HARVEST AUDIT — Premium redesign
 // Kolom: Audit Date · Audit Week · Ear Condition (Maturity) ·
-//        Crop Condition · Downgrade Flagging · Reason Downgrade ·
+//        Crop Uniformity · Crop Health · Downgrade Flagging · Reason Downgrade ·
 //        Flagging Downgrade · Final Flagging
 // DB table: audit_harvest
 // ─────────────────────────────────────────────────────────
@@ -131,8 +131,8 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
     }
     setState(() {
       _earCondition      = a['ear_condition_observation']?.toString();
-      _cropUniformity    = a['crop_uniformity'] ?? a['crop_condition'];
-      _cropHealth        = a['crop_health']     ?? a['crop_condition'];
+      _cropUniformity    = a['crop_uniformity'];
+      _cropHealth        = a['crop_health'];
       _statusDowngrade   = a['status_downgrade'];
       _reasonDowngrade   = a['reason_downgrade'];
       _downgradeFlagging = a['downgrade_flagging'];

@@ -24,7 +24,8 @@ class FieldListView extends StatefulWidget {
   final LatLng? userLocation;
   final double topPadding;
   final Color Function(int dap, {String? hybrid}) getMarkerColor;
-  final void Function(List<Map<String, dynamic>> uncoordFields) onUncoordBannerTap;
+  final void Function(List<Map<String, dynamic>> uncoordFields)
+      onUncoordBannerTap;
   final void Function(double lat, double lng) onNavigateTap;
 
   final bool isMassMode;
@@ -60,19 +61,20 @@ class FieldListView extends StatefulWidget {
   // FUNGSI HELPER UNTUK MENAMPILKAN SEBAGAI BOTTOM SHEET
   // =======================================================================
   static void showSheet(
-      BuildContext context, {
-        required List<ParsedFieldData> fieldsData,
-        required LatLng? userLocation,
-        required Color Function(int dap, {String? hybrid}) getMarkerColor,
-        required void Function(List<Map<String, dynamic>> uncoordFields) onUncoordBannerTap,
-        required void Function(double lat, double lng) onNavigateTap,
-        required bool isMassMode,
-        required Set<String> selectedFieldNumbers,
-        required void Function(ParsedFieldData field) onFieldTap,
-        required ActivePhaseView activePhase,
-        required ValueChanged<ActivePhaseView> onPhaseChanged,
-        int deltaDays = 0,
-      }) {
+    BuildContext context, {
+    required List<ParsedFieldData> fieldsData,
+    required LatLng? userLocation,
+    required Color Function(int dap, {String? hybrid}) getMarkerColor,
+    required void Function(List<Map<String, dynamic>> uncoordFields)
+        onUncoordBannerTap,
+    required void Function(double lat, double lng) onNavigateTap,
+    required bool isMassMode,
+    required Set<String> selectedFieldNumbers,
+    required void Function(ParsedFieldData field) onFieldTap,
+    required ActivePhaseView activePhase,
+    required ValueChanged<ActivePhaseView> onPhaseChanged,
+    int deltaDays = 0,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -105,7 +107,8 @@ class FieldListView extends StatefulWidget {
                 return Container(
                   decoration: const BoxDecoration(
                     color: AdvantaColors.deepForest,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius:
+                        BorderRadius.vertical(top: Radius.circular(20)),
                   ),
                   child: Column(
                     children: [
@@ -158,7 +161,7 @@ class FieldListView extends StatefulWidget {
                           children: [
                             Padding(
                               padding:
-                              const EdgeInsets.symmetric(horizontal: 16),
+                                  const EdgeInsets.symmetric(horizontal: 16),
                               child: Text(
                                 'STATUS AUDIT',
                                 style: AdvantaText.caption.copyWith(
@@ -232,10 +235,10 @@ class _FieldListViewState extends State<FieldListView> {
 
   final List<Map<String, dynamic>> _filters = [
     {'label': 'Semua', 'icon': Icons.apps_rounded},
-    {'label': 'Vegetative (≤35 DAP)', 'icon': Icons.eco_rounded},
-    {'label': 'Generative (36-65 DAP)', 'icon': Icons.spa_rounded},
-    {'label': 'Pre-Harvest (66-90 DAP)', 'icon': Icons.content_cut_rounded},
-    {'label': 'Harvest (>90 DAP)', 'icon': Icons.agriculture_rounded},
+    {'label': 'Vegetative (<50 DAP)', 'icon': Icons.eco_rounded},
+    {'label': 'Generative (50-70 DAP)', 'icon': Icons.spa_rounded},
+    {'label': 'Pre-Harvest (71-94 DAP)', 'icon': Icons.content_cut_rounded},
+    {'label': 'Harvest (≥95 DAP)', 'icon': Icons.agriculture_rounded},
   ];
 
   @override
@@ -245,21 +248,26 @@ class _FieldListViewState extends State<FieldListView> {
       if (_activeFilter == 'Semua') return true;
       final projectedDap = f.dap + widget.deltaDays;
       switch (_activeFilter) {
-        case 'Vegetative (≤35 DAP)':   return projectedDap <= 35;
-        case 'Generative (36-65 DAP)': return projectedDap > 35 && projectedDap <= 65;
-        case 'Pre-Harvest (66-90 DAP)':return projectedDap > 65 && projectedDap <= 90;
-        case 'Harvest (>90 DAP)':      return projectedDap > 90;
-        default:                       return true;
+        case 'Vegetative (<50 DAP)':
+          return projectedDap < 50;
+        case 'Generative (50-70 DAP)':
+          return projectedDap >= 50 && projectedDap <= 70;
+        case 'Pre-Harvest (71-94 DAP)':
+          return projectedDap >= 71 && projectedDap <= 94;
+        case 'Harvest (≥95 DAP)':
+          return projectedDap >= 95;
+        default:
+          return true;
       }
     }).toList();
 
     // 2. Pisahkan lahan tanpa koordinat
     final uncoordFields =
-    filteredData.where((f) => f.isDefault).map((f) => f.raw).toList();
+        filteredData.where((f) => f.isDefault).map((f) => f.raw).toList();
 
     // 3. Hitung jarak
     final List<({ParsedFieldData data, double distance})> withDistance =
-    filteredData.where((f) => !f.isDefault).map((f) {
+        filteredData.where((f) => !f.isDefault).map((f) {
       double dist = 0;
       if (widget.userLocation != null) {
         dist = Geolocator.distanceBetween(
@@ -296,8 +304,7 @@ class _FieldListViewState extends State<FieldListView> {
           child: ListView.builder(
             controller: widget.scrollController,
             padding: const EdgeInsets.only(top: 0, bottom: 120),
-            itemCount:
-            withDistance.length + (uncoordFields.isNotEmpty ? 1 : 0),
+            itemCount: withDistance.length + (uncoordFields.isNotEmpty ? 1 : 0),
             itemBuilder: (ctx, i) {
               if (uncoordFields.isNotEmpty && i == 0) {
                 return _buildUncoordBanner(uncoordFields);
@@ -367,16 +374,16 @@ class _FieldListViewState extends State<FieldListView> {
           child: ListTile(
             onTap: () => widget.onFieldTap(f),
             contentPadding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
-            leading: _buildDapAvatar(projectedDap, f.raw['hybrid']?.toString(), isSelected),
+            leading: _buildDapAvatar(
+                projectedDap, f.raw['hybrid']?.toString(), isSelected),
             title: Row(
               children: [
                 Expanded(
                   child: Text(
                     fn,
                     style: AdvantaText.bodyBold.copyWith(
-                      color: isSelected
-                          ? AdvantaColors.lightGreen
-                          : Colors.white,
+                      color:
+                          isSelected ? AdvantaColors.lightGreen : Colors.white,
                     ),
                   ),
                 ),
@@ -421,18 +428,17 @@ class _FieldListViewState extends State<FieldListView> {
             ),
             trailing: widget.isMassMode
                 ? Icon(
-              isSelected
-                  ? Icons.check_circle_rounded
-                  : Icons.radio_button_off_rounded,
-              color: isSelected
-                  ? AdvantaColors.lightGreen
-                  : Colors.white24,
-            )
+                    isSelected
+                        ? Icons.check_circle_rounded
+                        : Icons.radio_button_off_rounded,
+                    color:
+                        isSelected ? AdvantaColors.lightGreen : Colors.white24,
+                  )
                 : IconButton(
-              icon: const Icon(Icons.directions_outlined,
-                  color: AdvantaColors.lightGreen),
-              onPressed: () => widget.onNavigateTap(f.lat, f.lng),
-            ),
+                    icon: const Icon(Icons.directions_outlined,
+                        color: AdvantaColors.lightGreen),
+                    onPressed: () => widget.onNavigateTap(f.lat, f.lng),
+                  ),
           ),
         ),
       ),
@@ -442,8 +448,9 @@ class _FieldListViewState extends State<FieldListView> {
   /// Badge status fase aktif sesuai pilihan user (dari widget.activePhase)
   Widget _buildActivePhaseBadge(FieldAuditStatus auditStatus, int dap) {
     final phase = widget.activePhase;
-    final resolvedPhase =
-    phase == ActivePhaseView.auto ? _dapToPhase(dap, auditStatus.isSweetCorn) : phase;
+    final resolvedPhase = phase == ActivePhaseView.auto
+        ? _dapToPhase(dap, auditStatus.isSweetCorn)
+        : phase;
 
     if (resolvedPhase == ActivePhaseView.generative) {
       return AuditStatusBadge.generative(
@@ -457,19 +464,31 @@ class _FieldListViewState extends State<FieldListView> {
   }
 
   ActivePhaseView _dapToPhase(int dap, bool isSc) {
+    if (!isSc) {
+      if (dap < 50) return ActivePhaseView.vegetative;
+      if (dap <= 70) return ActivePhaseView.generative;
+      if (dap <= 94) return ActivePhaseView.preHarvest;
+      return ActivePhaseView.harvest;
+    }
+
     if (dap <= 35) return ActivePhaseView.vegetative;
-    final int generativeEnd = isSc ? 80 : 65;
+    final int generativeEnd = 80;
     if (dap <= generativeEnd) return ActivePhaseView.generative;
     if (dap <= 90) return ActivePhaseView.preHarvest;
     return ActivePhaseView.harvest;
   }
 
-  SingleAuditStatus? _getSingleStatus(FieldAuditStatus s, ActivePhaseView phase) {
+  SingleAuditStatus? _getSingleStatus(
+      FieldAuditStatus s, ActivePhaseView phase) {
     switch (phase) {
-      case ActivePhaseView.vegetative: return s.vegetative;
-      case ActivePhaseView.preHarvest: return s.preHarvest;
-      case ActivePhaseView.harvest:    return s.harvest;
-      default:                         return null;
+      case ActivePhaseView.vegetative:
+        return s.vegetative;
+      case ActivePhaseView.preHarvest:
+        return s.preHarvest;
+      case ActivePhaseView.harvest:
+        return s.harvest;
+      default:
+        return null;
     }
   }
 
@@ -506,12 +525,12 @@ class _FieldListViewState extends State<FieldListView> {
                 ),
                 boxShadow: isSelected
                     ? [
-                  BoxShadow(
-                    color: AdvantaColors.primaryGreen.withAlpha(100),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  )
-                ]
+                        BoxShadow(
+                          color: AdvantaColors.primaryGreen.withAlpha(100),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        )
+                      ]
                     : [],
               ),
               child: Row(
@@ -526,7 +545,7 @@ class _FieldListViewState extends State<FieldListView> {
                     style: AdvantaText.caption.copyWith(
                       color: isSelected ? Colors.white : Colors.white70,
                       fontWeight:
-                      isSelected ? FontWeight.w700 : FontWeight.w500,
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
                     ),
                   ),
                 ],
@@ -539,8 +558,9 @@ class _FieldListViewState extends State<FieldListView> {
   }
 
   Widget _buildDapAvatar(int dap, String? hybrid, bool isSelected) {
-    final color =
-    isSelected ? AdvantaColors.lightGreen : widget.getMarkerColor(dap, hybrid: hybrid);
+    final color = isSelected
+        ? AdvantaColors.lightGreen
+        : widget.getMarkerColor(dap, hybrid: hybrid);
     return Container(
       width: 40,
       height: 40,
@@ -553,12 +573,12 @@ class _FieldListViewState extends State<FieldListView> {
         child: isSelected
             ? Icon(Icons.check_rounded, color: color, size: 20)
             : Text(
-          '$dap',
-          style: AdvantaText.label.copyWith(
-            color: color,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+                '$dap',
+                style: AdvantaText.label.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
       ),
     );
   }

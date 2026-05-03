@@ -828,7 +828,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen>
           record['qa_fi_$checkpoint']           = _qaFiController.text;
           record['qa_spv']                      = _qaSpvController.text;
           record['action_needed_$checkpoint']   = _commonRecommendation == 'Discard' ? 'Discard' : 'None';
-          record['crop_condition_$checkpoint']  = _commonCropUniformity;
+          record['crop_uniformity_$checkpoint'] = _commonCropUniformity;
+          record['crop_health_$checkpoint']     = _commonCropHealth;
           record['is_mass_submit_$checkpoint']  = true;
         } else {
           record['audit_date']      = DateFormat('yyyy-MM-dd').format(DateTime.now());

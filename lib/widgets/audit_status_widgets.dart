@@ -17,10 +17,10 @@ import '../utils/active_phase_filter.dart';
 // ═══════════════════════════════════════════════════════════
 
 class AuditStatusColors {
-  static const sampun      = Color(0xFF43A047); // hijau
+  static const sampun = Color(0xFF43A047); // hijau
   static const derengJangkep = Color(0xFFFFA726); // oranye
-  static const dereng      = Color(0xFFEF5350); // merah
-  static const unknown     = Color(0xFF607D8B); // abu-abu slate
+  static const dereng = Color(0xFFEF5350); // merah
+  static const unknown = Color(0xFF607D8B); // abu-abu slate
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -94,9 +94,7 @@ class AuditProgressDots extends StatelessWidget {
                     : AuditStatusColors.dereng.withAlpha(120),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: dot.done
-                      ? AuditStatusColors.sampun
-                      : Colors.white24,
+                  color: dot.done ? AuditStatusColors.sampun : Colors.white24,
                   width: 1,
                 ),
               ),
@@ -112,7 +110,8 @@ class _DotConfig {
   final bool done;
   final bool partial;
   final String tooltip;
-  const _DotConfig({required this.done, required this.partial, required this.tooltip});
+  const _DotConfig(
+      {required this.done, required this.partial, required this.tooltip});
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -222,9 +221,8 @@ class AuditStatusLeftBorder extends StatelessWidget {
   });
 
   Color _resolveColor() {
-    final phase = activePhase == ActivePhaseView.auto
-        ? _dapToPhase(dap)
-        : activePhase;
+    final phase =
+        activePhase == ActivePhaseView.auto ? _dapToPhase(dap) : activePhase;
 
     final bool isDone = auditStatus.isAuditDoneFor(phase, dap);
 
@@ -240,8 +238,15 @@ class AuditStatusLeftBorder extends StatelessWidget {
   }
 
   ActivePhaseView _dapToPhase(int d) {
+    if (!auditStatus.isSweetCorn) {
+      if (d < 50) return ActivePhaseView.vegetative;
+      if (d <= 70) return ActivePhaseView.generative;
+      if (d <= 94) return ActivePhaseView.preHarvest;
+      return ActivePhaseView.harvest;
+    }
+
     if (d <= 35) return ActivePhaseView.vegetative;
-    final int generativeEnd = auditStatus.isSweetCorn ? 80 : 65;
+    final int generativeEnd = 80;
     if (d <= generativeEnd) return ActivePhaseView.generative;
     if (d <= 90) return ActivePhaseView.preHarvest;
     return ActivePhaseView.harvest;
@@ -257,7 +262,9 @@ class AuditStatusLeftBorder extends StatelessWidget {
           child,
           // Left border strip
           Positioned(
-            top: 0, bottom: 0, left: 0,
+            top: 0,
+            bottom: 0,
+            left: 0,
             child: Container(
               width: 4,
               decoration: BoxDecoration(
@@ -355,12 +362,12 @@ class _PhaseChip extends StatelessWidget {
           ),
           boxShadow: isSelected
               ? [
-            BoxShadow(
-              color: AdvantaColors.primaryGreen.withAlpha(100),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ]
+                  BoxShadow(
+                    color: AdvantaColors.primaryGreen.withAlpha(100),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
               : [],
         ),
         child: Row(
@@ -434,9 +441,8 @@ class MarkerAuditDot extends StatelessWidget {
 
   // Resolve status fase aktif → enum 3 nilai untuk rendering
   _MarkerAuditState _resolveState() {
-    final phase = activePhase == ActivePhaseView.auto
-        ? _dapToPhase(dap)
-        : activePhase;
+    final phase =
+        activePhase == ActivePhaseView.auto ? _dapToPhase(dap) : activePhase;
 
     // GUNAKAN HELPER BARU: mengecek apakah audit sudah selesai untuk
     // sub-fase yang sedang aktif (terutama di Generatif).
@@ -454,18 +460,26 @@ class MarkerAuditDot extends StatelessWidget {
   }
 
   ActivePhaseView _dapToPhase(int d) {
+    if (!auditStatus.isSweetCorn) {
+      if (d < 50) return ActivePhaseView.vegetative;
+      if (d <= 70) return ActivePhaseView.generative;
+      if (d <= 94) return ActivePhaseView.preHarvest;
+      return ActivePhaseView.harvest;
+    }
+
     if (d <= 35) return ActivePhaseView.vegetative;
-    final int generativeEnd = auditStatus.isSweetCorn ? 80 : 65;
+    final int generativeEnd = 80;
     if (d <= generativeEnd) return ActivePhaseView.generative;
     if (d <= 90) return ActivePhaseView.preHarvest;
     return ActivePhaseView.harvest;
   }
 
   // Hitung berapa CP generatif yang selesai (untuk label X/3)
-  int get _genDoneCount =>
-      [auditStatus.gen1Done, auditStatus.gen2Done, auditStatus.gen3Done]
-          .where((v) => v)
-          .length;
+  int get _genDoneCount => [
+        auditStatus.gen1Done,
+        auditStatus.gen2Done,
+        auditStatus.gen3Done
+      ].where((v) => v).length;
 
   @override
   Widget build(BuildContext context) {
@@ -481,7 +495,8 @@ class MarkerAuditDot extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white, width: 1.5),
           boxShadow: [
-            BoxShadow(color: AuditStatusColors.dereng.withAlpha(180), blurRadius: 5),
+            BoxShadow(
+                color: AuditStatusColors.dereng.withAlpha(180), blurRadius: 5),
           ],
         ),
       );
@@ -497,7 +512,9 @@ class MarkerAuditDot extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white, width: 1.5),
           boxShadow: [
-            BoxShadow(color: AuditStatusColors.derengJangkep.withAlpha(180), blurRadius: 5),
+            BoxShadow(
+                color: AuditStatusColors.derengJangkep.withAlpha(180),
+                blurRadius: 5),
           ],
         ),
         child: Center(
@@ -525,7 +542,8 @@ class MarkerAuditDot extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white, width: 1.5),
         boxShadow: [
-          BoxShadow(color: AuditStatusColors.sampun.withAlpha(180), blurRadius: 5),
+          BoxShadow(
+              color: AuditStatusColors.sampun.withAlpha(180), blurRadius: 5),
         ],
       ),
       child: const Center(

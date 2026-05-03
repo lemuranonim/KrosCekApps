@@ -54,20 +54,20 @@ class FieldAuditStatus {
 
   bool get isCompletelyUnaudited =>
       vegetative == SingleAuditStatus.dereng &&
-          generative == GenerativeAuditStatus.derengBlas &&
-          preHarvest == SingleAuditStatus.dereng &&
-          harvest == SingleAuditStatus.dereng;
+      generative == GenerativeAuditStatus.derengBlas &&
+      preHarvest == SingleAuditStatus.dereng &&
+      harvest == SingleAuditStatus.dereng;
 
   bool isActivePhaseDone(int dap) {
-    if (dap <= 35) return vegetative == SingleAuditStatus.sampun;
+    if (dap < 50) return vegetative == SingleAuditStatus.sampun;
 
-    // Batas Generatif dinamis: SC s/d 80 DAP, FC s/d 65 DAP
-    final int generativeEnd = isSweetCorn ? 80 : 65;
+    // Batas Generatif dinamis: SC s/d 80 DAP, FC s/d 70 DAP
+    final int generativeEnd = isSweetCorn ? 80 : 70;
     if (dap <= generativeEnd) {
       if (dap < 50) return false; // Upcoming Gen
       if (dap <= 54) return gen1Done;
       if (dap <= 59) return gen2Done;
-      if (dap <= 65) return gen3Done;
+      if (!isSweetCorn || dap <= 65) return gen3Done;
       if (isSweetCorn) {
         if (dap <= 72) return gen4Done;
         if (dap <= 80) return gen5Done;
@@ -75,7 +75,9 @@ class FieldAuditStatus {
       return generative == GenerativeAuditStatus.sampun;
     }
 
-    if (dap <= 90) return preHarvest == SingleAuditStatus.sampun;
+    if (dap <= (isSweetCorn ? 90 : 94)) {
+      return preHarvest == SingleAuditStatus.sampun;
+    }
     return harvest == SingleAuditStatus.sampun;
   }
 
@@ -90,7 +92,7 @@ class FieldAuditStatus {
         if (dap < 50) return false;
         if (dap <= 54) return gen1Done;
         if (dap <= 59) return gen2Done;
-        if (dap <= 65) return gen3Done;
+        if (!isSweetCorn || dap <= 65) return gen3Done;
         if (isSweetCorn) {
           if (dap <= 72) return gen4Done;
           if (dap <= 80) return gen5Done;
@@ -113,7 +115,8 @@ class AuditStatusHelper {
   }
 
   // Ekstrak row pertama dari nested join Supabase (List<Map> atau Map)
-  static Map<String, dynamic>? _firstRow(Map<String, dynamic> raw, String tableKey) {
+  static Map<String, dynamic>? _firstRow(
+      Map<String, dynamic> raw, String tableKey) {
     final v = raw[tableKey];
     if (v == null) return null;
     if (v is Map<String, dynamic>) return v;
@@ -148,7 +151,7 @@ class AuditStatusHelper {
     final gen4Done = _hasDate(genRow?['date_of_audit_4']);
     final gen5Done = _hasDate(genRow?['date_of_audit_5']);
 
-    final List<bool> relevantCps = isSc 
+    final List<bool> relevantCps = isSc
         ? [gen1Done, gen2Done, gen3Done, gen4Done, gen5Done]
         : [gen1Done, gen2Done, gen3Done];
 
@@ -181,12 +184,12 @@ class AuditStatusHelper {
       if (vegRow != null || genRow != null || prhRow != null || hvRow != null) {
         debugPrint(
           '[AuditStatus] $fn (SC=$isSc) | '
-              'veg=${vegRow?['date_of_audit']}(${vegStatus.name}) | '
-              'genStatus=${genStatus.name} | '
-              'gen1=$gen1Done gen2=$gen2Done gen3=$gen3Done '
-              'gen4=$gen4Done gen5=$gen5Done | '
-              'prh=${prhRow?['audit_date']}(${prhStatus.name}) | '
-              'hv=${hvRow?['date_of_audit']}(${hvStatus.name})',
+          'veg=${vegRow?['date_of_audit']}(${vegStatus.name}) | '
+          'genStatus=${genStatus.name} | '
+          'gen1=$gen1Done gen2=$gen2Done gen3=$gen3Done '
+          'gen4=$gen4Done gen5=$gen5Done | '
+          'prh=${prhRow?['audit_date']}(${prhStatus.name}) | '
+          'hv=${hvRow?['date_of_audit']}(${hvStatus.name})',
         );
       }
     }
