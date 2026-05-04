@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,6 +61,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     with TickerProviderStateMixin {
   // Tinggi overlay atas (header + chips) — diukur setelah build
   final GlobalKey _topOverlayKey = GlobalKey();
+  final GlobalKey _mapViewKey = GlobalKey();
   double _topOverlayHeight = 168.0; // fallback default
 
   // Map
@@ -82,8 +84,18 @@ class _QAScreenState extends ConsumerState<QAScreen>
   bool _isSpeedDialOpen = false;
 
   // ── Polygon overlay ────────────────────────────────────
+  static const double _polygonMinZoom = 14.0;
+  static const double _polygonViewportPaddingFactor = 0.35;
   double _currentZoom = 8.0;
   bool _showPolygons  = true; // toggle on/off oleh user
+  final LayerHitNotifier<ParsedFieldData> _polygonHitNotifier =
+      ValueNotifier<LayerHitResult<ParsedFieldData>?>(null);
+  ParsedFieldData? _editingPolygonField;
+  List<LatLng> _editingPolygonPoints = [];
+  final List<List<LatLng>> _polygonEditUndoStack = [];
+  int? _selectedPolygonVertexIndex;
+  bool _isSavingPolygon = false;
+  bool _isPolygonSheetOpen = false;
 
   // ── State Minggu Kerja ──────────────────────────────────
   late List<Map<String, dynamic>> _workWeeks; // UBAH JADI dynamic
@@ -418,11 +430,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
       vsync: this,
       duration: const Duration(milliseconds: 250),
     );
+    _polygonHitNotifier.addListener(_handlePolygonHit);
   }
 
   @override
   void dispose() {
     _positionSub?.cancel();
+    _polygonHitNotifier.removeListener(_handlePolygonHit);
+    _polygonHitNotifier.dispose();
     _shimmerCtrl.dispose();
     _refreshSpinCtrl.dispose();
     _speedDialCtrl.dispose();
@@ -801,7 +816,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
           // ── 3. FLOATING WORK MODE TOGGLE ───────────────────
           // Dipindah ke bawah agar tidak menutupi map atas
-          if (masterAsync is AsyncData)
+          if (masterAsync is AsyncData && _editingPolygonField == null)
             Positioned(
               bottom: _workMode == _WorkMode.mass ? 116 : 32, // Sesuaikan dengan Mass Bar
               left: 16, // Taruh di kiri bawah, berseberangan dengan Speed Dial
@@ -809,7 +824,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
             ),
 
           // ── 5. RIGHT FABs ──────────────────────────────────
-          if (masterAsync is AsyncData)
+          if (masterAsync is AsyncData && _editingPolygonField == null)
             Positioned(
               right: 12,
               bottom: _workMode == _WorkMode.mass ? 116 : 32,
@@ -834,12 +849,22 @@ class _QAScreenState extends ConsumerState<QAScreen>
             ),
 
           // ── 7. MASS INSPECT BAR ───────────────────────────
-          if (_workMode == _WorkMode.mass && masterAsync is AsyncData)
+          if (_workMode == _WorkMode.mass &&
+              masterAsync is AsyncData &&
+              _editingPolygonField == null)
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
               child: _buildMassBar(),
+            ),
+
+          if (_editingPolygonField != null)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 20,
+              child: _buildPolygonEditToolbar(),
             ),
 
           // ── 8. INITIAL LOADING — on top of everything ──────
@@ -1132,6 +1157,122 @@ class _QAScreenState extends ConsumerState<QAScreen>
     );
   }
 
+  Widget _buildPolygonEditToolbar() {
+    final field = _editingPolygonField?.raw;
+    final fieldNumber = field?['field_number']?.toString() ?? '-';
+    final canDelete = _selectedPolygonVertexIndex != null &&
+        _editingPolygonPoints.length > 3 &&
+        !_isSavingPolygon;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AdvantaColors.deepForest.withAlpha(238),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AdvantaColors.gold.withAlpha(120)),
+        boxShadow: AdvantaShadows.card(true),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AdvantaColors.gold.withAlpha(40),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.edit_location_alt_outlined,
+                    color: AdvantaColors.gold, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fieldNumber,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AdvantaText.bodyBold.copyWith(color: Colors.white),
+                    ),
+                    Text(
+                      '${_editingPolygonPoints.length} titik polygon',
+                      style: AdvantaText.caption.copyWith(color: Colors.white54),
+                    ),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                onTap: _isSavingPolygon ? null : _savePolygonEdit,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  width: 42,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: _isSavingPolygon
+                        ? AdvantaColors.primaryGreen.withAlpha(90)
+                        : AdvantaColors.primaryGreen,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: _isSavingPolygon
+                      ? const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.check_rounded,
+                          color: Colors.white, size: 20),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _PolygonToolButton(
+                  icon: Icons.center_focus_strong_rounded,
+                  tooltip: 'Fit polygon',
+                  onTap: _isSavingPolygon ? null : _fitEditingPolygon,
+                ),
+                _PolygonToolButton(
+                  icon: Icons.undo_rounded,
+                  tooltip: 'Undo',
+                  onTap: _polygonEditUndoStack.isEmpty || _isSavingPolygon
+                      ? null
+                      : _undoPolygonEdit,
+                ),
+                _PolygonToolButton(
+                  icon: Icons.delete_outline_rounded,
+                  tooltip: 'Hapus titik',
+                  color: AdvantaColors.error,
+                  onTap: canDelete ? _deleteSelectedPolygonVertex : null,
+                ),
+                _PolygonToolButton(
+                  icon: Icons.restart_alt_rounded,
+                  tooltip: 'Reset',
+                  onTap: _isSavingPolygon ? null : _resetPolygonEdit,
+                ),
+                _PolygonToolButton(
+                  icon: Icons.close_rounded,
+                  tooltip: 'Batal',
+                  onTap: _isSavingPolygon ? null : _cancelPolygonEdit,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ─── MAP ─────────────────────────────────────────────────
   List<Marker> _getMarkers(List<ParsedFieldData> fieldsData, List<ParsedFieldData> allFields) {
     final uncoordRawCount = allFields.where((f) => f.isDefault).length;
@@ -1163,12 +1304,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final uncoordRaw  = fieldsData.where((f) => f.isDefault).map((f) => f.raw).toList();
     // final coordFields = fieldsData.where((f) => !f.isDefault).toList();
 
-    // Field yang punya WKT polygon (untuk layer polygon)
-    final polygonFields = fieldsData
-        .where((f) => f.polygonPoints != null)
-        .toList();
+    final polygonFields = _getVisiblePolygonFields(fieldsData);
 
     return FlutterMap(
+      key: _mapViewKey,
       mapController: _mapController,
       options: MapOptions(
         initialCenter: const LatLng(-7.5, 112.5),
@@ -1176,12 +1315,18 @@ class _QAScreenState extends ConsumerState<QAScreen>
         maxZoom      : 18.0,
         // ── Optimasi: Kurangi frekuensi rebuild saat zoom ──
         onMapEvent: (event) {
-          if (event is MapEventMove || event is MapEventScrollWheelZoom) {
-            final newZoom = _mapController.camera.zoom;
-            // Hanya rebuild jika zoom berubah signifikan (> 0.5)
-            if ((newZoom - _currentZoom).abs() > 0.5) {
-              setState(() => _currentZoom = newZoom);
-            }
+          final newZoom = _mapController.camera.zoom;
+          final crossedPolygonZoom =
+              (_currentZoom < _polygonMinZoom && newZoom >= _polygonMinZoom) ||
+              (_currentZoom >= _polygonMinZoom && newZoom < _polygonMinZoom);
+          final zoomChangedEnough = (newZoom - _currentZoom).abs() > 0.5;
+          final viewportSettled = event is MapEventMoveEnd ||
+              event is MapEventFlingAnimationEnd ||
+              event is MapEventDoubleTapZoomEnd ||
+              event is MapEventScrollWheelZoom;
+
+          if (zoomChangedEnough || crossedPolygonZoom || viewportSettled) {
+            setState(() => _currentZoom = newZoom);
           }
         },
         onTap: (_, __) {
@@ -1207,7 +1352,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
         // ── 2. Polygon Layer (tampil saat zoom >= 14) ──────
         // Render di bawah marker agar marker tetap terlihat di atas
-        if (_showPolygons && _currentZoom >= 14.0 && polygonFields.isNotEmpty)
+        if (_editingPolygonField != null)
+          _buildEditingPolygonLayer()
+        else if (polygonFields.isNotEmpty)
           _buildPolygonLayer(polygonFields),
 
         // ── 3. User location marker ────────────────────────
@@ -1257,6 +1404,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
             builder         : (ctx, markers) => _buildCluster(markers.length),
           ),
         ),
+
+        if (_editingPolygonField != null)
+          _buildPolygonEditHandleLayer(),
       ],
     );
   }
@@ -1284,6 +1434,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
         child: RepaintBoundary(
           child: GestureDetector(
             onTap: () {
+              if (_editingPolygonField != null) return;
               if (_workMode == _WorkMode.mass) {
                 setState(() {
                   if (isSelected) {
@@ -1454,10 +1605,581 @@ class _QAScreenState extends ConsumerState<QAScreen>
     ),
   );
 
+  bool get _isEditingPolygon => _editingPolygonField != null;
+
+  bool get _canEditPolygon {
+    final role = ref.read(currentUserProvider).value?.role.toLowerCase();
+    return role != null && role != 'guest';
+  }
+
+  void _showPolygonActionSheet(ParsedFieldData field) {
+    if (_isPolygonSheetOpen) return;
+    _isPolygonSheetOpen = true;
+
+    final raw = field.raw;
+    final fieldNumber = raw['field_number']?.toString() ?? '-';
+    final farmer = raw['farmer_name']?.toString() ?? '-';
+    final region = raw['region']?.toString() ?? '-';
+    final district = raw['district_kab']?.toString() ?? '-';
+    final area = raw['effective_area_ha'] ?? raw['area_ha'] ?? raw['ha'];
+    final points = field.polygonPoints ?? const <LatLng>[];
+    final canEdit = _canEditPolygon;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AdvantaColors.deepForest,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AdvantaColors.lightGreen.withAlpha(35)),
+            boxShadow: AdvantaShadows.card(true),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AdvantaColors.primaryGreen.withAlpha(60),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.pentagon_outlined,
+                        color: AdvantaColors.lightGreen, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(fieldNumber,
+                            style: AdvantaText.bodyBold
+                                .copyWith(color: Colors.white)),
+                        Text(farmer,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AdvantaText.caption
+                                .copyWith(color: Colors.white60)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(sheetContext),
+                    icon: const Icon(Icons.close_rounded,
+                        color: Colors.white54, size: 20),
+                    tooltip: 'Tutup',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _PolygonInfoChip(
+                    icon: Icons.location_city_outlined,
+                    label: district,
+                  ),
+                  _PolygonInfoChip(
+                    icon: Icons.map_outlined,
+                    label: region,
+                  ),
+                  _PolygonInfoChip(
+                    icon: Icons.straighten_rounded,
+                    label: area == null ? '-' : '$area ha',
+                  ),
+                  _PolygonInfoChip(
+                    icon: Icons.adjust_rounded,
+                    label: '${_openPolygonRing(points).length} titik',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        FieldDetailBottomSheet.show(
+                          context,
+                          raw,
+                          onInspectDone: _handleInspectDone,
+                        );
+                      },
+                      icon: const Icon(Icons.article_outlined, size: 18),
+                      label: Text('Detail', style: AdvantaText.button),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(color: Colors.white.withAlpha(45)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: AdvantaRadius.buttonRadius,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: canEdit
+                          ? () {
+                              Navigator.pop(sheetContext);
+                              _startPolygonEdit(field);
+                            }
+                          : null,
+                      icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+                      label: Text('Edit Polygon', style: AdvantaText.button),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AdvantaColors.primaryGreen,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: AdvantaRadius.buttonRadius,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).whenComplete(() => _isPolygonSheetOpen = false);
+  }
+
+  void _startPolygonEdit(ParsedFieldData field) {
+    if (!_canEditPolygon) {
+      _showPolygonSnack('Akses edit polygon tidak tersedia.', isError: true);
+      return;
+    }
+
+    final points = _openPolygonRing(field.polygonPoints ?? const <LatLng>[]);
+    if (points.length < 3) {
+      _showPolygonSnack('Polygon belum punya minimal 3 titik.');
+      return;
+    }
+
+    setState(() {
+      _editingPolygonField = field;
+      _editingPolygonPoints = List<LatLng>.from(points);
+      _polygonEditUndoStack.clear();
+      _selectedPolygonVertexIndex = null;
+      _workMode = _WorkMode.single;
+      _selectedFieldNumbers.clear();
+      _isLegendVisible = false;
+      _isSpeedDialOpen = false;
+      _showPolygons = true;
+    });
+    _speedDialCtrl.reverse();
+    _fitPolygonPoints(points);
+  }
+
+  void _cancelPolygonEdit() {
+    if (_isSavingPolygon) return;
+    setState(() {
+      _editingPolygonField = null;
+      _editingPolygonPoints = [];
+      _polygonEditUndoStack.clear();
+      _selectedPolygonVertexIndex = null;
+    });
+  }
+
+  void _pushPolygonUndo() {
+    if (_editingPolygonPoints.isEmpty) return;
+    _polygonEditUndoStack.add(List<LatLng>.from(_editingPolygonPoints));
+    if (_polygonEditUndoStack.length > 25) {
+      _polygonEditUndoStack.removeAt(0);
+    }
+  }
+
+  void _undoPolygonEdit() {
+    if (_polygonEditUndoStack.isEmpty || _isSavingPolygon) return;
+    setState(() {
+      _editingPolygonPoints = _polygonEditUndoStack.removeLast();
+      _selectedPolygonVertexIndex = null;
+    });
+  }
+
+  void _resetPolygonEdit() {
+    final field = _editingPolygonField;
+    if (field == null || _isSavingPolygon) return;
+    final points = _openPolygonRing(field.polygonPoints ?? const <LatLng>[]);
+    if (points.length < 3) return;
+    _pushPolygonUndo();
+    setState(() {
+      _editingPolygonPoints = List<LatLng>.from(points);
+      _selectedPolygonVertexIndex = null;
+    });
+    _fitPolygonPoints(points);
+  }
+
+  void _insertPolygonVertex(int insertIndex, LatLng point) {
+    if (_isSavingPolygon) return;
+    _pushPolygonUndo();
+    setState(() {
+      _editingPolygonPoints.insert(insertIndex, point);
+      _selectedPolygonVertexIndex = insertIndex;
+    });
+  }
+
+  void _deleteSelectedPolygonVertex() {
+    final index = _selectedPolygonVertexIndex;
+    if (index == null) return;
+    _deletePolygonVertex(index);
+  }
+
+  void _deletePolygonVertex(int index) {
+    if (_isSavingPolygon) return;
+    if (_editingPolygonPoints.length <= 3) {
+      _showPolygonSnack('Polygon minimal harus punya 3 titik.');
+      return;
+    }
+    if (index < 0 || index >= _editingPolygonPoints.length) return;
+
+    _pushPolygonUndo();
+    setState(() {
+      _editingPolygonPoints.removeAt(index);
+      _selectedPolygonVertexIndex = null;
+    });
+  }
+
+  void _movePolygonVertex(int index, Offset globalPosition) {
+    final latLng = _globalPositionToLatLng(globalPosition);
+    if (latLng == null ||
+        index < 0 ||
+        index >= _editingPolygonPoints.length) {
+      return;
+    }
+    setState(() {
+      _editingPolygonPoints[index] = latLng;
+      _selectedPolygonVertexIndex = index;
+    });
+  }
+
+  LatLng? _globalPositionToLatLng(Offset globalPosition) {
+    final ctx = _mapViewKey.currentContext;
+    final box = ctx?.findRenderObject() as RenderBox?;
+    if (box == null) return null;
+
+    final local = box.globalToLocal(globalPosition);
+    return _mapController.camera.pointToLatLng(
+      math.Point<double>(local.dx, local.dy),
+    );
+  }
+
+  Future<void> _savePolygonEdit() async {
+    final field = _editingPolygonField;
+    if (field == null || _isSavingPolygon) return;
+    if (!_canEditPolygon) {
+      _showPolygonSnack('Akses edit polygon tidak tersedia.', isError: true);
+      return;
+    }
+
+    final fieldNumber = field.raw['field_number']?.toString();
+    if (fieldNumber == null || fieldNumber.isEmpty) {
+      _showPolygonSnack('No. lahan tidak ditemukan.');
+      return;
+    }
+    if (_editingPolygonPoints.length < 3) {
+      _showPolygonSnack('Polygon minimal harus punya 3 titik.');
+      return;
+    }
+
+    setState(() => _isSavingPolygon = true);
+
+    try {
+      final geometryWkt = _latLngListToPolygonWkt(_editingPolygonPoints);
+      await ref.read(supabaseServiceProvider).updateFieldGeometryWkt(
+            fieldNumber: fieldNumber,
+            geometryWkt: geometryWkt,
+          );
+
+      if (!mounted) return;
+      setState(() {
+        _editingPolygonField = null;
+        _editingPolygonPoints = [];
+        _polygonEditUndoStack.clear();
+        _selectedPolygonVertexIndex = null;
+        _isSavingPolygon = false;
+      });
+      _refreshMapProviders();
+      _showPolygonSnack('Polygon berhasil disimpan.');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSavingPolygon = false);
+      _showPolygonSnack('Gagal menyimpan polygon: $e', isError: true);
+    }
+  }
+
+  void _fitEditingPolygon() {
+    if (_editingPolygonPoints.length < 3) return;
+    _fitPolygonPoints(_editingPolygonPoints);
+  }
+
+  void _fitPolygonPoints(List<LatLng> points) {
+    if (points.length < 3) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _mapController.fitCamera(
+        CameraFit.bounds(
+          bounds: LatLngBounds.fromPoints(points),
+          padding: const EdgeInsets.all(86),
+          maxZoom: 18.0,
+        ),
+      );
+    });
+  }
+
+  List<LatLng> _openPolygonRing(List<LatLng> points) {
+    if (points.length < 2) return List<LatLng>.from(points);
+    final result = List<LatLng>.from(points);
+    if (_sameLatLng(result.first, result.last)) {
+      result.removeLast();
+    }
+    return result;
+  }
+
+  List<LatLng> _closedPolygonRing(List<LatLng> points) {
+    final result = _openPolygonRing(points);
+    if (result.isNotEmpty) result.add(result.first);
+    return result;
+  }
+
+  bool _sameLatLng(LatLng a, LatLng b) {
+    return (a.latitude - b.latitude).abs() < 0.0000001 &&
+        (a.longitude - b.longitude).abs() < 0.0000001;
+  }
+
+  String _latLngListToPolygonWkt(List<LatLng> points) {
+    final closed = _closedPolygonRing(points);
+    final pairs = closed.map((p) {
+      final lng = p.longitude.toStringAsFixed(7);
+      final lat = p.latitude.toStringAsFixed(7);
+      return '$lng $lat';
+    }).join(', ');
+    return 'POLYGON(($pairs))';
+  }
+
+  LatLng _midpoint(LatLng a, LatLng b) {
+    return LatLng(
+      (a.latitude + b.latitude) / 2,
+      (a.longitude + b.longitude) / 2,
+    );
+  }
+
+  void _showPolygonSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AdvantaColors.error : AdvantaColors.success,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  List<ParsedFieldData> _getVisiblePolygonFields(List<ParsedFieldData> fieldsData) {
+    if (!_showPolygons || _currentZoom < _polygonMinZoom) {
+      return const [];
+    }
+
+    final visibleBounds = _getExpandedVisibleBounds();
+    if (visibleBounds == null) return const [];
+
+    return fieldsData.where((f) {
+      final points = f.polygonPoints;
+      if (points == null || points.length < 3) return false;
+      final bounds = f.polygonBounds ?? LatLngBounds.fromPoints(points);
+      return bounds.isOverlapping(visibleBounds);
+    }).toList();
+  }
+
+  LatLngBounds? _getExpandedVisibleBounds() {
+    try {
+      final bounds = _mapController.camera.visibleBounds;
+      final latSpan = (bounds.north - bounds.south).abs();
+      final lngSpan = (bounds.east - bounds.west).abs();
+      if (latSpan == 0 || lngSpan == 0) return null;
+
+      final latPadding = latSpan * _polygonViewportPaddingFactor;
+      final lngPadding = lngSpan * _polygonViewportPaddingFactor;
+
+      return LatLngBounds.unsafe(
+        north: (bounds.north + latPadding).clamp(
+          LatLngBounds.minLatitude,
+          LatLngBounds.maxLatitude,
+        ),
+        south: (bounds.south - latPadding).clamp(
+          LatLngBounds.minLatitude,
+          LatLngBounds.maxLatitude,
+        ),
+        east: (bounds.east + lngPadding).clamp(
+          LatLngBounds.minLongitude,
+          LatLngBounds.maxLongitude,
+        ),
+        west: (bounds.west - lngPadding).clamp(
+          LatLngBounds.minLongitude,
+          LatLngBounds.maxLongitude,
+        ),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _handlePolygonHit() {
+    final hit = _polygonHitNotifier.value;
+    if (!mounted || _isEditingPolygon || hit == null || hit.hitValues.isEmpty) {
+      return;
+    }
+
+    final field = hit.hitValues.first;
+    final fieldNumber = field.raw['field_number']?.toString() ?? '';
+
+    if (_workMode == _WorkMode.mass && fieldNumber.isNotEmpty) {
+      setState(() {
+        if (_selectedFieldNumbers.contains(fieldNumber)) {
+          _selectedFieldNumbers.remove(fieldNumber);
+        } else {
+          _selectedFieldNumbers.add(fieldNumber);
+        }
+      });
+      return;
+    }
+
+    if (_isLegendVisible || _isSpeedDialOpen) {
+      setState(() {
+        _isLegendVisible = false;
+        _isSpeedDialOpen = false;
+        _speedDialCtrl.reverse();
+      });
+    }
+
+    _showPolygonActionSheet(field);
+  }
+
+  PolygonLayer<ParsedFieldData> _buildEditingPolygonLayer() {
+    final field = _editingPolygonField;
+    final points = _editingPolygonPoints;
+    if (field == null || points.length < 3) {
+      return const PolygonLayer<ParsedFieldData>(polygons: []);
+    }
+
+    return PolygonLayer<ParsedFieldData>(
+      polygons: [
+        Polygon<ParsedFieldData>(
+          points           : points,
+          color            : AdvantaColors.gold.withAlpha(45),
+          borderColor      : AdvantaColors.gold,
+          borderStrokeWidth: 2.4,
+          hitValue         : field,
+        ),
+      ],
+    );
+  }
+
+  MarkerLayer _buildPolygonEditHandleLayer() {
+    final points = _editingPolygonPoints;
+    final markers = <Marker>[];
+    if (points.length < 3) return const MarkerLayer(markers: []);
+
+    for (var i = 0; i < points.length; i++) {
+      final nextIndex = (i + 1) % points.length;
+      final midpoint = _midpoint(points[i], points[nextIndex]);
+      markers.add(
+        Marker(
+          point: midpoint,
+          width: 28,
+          height: 28,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _insertPolygonVertex(i + 1, midpoint),
+            child: Center(
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: AdvantaColors.deepForest.withAlpha(230),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AdvantaColors.gold, width: 1.3),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(90),
+                      blurRadius: 6,
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.add_rounded,
+                    color: AdvantaColors.gold, size: 14),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    for (var i = 0; i < points.length; i++) {
+      final isSelected = _selectedPolygonVertexIndex == i;
+      markers.add(
+        Marker(
+          point: points[i],
+          width: 42,
+          height: 42,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _selectedPolygonVertexIndex = i),
+            onLongPress: () => _deletePolygonVertex(i),
+            onPanStart: (_) {
+              _pushPolygonUndo();
+              setState(() => _selectedPolygonVertexIndex = i);
+            },
+            onPanUpdate: (details) =>
+                _movePolygonVertex(i, details.globalPosition),
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                width: isSelected ? 30 : 26,
+                height: isSelected ? 30 : 26,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AdvantaColors.gold
+                      : AdvantaColors.deepForest,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(120),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.drag_indicator_rounded,
+                  color: isSelected ? AdvantaColors.charcoal : Colors.white,
+                  size: 16,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return MarkerLayer(markers: markers);
+  }
+
   /// Build PolygonLayer dari semua field yang punya polygonPoints.
   /// Hanya ditampilkan saat zoom >= 14 agar tidak berantakan di zoom jauh.
-  PolygonLayer _buildPolygonLayer(List<ParsedFieldData> fieldsData) {
-    final polygons = <Polygon>[];
+  PolygonLayer<ParsedFieldData> _buildPolygonLayer(List<ParsedFieldData> fieldsData) {
+    final polygons = <Polygon<ParsedFieldData>>[];
 
     for (final f in fieldsData) {
       if (f.polygonPoints == null) continue;
@@ -1479,15 +2201,19 @@ class _QAScreenState extends ConsumerState<QAScreen>
         fillColor   = AdvantaColors.primaryGreen.withAlpha(35);
       }
 
-      polygons.add(Polygon(
+      polygons.add(Polygon<ParsedFieldData>(
         points           : points,
         color            : fillColor,
         borderColor      : borderColor,
         borderStrokeWidth: 1.5,
+        hitValue         : f,
       ));
     }
 
-    return PolygonLayer(polygons: polygons);
+    return PolygonLayer<ParsedFieldData>(
+      polygons: polygons,
+      hitNotifier: _polygonHitNotifier,
+    );
   }
 
   Widget _buildInitialLoadingScreen() => _MapLoadingScreen(shimmerAnim: _shimmerAnim);
@@ -1803,7 +2529,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
           icon  : _showPolygons
               ? Icons.pentagon_rounded
               : Icons.pentagon_outlined,
-          label : _currentZoom < 14.0 && _showPolygons
+          label : _currentZoom < _polygonMinZoom && _showPolygons
               ? 'Polygon (zoom in)'
               : 'Polygon',
           color : AdvantaColors.primaryGreen,
@@ -2889,7 +3615,94 @@ class _NewQuickFilterChip extends StatelessWidget {
   }
 }
 
-class _FilterPopupChip<T> extends StatelessWidget {
+class _PolygonInfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _PolygonInfoChip({
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      constraints: const BoxConstraints(maxWidth: 220),
+      decoration: BoxDecoration(
+        color: Colors.white.withAlpha(12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withAlpha(20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white54, size: 14),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AdvantaText.caption.copyWith(color: Colors.white70),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PolygonToolButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+  final Color color;
+
+  const _PolygonToolButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.color = Colors.white,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          width: 34,
+          height: 34,
+          margin: const EdgeInsets.only(left: 4),
+          decoration: BoxDecoration(
+            color: enabled ? Colors.white.withAlpha(14) : Colors.white.withAlpha(5),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: enabled ? Colors.white.withAlpha(24) : Colors.white.withAlpha(8),
+            ),
+          ),
+          child: Icon(
+            icon,
+            color: enabled ? color.withAlpha(220) : Colors.white24,
+            size: 18,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AllFilterPopupValue {
+  const _AllFilterPopupValue();
+}
+
+const _allFilterPopupValue = _AllFilterPopupValue();
+
+class _FilterPopupChip<T extends Object> extends StatelessWidget {
   final IconData icon;
   final String label;
   final T? currentValue;
@@ -2913,7 +3726,7 @@ class _FilterPopupChip<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<T?>(
+    return PopupMenuButton<Object>(
       enabled: enabled,
       color: const Color(0xFF132A1C),
       shape: RoundedRectangleBorder(
@@ -2921,12 +3734,18 @@ class _FilterPopupChip<T> extends StatelessWidget {
         side: BorderSide(color: Colors.white.withAlpha(20)),
       ),
       offset: const Offset(0, 40),
-      onSelected: onSelected,
-      initialValue: currentValue, // Memastikan posisi scroll dropdown pas
+      onSelected: (value) {
+        if (value == _allFilterPopupValue) {
+          onSelected(null);
+          return;
+        }
+        onSelected(value as T);
+      },
+      initialValue: currentValue ?? _allFilterPopupValue,
       itemBuilder: (context) => [
         // ── Perbaikan Opsi "Semua" (Ditambah Checkmark) ──
-        PopupMenuItem<T?>(
-          value: null,
+        PopupMenuItem<Object>(
+          value: _allFilterPopupValue,
           child: Row(
             children: [
               Expanded(
@@ -2945,7 +3764,7 @@ class _FilterPopupChip<T> extends StatelessWidget {
         const PopupMenuDivider(height: 1),
         ...items.map((item) {
           final isSelected = item == currentValue;
-          return PopupMenuItem<T>(
+          return PopupMenuItem<Object>(
             value: item,
             child: Row(
               children: [

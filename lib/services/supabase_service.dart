@@ -55,6 +55,20 @@ class SupabaseService {
     }
   }
 
+  Future<void> updateFieldGeometryWkt({
+    required String fieldNumber,
+    required String geometryWkt,
+  }) async {
+    try {
+      await _supabase
+          .from('master_fields')
+          .update({'geometry_wkt': geometryWkt})
+          .eq('field_number', fieldNumber);
+    } catch (e) {
+      throw Exception('Gagal menyimpan polygon lahan: $e');
+    }
+  }
+
   // ==========================================
   // FUNGSI UNTUK AUDIT VEGETATIVE
   // ==========================================

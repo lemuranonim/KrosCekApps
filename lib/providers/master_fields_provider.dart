@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_map/flutter_map.dart' show LatLngBounds;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/supabase_service.dart';
@@ -89,6 +90,7 @@ class ParsedFieldData {
   /// Koordinat polygon yang sudah diparse dari WKT.
   /// Disimpan di sini agar tidak perlu parse ulang di thread utama (UI).
   final List<LatLng>? polygonPoints;
+  final LatLngBounds? polygonBounds;
 
   ParsedFieldData({
     required this.raw,
@@ -100,6 +102,7 @@ class ParsedFieldData {
     required this.dap,
     this.geometryWkt,
     this.polygonPoints,
+    this.polygonBounds,
   });
 }
 
@@ -232,6 +235,10 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
       finalPlantingDate = f['planting_date_pdn']?.toString();
     }
 
+    final validPolygon = (parsedPolygon != null && parsedPolygon.length >= 3)
+        ? parsedPolygon
+        : null;
+
     return ParsedFieldData(
       raw          : f,
       lat          : finalLat,
@@ -241,7 +248,8 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
       isFromPolygon: isFromPolygon,
       dap          : DapHelper.calculateDAP(finalPlantingDate),
       geometryWkt  : geometryWkt,
-      polygonPoints: (parsedPolygon != null && parsedPolygon.length >= 3) ? parsedPolygon : null,
+      polygonPoints: validPolygon,
+      polygonBounds: validPolygon == null ? null : LatLngBounds.fromPoints(validPolygon),
     );
   }).toList();
 }
