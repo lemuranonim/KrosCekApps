@@ -104,6 +104,7 @@ dependencies:
 
   # App Info and Icons
   package_info_plus: ^8.0.0
+  shorebird_code_push: ^2.0.6
 #  flutter_launcher_icons: ^0.14.1
   icons_launcher: ^3.0.0
 
