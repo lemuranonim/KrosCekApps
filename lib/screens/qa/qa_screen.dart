@@ -5148,8 +5148,8 @@ class _MapLoadingScreenState extends State<_MapLoadingScreen>
               children: [
                 // Logo / ikon utama
                 Container(
-                  width: 72,
-                  height: 72,
+                  width: 96,
+                  height: 96,
                   decoration: BoxDecoration(
                     color: AdvantaColors.primaryGreen.withAlpha(40),
                     shape: BoxShape.circle,
@@ -5166,15 +5166,15 @@ class _MapLoadingScreenState extends State<_MapLoadingScreen>
                     ],
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(22),
+                    padding: const EdgeInsets.all(18),
                     child: SvgPicture.asset(
                       'assets/logo_kc.svg',
-                      placeholderBuilder: (_) => const Icon(Icons.agriculture_rounded, color: Colors.white, size: 36),
+                      placeholderBuilder: (_) => const Icon(Icons.agriculture_rounded, color: Colors.white, size: 48),
                     ),
                   ),
                 ),
 
-                const SizedBox(height: 28),
+                const SizedBox(height: 30),
 
                 // Judul
                 Text(
