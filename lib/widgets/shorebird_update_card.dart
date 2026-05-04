@@ -164,7 +164,7 @@ class _ShorebirdUpdateCardState extends State<ShorebirdUpdateCard> {
           ),
           const SizedBox(height: 14),
           _InfoRow(label: 'Versi aplikasi', value: 'v$_appVersion'),
-          _InfoRow(label: 'Patch Shorebird', value: _patchLabel),
+          _InfoRow(label: 'Versi patch', value: _patchLabel),
           if (_result.nextPatchNumber != null)
             _InfoRow(
               label: 'Patch terunduh',
