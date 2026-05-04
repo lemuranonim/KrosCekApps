@@ -43,6 +43,7 @@ const _cropUniformityOpts = [
 ];
 
 const _cropHealthOpts = [
+  GenOpt('0', '0 – 0% serangan'),
   GenOpt('1', '1 – 1%'),
   GenOpt('2', '2 – 2%'),
   GenOpt('3', '3 – 3%'),

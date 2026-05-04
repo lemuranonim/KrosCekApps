@@ -90,8 +90,9 @@ const _genCropHealthFCOpts = [
   GenOpt('1', '1 – Very Poor'), GenOpt('2', '2 – Poor'), GenOpt('3', '3 – Fair'),
   GenOpt('4', '4 – Good'), GenOpt('5', '5 – Best'),
 ];
-// Crop Health SC — persentase 1%–5%
+// Crop Health SC — persentase 0%–5%
 const _genCropHealthSCOpts = [
+  GenOpt('0', '0 – 0% serangan'),
   GenOpt('1', '1 – 1%'), GenOpt('2', '2 – 2%'), GenOpt('3', '3 – 3%'),
   GenOpt('4', '4 – 4%'), GenOpt('5', '5 – 5%'),
 ];
@@ -266,6 +267,14 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     }
   }
 
+  bool _isSweetCornSelection(List<Map<String, dynamic>> selectedFields) {
+    if (selectedFields.isEmpty) return false;
+    return selectedFields.every((field) {
+      final hybrid = field['hybrid']?.toString().toUpperCase().trim() ?? '';
+      return ['AX01', 'AX02', 'AX03', 'AX04'].contains(hybrid);
+    });
+  }
+
   bool get _isDiscard {
     switch (widget.targetPhase) {
       case 'vegetative'  : return _vegFinalDecision == 'D';
@@ -393,10 +402,10 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'offtype_in_male'           : _vegOfftypeM,
               'offtype_in_female'         : _vegOfftypeF,
               'poi_accuracy'              : _vegPoiAccuracy,
-              'final_decision'            : _vegFinalDecision,
+              'decision'                  : _vegFinalDecision,
               'action_needed'             : _vegActionNeeded,
               'pld_reason'                : _vegFinalDecision == 'D' ? _vegPldReason : null,
-              'final_flagging'            : _vegFinalFlagging,
+              'flagging'                  : _vegFinalFlagging,
               'remarks'                   : _vegRemarksCtrl.text.trim(),
               'fase'                      : 'vegetative',
               'updated_at'                : nowStr,
@@ -720,7 +729,10 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  ..._buildPhaseFields(context),
+                  ..._buildPhaseFields(
+                    context,
+                    isSweetCorn: _isSweetCornSelection(selectedFields),
+                  ),
 
                   const SizedBox(height: 12),
 
@@ -758,22 +770,28 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   }
 
   // ─── PHASE FIELD ROUTER ───────────────────────────────────
-  List<Widget> _buildPhaseFields(BuildContext context) {
+  List<Widget> _buildPhaseFields(
+    BuildContext context, {
+    required bool isSweetCorn,
+  }) {
     switch (widget.targetPhase) {
-      case 'vegetative'  : return _buildVegetativeFields(context);
-      case 'generative_1': return _buildGen1Fields();
-      case 'generative_2': return _buildGen2Fields();
-      case 'generative_3': return _buildGen3Fields(context);
+      case 'vegetative'  : return _buildVegetativeFields(context, isSweetCorn: isSweetCorn);
+      case 'generative_1': return _buildGen1Fields(isSweetCorn: isSweetCorn);
+      case 'generative_2': return _buildGen2Fields(isSweetCorn: isSweetCorn);
+      case 'generative_3': return _buildGen3Fields(context, isSweetCorn: isSweetCorn);
       case 'generative_4': return _buildGen4Fields();
       case 'generative_5': return _buildGen5Fields();
-      case 'pre_harvest' : return _buildPreHarvestFields();
-      case 'harvest'     : return _buildHarvestFields(context);
+      case 'pre_harvest' : return _buildPreHarvestFields(isSweetCorn: isSweetCorn);
+      case 'harvest'     : return _buildHarvestFields(context, isSweetCorn: isSweetCorn);
       default            : return [];
     }
   }
 
   // ── VEGETATIVE ────────────────────────────────────────────
-  List<Widget> _buildVegetativeFields(BuildContext context) {
+  List<Widget> _buildVegetativeFields(
+    BuildContext context, {
+    required bool isSweetCorn,
+  }) {
     final isD = _vegFinalDecision == 'D';
     return [
       GenSection(
@@ -840,8 +858,12 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Health', required: !isD,
-            options: _vegCropHealthOpts, value: _vegCropHealth,
+            label: isSweetCorn
+                ? 'Crop Health (Bulai, Hawar) % dari Populasi'
+                : 'Crop Health',
+            required: !isD,
+            options: isSweetCorn ? _genCropHealthSCOpts : _vegCropHealthOpts,
+            value: _vegCropHealth,
             onChanged: (v) => setState(() => _vegCropHealth = v),
             accentColor: const Color(0xFFFFCA28),
           ),
@@ -1014,8 +1036,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     );
   }
 
-  // ── GENERATIVE 1 (FC — Crop Health: Very Poor–Best) ───────
-  List<Widget> _buildGen1Fields() {
+  // ── GENERATIVE 1 (FC score, SC disease percentage) ────────
+  List<Widget> _buildGen1Fields({required bool isSweetCorn}) {
     final isD = _gen1ActionNeeded == 'G';
     return [
       GenSection(
@@ -1052,8 +1074,12 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Health', required: !isD,
-            options: _genCropHealthFCOpts, value: _gen1CropHealth,
+            label: isSweetCorn
+                ? 'Crop Health (Bulai, Hawar) % dari Populasi'
+                : 'Crop Health',
+            required: !isD,
+            options: isSweetCorn ? _genCropHealthSCOpts : _genCropHealthFCOpts,
+            value: _gen1CropHealth,
             onChanged: (v) => setState(() => _gen1CropHealth = v),
             accentColor: _kGen1,
           ),
@@ -1082,8 +1108,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     ];
   }
 
-  // ── GENERATIVE 2 (FC — Crop Health: Very Poor–Best) ───────
-  List<Widget> _buildGen2Fields() {
+  // ── GENERATIVE 2 (FC score, SC disease percentage) ────────
+  List<Widget> _buildGen2Fields({required bool isSweetCorn}) {
     final isD = _gen2ActionNeeded == 'G';
     return [
       GenSection(
@@ -1136,8 +1162,12 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Health', required: !isD,
-            options: _genCropHealthFCOpts, value: _gen2CropHealth,
+            label: isSweetCorn
+                ? 'Crop Health (Bulai, Hawar) % dari Populasi'
+                : 'Crop Health',
+            required: !isD,
+            options: isSweetCorn ? _genCropHealthSCOpts : _genCropHealthFCOpts,
+            value: _gen2CropHealth,
             onChanged: (v) => setState(() => _gen2CropHealth = v),
             accentColor: _kGen2,
           ),
@@ -1166,8 +1196,11 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     ];
   }
 
-  // ── GENERATIVE 3 (FC — Crop Health: Very Poor–Best) ───────
-  List<Widget> _buildGen3Fields(BuildContext context) {
+  // ── GENERATIVE 3 (FC score, SC disease percentage) ────────
+  List<Widget> _buildGen3Fields(
+    BuildContext context, {
+    required bool isSweetCorn,
+  }) {
     final isD = _gen3FinalDecision == 'D';
     return [
       GenSection(
@@ -1220,8 +1253,12 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Health', required: !isD,
-            options: _genCropHealthFCOpts, value: _gen3CropHealth,
+            label: isSweetCorn
+                ? 'Crop Health (Bulai, Hawar) % dari Populasi'
+                : 'Crop Health',
+            required: !isD,
+            options: isSweetCorn ? _genCropHealthSCOpts : _genCropHealthFCOpts,
+            value: _gen3CropHealth,
             onChanged: (v) => setState(() => _gen3CropHealth = v),
             accentColor: _kGen3,
           ),
@@ -1330,7 +1367,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     ];
   }
 
-  // ── GENERATIVE 4 (SC Only — Crop Health: 1%–5%) ───────────
+  // ── GENERATIVE 4 (SC Only — Crop Health: 0%–5%) ───────────
   List<Widget> _buildGen4Fields() {
     final color = Colors.purple;
     final isD = _gen4ActionNeeded == 'G';
@@ -1384,7 +1421,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             accentColor: color,
           ),
           const SizedBox(height: 14),
-          // SC: Crop Health = 1%–5%
+          // SC: Crop Health = 0%–5%
           GenOptionPicker(
             label: 'Crop Health (SC)', required: !isD,
             options: _genCropHealthSCOpts, value: _gen4CropHealth,
@@ -1416,7 +1453,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     ];
   }
 
-  // ── GENERATIVE 5 (SC Only — Crop Health: 1%–5%) ───────────
+  // ── GENERATIVE 5 (SC Only — Crop Health: 0%–5%) ───────────
   List<Widget> _buildGen5Fields() {
     final color = Colors.pink;
     final isD = _gen5ActionNeeded == 'G';
@@ -1470,7 +1507,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             accentColor: color,
           ),
           const SizedBox(height: 14),
-          // SC: Crop Health = 1%–5%
+          // SC: Crop Health = 0%–5%
           GenOptionPicker(
             label: 'Crop Health (SC)', required: !isD,
             options: _genCropHealthSCOpts, value: _gen5CropHealth,
@@ -1503,7 +1540,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   }
 
   // ── PRE-HARVEST ───────────────────────────────────────────
-  List<Widget> _buildPreHarvestFields() {
+  List<Widget> _buildPreHarvestFields({required bool isSweetCorn}) {
     final isD = _preHFinalDecision == 'D';
     return [
       GenSection(
@@ -1526,8 +1563,12 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Health', required: !isD,
-            options: _preHCropHealthOpts, value: _preHCropHealth,
+            label: isSweetCorn
+                ? 'Crop Health (Bulai, Hawar) % dari Populasi'
+                : 'Crop Health',
+            required: !isD,
+            options: isSweetCorn ? _genCropHealthSCOpts : _preHCropHealthOpts,
+            value: _preHCropHealth,
             onChanged: (v) => setState(() => _preHCropHealth = v),
             accentColor: _kPreH,
           ),
@@ -1592,7 +1633,10 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   }
 
   // ── HARVEST ───────────────────────────────────────────────
-  List<Widget> _buildHarvestFields(BuildContext context) {
+  List<Widget> _buildHarvestFields(
+    BuildContext context, {
+    required bool isSweetCorn,
+  }) {
     return [
       GenSection(
         title: 'Penilaian Harvest',
@@ -1614,8 +1658,12 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
-            label: 'Crop Health', required: true,
-            options: _harvCropHealthOpts, value: _harvCropHealth,
+            label: isSweetCorn
+                ? 'Crop Health (Bulai, Hawar) % dari Populasi'
+                : 'Crop Health',
+            required: true,
+            options: isSweetCorn ? _genCropHealthSCOpts : _harvCropHealthOpts,
+            value: _harvCropHealth,
             onChanged: (v) => setState(() => _harvCropHealth = v),
             accentColor: _kHarv,
           ),

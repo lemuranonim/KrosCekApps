@@ -37,6 +37,15 @@ const _cropCondOpts = [
   GenOpt('5', '5 – Best'),
 ];
 
+const _cropHealthOpts = [
+  GenOpt('0', '0 – 0% serangan'),
+  GenOpt('1', '1 – 1%'),
+  GenOpt('2', '2 – 2%'),
+  GenOpt('3', '3 – 3%'),
+  GenOpt('4', '4 – 4%'),
+  GenOpt('5', '5 – 5%'),
+];
+
 const _reasonDowngradeOpts = [
   GenOpt('A', 'A – Suspect Mix Material'),
   GenOpt('B', 'B – Not Accessible during Detasseling'),
@@ -368,7 +377,7 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
                       GenOptionPicker(
                         label      : 'Crop Health (Bulai, Hawar) % dari Populasi',
                         required   : !_isGuest,
-                        options    : _cropCondOpts,
+                        options    : _cropHealthOpts,
                         value      : _cropHealth,
                         onChanged  : (v) { if (!_isGuest) {
                           setState(() => _cropHealth = v);
