@@ -114,6 +114,57 @@ class _QAScreenState extends ConsumerState<QAScreen>
   List<Marker>? _cachedMarkers;
   Object? _lastMarkerKey;
 
+  void _clearMapCaches() {
+    _cachedFilteredFields = null;
+    _lastFilterKey = null;
+    _cachedMarkers = null;
+    _lastMarkerKey = null;
+  }
+
+  void _refreshMapProviders() {
+    _clearMapCaches();
+    ref.invalidate(masterFieldsProvider);
+    ref.invalidate(parsedMapFieldsProvider);
+  }
+
+  void _handleInspectDone(Map<String, dynamic> fieldData) {
+    unawaited(_refreshAndOpenFreshField(fieldData));
+  }
+
+  Future<void> _refreshAndOpenFreshField(Map<String, dynamic> fieldData) async {
+    final fieldNumber = fieldData['field_number']?.toString();
+
+    _refreshMapProviders();
+
+    if (fieldNumber == null || fieldNumber.isEmpty) return;
+
+    try {
+      final parsedFields = await ref.read(parsedMapFieldsProvider.future);
+      if (!mounted) return;
+
+      Map<String, dynamic>? freshField;
+      for (final f in parsedFields) {
+        if (f.raw['field_number']?.toString() == fieldNumber) {
+          freshField = f.raw;
+          break;
+        }
+      }
+
+      FieldDetailBottomSheet.show(
+        context,
+        freshField ?? fieldData,
+        onInspectDone: _handleInspectDone,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      FieldDetailBottomSheet.show(
+        context,
+        fieldData,
+        onInspectDone: _handleInspectDone,
+      );
+    }
+  }
+
   // FUNGSI BARU: Menghitung proyeksi DAP berdasarkan minggu yang dipilih
   int _getProjectedDap(int currentDap) {
     if (_selectedWeek.isEmpty || _selectedWeek['startDate'] == null) {
@@ -513,6 +564,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
   List<ParsedFieldData> _getFilteredFields(List<ParsedFieldData> allParsed) {
     // Buat key unik berdasarkan semua parameter filter
     final filterKey = [
+      identityHashCode(allParsed),
       allParsed.length,
       _selectedRegion,
       _selectedDistrict,
@@ -638,9 +690,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
           FieldDetailBottomSheet.show(
             context,
             f,
-            onInspectDone: (fieldData) {
-              FieldDetailBottomSheet.show(context, fieldData);
-            },
+            onInspectDone: _handleInspectDone,
           );
         },
       ),
@@ -827,7 +877,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
               _refreshSpinCtrl.repeat();
               await SupabaseAuthService().restoreSession();
               ref.invalidate(currentUserProvider);
-              ref.invalidate(masterFieldsProvider);
+              _refreshMapProviders();
             },
             child: AnimatedBuilder(
               animation: _refreshSpinCtrl,
@@ -1088,15 +1138,16 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final dataToMark = uncoordRawCount > 4 
         ? fieldsData.where((f) => !f.isDefault).toList()
         : fieldsData;
+    final selectedKey = _selectedFieldNumbers.toList()..sort();
 
     // Buat key untuk cache marker
     final markerKey = [
+      identityHashCode(fieldsData),
+      identityHashCode(allFields),
       dataToMark.length,
-      _selectedFieldNumbers.length,
+      selectedKey.join(','),
       _workMode,
       _activePhaseView,
-      // Kita asumsikan jika dataToMark is different, markers need update
-      // Jika butuh lebih presisi, tambahkan hash atau first/last id
     ].join('|');
 
     if (_cachedMarkers != null && _lastMarkerKey == markerKey) {
@@ -1245,9 +1296,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 FieldDetailBottomSheet.show(
                   context,
                   f.raw,
-                  onInspectDone: (fieldData) {
-                    FieldDetailBottomSheet.show(context, fieldData);
-                  },
+                  onInspectDone: _handleInspectDone,
                 );
               }
             },
@@ -1528,7 +1577,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
           ),
           const SizedBox(height: 20),
           ElevatedButton.icon(
-            onPressed: () => ref.invalidate(masterFieldsProvider),
+            onPressed: _refreshMapProviders,
             icon: const Icon(Icons.refresh),
             label: Text('Coba Lagi', style: AdvantaText.button),
             style: ElevatedButton.styleFrom(
@@ -1715,9 +1764,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     FieldDetailBottomSheet.show(
                       context,
                       f.raw,
-                      onInspectDone: (fieldData) {
-                        FieldDetailBottomSheet.show(context, fieldData);
-                      },
+                      onInspectDone: _handleInspectDone,
                     );
                   }
                 },
