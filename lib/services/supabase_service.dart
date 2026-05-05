@@ -69,6 +69,46 @@ class SupabaseService {
     }
   }
 
+  Future<void> updateFieldCorrectionTagging({
+    required String fieldNumber,
+    required String correctionTagging,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+
+    try {
+      final updatedAuditRows = await _supabase
+          .from('audit_vegetative')
+          .update({
+            'correction_tagging': correctionTagging,
+            'updated_at': now,
+          })
+          .eq('field_number', fieldNumber)
+          .select('field_number');
+
+      if (updatedAuditRows.isNotEmpty) return;
+
+      try {
+        final updatedMasterRows = await _supabase
+            .from('master_fields')
+            .update({'correction_tagging': correctionTagging})
+            .eq('field_number', fieldNumber)
+            .select('field_number');
+
+        if (updatedMasterRows.isNotEmpty) return;
+      } catch (_) {
+        // Some deployments keep correction_tagging only in audit_vegetative.
+      }
+
+      await _supabase.from('audit_vegetative').upsert({
+        'field_number': fieldNumber,
+        'correction_tagging': correctionTagging,
+        'updated_at': now,
+      }, onConflict: 'field_number');
+    } catch (e) {
+      throw Exception('Gagal menyimpan correction tagging: $e');
+    }
+  }
+
   // ==========================================
   // FUNGSI UNTUK AUDIT VEGETATIVE
   // ==========================================

@@ -39,6 +39,7 @@ class FieldCoverageStatus {
   final String fieldNumber;
   final String qaFi;
   final String qaSpv;
+  final String farmerName;
   final String region;
   final String district;
   final String village;
@@ -61,6 +62,7 @@ class FieldCoverageStatus {
     required this.fieldNumber,
     required this.qaFi,
     required this.qaSpv,
+    required this.farmerName,
     required this.region,
     required this.district,
     required this.village,
@@ -191,6 +193,7 @@ class FieldCoverageStatus {
       fieldNumber: raw['field_number']?.toString() ?? '',
       qaFi: raw['qa_fi']?.toString().trim() ?? '',
       qaSpv: raw['qa_spv']?.toString().trim() ?? '',
+      farmerName: raw['farmer_name']?.toString().trim() ?? '',
       region: raw['region']?.toString().trim() ?? '',
       district: raw['district_kab']?.toString().trim() ?? '',
       village: raw['village_desa']?.toString().trim() ?? '',
@@ -2386,6 +2389,7 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
     String distanceLabel = distanceInMeters >= 1000
         ? '${(distanceInMeters / 1000).toStringAsFixed(1)} km'
         : '${distanceInMeters.toInt()} m';
+    final farmerName = f.farmerName.isEmpty ? '-' : f.farmerName;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -2403,14 +2407,36 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
           ),
           const SizedBox(width: 12),
           Expanded(
+            flex: 6,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(f.fieldNumber, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                Text('${f.village} · DAP ${f.dap}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                Text(
+                  f.fieldNumber,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  '${f.village} · DAP ${f.dap}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 5,
+            child: Text(
+              farmerName,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AdvantaColors.deepForest),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [

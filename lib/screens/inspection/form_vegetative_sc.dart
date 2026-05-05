@@ -16,6 +16,7 @@ import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart';   // ← NEW
 import '../../theme/app_theme.dart';
+import '../../utils/coord_helper.dart';
 import '../../utils/guest_guard.dart';           // ← NEW
 import 'sc_form_widgets.dart';
 
@@ -170,6 +171,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
   Map<String, String>? _existingGeoResult;
   Map<String, String>? _newGeoResult;
   String? _existingCoordinate;
+  String? _existingCoordinateSource;
   String? _corrTaggingSource;
 
   @override
@@ -413,6 +415,86 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
     return (lat: lat, lng: lng);
   }
 
+  String _formatCoordinate(double lat, double lng) {
+    return '${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
+  }
+
+  String? _readVegetativeCorrection(Map<String, dynamic> fieldData) {
+    final vegRow = fieldData['audit_vegetative'];
+    Object? value;
+    if (vegRow is List && vegRow.isNotEmpty) {
+      value = vegRow[0]['correction_tagging'];
+    } else if (vegRow is Map) {
+      value = vegRow['correction_tagging'];
+    }
+
+    final auditCorrection = value?.toString().trim();
+    if (auditCorrection != null && auditCorrection.isNotEmpty) {
+      return auditCorrection;
+    }
+
+    final fieldCorrection = fieldData['correction_tagging']?.toString().trim();
+    if (fieldCorrection != null && fieldCorrection.isNotEmpty) {
+      return fieldCorrection;
+    }
+
+    return null;
+  }
+
+  ({String coordinate, double lat, double lng, String source})?
+  _resolveFieldCoordinate(Map<String, dynamic> fieldData) {
+    final centroid = CoordHelper.wktCentroid(fieldData['geometry_wkt']?.toString());
+    if (centroid != null) {
+      final lat = centroid['lat']!;
+      final lng = centroid['lng']!;
+      if (CoordHelper.isValidIndonesia(lat, lng)) {
+        return (
+          coordinate: _formatCoordinate(lat, lng),
+          lat: lat,
+          lng: lng,
+          source: 'polygon',
+        );
+      }
+    }
+
+    final correction = _parseCoordinate(_readVegetativeCorrection(fieldData));
+    if (correction != null &&
+        CoordHelper.isValidIndonesia(correction.lat, correction.lng)) {
+      return (
+        coordinate: _formatCoordinate(correction.lat, correction.lng),
+        lat: correction.lat,
+        lng: correction.lng,
+        source: 'correction',
+      );
+    }
+
+    final coordinate = _parseCoordinate(fieldData['coordinate']?.toString());
+    if (coordinate != null &&
+        CoordHelper.isValidIndonesia(coordinate.lat, coordinate.lng)) {
+      return (
+        coordinate: _formatCoordinate(coordinate.lat, coordinate.lng),
+        lat: coordinate.lat,
+        lng: coordinate.lng,
+        source: 'coordinate',
+      );
+    }
+
+    return null;
+  }
+
+  String _coordinateSourceLabel(String? source) {
+    switch (source) {
+      case 'polygon':
+        return 'Centroid WKT';
+      case 'correction':
+        return 'Correction Tagging';
+      case 'coordinate':
+        return 'Kolom Coordinate';
+      default:
+        return 'Koordinat Lahan';
+    }
+  }
+
   Future<Map<String, String>> _reverseGeocode(double lat, double lng) async {
     try {
       final url = Uri.parse(
@@ -446,7 +528,9 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
     if (parsed == null) return;
     setState(() => _isGeocodingExisting = true);
     final result = await _reverseGeocode(parsed.lat, parsed.lng);
-    if (mounted) setState(() { _existingGeoResult = result; _isGeocodingExisting = false; });
+    if (mounted && _existingCoordinate == coordinate) {
+      setState(() { _existingGeoResult = result; _isGeocodingExisting = false; });
+    }
   }
 
   Future<void> _captureUserGps() async {
@@ -454,7 +538,9 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
     setState(() => _isCapturingGps = true);
     try {
       LocationPermission perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
       if (perm == LocationPermission.deniedForever || perm == LocationPermission.denied) {
         if (mounted) { _snack('Izin lokasi ditolak', err: true); setState(() => _isCapturingGps = false); }
         return;
@@ -489,7 +575,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
       _newGeoResult         = _existingGeoResult;
       _corrTaggingSource    = 'confirmed';
     });
-    _snack('Koordinat lama dikonfirmasi sebagai koreksi ✓');
+    _snack('${_coordinateSourceLabel(_existingCoordinateSource)} dikonfirmasi sebagai koreksi');
   }
 
   Future<LatLng?> _geocodeWilayah(Map<String, dynamic> fieldData) async {
@@ -796,13 +882,21 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
       orElse: () => {},
     );
 
-    final rawCoord = fieldData['coordinate']?.toString();
-    if (rawCoord != null &&
-        rawCoord.isNotEmpty &&
-        rawCoord != _existingCoordinate &&
-        !_isGeocodingExisting) {
-      _existingCoordinate = rawCoord;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadExistingGeocode(rawCoord));
+    final resolvedCoord = _resolveFieldCoordinate(fieldData);
+    if (resolvedCoord != null) {
+      if (resolvedCoord.coordinate != _existingCoordinate ||
+          resolvedCoord.source != _existingCoordinateSource) {
+        _existingCoordinate = resolvedCoord.coordinate;
+        _existingCoordinateSource = resolvedCoord.source;
+        _existingGeoResult = null;
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _loadExistingGeocode(resolvedCoord.coordinate),
+        );
+      }
+    } else if (_existingCoordinate != null) {
+      _existingCoordinate = null;
+      _existingCoordinateSource = null;
+      _existingGeoResult = null;
     }
 
     final isDiscard = _decision == 'D';
@@ -1302,9 +1396,13 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
   // ── Correction Tagging Widget ─────────────────────────────
   Widget _buildCorrectionTaggingWidget(BuildContext context, Map<String, dynamic> fieldData) {
     final isDark         = Theme.of(context).brightness == Brightness.dark;
-    final rawCoord       = fieldData['coordinate']?.toString() ?? '';
-    final hasCoord       = rawCoord.isNotEmpty;
-    final parsed         = _parseCoordinate(rawCoord);
+    final resolvedCoord  = _resolveFieldCoordinate(fieldData);
+    final displayCoord   = resolvedCoord?.coordinate ??
+        fieldData['coordinate']?.toString() ??
+        '';
+    final coordSourceLabel = _coordinateSourceLabel(resolvedCoord?.source);
+    final hasCoord       = displayCoord.isNotEmpty;
+    final parsed         = _parseCoordinate(displayCoord);
     final isZeroCoord    = parsed != null && parsed.lat.abs() < 0.0001 && parsed.lng.abs() < 0.0001;
 
     // Theme-aware colors
@@ -1390,10 +1488,10 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        isZeroCoord ? '⚠ Koordinat Nol' : '● Tersedia',
+                        isZeroCoord ? '⚠ Koordinat Nol' : coordSourceLabel,
                         style: TextStyle(
                           color: isZeroCoord ? const Color(0xFFEF9A9A) : kBlue,
-                          fontSize: 9, fontWeight: FontWeight.w700,
+                          fontSize: 8.5, fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
@@ -1401,7 +1499,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  rawCoord,
+                  displayCoord,
                   style: TextStyle(
                     color: isZeroCoord ? const Color(0xFFEF9A9A).withValues(alpha: 0.70) : kBlueMuted,
                     fontSize: 10, fontFamily: 'monospace',

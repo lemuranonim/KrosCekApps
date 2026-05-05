@@ -95,6 +95,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
   final List<List<LatLng>> _polygonEditUndoStack = [];
   int? _selectedPolygonVertexIndex;
   bool _isSavingPolygon = false;
+  bool _isSavingCorrectionTagging = false;
   bool _isPolygonSheetOpen = false;
 
   // ── State Minggu Kerja ──────────────────────────────────
@@ -653,18 +654,26 @@ class _QAScreenState extends ConsumerState<QAScreen>
         switch (_auditFilter) {
           case _AuditFilter.sampun:
             // Gunakan isAuditDoneFor dengan projectedDap agar granularity generatif terjaga
-            if (!auditStatus.isAuditDoneFor(phaseToCheck, projectedDap)) return false;
+            if (!auditStatus.isAuditDoneFor(phaseToCheck, projectedDap)) {
+              return false;
+            }
             break;
           case _AuditFilter.dereng:
-            if (auditStatus.isAuditDoneFor(phaseToCheck, projectedDap)) return false;
+            if (auditStatus.isAuditDoneFor(phaseToCheck, projectedDap)) {
+              return false;
+            }
             if (phaseToCheck == ActivePhaseView.generative &&
                 auditStatus.generative == GenerativeAuditStatus.derengJangkep) {
               return false;
             }
             break;
           case _AuditFilter.partial:
-            if (phaseToCheck != ActivePhaseView.generative) return false;
-            if (auditStatus.generative != GenerativeAuditStatus.derengJangkep) return false;
+            if (phaseToCheck != ActivePhaseView.generative) {
+              return false;
+            }
+            if (auditStatus.generative != GenerativeAuditStatus.derengJangkep) {
+              return false;
+            }
             break;
           case _AuditFilter.all:
             break;
@@ -805,7 +814,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
                             .where((f) => f.isDefault)
                             .map((f) => f.raw)
                             .toList();
-                        if (uncoordFields.isEmpty) return const SizedBox.shrink();
+                        if (uncoordFields.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
                         return _buildCompactUncoordBanner(uncoordFields);
                       }).value ?? const SizedBox.shrink(),
                   ],
@@ -1280,12 +1291,23 @@ class _QAScreenState extends ConsumerState<QAScreen>
         ? fieldsData.where((f) => !f.isDefault).toList()
         : fieldsData;
     final selectedKey = _selectedFieldNumbers.toList()..sort();
+    final markerCoordinateHash = Object.hashAll(dataToMark.map((f) {
+      return Object.hash(
+        f.raw['field_number']?.toString() ?? '',
+        f.lat,
+        f.lng,
+        f.isDefault,
+        f.isCorrected,
+        f.isFromPolygon,
+      );
+    }));
 
     // Buat key untuk cache marker
     final markerKey = [
       identityHashCode(fieldsData),
       identityHashCode(allFields),
       dataToMark.length,
+      markerCoordinateHash,
       selectedKey.join(','),
       _workMode,
       _activePhaseView,
@@ -1574,6 +1596,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       activePhase: _activePhaseView == ActivePhaseView.auto
                           ? _dapToPhaseView(projectedDap, hybrid: hybrid) // Tentukan fase simulasi
                           : _activePhaseView,
+                      isCorrected: isCorrected,
                     ),
                   ),
               ],
@@ -1624,6 +1647,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final area = raw['effective_area_ha'] ?? raw['area_ha'] ?? raw['ha'];
     final points = field.polygonPoints ?? const <LatLng>[];
     final canEdit = _canEditPolygon;
+    final centroid = _polygonCentroid(points);
+    final centroidText =
+        centroid == null ? '-' : _formatCorrectionCoordinate(centroid);
+    final canCorrect = canEdit && centroid != null && !_isSavingCorrectionTagging;
 
     showModalBottomSheet(
       context: context,
@@ -1700,6 +1727,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     icon: Icons.adjust_rounded,
                     label: '${_openPolygonRing(points).length} titik',
                   ),
+                  _PolygonInfoChip(
+                    icon: Icons.control_camera_rounded,
+                    label: centroidText,
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -1728,18 +1759,20 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: canEdit
+                    child: OutlinedButton.icon(
+                      onPressed: canCorrect
                           ? () {
                               Navigator.pop(sheetContext);
-                              _startPolygonEdit(field);
+                              unawaited(_savePolygonCentroidCorrection(field));
                             }
                           : null,
-                      icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
-                      label: Text('Edit Polygon', style: AdvantaText.button),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AdvantaColors.primaryGreen,
+                      icon: const Icon(Icons.my_location_rounded, size: 18),
+                      label: Text('Corr. Tag', style: AdvantaText.button),
+                      style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
+                        side: BorderSide(
+                          color: AdvantaColors.gold.withAlpha(120),
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: AdvantaRadius.buttonRadius,
                         ),
@@ -1747,6 +1780,27 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: canEdit
+                      ? () {
+                          Navigator.pop(sheetContext);
+                          _startPolygonEdit(field);
+                        }
+                      : null,
+                  icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+                  label: Text('Edit Polygon', style: AdvantaText.button),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AdvantaColors.primaryGreen,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: AdvantaRadius.buttonRadius,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -1919,6 +1973,48 @@ class _QAScreenState extends ConsumerState<QAScreen>
     }
   }
 
+  Future<void> _savePolygonCentroidCorrection(ParsedFieldData field) async {
+    if (_isSavingCorrectionTagging) return;
+    if (!_canEditPolygon) {
+      _showPolygonSnack('Akses correction tagging tidak tersedia.',
+          isError: true);
+      return;
+    }
+
+    final fieldNumber = field.raw['field_number']?.toString();
+    if (fieldNumber == null || fieldNumber.isEmpty) {
+      _showPolygonSnack('No. lahan tidak ditemukan.');
+      return;
+    }
+
+    final centroid = _polygonCentroid(field.polygonPoints ?? const <LatLng>[]);
+    if (centroid == null) {
+      _showPolygonSnack('Centroid polygon belum bisa dihitung.',
+          isError: true);
+      return;
+    }
+
+    final correctionTagging = _formatCorrectionCoordinate(centroid);
+    setState(() => _isSavingCorrectionTagging = true);
+
+    try {
+      await ref.read(supabaseServiceProvider).updateFieldCorrectionTagging(
+            fieldNumber: fieldNumber,
+            correctionTagging: correctionTagging,
+          );
+
+      if (!mounted) return;
+      setState(() => _isSavingCorrectionTagging = false);
+      _refreshMapProviders();
+      _showPolygonSnack('Correction tagging disimpan ke centroid polygon.');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSavingCorrectionTagging = false);
+      _showPolygonSnack('Gagal menyimpan correction tagging: $e',
+          isError: true);
+    }
+  }
+
   void _fitEditingPolygon() {
     if (_editingPolygonPoints.length < 3) return;
     _fitPolygonPoints(_editingPolygonPoints);
@@ -1966,6 +2062,45 @@ class _QAScreenState extends ConsumerState<QAScreen>
       return '$lng $lat';
     }).join(', ');
     return 'POLYGON(($pairs))';
+  }
+
+  LatLng? _polygonCentroid(List<LatLng> points) {
+    final ring = _openPolygonRing(points);
+    if (ring.length < 3) return null;
+
+    double signedArea = 0;
+    double centroidLng = 0;
+    double centroidLat = 0;
+
+    for (var i = 0; i < ring.length; i++) {
+      final current = ring[i];
+      final next = ring[(i + 1) % ring.length];
+      final cross = current.longitude * next.latitude -
+          next.longitude * current.latitude;
+      signedArea += cross;
+      centroidLng += (current.longitude + next.longitude) * cross;
+      centroidLat += (current.latitude + next.latitude) * cross;
+    }
+
+    if (signedArea.abs() < 0.000000000001) {
+      double sumLng = 0;
+      double sumLat = 0;
+      for (final p in ring) {
+        sumLng += p.longitude;
+        sumLat += p.latitude;
+      }
+      return LatLng(sumLat / ring.length, sumLng / ring.length);
+    }
+
+    signedArea *= 0.5;
+    return LatLng(
+      centroidLat / (6 * signedArea),
+      centroidLng / (6 * signedArea),
+    );
+  }
+
+  String _formatCorrectionCoordinate(LatLng point) {
+    return '${point.latitude.toStringAsFixed(7)},${point.longitude.toStringAsFixed(7)}';
   }
 
   LatLng _midpoint(LatLng a, LatLng b) {

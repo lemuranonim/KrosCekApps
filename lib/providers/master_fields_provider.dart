@@ -30,6 +30,39 @@ final currentUserProvider = FutureProvider<AppUser?>((ref) async {
   );
 });
 
+String? _readVegetativeCorrection(Map<String, dynamic> field) {
+  final vegRow = field['audit_vegetative'];
+  Object? value;
+  if (vegRow is List && vegRow.isNotEmpty) {
+    value = vegRow[0]['correction_tagging'];
+  } else if (vegRow is Map) {
+    value = vegRow['correction_tagging'];
+  }
+
+  final auditCorrection = value?.toString().trim();
+  if (auditCorrection != null && auditCorrection.isNotEmpty) {
+    return auditCorrection;
+  }
+
+  final fieldCorrection = field['correction_tagging']?.toString().trim();
+  if (fieldCorrection != null && fieldCorrection.isNotEmpty) {
+    return fieldCorrection;
+  }
+
+  return null;
+}
+
+Map<String, dynamic> _withResolvedCorrectionTagging(
+  Map<String, dynamic> field,
+) {
+  final correction = _readVegetativeCorrection(field);
+  if (correction == null) return field;
+  return {
+    ...field,
+    'correction_tagging': correction,
+  };
+}
+
 // ============================================================
 // 3. MASTER FIELDS PROVIDER (Data Mentah)
 // ============================================================
@@ -47,7 +80,9 @@ final masterFieldsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) as
 
   if (user == null) return [];
 
-  final allFields = await supabaseService.getMasterFieldsWithAllAudits();
+  final allFields = (await supabaseService.getMasterFieldsWithAllAudits())
+      .map(_withResolvedCorrectionTagging)
+      .toList();
 
   final action   = user.action.toLowerCase();
   final role     = user.role.toUpperCase();
@@ -140,23 +175,76 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
     return result;
   }
 
+  List<LatLng> openPolygonRing(List<LatLng> points) {
+    if (points.length < 2) return List<LatLng>.from(points);
+    final result = List<LatLng>.from(points);
+    final first = result.first;
+    final last = result.last;
+    if ((first.latitude - last.latitude).abs() < 0.0000001 &&
+        (first.longitude - last.longitude).abs() < 0.0000001) {
+      result.removeLast();
+    }
+    return result;
+  }
+
+  LatLng? polygonCentroid(List<LatLng> points) {
+    final ring = openPolygonRing(points);
+    if (ring.length < 3) return null;
+
+    double signedArea = 0;
+    double centroidLng = 0;
+    double centroidLat = 0;
+
+    for (var i = 0; i < ring.length; i++) {
+      final current = ring[i];
+      final next = ring[(i + 1) % ring.length];
+      final cross =
+          current.longitude * next.latitude - next.longitude * current.latitude;
+      signedArea += cross;
+      centroidLng += (current.longitude + next.longitude) * cross;
+      centroidLat += (current.latitude + next.latitude) * cross;
+    }
+
+    if (signedArea.abs() < 0.000000000001) {
+      double sumLng = 0;
+      double sumLat = 0;
+      for (final p in ring) {
+        sumLng += p.longitude;
+        sumLat += p.latitude;
+      }
+      return LatLng(sumLat / ring.length, sumLng / ring.length);
+    }
+
+    signedArea *= 0.5;
+    return LatLng(
+      centroidLat / (6 * signedArea),
+      centroidLng / (6 * signedArea),
+    );
+  }
+
   // ── Helper: parse centroid dari WKT POLYGON ───────────────
   Map<String, double>? parseWktCentroid(String? wkt) {
     if (wkt == null || wkt.trim().isEmpty) return null;
-    final points = parseWktToLatLngs(wkt);
-    if (points.isEmpty) return null;
+    final centroid = polygonCentroid(parseWktToLatLngs(wkt));
+    if (centroid == null) return null;
+    return {'lat': centroid.latitude, 'lng': centroid.longitude};
+  }
 
-    double sumLng = 0, sumLat = 0;
-    for (final p in points) {
-      sumLng += p.longitude;
-      sumLat += p.latitude;
-    }
-    return {'lat': sumLat / points.length, 'lng': sumLng / points.length};
+  ({double lat, double lng})? parseValidCoordinate(String? raw) {
+    if (raw == null || raw.trim().isEmpty || !raw.contains(',')) return null;
+    final parts = raw.split(',');
+    if (parts.length < 2) return null;
+    final lat = double.tryParse(parts[0].trim());
+    final lng = double.tryParse(parts[1].trim());
+    if (lat == null || lng == null) return null;
+    if (!isValidIndonesiaCoord(lat, lng)) return null;
+    return (lat: lat, lng: lng);
   }
   // ─────────────────────────────────────────────────────────
 
   return rawFields.map((f) {
-    final correctionCoord = f['correction_tagging']?.toString();
+    final normalizedRaw = _withResolvedCorrectionTagging(f);
+    final correctionCoord = _readVegetativeCorrection(normalizedRaw);
     final geometryWkt     = f['geometry_wkt']?.toString();
     final rawCoord        = f['coordinate']?.toString();
 
@@ -173,52 +261,36 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
     bool isCorrected   = false;
     bool isFromPolygon = false;
 
-    // ── PRIORITAS 1: correction_tagging ──
-    if (correctionCoord != null &&
-        correctionCoord.trim().isNotEmpty &&
-        correctionCoord.contains(',')) {
-      final cp   = correctionCoord.split(',');
-      final clat = double.tryParse(cp[0].trim());
-      final clng = double.tryParse(cp[1].trim());
-      if (clat != null && clng != null &&
-          isValidIndonesiaCoord(clat, clng)) {
-        finalLat    = clat;
-        finalLng    = clng;
-        isCorrected = true;
-        isDef       = false;
+    // ── PRIORITAS 1: centroid polygon WKT ──────────
+    final centroid = parseWktCentroid(geometryWkt);
+    if (centroid != null) {
+      final wlat = centroid['lat']!;
+      final wlng = centroid['lng']!;
+      if (isValidIndonesiaCoord(wlat, wlng)) {
+        finalLat      = wlat;
+        finalLng      = wlng;
+        isFromPolygon = true;
+        isDef         = false;
       }
     }
 
-    // ── PRIORITAS 2: centroid polygon ──────────
-    if (!isCorrected) {
-      final centroid = parseWktCentroid(geometryWkt);
-      if (centroid != null) {
-        final wlat = centroid['lat']!;
-        final wlng = centroid['lng']!;
-        if (isValidIndonesiaCoord(wlat, wlng)) {
-          finalLat      = wlat;
-          finalLng      = wlng;
-          isFromPolygon = true;
-          isDef         = false;
-        }
+    // ── PRIORITAS 2: correction_tagging ──
+    final correction = parseValidCoordinate(correctionCoord);
+    if (correction != null) {
+      isCorrected = true;
+      if (!isFromPolygon) {
+        finalLat = correction.lat;
+        finalLng = correction.lng;
+        isDef    = false;
       }
     }
 
     // ── PRIORITAS 3: coordinate ────────────
-    if (!isCorrected && !isFromPolygon) {
-      if (rawCoord != null &&
-          rawCoord.trim().isNotEmpty &&
-          rawCoord.contains(',')) {
-        final p   = rawCoord.split(',');
-        final lat = double.tryParse(p[0].trim());
-        final lng = double.tryParse(p[1].trim());
-        if (lat != null && lng != null &&
-            isValidIndonesiaCoord(lat, lng)) {
-          finalLat = lat;
-          finalLng = lng;
-          isDef    = false;
-        }
-      }
+    final coordinate = parseValidCoordinate(rawCoord);
+    if (!isCorrected && !isFromPolygon && coordinate != null) {
+      finalLat = coordinate.lat;
+      finalLng = coordinate.lng;
+      isDef    = false;
     }
 
     // ── Hitung DAP ────────────────────────────────────────────
@@ -240,7 +312,7 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
         : null;
 
     return ParsedFieldData(
-      raw          : f,
+      raw          : normalizedRaw,
       lat          : finalLat,
       lng          : finalLng,
       isDefault    : isDef,
