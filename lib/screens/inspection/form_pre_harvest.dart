@@ -362,6 +362,7 @@ class _FormPreHarvestState extends ConsumerState<FormPreHarvest> {
                     children: [
                       GenOptionPicker(
                         label      : 'Final Flagging',
+                        required   : !_isGuest,
                         options    : _finalFlaggingOpts,
                         value      : _finalFlagging,
                         onChanged  : (v) { if (!_isGuest) {

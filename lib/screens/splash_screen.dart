@@ -82,14 +82,9 @@ class SplashScreenState extends State<SplashScreen>
 
     _fetchVersion();
 
-    // Mengecek update, lalu lanjut ke pengecekan login jika tidak butuh update
-    _checkForUpdate().then((_) {
-      if (!_updateRequired && mounted) {
-        Timer(const Duration(milliseconds: 3800), () {
-          if (mounted) _checkLoginStatus();
-        });
-      }
-    });
+    // Jalankan cek update dan animasi minimum secara paralel agar login
+    // tidak selalu tertahan oleh delay splash penuh.
+    _continueAfterStartupChecks();
   }
 
   void _setupAnimations() {
@@ -203,13 +198,25 @@ class SplashScreenState extends State<SplashScreen>
     }
   }
 
+  Future<void> _continueAfterStartupChecks() async {
+    await Future.wait<void>([
+      _checkForUpdate(),
+      Future.delayed(const Duration(milliseconds: 1200)),
+    ]);
+
+    if (!_updateRequired && mounted) {
+      _checkLoginStatus();
+    }
+  }
+
   Future<void> _checkForUpdate() async {
     try {
       final response = await Supabase.instance.client
           .from('app_config')
           .select()
           .eq('id', 'kroscek')
-          .single();
+          .single()
+          .timeout(const Duration(seconds: 3));
 
       final latestVersion = response['latest_version'] as String?;
       final forceUpdate   = response['force_update'] as bool? ?? false;
@@ -618,7 +625,9 @@ class SplashScreenState extends State<SplashScreen>
                               ValueListenableBuilder<double>(
                                 valueListenable: _downloadProgressNotifier,
                                 builder: (_, prog, __) {
-                                  if (!_isDownloading) return const SizedBox.shrink();
+                                  if (!_isDownloading) {
+                                    return const SizedBox.shrink();
+                                  }
                                   return Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [

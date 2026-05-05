@@ -1317,7 +1317,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
         color: const Color(0xFF42A5F5),
         children: [
           GenOptionPicker(
-            label: 'Flagging', required: !isD,
+            label: 'Flagging', required: true,
             options: _genFlaggingOpts, value: _gen3Flagging,
             onChanged: (v) => setState(() => _gen3Flagging = v),
             accentColor: const Color(0xFF42A5F5),
@@ -1583,6 +1583,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
         children: [
           GenOptionPicker(
             label: 'Final Flagging',
+            required: true,
             options: _preHFinalFlaggingOpts, value: _preHFinalFlagging,
             onChanged: (v) => setState(() => _preHFinalFlagging = v),
             accentColor: const Color(0xFF42A5F5),
@@ -1787,6 +1788,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                   const SizedBox(height: 14),
                   GenOptionPicker(
                     label: 'Downgrade Flagging',
+                    required: true,
                     options: _harvDowngradeFlaggingOpts, value: _harvDowngradeFlagging,
                     onChanged: (v) => setState(() => _harvDowngradeFlagging = v),
                     accentColor: accentColor,

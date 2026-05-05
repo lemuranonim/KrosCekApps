@@ -80,13 +80,16 @@ final masterFieldsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) as
 
   if (user == null) return [];
 
-  final allFields = (await supabaseService.getMasterFieldsWithAllAudits())
-      .map(_withResolvedCorrectionTagging)
-      .toList();
-
   final action   = user.action.toLowerCase();
   final role     = user.role.toUpperCase();
   final userName = user.name.trim().toLowerCase();
+
+  final allFields = (await supabaseService.getMasterFieldsWithAllAudits(
+    qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
+    qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
+  ))
+      .map(_withResolvedCorrectionTagging)
+      .toList();
 
   if (action == 'all') return allFields;
 

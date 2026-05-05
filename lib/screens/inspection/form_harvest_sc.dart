@@ -544,6 +544,7 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
                   // Status downgrade (Yes/No)
                   GenOptionPicker(
                     label      : 'Downgrade Flagging',
+                    required   : !_isGuest,
                     options    : _statusDowngradeOpts,
                     value      : _statusDowngrade,
                     onChanged  : (v) { if (!_isGuest) {
@@ -572,6 +573,7 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
                   // Downgrade flagging (RFI/RFD)
                   GenOptionPicker(
                     label      : 'Flagging Downgrade',
+                    required   : !_isGuest,
                     options    : _downgradeFlaggingOpts,
                     value      : _downgradeFlagging,
                     onChanged  : (v) { if (!_isGuest) {

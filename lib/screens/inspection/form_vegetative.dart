@@ -1259,6 +1259,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                       const SizedBox(height: 14),
                       GenOptionPickerLong(
                         label      : 'Action Needed',
+                        required   : !_isGuest,
                         options    : _actionNeededOpts,
                         value      : _actionNeeded,
                         onChanged  : (v) { if (!_isGuest) {
@@ -1271,6 +1272,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                       const SizedBox(height: 14),
                       GenOptionPicker(
                         label      : 'Flagging',
+                        required   : !_isGuest,
                         options    : _flaggingOpts,
                         value      : _flagging,
                         onChanged  : (v) { if (!_isGuest) {

@@ -86,6 +86,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
   // ── Polygon overlay ────────────────────────────────────
   static const double _polygonMinZoom = 14.0;
   static const double _polygonViewportPaddingFactor = 0.35;
+  static const double _markerViewportPaddingFactor = 0.20;
   double _currentZoom = 8.0;
   bool _showPolygons  = true; // toggle on/off oleh user
   final LayerHitNotifier<ParsedFieldData> _polygonHitNotifier =
@@ -1304,8 +1305,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
     // Buat key untuk cache marker
     final markerKey = [
-      identityHashCode(fieldsData),
-      identityHashCode(allFields),
+      allFields.length,
       dataToMark.length,
       markerCoordinateHash,
       selectedKey.join(','),
@@ -1326,6 +1326,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final uncoordRaw  = fieldsData.where((f) => f.isDefault).map((f) => f.raw).toList();
     // final coordFields = fieldsData.where((f) => !f.isDefault).toList();
 
+    final visibleMarkerFields = _getVisibleMarkerFields(fieldsData);
     final polygonFields = _getVisiblePolygonFields(fieldsData);
 
     return FlutterMap(
@@ -1422,7 +1423,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
               centerMarker: Duration.zero,
               spiderfy: Duration.zero,
             ),
-            markers         : _getMarkers(fieldsData, allFields),
+            markers         : _getMarkers(visibleMarkerFields, allFields),
             builder         : (ctx, markers) => _buildCluster(markers.length),
           ),
         ),
@@ -2121,6 +2122,17 @@ class _QAScreenState extends ConsumerState<QAScreen>
     );
   }
 
+  List<ParsedFieldData> _getVisibleMarkerFields(List<ParsedFieldData> fieldsData) {
+    final visibleBounds = _getExpandedVisibleBounds(
+      paddingFactor: _markerViewportPaddingFactor,
+    );
+    if (visibleBounds == null) return fieldsData;
+
+    return fieldsData.where((f) {
+      return _boundsContainsLatLng(visibleBounds, f.lat, f.lng);
+    }).toList(growable: false);
+  }
+
   List<ParsedFieldData> _getVisiblePolygonFields(List<ParsedFieldData> fieldsData) {
     if (!_showPolygons || _currentZoom < _polygonMinZoom) {
       return const [];
@@ -2137,15 +2149,17 @@ class _QAScreenState extends ConsumerState<QAScreen>
     }).toList();
   }
 
-  LatLngBounds? _getExpandedVisibleBounds() {
+  LatLngBounds? _getExpandedVisibleBounds({
+    double paddingFactor = _polygonViewportPaddingFactor,
+  }) {
     try {
       final bounds = _mapController.camera.visibleBounds;
       final latSpan = (bounds.north - bounds.south).abs();
       final lngSpan = (bounds.east - bounds.west).abs();
       if (latSpan == 0 || lngSpan == 0) return null;
 
-      final latPadding = latSpan * _polygonViewportPaddingFactor;
-      final lngPadding = lngSpan * _polygonViewportPaddingFactor;
+      final latPadding = latSpan * paddingFactor;
+      final lngPadding = lngSpan * paddingFactor;
 
       return LatLngBounds.unsafe(
         north: (bounds.north + latPadding).clamp(
@@ -2168,6 +2182,19 @@ class _QAScreenState extends ConsumerState<QAScreen>
     } catch (_) {
       return null;
     }
+  }
+
+  bool _boundsContainsLatLng(LatLngBounds bounds, double lat, double lng) {
+    final south = math.min(bounds.south, bounds.north);
+    final north = math.max(bounds.south, bounds.north);
+    if (lat < south || lat > north) return false;
+
+    final west = bounds.west;
+    final east = bounds.east;
+    if (west <= east) {
+      return lng >= west && lng <= east;
+    }
+    return lng >= west || lng <= east;
   }
 
   void _handlePolygonHit() {

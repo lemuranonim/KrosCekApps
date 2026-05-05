@@ -10,14 +10,17 @@ class SupabaseService {
 
   /// Mengambil data master fields beserta semua data audit terkait.
   /// Generative sekarang menggunakan 1 tabel (audit_generative).
-  Future<List<Map<String, dynamic>>> getMasterFieldsWithAllAudits() async {
+  Future<List<Map<String, dynamic>>> getMasterFieldsWithAllAudits({
+    String? qaFi,
+    String? qaSpv,
+  }) async {
     try {
       final List<Map<String, dynamic>> allData = [];
       const int pageSize = 1000;
       int from = 0;
 
       while (true) {
-        final response = await _supabase
+        var query = _supabase
             .from('master_fields')
             .select('''
             *,
@@ -26,7 +29,16 @@ class SupabaseService {
             audit_pre_harvest(*),
             audit_harvest(*)
           ''')
-            .eq('is_active', true)
+            .eq('is_active', true);
+
+        if (qaFi != null && qaFi.trim().isNotEmpty) {
+          query = query.ilike('qa_fi', qaFi.trim());
+        }
+        if (qaSpv != null && qaSpv.trim().isNotEmpty) {
+          query = query.ilike('qa_spv', qaSpv.trim());
+        }
+
+        final response = await query
             .order('field_number', ascending: true)
             .range(from, from + pageSize - 1);
 

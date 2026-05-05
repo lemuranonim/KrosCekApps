@@ -359,7 +359,8 @@ class _FieldDetailBottomSheetState
     ThemeData theme,
     bool isDark,
   ) {
-    final markerColor = DapHelper.getDapMarkerColor(dap);
+    final hybrid = field['hybrid']?.toString();
+    final markerColor = DapHelper.getDapMarkerColor(dap, hybrid: hybrid);
     final farmName = _fmt(field['farmer_name']);
     final region = _fmt(field['region']);
     final district = _fmt(field['district_kab']);
@@ -443,7 +444,7 @@ class _FieldDetailBottomSheetState
             dap: dap,
             recommendedPhase: _getPhaseLabel(recommendedPhase),
             phaseColors: _phaseColors,
-            hybrid: field['hybrid']?.toString(),
+            hybrid: hybrid,
           ),
           Builder(builder: (context) {
             final auditStatus = AuditStatusHelper.fromRaw(field);
@@ -455,6 +456,7 @@ class _FieldDetailBottomSheetState
                   _finalPlantingDate, // <-- Pakai _finalPlantingDate yang sudah difilter
               dap: dap,
               phaseKey: recommendedPhase,
+              hybrid: hybrid,
               isAudited: isRecPhaseAudited,
               isDark: isDark,
               isRevisied: _isPlantingDateRevisied, // <-- Kirim penanda revisi
@@ -1104,28 +1106,21 @@ class _DapProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isSc = hybrid?.toUpperCase().trim() == 'AX01' ||
-        hybrid?.toUpperCase().trim() == 'AX02' ||
-        hybrid?.toUpperCase().trim() == 'AX03' ||
-        hybrid?.toUpperCase().trim() == 'AX04';
-
-    final List<int> limits =
-        isSc ? [35, 54, 59, 65, 72, 80, 90, 105] : [49, 54, 59, 70, 94, 105];
-
-    final List<String> labels = isSc
-        ? ['Veg', 'G1', 'G2', 'G3', 'G4', 'G5', 'Pre-H', 'Harv']
-        : ['Veg', 'G1', 'G2', 'G3', 'Pre-H', 'Harvest'];
-
-    int activeSeg = 0;
-    for (int i = 0; i < limits.length; i++) {
-      if (dap > (i == 0 ? 0 : limits[i - 1])) activeSeg = i;
-    }
+    final rules = DapHelper.getPhaseRules(hybrid: hybrid);
+    final labels = DapHelper.getPhaseShortLabels(hybrid: hybrid);
+    final activePhase = DapHelper.getRecommendedPhase(dap, hybrid: hybrid);
+    final activeIndex = rules.indexWhere((rule) => rule.key == activePhase);
+    final activeSeg = activeIndex == -1 ? rules.length - 1 : activeIndex;
+    final colors = List<Color>.generate(
+      rules.length,
+      (i) => i < phaseColors.length ? phaseColors[i] : rules[i].markerColor,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          children: List.generate(labels.length, (i) {
+          children: List.generate(rules.length, (i) {
             final isActive = i == activeSeg;
             return Expanded(
               child: Text(
@@ -1134,7 +1129,7 @@ class _DapProgressBar extends StatelessWidget {
                 style: AdvantaText.caption.copyWith(
                   fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
                   color: isActive
-                      ? phaseColors[i]
+                      ? colors[i]
                       : AdvantaColors.mutedGrey.withAlpha(120),
                 ),
               ),
@@ -1147,10 +1142,10 @@ class _DapProgressBar extends StatelessWidget {
           child: SizedBox(
             height: 6,
             child: Row(
-              children: List.generate(limits.length, (i) {
-                final segStart = i == 0 ? 0 : limits[i - 1];
-                final segEnd = limits[i];
-                final segWidth = segEnd - segStart;
+              children: List.generate(rules.length, (i) {
+                final segStart = i == 0 ? 0 : rules[i - 1].phaseEnd;
+                final segEnd = rules[i].phaseEnd;
+                final segWidth = (segEnd - segStart).clamp(1, 1000).toInt();
 
                 double fill = 0.0;
                 if (dap >= segEnd) {
@@ -1165,10 +1160,10 @@ class _DapProgressBar extends StatelessWidget {
                     margin: const EdgeInsets.symmetric(horizontal: 1),
                     child: Stack(
                       children: [
-                        Container(color: phaseColors[i].withAlpha(30)),
+                        Container(color: colors[i].withAlpha(30)),
                         FractionallySizedBox(
                           widthFactor: fill,
-                          child: Container(color: phaseColors[i]),
+                          child: Container(color: colors[i]),
                         ),
                       ],
                     ),
@@ -1184,7 +1179,7 @@ class _DapProgressBar extends StatelessWidget {
             Text(
               'DAP $dap',
               style: AdvantaText.label.copyWith(
-                color: phaseColors[activeSeg],
+                color: colors[activeSeg],
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1687,6 +1682,7 @@ class _DapCalculationBox extends StatelessWidget {
   final String? plantingDate;
   final int dap;
   final String phaseKey;
+  final String? hybrid;
   final bool isAudited;
   final bool isDark;
   final bool isRevisied; // <-- Tambahan
@@ -1695,6 +1691,7 @@ class _DapCalculationBox extends StatelessWidget {
     required this.plantingDate,
     required this.dap,
     required this.phaseKey,
+    this.hybrid,
     required this.isAudited,
     required this.isDark,
     this.isRevisied = false, // <-- Tambahan (Default false)
@@ -1739,7 +1736,8 @@ class _DapCalculationBox extends StatelessWidget {
       translatedBadge = 'Selesai';
       badgeColor = AdvantaColors.success;
     } else {
-      final rawBadge = DapHelper.getDapBadgeLabel(dap, phaseKey);
+      final rawBadge =
+          DapHelper.getDapBadgeLabel(dap, phaseKey, hybrid: hybrid);
       badgeColor = DapHelper.getDapBadgeColor(rawBadge);
       translatedBadge = _translateBadge(rawBadge);
     }
