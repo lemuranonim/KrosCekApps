@@ -1644,6 +1644,42 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
     );
   }
 
+  Widget _buildOptionField(
+    String label,
+    TextEditingController ctrl,
+    ThemeData theme,
+    List<String> options,
+  ) {
+    if (options.isEmpty) {
+      return _buildTextField(label, ctrl, theme);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: DropdownMenu<String>(
+        controller: ctrl,
+        enableFilter: true,
+        requestFocusOnTap: true,
+        expandedInsets: EdgeInsets.zero,
+        label: Text(label),
+        textStyle:
+            AdvantaText.body2.copyWith(color: theme.colorScheme.onSurface),
+        inputDecorationTheme: Theme.of(context).inputDecorationTheme,
+        dropdownMenuEntries: options
+            .map(
+              (option) => DropdownMenuEntry<String>(
+                value: option,
+                label: option,
+              ),
+            )
+            .toList(),
+        onSelected: (value) {
+          if (value != null) ctrl.text = value;
+        },
+      ),
+    );
+  }
+
   Future<void> _save(bool isRestricted, ActiveSession? session) async {
     final selectedKab = ref.read(selectedKabupatenProvider);
     final selectedKec = ref.read(selectedKecamatanProvider);
@@ -1715,6 +1751,14 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
     final kabupatenAsync = ref.watch(kabupatenListProvider);
     final kecamatanAsync = ref.watch(kecamatanListProvider);
     final desaAsync = ref.watch(desaListProvider);
+    final mappingItems =
+        ref.watch(qaMappingProvider).whenOrNull(data: (value) => value) ??
+            const <QaMappingItem>[];
+    final regionOptions =
+        _uniqueOptions(mappingItems.map((item) => item.region));
+    final qaSpvOptions = _uniqueOptions(mappingItems.map((item) => item.qaSpv));
+    final qaFiOptions = _uniqueOptions(mappingItems.map((item) => item.qaFi));
+    final faOptions = _uniqueOptions(mappingItems.map((item) => item.fa));
 
     return sessionAsync.when(
       loading: () => const Padding(
@@ -1774,7 +1818,12 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
                     _ReadOnlyField(
                         label: 'QA Supervisor', value: _qaSpvCtrl.text),
                   ],
-                  _buildTextField('Field Assistant (FA)', _faCtrl, theme),
+                  _buildOptionField(
+                    'Field Assistant (FA)',
+                    _faCtrl,
+                    theme,
+                    faOptions,
+                  ),
                   Divider(
                     color: isDark
                         ? AdvantaColors.goldLight.withAlpha(30)
@@ -1782,10 +1831,26 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
                   ),
                   const SizedBox(height: 12),
                 ] else ...[
-                  _buildTextField('Region', _regionCtrl, theme),
-                  _buildTextField('QA Supervisor', _qaSpvCtrl, theme),
-                  _buildTextField('QA Field Inspector (FI)', _qaFiCtrl, theme),
-                  _buildTextField('Field Assistant (FA)', _faCtrl, theme),
+                  _buildOptionField(
+                      'Region', _regionCtrl, theme, regionOptions),
+                  _buildOptionField(
+                    'QA Supervisor',
+                    _qaSpvCtrl,
+                    theme,
+                    qaSpvOptions,
+                  ),
+                  _buildOptionField(
+                    'QA Field Inspector (FI)',
+                    _qaFiCtrl,
+                    theme,
+                    qaFiOptions,
+                  ),
+                  _buildOptionField(
+                    'Field Assistant (FA)',
+                    _faCtrl,
+                    theme,
+                    faOptions,
+                  ),
                   Divider(
                     color: isDark
                         ? AdvantaColors.goldLight.withAlpha(30)
