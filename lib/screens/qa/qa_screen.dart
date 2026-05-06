@@ -36,6 +36,7 @@ import '../../widgets/field_list_view.dart'; // Sesuaikan path ini
 import '../../utils/audit_status_helper.dart';
 import '../../utils/active_phase_filter.dart';
 import '../../utils/dap_helper.dart';
+import '../../utils/qa_name_helper.dart';
 import '../../widgets/audit_status_widgets.dart';
 
 // ─── Work mode enum ──────────────────────────────────────
@@ -624,8 +625,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
       for (final filter in _activeFilters) {
         if (filter.value.trim().isEmpty) continue;
         final q      = filter.value.trim().toLowerCase();
-        final dbVal  = f.raw[filter.param.fieldKey]?.toString().toLowerCase().trim() ?? '';
-        if (!dbVal.contains(q)) return false;
+        if (filter.param == SearchParam.qaFI) {
+          if (!QaNameHelper.fieldMatchesFiSearch(f.raw, q)) return false;
+        } else {
+          final dbVal  = f.raw[filter.param.fieldKey]?.toString().toLowerCase().trim() ?? '';
+          if (!dbVal.contains(q)) return false;
+        }
       }
 
       // ── LOGIKA BARU: FILTER FASE & MINGGU (SIMULASI DAP) ──
@@ -1286,9 +1291,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   // ─── MAP ─────────────────────────────────────────────────
-  List<Marker> _getMarkers(List<ParsedFieldData> fieldsData, List<ParsedFieldData> allFields) {
-    final uncoordRawCount = allFields.where((f) => f.isDefault).length;
-    final dataToMark = uncoordRawCount > 4 
+  List<Marker> _getMarkers(
+    List<ParsedFieldData> fieldsData, {
+    required bool stackDefaultMarkers,
+  }) {
+    final dataToMark = stackDefaultMarkers
         ? fieldsData.where((f) => !f.isDefault).toList()
         : fieldsData;
     final selectedKey = _selectedFieldNumbers.toList()..sort();
@@ -1305,12 +1312,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
     // Buat key untuk cache marker
     final markerKey = [
-      allFields.length,
+      fieldsData.length,
       dataToMark.length,
       markerCoordinateHash,
       selectedKey.join(','),
       _workMode,
       _activePhaseView,
+      stackDefaultMarkers,
     ].join('|');
 
     if (_cachedMarkers != null && _lastMarkerKey == markerKey) {
@@ -1423,7 +1431,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
               centerMarker: Duration.zero,
               spiderfy: Duration.zero,
             ),
-            markers         : _getMarkers(visibleMarkerFields, allFields),
+            markers         : _getMarkers(
+              visibleMarkerFields,
+              stackDefaultMarkers: uncoordRaw.length > 4,
+            ),
             builder         : (ctx, markers) => _buildCluster(markers.length),
           ),
         ),

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'master_fields_provider.dart';
+import '../utils/qa_name_helper.dart';
 
 // ============================================================================
 // 1. REGIONS — semua region unik dari master fields
@@ -142,9 +143,9 @@ final uniqueQAProvider = Provider.family<List<String>, QAFilterParams>((ref, fil
         district.toLowerCase() == filterParams.district!.toLowerCase();
 
     if (matchRegion && matchDistrict) {
-      final qaFi = field['qa_fi']?.toString().trim();
       final qaSpv = field['qa_spv']?.toString().trim();
-      if (qaFi != null && qaFi.isNotEmpty) qas.add(qaFi);
+      qas.addAll(QaNameHelper.splitNames(field['qa_fi']));
+      qas.addAll(QaNameHelper.splitNames(field['qa_fi_list']));
       if (qaSpv != null && qaSpv.isNotEmpty) qas.add(qaSpv);
     }
   }
@@ -171,8 +172,8 @@ final uniqueFIProvider = Provider.family<List<String>, QAFilterParams>((ref, fil
         district.toLowerCase() == filterParams.district!.toLowerCase();
 
     if (matchRegion && matchDistrict) {
-      final qaFi = field['qa_fi']?.toString().trim();
-      if (qaFi != null && qaFi.isNotEmpty) fis.add(qaFi);
+      fis.addAll(QaNameHelper.splitNames(field['qa_fi']));
+      fis.addAll(QaNameHelper.splitNames(field['qa_fi_list']));
     }
   }
 

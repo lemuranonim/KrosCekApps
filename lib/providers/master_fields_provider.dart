@@ -6,6 +6,7 @@ import '../services/supabase_service.dart';
 import '../services/supabase_auth_service.dart';
 import '../services/session_manager.dart';
 import '../utils/dap_helper.dart';
+import '../utils/qa_name_helper.dart';
 
 // ============================================================
 // 1. SUPABASE SERVICE
@@ -85,7 +86,8 @@ final masterFieldsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) as
   final userName = user.name.trim().toLowerCase();
 
   final allFields = (await supabaseService.getMasterFieldsWithAllAudits(
-    qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
+    // FI can be stored in qa_fi or qa_fi_list, so keep FI matching local.
+    qaFi: null,
     qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
   ))
       .map(_withResolvedCorrectionTagging)
@@ -96,8 +98,7 @@ final masterFieldsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) as
   if (action == 'audit') {
     if (role == 'FI') {
       return allFields.where((field) {
-        final qaFi = field['qa_fi']?.toString().trim().toLowerCase() ?? '';
-        return qaFi == userName;
+        return QaNameHelper.fieldHasFi(field, userName);
       }).toList();
     } else if (role == 'SPV') {
       return allFields.where((field) {
