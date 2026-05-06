@@ -182,23 +182,26 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   // FUNGSI BARU: Menghitung proyeksi DAP berdasarkan minggu yang dipilih
   int _getProjectedDap(int currentDap) {
+    return currentDap + _getWeekProjectionDeltaDays();
+  }
+
+  int _getWeekProjectionDeltaDays() {
     if (_selectedWeek.isEmpty || _selectedWeek['startDate'] == null) {
-      return currentDap; // Jika "Semua Minggu" dipilih, gunakan DAP asli
+      return 0; // Jika "Semua Minggu" dipilih, gunakan DAP asli
     }
 
-    // Ambil tanggal awal dari minggu yang dipilih
-    final targetDate = _selectedWeek['startDate'] as DateTime;
+    final weekStart = _selectedWeek['startDate'] as DateTime;
     final today = DateTime.now();
 
     // Normalisasi jam agar hitungan hari presisi
+    final normalizedWeekStart = DateTime(weekStart.year, weekStart.month, weekStart.day);
+    final targetDate = normalizedWeekStart.add(
+      Duration(days: today.weekday - normalizedWeekStart.weekday),
+    );
     final normalizedTarget = DateTime(targetDate.year, targetDate.month, targetDate.day);
     final normalizedToday = DateTime(today.year, today.month, today.day);
 
-    // Cari selisih hari
-    final deltaDays = normalizedTarget.difference(normalizedToday).inDays;
-
-    // Kembalikan DAP yang sudah diproyeksikan (simulasi masa depan/lalu)
-    return currentDap + deltaDays;
+    return normalizedTarget.difference(normalizedToday).inDays;
   }
 
   // FUNGSI BARU: Mengecek apakah lahan masuk jendela operasional pada minggu yang dipilih
@@ -2632,14 +2635,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
             _speedDialCtrl.reverse();
 
             // Hitung deltaDays untuk Time Traveller
-            int deltaDays = 0;
-            if (_selectedWeek.isNotEmpty && _selectedWeek['startDate'] != null) {
-              final targetDate = _selectedWeek['startDate'] as DateTime;
-              final today = DateTime.now();
-              final normalizedTarget = DateTime(targetDate.year, targetDate.month, targetDate.day);
-              final normalizedToday = DateTime(today.year, today.month, today.day);
-              deltaDays = normalizedTarget.difference(normalizedToday).inDays;
-            }
+            final deltaDays = _getWeekProjectionDeltaDays();
 
             // Ambil data lahan dan tampilkan Bottom Sheet
             ref.read(parsedMapFieldsProvider).whenData((allFields) {
