@@ -2215,28 +2215,36 @@ class _QAScreenState extends ConsumerState<QAScreen>
     }
 
     final field = hit.hitValues.first;
-    final fieldNumber = field.raw['field_number']?.toString() ?? '';
 
-    if (_workMode == _WorkMode.mass && fieldNumber.isNotEmpty) {
-      setState(() {
-        if (_selectedFieldNumbers.contains(fieldNumber)) {
-          _selectedFieldNumbers.remove(fieldNumber);
-        } else {
-          _selectedFieldNumbers.add(fieldNumber);
-        }
-      });
-      return;
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isEditingPolygon) return;
+      if (identical(_polygonHitNotifier.value, hit)) {
+        _polygonHitNotifier.value = null;
+      }
 
-    if (_isLegendVisible || _isSpeedDialOpen) {
-      setState(() {
-        _isLegendVisible = false;
-        _isSpeedDialOpen = false;
-        _speedDialCtrl.reverse();
-      });
-    }
+      final fieldNumber = field.raw['field_number']?.toString() ?? '';
 
-    _showPolygonActionSheet(field);
+      if (_workMode == _WorkMode.mass && fieldNumber.isNotEmpty) {
+        setState(() {
+          if (_selectedFieldNumbers.contains(fieldNumber)) {
+            _selectedFieldNumbers.remove(fieldNumber);
+          } else {
+            _selectedFieldNumbers.add(fieldNumber);
+          }
+        });
+        return;
+      }
+
+      if (_isLegendVisible || _isSpeedDialOpen) {
+        setState(() {
+          _isLegendVisible = false;
+          _isSpeedDialOpen = false;
+          _speedDialCtrl.reverse();
+        });
+      }
+
+      _showPolygonActionSheet(field);
+    });
   }
 
   PolygonLayer<ParsedFieldData> _buildEditingPolygonLayer() {
