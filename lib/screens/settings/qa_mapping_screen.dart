@@ -1611,16 +1611,26 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
     _qaSpvCtrl = TextEditingController(text: existing?.qaSpv ?? '');
     _qaFiCtrl = TextEditingController(text: existing?.qaFi ?? '');
     _faCtrl = TextEditingController(text: existing?.fa ?? '');
+    _regionCtrl.addListener(_onRegionChanged);
   }
 
   @override
   void dispose() {
+    _regionCtrl.removeListener(_onRegionChanged);
     _haCtrl.dispose();
     _regionCtrl.dispose();
     _qaSpvCtrl.dispose();
     _qaFiCtrl.dispose();
     _faCtrl.dispose();
     super.dispose();
+  }
+
+  void _onRegionChanged() {
+    if (!mounted) return;
+    ref.read(selectedKabupatenProvider.notifier).select(null);
+    ref.read(selectedKecamatanProvider.notifier).select(null);
+    ref.read(selectedDesaProvider.notifier).select(null);
+    setState(() {});
   }
 
   Widget _buildTextField(
@@ -1689,6 +1699,17 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
     final kabName = selectedKab?.name ?? existing?.districtKab ?? '';
     final kecName = selectedKec?.name ?? existing?.subDistrictKec ?? '';
     final desaName = selectedDesa?.name ?? existing?.villageDesa ?? '';
+    final regionName = _regionCtrl.text.trim();
+    final qaSpvName = _qaSpvCtrl.text.trim();
+    final qaFiName = _qaFiCtrl.text.trim();
+    final faName = _faCtrl.text.trim();
+
+    if (!isRestricted && regionName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Region wajib diisi.')),
+      );
+      return;
+    }
 
     if (kabName.trim().isEmpty ||
         kecName.trim().isEmpty ||
@@ -1700,7 +1721,21 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
       return;
     }
 
+    if (faName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Field Assistant (FA) wajib diisi.')),
+      );
+      return;
+    }
+
     final haText = _haCtrl.text.trim();
+    if (haText.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('HA wajib diisi.')),
+      );
+      return;
+    }
+
     final ha =
         haText.isEmpty ? null : double.tryParse(haText.replaceAll(',', '.'));
     if (haText.isNotEmpty && ha == null) {
@@ -1710,7 +1745,14 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
       return;
     }
 
-    if (!isRestricted && _qaFiCtrl.text.trim().isEmpty) {
+    if (!isRestricted && qaSpvName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('QA SPV wajib diisi.')),
+      );
+      return;
+    }
+
+    if (!isRestricted && qaFiName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('QA FI wajib diisi untuk SPV/Admin.')),
       );
@@ -1721,16 +1763,16 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
       'district_kab': kabName,
       'sub_district_kec': kecName,
       'village_desa': desaName,
-      'fa': _faCtrl.text.trim(),
+      'fa': faName,
       if (ha != null) 'ha': ha,
     };
 
     if (isRestricted) {
       dataToSave['qa_fi'] = session?.name ?? existing?.qaFi ?? '';
     } else {
-      dataToSave['region'] = _regionCtrl.text.trim();
-      dataToSave['qa_spv'] = _qaSpvCtrl.text.trim();
-      dataToSave['qa_fi'] = _qaFiCtrl.text.trim();
+      dataToSave['region'] = regionName;
+      dataToSave['qa_spv'] = qaSpvName;
+      dataToSave['qa_fi'] = qaFiName;
     }
 
     setState(() => _saving = true);
@@ -1756,9 +1798,48 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
             const <QaMappingItem>[];
     final regionOptions =
         _uniqueOptions(mappingItems.map((item) => item.region));
-    final qaSpvOptions = _uniqueOptions(mappingItems.map((item) => item.qaSpv));
-    final qaFiOptions = _uniqueOptions(mappingItems.map((item) => item.qaFi));
-    final faOptions = _uniqueOptions(mappingItems.map((item) => item.fa));
+    final currentRegion = _regionCtrl.text.trim();
+    final relatedMappings = mappingItems.where((item) {
+      if (currentRegion.isEmpty) return true;
+      return _sameText(item.region, currentRegion);
+    }).toList();
+    final selectedDistrict =
+        selectedKab?.name ?? widget.existingData?.districtKab ?? '';
+    final selectedSubDistrict =
+        selectedKec?.name ?? widget.existingData?.subDistrictKec ?? '';
+    final districtOptions = _uniqueOptions(
+      relatedMappings.map((item) => item.districtKab),
+    );
+    final subDistrictOptions = _uniqueOptions(
+      relatedMappings
+          .where((item) =>
+              selectedDistrict.isEmpty ||
+              _sameText(item.districtKab, selectedDistrict))
+          .map((item) => item.subDistrictKec),
+    );
+    final villageOptions = _uniqueOptions(
+      relatedMappings
+          .where((item) =>
+              (selectedDistrict.isEmpty ||
+                  _sameText(item.districtKab, selectedDistrict)) &&
+              (selectedSubDistrict.isEmpty ||
+                  _sameText(item.subDistrictKec, selectedSubDistrict)))
+          .map((item) => item.villageDesa),
+    );
+    final qaSpvOptions =
+        _uniqueOptions(relatedMappings.map((item) => item.qaSpv));
+    final qaFiOptions =
+        _uniqueOptions(relatedMappings.map((item) => item.qaFi));
+    final faOptions = _uniqueOptions(relatedMappings.map((item) => item.fa));
+    final districtAsync = districtOptions.isNotEmpty
+        ? AsyncValue.data(_wilayahOptions(districtOptions))
+        : kabupatenAsync;
+    final subDistrictAsync = subDistrictOptions.isNotEmpty
+        ? AsyncValue.data(_wilayahOptions(subDistrictOptions))
+        : kecamatanAsync;
+    final villageAsync = villageOptions.isNotEmpty
+        ? AsyncValue.data(_wilayahOptions(villageOptions))
+        : desaAsync;
 
     return sessionAsync.when(
       loading: () => const Padding(
@@ -1860,11 +1941,14 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
                 ],
                 _CascadeDropdown<WilayahItem>(
                   label: 'Kabupaten / Kota',
-                  asyncValue: kabupatenAsync,
+                  asyncValue: districtAsync,
                   selected: selectedKab,
-                  hint: existing?.districtKab.isNotEmpty == true
-                      ? 'Tetap: ${existing!.districtKab}'
-                      : 'Pilih Kabupaten',
+                  hint: !isRestricted && currentRegion.isEmpty
+                      ? 'Pilih region dulu'
+                      : existing?.districtKab.isNotEmpty == true
+                          ? 'Tetap: ${existing!.districtKab}'
+                          : 'Pilih Kabupaten',
+                  enabled: isRestricted || currentRegion.isNotEmpty,
                   itemLabel: (e) => e.name,
                   onChanged: (val) {
                     ref.read(selectedKabupatenProvider.notifier).select(val);
@@ -1874,7 +1958,7 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
                 ),
                 _CascadeDropdown<WilayahItem>(
                   label: 'Kecamatan',
-                  asyncValue: kecamatanAsync,
+                  asyncValue: subDistrictAsync,
                   selected: selectedKec,
                   hint: selectedKab == null
                       ? existing?.subDistrictKec.isNotEmpty == true
@@ -1890,7 +1974,7 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
                 ),
                 _CascadeDropdown<WilayahItem>(
                   label: 'Desa / Kelurahan',
-                  asyncValue: desaAsync,
+                  asyncValue: villageAsync,
                   selected: selectedDesa,
                   hint: selectedKec == null
                       ? existing?.villageDesa.isNotEmpty == true
@@ -2046,6 +2130,14 @@ List<String> _uniqueOptions(Iterable<String> values) {
       .toList();
   normalized.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
   return normalized;
+}
+
+List<WilayahItem> _wilayahOptions(List<String> values) {
+  return values.map((value) => WilayahItem(id: value, name: value)).toList();
+}
+
+bool _sameText(String a, String b) {
+  return a.trim().toLowerCase() == b.trim().toLowerCase();
 }
 
 double _sumHa(List<QaMappingItem> items) {
