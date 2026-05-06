@@ -341,14 +341,8 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
       final exactItems = await _fetchAllMappings(qaFi: restrictedName);
       if (exactItems.isNotEmpty) return exactItems;
 
-      final caseInsensitiveResponse = await _supabase
-          .from('master_qa_mapping')
-          .select()
-          .ilike('qa_fi', _escapeIlike(restrictedName))
-          .order('id', ascending: false)
-          .limit(200);
-      return List<Map<String, dynamic>>.from(caseInsensitiveResponse)
-          .map(QaMappingItem.fromJson)
+      final allItems = await _fetchAllMappings();
+      return allItems
           .where(
             (item) => QaNameHelper.containsExactName(item.qaFi, restrictedName),
           )
@@ -615,10 +609,3 @@ final qaMappingProvider =
     AsyncNotifierProvider<QaMappingNotifier, List<QaMappingItem>>(
   () => QaMappingNotifier(),
 );
-
-String _escapeIlike(String value) {
-  return value
-      .replaceAll(r'\', r'\\')
-      .replaceAll('%', r'\%')
-      .replaceAll('_', r'\_');
-}
