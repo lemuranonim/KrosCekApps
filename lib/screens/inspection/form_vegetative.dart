@@ -1450,15 +1450,86 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
         sourceLabel = 'KOREKSI — INPUT MANUAL';
         break;
     }
+    final hasCorrection = _corrTaggingCtrl.text.trim().isNotEmpty;
+    final panelAccent   = hasCorrection ? sourceColor : _kPhaseVeg;
+    final panelBg       = isDark
+        ? panelAccent.withValues(alpha: 0.10)
+        : panelAccent.withValues(alpha: 0.06);
+    final panelBorder   = panelAccent.withValues(alpha: hasCorrection ? 0.45 : 0.24);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          !_isGuest ? 'Correction Tagging *' : 'Correction Tagging', // Beri bintang jika bukan guest
-          style: AdvantaText.body2.copyWith(color: subColor, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 8),
+    return Container(
+      padding   : const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color       : panelBg,
+        borderRadius: BorderRadius.circular(16),
+        border      : Border.all(color: panelBorder, width: 1.2),
+        boxShadow   : [
+          BoxShadow(
+            color     : panelAccent.withValues(alpha: isDark ? 0.08 : 0.10),
+            blurRadius: 14,
+            offset    : const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width     : 34,
+                height    : 34,
+                decoration: BoxDecoration(
+                  color       : panelAccent.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.edit_location_alt_rounded, color: panelAccent, size: 19),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      !_isGuest ? 'Correction Tagging *' : 'Correction Tagging',
+                      style: AdvantaText.bodyBold.copyWith(color: textColor),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Koreksi titik koordinat lahan sebelum submit audit.',
+                      style: AdvantaText.caption.copyWith(color: subColor, height: 1.25),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding   : const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color       : panelAccent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(999),
+                  border      : Border.all(color: panelAccent.withValues(alpha: 0.28)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(hasCorrection ? sourceIcon : Icons.radio_button_unchecked_rounded,
+                        size: 12, color: panelAccent),
+                    const SizedBox(width: 5),
+                    Text(
+                      hasCorrection ? sourceLabel.replaceFirst('KOREKSI — ', '') : 'BELUM DIISI',
+                      style: TextStyle(
+                        color: panelAccent,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
 
         // ── Master coordinate card ──────────────────────────────────────────
         if (hasCoord) ...[
@@ -1791,7 +1862,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
             ),
           ),
         ],
-      ],
+        ],
+      ),
     );
   }
 
@@ -1952,6 +2024,11 @@ class _MapPinDialog extends StatefulWidget {
 class _MapPinDialogState extends State<_MapPinDialog> {
   late LatLng _pinPosition;
   late final MapController _mapCtrl;
+  bool _isSatellite = true;
+
+  String get _tileUrl => _isSatellite
+      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+      : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
   @override
   void initState() {
@@ -2035,7 +2112,8 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                       ),
                       children: [
                         TileLayer(
-                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          key: ValueKey(_isSatellite),
+                          urlTemplate: _tileUrl,
                           userAgentPackageName: 'com.advantaseeds.fieldaudit',
                         ),
                         MarkerLayer(
@@ -2055,6 +2133,57 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                         ),
                       ],
                     ),
+                    Positioned(
+                      top: 12,
+                      right: 12,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.12),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _MapLayerButton(
+                              selected: !_isSatellite,
+                              icon: Icons.map_rounded,
+                              label: 'Map',
+                              onTap: () => setState(() => _isSatellite = false),
+                            ),
+                            _MapLayerButton(
+                              selected: _isSatellite,
+                              icon: Icons.satellite_alt_rounded,
+                              label: 'Satellite',
+                              onTap: () => setState(() => _isSatellite = true),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_isSatellite)
+                      Positioned(
+                        left: 12,
+                        bottom: 52,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.48),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'Esri World Imagery',
+                            style: TextStyle(color: Colors.white70, fontSize: 9),
+                          ),
+                        ),
+                      ),
                     Positioned(
                       bottom: 12,
                       left  : 0,
@@ -2096,6 +2225,55 @@ class _MapPinDialogState extends State<_MapPinDialog> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapLayerButton extends StatelessWidget {
+  final bool selected;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _MapLayerButton({
+    required this.selected,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = selected ? Colors.white : AdvantaColors.charcoal;
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(9),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFF9575CD) : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: fg),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: fg,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
