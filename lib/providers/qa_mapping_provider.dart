@@ -318,8 +318,22 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
         safeData.remove('qa_spv');
       }
 
-      await _supabase.from('master_qa_mapping').insert(safeData);
-      return _fetchData();
+      final insertedRows =
+          await _supabase.from('master_qa_mapping').insert(safeData).select();
+      final currentItems =
+          state.whenOrNull(data: (value) => value) ?? const <QaMappingItem>[];
+
+      if (insertedRows.isNotEmpty) {
+        final inserted = QaMappingItem.fromJson(
+          Map<String, dynamic>.from(insertedRows.first as Map),
+        );
+        return [
+          inserted,
+          ...currentItems.where((item) => item.id != inserted.id),
+        ];
+      }
+
+      return currentItems;
     });
   }
 
@@ -327,42 +341,43 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
     final session = await ref.read(currentSessionProvider.future);
     if (session == null) return [];
 
-    var query = _supabase.from('master_qa_mapping').select();
     final restrictedName = session.name.trim();
 
     if (session.isRestricted) {
       if (restrictedName.isEmpty) return [];
-      query = query.ilike('qa_fi', '%${_escapeIlike(restrictedName)}%');
-    }
 
-    final response = await query.order('id', ascending: false);
-    var items = List<Map<String, dynamic>>.from(response)
-        .map(QaMappingItem.fromJson)
-        .toList();
+      final exactResponse = await _supabase
+          .from('master_qa_mapping')
+          .select()
+          .eq('qa_fi', restrictedName)
+          .order('id', ascending: false);
+      final exactItems = List<Map<String, dynamic>>.from(exactResponse)
+          .map(QaMappingItem.fromJson)
+          .toList();
+      if (exactItems.isNotEmpty) return exactItems;
 
-    if (session.isRestricted) {
-      items = items
+      final caseInsensitiveResponse = await _supabase
+          .from('master_qa_mapping')
+          .select()
+          .ilike('qa_fi', _escapeIlike(restrictedName))
+          .order('id', ascending: false)
+          .limit(200);
+      return List<Map<String, dynamic>>.from(caseInsensitiveResponse)
+          .map(QaMappingItem.fromJson)
           .where(
             (item) => QaNameHelper.containsExactName(item.qaFi, restrictedName),
           )
           .toList();
-
-      if (items.isEmpty) {
-        final fallbackResponse = await _supabase
-            .from('master_qa_mapping')
-            .select()
-            .order('id', ascending: false);
-        items = List<Map<String, dynamic>>.from(fallbackResponse)
-            .map(QaMappingItem.fromJson)
-            .where(
-              (item) =>
-                  QaNameHelper.containsExactName(item.qaFi, restrictedName),
-            )
-            .toList();
-      }
     }
 
-    return items;
+    final response = await _supabase
+        .from('master_qa_mapping')
+        .select()
+        .order('id', ascending: false);
+
+    return List<Map<String, dynamic>>.from(response)
+        .map(QaMappingItem.fromJson)
+        .toList();
   }
 
   Future<void> updateMapping(int id, Map<String, dynamic> updatedData) async {

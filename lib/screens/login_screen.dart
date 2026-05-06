@@ -96,6 +96,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   void _invalidateProviders() {
+    ref.invalidate(currentSessionProvider);
     ref.invalidate(masterFieldsProvider);
     ref.invalidate(currentUserProvider);
     ref.invalidate(uniqueRegionsProvider);

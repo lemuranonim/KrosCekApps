@@ -83,6 +83,7 @@ class _UserSettingsScreenState extends ConsumerState<UserSettingsScreen> {
   }
 
   void _invalidateAllProviders() {
+    ref.invalidate(currentSessionProvider);
     ref.invalidate(qaMappingProvider);
     ref.invalidate(profileRenameProvider);
   }
@@ -383,6 +384,7 @@ class _UserSettingsScreenState extends ConsumerState<UserSettingsScreen> {
         onRenameSuccess: () async {
           final newSession = await SessionManager.instance.getActiveSession();
           if (mounted) setState(() => _session = newSession);
+          ref.invalidate(currentSessionProvider);
           ref.invalidate(qaMappingProvider);
           ref.invalidate(profileRenameProvider);
         },
