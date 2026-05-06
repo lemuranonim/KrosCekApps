@@ -338,14 +338,7 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
     if (session.isRestricted) {
       if (restrictedName.isEmpty) return [];
 
-      final exactResponse = await _supabase
-          .from('master_qa_mapping')
-          .select()
-          .eq('qa_fi', restrictedName)
-          .order('id', ascending: false);
-      final exactItems = List<Map<String, dynamic>>.from(exactResponse)
-          .map(QaMappingItem.fromJson)
-          .toList();
+      final exactItems = await _fetchAllMappings(qaFi: restrictedName);
       if (exactItems.isNotEmpty) return exactItems;
 
       final caseInsensitiveResponse = await _supabase
@@ -362,11 +355,40 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
           .toList();
     }
 
-    final response = await _supabase
-        .from('master_qa_mapping')
-        .select()
-        .order('id', ascending: false);
+    return _fetchAllMappings();
+  }
 
+  Future<List<QaMappingItem>> _fetchAllMappings({String? qaFi}) async {
+    const pageSize = 1000;
+    final items = <QaMappingItem>[];
+    var from = 0;
+
+    while (true) {
+      final page = await _fetchMappingPage(
+        from: from,
+        to: from + pageSize - 1,
+        qaFi: qaFi,
+      );
+      items.addAll(page);
+      if (page.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return items;
+  }
+
+  Future<List<QaMappingItem>> _fetchMappingPage({
+    required int from,
+    required int to,
+    String? qaFi,
+  }) async {
+    var query = _supabase.from('master_qa_mapping').select();
+
+    if (qaFi != null && qaFi.trim().isNotEmpty) {
+      query = query.eq('qa_fi', qaFi.trim());
+    }
+
+    final response = await query.order('id', ascending: false).range(from, to);
     return List<Map<String, dynamic>>.from(response)
         .map(QaMappingItem.fromJson)
         .toList();
