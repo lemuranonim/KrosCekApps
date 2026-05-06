@@ -32,7 +32,8 @@ class SupabaseService {
             .eq('is_active', true);
 
         if (qaFi != null && qaFi.trim().isNotEmpty) {
-          query = query.ilike('qa_fi', qaFi.trim());
+          final fi = qaFi.trim();
+          query = query.or('qa_fi.ilike.$fi,qa_fi_list.ilike.*$fi*');
         }
         if (qaSpv != null && qaSpv.trim().isNotEmpty) {
           query = query.ilike('qa_spv', qaSpv.trim());

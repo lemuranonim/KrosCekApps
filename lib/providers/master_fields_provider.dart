@@ -86,8 +86,7 @@ final masterFieldsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) as
   final userName = user.name.trim().toLowerCase();
 
   final allFields = (await supabaseService.getMasterFieldsWithAllAudits(
-    // FI can be stored in qa_fi or qa_fi_list, so keep FI matching local.
-    qaFi: null,
+    qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
     qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
   ))
       .map(_withResolvedCorrectionTagging)
