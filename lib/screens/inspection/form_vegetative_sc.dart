@@ -173,6 +173,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
   String? _existingCoordinate;
   String? _existingCoordinateSource;
   String? _corrTaggingSource;
+  String? _pendingGeometryWkt;
 
   @override
   void initState() {
@@ -555,6 +556,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
           _corrTaggingCtrl.text = coordStr;
           _newGeoResult         = geoResult;
           _corrTaggingSource    = 'gps';
+          _pendingGeometryWkt   = null;
           _isCapturingGps       = false;
         });
         _snack('GPS berhasil diambil: $coordStr');
@@ -574,6 +576,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
       _corrTaggingCtrl.text = _existingCoordinate!.trim();
       _newGeoResult         = _existingGeoResult;
       _corrTaggingSource    = 'confirmed';
+      _pendingGeometryWkt   = null;
     });
     _snack('${_coordinateSourceLabel(_existingCoordinateSource)} dikonfirmasi sebagai koreksi');
   }
@@ -651,32 +654,29 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
         return;
       }
 
-      final coordMatch = RegExp(
-        r'<coordinates[^>]*>\s*([-\d.]+)\s*,\s*([-\d.]+)',
-        caseSensitive: false,
-      ).firstMatch(content);
+      final polygon = CoordHelper.kmlPolygonToWkt(content);
+      final coordinate = polygon == null
+          ? CoordHelper.firstKmlCoordinate(content)
+          : (lat: polygon.lat, lng: polygon.lng);
 
-      if (coordMatch == null) {
+      if (coordinate == null) {
         _snack('Koordinat tidak ditemukan di file KML', err: true);
         return;
       }
 
-      final kmlLng = double.tryParse(coordMatch.group(1)!);
-      final kmlLat = double.tryParse(coordMatch.group(2)!);
-      if (kmlLat == null || kmlLng == null) {
-        _snack('Format koordinat KML tidak valid', err: true);
-        return;
-      }
-
-      final coordStr  = '${kmlLat.toStringAsFixed(6)},${kmlLng.toStringAsFixed(6)}';
-      final geoResult = await _reverseGeocode(kmlLat, kmlLng);
+      final coordStr  = '${coordinate.lat.toStringAsFixed(6)},${coordinate.lng.toStringAsFixed(6)}';
+      final geoResult = await _reverseGeocode(coordinate.lat, coordinate.lng);
       if (mounted) {
         setState(() {
           _corrTaggingCtrl.text = coordStr;
           _newGeoResult         = geoResult;
           _corrTaggingSource    = 'kml';
+          _pendingGeometryWkt   = polygon?.wkt;
         });
-        _snack('Koordinat dari KML berhasil dimuat: $coordStr');
+        final polygonInfo = polygon == null
+            ? ''
+            : ' + polygon ${polygon.pointCount} titik';
+        _snack('KML berhasil dimuat$polygonInfo: $coordStr');
       }
     } catch (e) {
       if (mounted) _snack('Gagal import KML: $e', err: true);
@@ -698,6 +698,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
         _corrTaggingCtrl.text = coordStr;
         _newGeoResult         = geoResult;
         _corrTaggingSource    = 'manual';
+        _pendingGeometryWkt   = null;
       });
       _snack('Koordinat manual diterapkan: $coordStr');
     }
@@ -753,6 +754,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
         _corrTaggingCtrl.text = coordStr;
         _newGeoResult         = geoResult;
         _corrTaggingSource    = 'map';
+        _pendingGeometryWkt   = null;
         _manualLatCtrl.text   = result.latitude.toStringAsFixed(6);
         _manualLngCtrl.text   = result.longitude.toStringAsFixed(6);
       });
@@ -827,6 +829,12 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
 
       final service = ref.read(supabaseServiceProvider);
       await service.upsertVegetativeAudit(data);
+      if (_pendingGeometryWkt != null && _pendingGeometryWkt!.trim().isNotEmpty) {
+        await service.updateFieldGeometryWkt(
+          fieldNumber : widget.fieldNumber,
+          geometryWkt : _pendingGeometryWkt!.trim(),
+        );
+      }
 
       double lat = 0.0, lng = 0.0;
       try {
@@ -850,6 +858,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
 
       if (mounted) {
         ref.invalidate(masterFieldsProvider);
+        ref.invalidate(parsedMapFieldsProvider);
         ref.invalidate(vegetativeAuditProvider(widget.fieldNumber));
         _snack('Vegetative audit berhasil disimpan ✓');
         await Future.delayed(const Duration(milliseconds: 600));
@@ -1737,6 +1746,7 @@ class _FormVegetativeSCState extends ConsumerState<FormVegetativeSC> {
                         _corrTaggingCtrl.clear();
                         _newGeoResult      = null;
                         _corrTaggingSource = null;
+                        _pendingGeometryWkt = null;
                       }),
                       child: Icon(Icons.close, color: subColor, size: 16),
                     ),

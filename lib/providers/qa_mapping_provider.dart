@@ -318,21 +318,13 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
         safeData.remove('qa_spv');
       }
 
-      final insertedRows =
-          await _supabase.from('master_qa_mapping').insert(safeData).select();
+      try {
+        await _supabase.from('master_qa_mapping').insert(safeData);
+      } catch (e) {
+        throw Exception('Gagal insert master_qa_mapping: $e');
+      }
       final currentItems =
           state.whenOrNull(data: (value) => value) ?? const <QaMappingItem>[];
-
-      if (insertedRows.isNotEmpty) {
-        final inserted = QaMappingItem.fromJson(
-          Map<String, dynamic>.from(insertedRows.first as Map),
-        );
-        return [
-          inserted,
-          ...currentItems.where((item) => item.id != inserted.id),
-        ];
-      }
-
       return currentItems;
     });
   }
