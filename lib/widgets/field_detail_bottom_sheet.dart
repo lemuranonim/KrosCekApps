@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../utils/dap_helper.dart';
 import '../utils/audit_status_helper.dart';
+import 'phase_asset_icon.dart';
 
 class FieldDetailBottomSheet extends ConsumerStatefulWidget {
   final Map<String, dynamic> field;
@@ -992,10 +993,13 @@ class _FieldDetailBottomSheetState
               padding: const EdgeInsets.only(bottom: 10.0),
               child: _PhaseActionButton(
                 icon: isAudited ? Icons.check_circle_outline : icon,
+                phaseKey: phaseKey,
                 label: label,
                 color: isAudited ? AdvantaColors.success : color,
+                phaseColor: color,
                 badge: translatedBadge,
                 badgeColor: badgeColor,
+                isAudited: isAudited,
                 isRecommended: isRecommended,
                 theme: theme,
                 isDark: isDark,
@@ -1426,10 +1430,15 @@ class _PhaseTimelineItem extends StatelessWidget {
                       ? [BoxShadow(color: color.withAlpha(76), blurRadius: 8)]
                       : null,
                 ),
-                child: Icon(
-                  hasData ? Icons.check_rounded : icon,
-                  color: hasData ? color : AdvantaColors.mutedGrey,
-                  size: 15,
+                child: Center(
+                  child: PhaseAssetIcon(
+                    phaseKey: phaseKey,
+                    fallbackIcon: icon,
+                    fallbackColor: hasData ? color : AdvantaColors.mutedGrey,
+                    size: 24,
+                    completed: hasData,
+                    opacity: hasData ? 1 : 0.42,
+                  ),
                 ),
               ),
               if (!isLast)
@@ -1567,10 +1576,13 @@ class _PhaseTimelineItem extends StatelessWidget {
 
 class _PhaseActionButton extends StatelessWidget {
   final IconData icon;
+  final String phaseKey;
   final String label;
   final Color color;
+  final Color phaseColor;
   final String badge;
   final Color badgeColor;
+  final bool isAudited;
   final bool isRecommended;
   final ThemeData theme;
   final bool isDark;
@@ -1578,10 +1590,13 @@ class _PhaseActionButton extends StatelessWidget {
 
   const _PhaseActionButton({
     required this.icon,
+    required this.phaseKey,
     required this.label,
     required this.color,
+    required this.phaseColor,
     required this.badge,
     required this.badgeColor,
+    required this.isAudited,
     required this.isRecommended,
     required this.theme,
     required this.isDark,
@@ -1619,7 +1634,15 @@ class _PhaseActionButton extends StatelessWidget {
                 color: color.withAlpha(38),
                 borderRadius: BorderRadius.circular(10.0),
               ),
-              child: Icon(icon, color: color, size: 19),
+              child: Center(
+                child: PhaseAssetIcon(
+                  phaseKey: phaseKey,
+                  fallbackIcon: icon,
+                  fallbackColor: isAudited ? color : phaseColor,
+                  size: 30,
+                  completed: isAudited,
+                ),
+              ),
             ),
             const SizedBox(width: 14.0),
             Expanded(

@@ -2,7 +2,7 @@ name: kroscek
 description: "Crop Inspection and Check Result"
 publish_to: 'none'
 
-version: 4.2.2+122
+version: 4.2.13+133
 
 environment:
   sdk: '>=3.5.4 <4.0.0'
@@ -159,6 +159,10 @@ flutter:
     - assets/generative.png
     - assets/preharvest.png
     - assets/harvest.png
+    - assets/images/phases/vegetative.png
+    - assets/images/phases/generative.png
+    - assets/images/phases/pre_harvest.png
+    - assets/images/phases/harvest.png
     - assets/maintenance.png
     - assets/icon/icon.png
     - assets/gadm41_IDN_3.json

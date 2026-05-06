@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/app_theme.dart';
 import '../utils/dap_helper.dart';
+import 'phase_asset_icon.dart';
 
 // ── Phase definitions ────────────────────────────────────────
 enum InspectionPhase {
@@ -312,7 +313,12 @@ class _PhaseItem extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(phase.icon, color: phase.color, size: 15),
+                PhaseAssetIcon(
+                  phaseKey: phase.routeKey,
+                  fallbackIcon: phase.icon,
+                  fallbackColor: phase.color,
+                  size: 22,
+                ),
                 const SizedBox(width: 8.0),
                 Text(
                   phase.label,

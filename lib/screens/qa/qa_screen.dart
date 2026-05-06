@@ -38,6 +38,7 @@ import '../../utils/active_phase_filter.dart';
 import '../../utils/dap_helper.dart';
 import '../../utils/qa_name_helper.dart';
 import '../../widgets/audit_status_widgets.dart';
+import '../../widgets/phase_asset_icon.dart';
 
 // ─── Work mode enum ──────────────────────────────────────
 enum _WorkMode { single, mass }
@@ -4652,7 +4653,14 @@ class _PhaseSheet extends StatelessWidget {
                     color: color.withAlpha(38),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon, color: color, size: 20),
+                  child: Center(
+                    child: PhaseAssetIcon(
+                      phaseKey: key,
+                      fallbackIcon: icon,
+                      fallbackColor: color,
+                      size: 32,
+                    ),
+                  ),
                 ),
                 title: Text(
                   label,
