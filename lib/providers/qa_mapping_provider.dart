@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/session_manager.dart';
+import '../utils/qa_name_helper.dart';
 
 // ---------------------------------------------------------------------------
 // Model sederhana untuk data wilayah dari API
@@ -327,17 +328,41 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
     if (session == null) return [];
 
     var query = _supabase.from('master_qa_mapping').select();
+    final restrictedName = session.name.trim();
 
     if (session.isRestricted) {
-      if (session.name.trim().isEmpty) return [];
-      query = query.eq('qa_fi', session.name.trim());
+      if (restrictedName.isEmpty) return [];
+      query = query.ilike('qa_fi', '%${_escapeIlike(restrictedName)}%');
     }
 
     final response = await query.order('id', ascending: false);
-
-    return List<Map<String, dynamic>>.from(response)
+    var items = List<Map<String, dynamic>>.from(response)
         .map(QaMappingItem.fromJson)
         .toList();
+
+    if (session.isRestricted) {
+      items = items
+          .where(
+            (item) => QaNameHelper.containsExactName(item.qaFi, restrictedName),
+          )
+          .toList();
+
+      if (items.isEmpty) {
+        final fallbackResponse = await _supabase
+            .from('master_qa_mapping')
+            .select()
+            .order('id', ascending: false);
+        items = List<Map<String, dynamic>>.from(fallbackResponse)
+            .map(QaMappingItem.fromJson)
+            .where(
+              (item) =>
+                  QaNameHelper.containsExactName(item.qaFi, restrictedName),
+            )
+            .toList();
+      }
+    }
+
+    return items;
   }
 
   Future<void> updateMapping(int id, Map<String, dynamic> updatedData) async {
@@ -460,11 +485,7 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
     ActiveSession? session,
   ) async {
     if (session != null && session.isRestricted) {
-      await _supabase
-          .from('master_qa_mapping')
-          .update(data)
-          .eq('id', id)
-          .eq('qa_fi', session.name.trim());
+      await _updateRestrictedOwnedRow(id, data, session.name.trim());
       return;
     }
 
@@ -525,15 +546,39 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
 
   Future<void> _hardDeleteById(int id, ActiveSession? session) async {
     if (session != null && session.isRestricted) {
-      await _supabase
-          .from('master_qa_mapping')
-          .delete()
-          .eq('id', id)
-          .eq('qa_fi', session.name.trim());
+      final row = await _fetchOwnedRestrictedRow(id, session.name.trim());
+      if (row == null) return;
+      await _supabase.from('master_qa_mapping').delete().eq('id', id);
       return;
     }
 
     await _supabase.from('master_qa_mapping').delete().eq('id', id);
+  }
+
+  Future<QaMappingItem?> _fetchOwnedRestrictedRow(
+      int id, String qaFiName) async {
+    if (qaFiName.trim().isEmpty) return null;
+
+    final row = await _supabase
+        .from('master_qa_mapping')
+        .select()
+        .eq('id', id)
+        .maybeSingle();
+    if (row == null) return null;
+
+    final item = QaMappingItem.fromJson(Map<String, dynamic>.from(row));
+    if (!QaNameHelper.containsExactName(item.qaFi, qaFiName)) return null;
+    return item;
+  }
+
+  Future<void> _updateRestrictedOwnedRow(
+    int id,
+    Map<String, dynamic> data,
+    String qaFiName,
+  ) async {
+    final row = await _fetchOwnedRestrictedRow(id, qaFiName);
+    if (row == null) return;
+    await _supabase.from('master_qa_mapping').update(data).eq('id', id);
   }
 }
 
@@ -541,3 +586,10 @@ final qaMappingProvider =
     AsyncNotifierProvider<QaMappingNotifier, List<QaMappingItem>>(
   () => QaMappingNotifier(),
 );
+
+String _escapeIlike(String value) {
+  return value
+      .replaceAll(r'\', r'\\')
+      .replaceAll('%', r'\%')
+      .replaceAll('_', r'\_');
+}
