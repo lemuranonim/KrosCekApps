@@ -5,6 +5,9 @@ import 'active_phase_filter.dart';
 class DapPhaseRule {
   final String key;
   final int phaseStart;
+
+  /// Batas akhir fase inspeksi, termasuk masa overdue yang masih
+  /// dihitung sebagai fase tersebut untuk warna marker/filter.
   final int phaseEnd;
   final int onGoingStart;
   final int onGoingEnd;
@@ -37,14 +40,14 @@ class DapHelper {
     DapPhaseRule(
       key: 'vegetative',
       phaseStart: 0,
-      phaseEnd: 35,
+      phaseEnd: 49,
       onGoingStart: 7,
       onGoingEnd: 35,
       markerColor: _vegetativeColor,
     ),
     DapPhaseRule(
       key: 'generative_1',
-      phaseStart: 36,
+      phaseStart: 50,
       phaseEnd: 54,
       onGoingStart: 50,
       onGoingEnd: 54,
@@ -61,22 +64,22 @@ class DapHelper {
     DapPhaseRule(
       key: 'generative_3',
       phaseStart: 60,
-      phaseEnd: 65,
+      phaseEnd: 70,
       onGoingStart: 60,
       onGoingEnd: 65,
       markerColor: _generative3Color,
     ),
     DapPhaseRule(
       key: 'pre_harvest',
-      phaseStart: 66,
-      phaseEnd: 90,
+      phaseStart: 71,
+      phaseEnd: 94,
       onGoingStart: 71,
       onGoingEnd: 90,
       markerColor: _preHarvestColor,
     ),
     DapPhaseRule(
       key: 'harvest',
-      phaseStart: 91,
+      phaseStart: 95,
       phaseEnd: 105,
       onGoingStart: 95,
       onGoingEnd: 105,
@@ -153,7 +156,9 @@ class DapHelper {
 
   /// Menghitung DAP (Days After Planting) dari string tanggal tanam.
   static int calculateDAP(String? plantingDateString) {
-    if (plantingDateString == null || plantingDateString.trim().isEmpty) return 0;
+    if (plantingDateString == null || plantingDateString.trim().isEmpty) {
+      return 0;
+    }
     try {
       DateTime plantingDate;
       if (plantingDateString.contains('/')) {
@@ -174,7 +179,8 @@ class DapHelper {
       }
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
-      final plantingDateOnly = DateTime(plantingDate.year, plantingDate.month, plantingDate.day);
+      final plantingDateOnly =
+          DateTime(plantingDate.year, plantingDate.month, plantingDate.day);
       return today.difference(plantingDateOnly).inDays;
     } catch (e) {
       debugPrint('Error calculating DAP: $e');
@@ -201,7 +207,12 @@ class DapHelper {
 
   /// Menentukan fase rekomendasi dari DAP.
   ///
-  /// Untuk FC, rule lama dipertahankan. Untuk SC, rule mengikuti jadwal:
+  /// Untuk FC, phaseEnd sudah mencakup masa overdue yang masih dihitung
+  /// sebagai fase tersebut:
+  /// Veg 0-49, Gen1 50-54, Gen2 55-59, Gen3 60-70,
+  /// Pre-Harvest 71-94, Harvest 95-105+ DAP.
+  ///
+  /// Untuk SC, rule mengikuti jadwal:
   /// Veg 7-39, Gen1 40-47, Gen2 48-50, Gen3 51-53, Gen4 54-56,
   /// Gen5 57-59, Pre-Harvest 60-89, Harvest 90-100 DAP.
   static String getRecommendedPhase(int dap, {String? hybrid}) {
@@ -290,7 +301,7 @@ class DapHelper {
 
     return rules
         .where(matchesRule)
-        .map((rule) => [rule.onGoingStart, rule.onGoingEnd])
+        .map((rule) => [rule.phaseStart, rule.phaseEnd])
         .toList(growable: false);
   }
 
@@ -338,11 +349,16 @@ class DapHelper {
   /// Warna badge berdasarkan status
   static Color getDapBadgeColor(String badgeLabel) {
     switch (badgeLabel) {
-      case 'Done': return Colors.green.shade700;
-      case 'On Going': return Colors.green.shade600;
-      case 'Upcoming': return Colors.blue.shade500;
-      case 'Overdue': return Colors.red.shade600;
-      default: return Colors.grey;
+      case 'Done':
+        return Colors.green.shade700;
+      case 'On Going':
+        return Colors.green.shade600;
+      case 'Upcoming':
+        return Colors.blue.shade500;
+      case 'Overdue':
+        return Colors.red.shade600;
+      default:
+        return Colors.grey;
     }
   }
 

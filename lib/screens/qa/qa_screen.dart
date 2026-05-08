@@ -227,7 +227,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final dapAtStart = currentDap + normalizedStart.difference(normalizedToday).inDays;
     final dapAtEnd = currentDap + normalizedEnd.difference(normalizedToday).inDays;
 
-    // Tentukan target range DAP berdasarkan fase operasional FC/SC.
+    // Tentukan target range DAP berdasarkan fase inspeksi FC/SC,
+    // termasuk window overdue yang masih dihitung sebagai fase tersebut.
     final targetRanges = DapHelper.getOperationalRanges(
       _activePhaseView,
       hybrid: isSc ? 'AX01' : null,
@@ -570,12 +571,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
   // Warna fase DAP — tetap hardcoded karena merupakan data semantik,
   // bukan tema UI. Digunakan di map markers & legenda.
   static const _phaseColors = [
-    Color(0xFF78909C), // Vegetative   ≤45 DAP
-    Color(0xFFFFCA28), // Generative1  46-54
+    Color(0xFF78909C), // Vegetative   0-49 DAP (36-49 overdue)
+    Color(0xFFFFCA28), // Generative1  50-54
     Color(0xFFFF7043), // Generative2  55-59
-    Color(0xFFE53935), // Generative3  60-75
-    Color(0xFF795548), // Pre-Harvest  76-100
-    Color(0xFF43A047), // Harvest      >100
+    Color(0xFFE53935), // Generative3  60-70 (66-70 overdue)
+    Color(0xFF795548), // Pre-Harvest  71-94 (91-94 overdue)
+    Color(0xFF43A047), // Harvest      ≥95
   ];
 
   Color _markerColor(int dap, {String? hybrid}) {
@@ -699,6 +700,45 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return DapHelper.getActivePhaseView(dap, hybrid: hybrid);
   }
 
+  bool _isAuditDoneForPhaseKey(FieldAuditStatus status, String phaseKey) {
+    switch (phaseKey) {
+      case 'vegetative':
+        return status.vegetative == SingleAuditStatus.sampun;
+      case 'generative_1':
+        return status.gen1Done;
+      case 'generative_2':
+        return status.gen2Done;
+      case 'generative_3':
+        return status.gen3Done;
+      case 'generative_4':
+        return status.gen4Done;
+      case 'generative_5':
+        return status.gen5Done;
+      case 'pre_harvest':
+        return status.preHarvest == SingleAuditStatus.sampun;
+      case 'harvest':
+        return status.harvest == SingleAuditStatus.sampun;
+      default:
+        return false;
+    }
+  }
+
+  bool _hasOverdueInspection(
+    FieldAuditStatus status,
+    int dap, {
+    String? hybrid,
+  }) {
+    return DapHelper.getPhaseRules(hybrid: hybrid).any((rule) {
+      final isDone = _isAuditDoneForPhaseKey(status, rule.key);
+      return DapHelper.getDapBadgeLabel(
+            dap,
+            rule.key,
+            hybrid: hybrid,
+            isDone: isDone,
+          ) ==
+          'Overdue';
+    });
+  }
 
   void _fitBounds(List<ParsedFieldData> fields) {
     if (fields.isEmpty) return;
@@ -1463,6 +1503,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
       // Parse audit status
       final auditStatus = AuditStatusHelper.fromRaw(f.raw);
+      final markerActivePhase = _activePhaseView == ActivePhaseView.auto
+          ? _dapToPhaseView(projectedDap, hybrid: hybrid)
+          : _activePhaseView;
+      final isOverdue = _hasOverdueInspection(
+        auditStatus,
+        projectedDap,
+        hybrid: hybrid,
+      );
 
       result.add(Marker(
         point: LatLng(f.lat, f.lng),
@@ -1609,10 +1657,35 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     child: MarkerAuditDot(
                       auditStatus: auditStatus,
                       dap: projectedDap, // <--- Gunakan projectedDap
-                      activePhase: _activePhaseView == ActivePhaseView.auto
-                          ? _dapToPhaseView(projectedDap, hybrid: hybrid) // Tentukan fase simulasi
-                          : _activePhaseView,
+                      activePhase: markerActivePhase,
                       isCorrected: isCorrected,
+                    ),
+                  ),
+
+                // ── 5. OVERDUE INDICATOR ────────────────────────
+                if (!isSelected && isOverdue)
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: AdvantaColors.error,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.4),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AdvantaColors.error.withAlpha(136),
+                            blurRadius: 5,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.priority_high_rounded,
+                        color: Colors.white,
+                        size: 11,
+                      ),
                     ),
                   ),
               ],
@@ -2877,11 +2950,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
   // ─── LEGEND ─────────────────────────────────────────────────
   Widget _buildLegend() {
     const items = [
-      (_phaseColors, 0, '7–35 DAP', 'Vegetative'),
+      (_phaseColors, 0, '7–35 DAP · OD 36–49', 'Vegetative'),
       (_phaseColors, 1, '50–54 DAP', 'Generative 1'),
       (_phaseColors, 2, '55–59 DAP', 'Generative 2'),
-      (_phaseColors, 3, '60–65 DAP', 'Generative 3'),
-      (_phaseColors, 4, '71–90 DAP', 'Pre-Harvest'),
+      (_phaseColors, 3, '60–65 DAP · OD 66–70', 'Generative 3'),
+      (_phaseColors, 4, '71–90 DAP · OD 91–94', 'Pre-Harvest'),
       (_phaseColors, 5, '95–105 DAP', 'Harvest'),
     ];
 
