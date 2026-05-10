@@ -643,17 +643,6 @@ class _QAScreenState extends ConsumerState<QAScreen>
         // Jika user memilih minggu spesifik, cek apakah lahan ini punya hari aktif
         // di fase tersebut pada rentang hari Senin-Minggu.
         if (!_isFieldActiveInSelectedWeek(f)) return false;
-      } else {
-        // Jika "Semua Minggu" dipilih, filter persis menggunakan DAP hari ini
-        if (_activePhaseView != ActivePhaseView.auto) {
-          if (!DapHelper.isDapInPhaseView(
-            f.dap,
-            _activePhaseView,
-            hybrid: f.raw['hybrid']?.toString(),
-          )) {
-            return false;
-          }
-        }
       }
 
       // ── Audit Status filter (TETAP SAMA) ──

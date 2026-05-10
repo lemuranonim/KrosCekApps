@@ -2,6 +2,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'master_fields_provider.dart';
 import '../services/session_manager.dart';
 import '../utils/qa_name_helper.dart';
 
@@ -325,6 +326,7 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
       }
       final currentItems =
           state.whenOrNull(data: (value) => value) ?? const <QaMappingItem>[];
+      _invalidateCoverageCaches();
       return currentItems;
     });
   }
@@ -396,6 +398,7 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
       if (safeData.isEmpty) return _fetchData();
 
       await _updateByIdWithOptionalColumnFallback(id, safeData, session);
+      _invalidateCoverageCaches();
       return _fetchData();
     });
   }
@@ -419,6 +422,7 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
       for (final id in ids) {
         await _updateByIdWithOptionalColumnFallback(id, safeData, session);
       }
+      _invalidateCoverageCaches();
       return _fetchData();
     });
   }
@@ -439,6 +443,7 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
       for (final id in ids) {
         await _softDeactivateById(id, session, reason: reason);
       }
+      _invalidateCoverageCaches();
       return _fetchData();
     });
   }
@@ -448,8 +453,14 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
     state = await AsyncValue.guard(() async {
       final session = await ref.read(currentSessionProvider.future);
       await _hardDeleteById(id, session);
+      _invalidateCoverageCaches();
       return _fetchData();
     });
+  }
+
+  void _invalidateCoverageCaches() {
+    ref.invalidate(masterFieldsProvider);
+    ref.invalidate(parsedMapFieldsProvider);
   }
 
   Future<Map<String, dynamic>> _sanitizeWriteData(
