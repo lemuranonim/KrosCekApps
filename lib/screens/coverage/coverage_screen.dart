@@ -303,7 +303,7 @@ class FieldCoverageStatus {
     final auditStatus = AuditStatusHelper.fromRaw(raw);
     final registeredArea = _readDouble(raw['effective_area_ha']);
     final auditArea = _readDouble(veg?['field_size_by_audit_ha']);
-    final effectiveArea = auditArea > 0 ? auditArea : registeredArea;
+    final effectiveArea = registeredArea;
 
     bool isComplete(String phase) {
       switch (phase) {
