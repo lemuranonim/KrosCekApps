@@ -27,6 +27,9 @@ import 'screens/admin/notifications_management.dart';
 import 'screens/qa/edit_field_screen.dart';
 // SC
 import 'screens/inspection/form_vegetative_sc.dart';
+import 'screens/inspection/form_vegetative_psp.dart';
+import 'screens/inspection/form_generative_psp.dart';
+import 'screens/inspection/form_harvest_psp.dart';
 import 'screens/inspection/form_generative_1_sc.dart';
 import 'screens/inspection/form_generative_2_sc.dart';
 import 'screens/inspection/form_generative_3_sc.dart';
@@ -80,7 +83,9 @@ bool _canWriteOperational(String? role) =>
     _operationalWriteRoles.contains(role?.toLowerCase());
 String _homeForRole(String? role) => _isAdminRole(role) ? '/admin' : '/qa';
 bool _isInspectionRoute(String path) =>
-    path.startsWith('/inspect/') || path.startsWith('/inspect_sc/');
+    path.startsWith('/inspect/') ||
+    path.startsWith('/inspect_sc/') ||
+    path.startsWith('/inspect_psp/');
 bool _isOperationalWriteRoute(String path) =>
     _isInspectionRoute(path) ||
     path == '/inspect/mass' ||
@@ -215,6 +220,24 @@ final router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/inspect_psp/vegetative/:fieldNumber',
+      builder: (context, state) => FormVegetativePSP(
+        fieldNumber: state.pathParameters['fieldNumber']!,
+      ),
+    ),
+    GoRoute(
+      path: '/inspect_psp/generative/:fieldNumber',
+      builder: (context, state) => FormGenerativePSP(
+        fieldNumber: state.pathParameters['fieldNumber']!,
+      ),
+    ),
+    GoRoute(
+      path: '/inspect_psp/harvest/:fieldNumber',
+      builder: (context, state) => FormHarvestPSP(
+        fieldNumber: state.pathParameters['fieldNumber']!,
+      ),
+    ),
+    GoRoute(
       path: '/edit-field',
       builder: (context, state) {
         final fieldData = state.extra as Map<String, dynamic>;
@@ -291,10 +314,10 @@ final router = GoRouter(
     if (path == '/splash') return null;
 
     final supabaseUser = Supabase.instance.client.auth.currentUser;
-    final session      = await SessionManager.instance.getActiveSession();
+    final session = await SessionManager.instance.getActiveSession();
 
     final isLoggedIn = supabaseUser != null && session != null;
-    final userRole   = session?.role;
+    final userRole = session?.role;
 
     if (!isLoggedIn && path != '/login') {
       return '/login';

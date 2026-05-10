@@ -154,6 +154,33 @@ class DapHelper {
     ),
   ];
 
+  static const List<DapPhaseRule> _pspRules = [
+    DapPhaseRule(
+      key: 'vegetative',
+      phaseStart: 0,
+      phaseEnd: 54,
+      onGoingStart: 30,
+      onGoingEnd: 50,
+      markerColor: _vegetativeColor,
+    ),
+    DapPhaseRule(
+      key: 'generative_5',
+      phaseStart: 55,
+      phaseEnd: 109,
+      onGoingStart: 55,
+      onGoingEnd: 60,
+      markerColor: _generative3Color,
+    ),
+    DapPhaseRule(
+      key: 'harvest',
+      phaseStart: 110,
+      phaseEnd: 130,
+      onGoingStart: 110,
+      onGoingEnd: 130,
+      markerColor: _harvestColor,
+    ),
+  ];
+
   /// Menghitung DAP (Days After Planting) dari string tanggal tanam.
   static int calculateDAP(String? plantingDateString) {
     if (plantingDateString == null || plantingDateString.trim().isEmpty) {
@@ -194,8 +221,15 @@ class DapHelper {
     return ['AX01', 'AX02', 'AX03', 'AX04'].contains(h);
   }
 
+  static bool isPsp(String? hybrid) {
+    final h = hybrid?.toUpperCase().trim() ?? '';
+    return h.startsWith('ASF');
+  }
+
   static List<DapPhaseRule> getPhaseRules({String? hybrid}) {
-    return isSweetCorn(hybrid) ? _scRules : _fcRules;
+    if (isSweetCorn(hybrid)) return _scRules;
+    if (isPsp(hybrid)) return _pspRules;
+    return _fcRules;
   }
 
   static DapPhaseRule? getPhaseRule(String phaseKey, {String? hybrid}) {

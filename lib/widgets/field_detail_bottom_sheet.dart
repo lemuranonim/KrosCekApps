@@ -118,15 +118,7 @@ class _FieldDetailBottomSheetState
       ];
     }
     if (_isPSP) {
-      // PSP logic (sementara disamakan dengan FC atau sesuai kebutuhan nanti)
-      return [
-        'vegetative',
-        'generative_1',
-        'generative_2',
-        'generative_3',
-        'pre_harvest',
-        'harvest'
-      ];
+      return ['vegetative', 'generative_5', 'harvest'];
     }
     // Default / Field Corn (FC)
     return [
@@ -153,14 +145,7 @@ class _FieldDetailBottomSheetState
       ];
     }
     if (_isPSP) {
-      return [
-        'Vegetatif (PSP)',
-        'Generatif CP1',
-        'Generatif CP2',
-        'Generatif CP3',
-        'Pre-Harvest',
-        'Harvest'
-      ];
+      return ['Vegetatif (PSP)', 'Generatif (PSP)', 'Harvest'];
     }
     return [
       'Vegetatif',
@@ -185,6 +170,13 @@ class _FieldDetailBottomSheetState
         Icons.agriculture_rounded
       ];
     }
+    if (_isPSP) {
+      return [
+        Icons.grass_rounded,
+        Icons.spa_rounded,
+        Icons.agriculture_rounded,
+      ];
+    }
     return [
       Icons.grass_rounded,
       Icons.spa_rounded,
@@ -206,6 +198,13 @@ class _FieldDetailBottomSheetState
         const Color(0xFF7B61FF),
         const Color(0xFFE65100),
         const Color(0xFFD4A017)
+      ];
+    }
+    if (_isPSP) {
+      return [
+        const Color(0xFF43A047),
+        const Color(0xFFE53935),
+        const Color(0xFFD4A017),
       ];
     }
     return [
@@ -302,7 +301,8 @@ class _FieldDetailBottomSheetState
     final fieldNumber = field['field_number']?.toString() ?? '';
     final flag = field['flagging_final']?.toString();
     final user = ref.watch(currentUserProvider).value;
-    final canEditMasterData = user != null && user.role.toLowerCase() != 'guest';
+    final canEditMasterData =
+        user != null && user.role.toLowerCase() != 'guest';
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -622,8 +622,8 @@ class _FieldDetailBottomSheetState
   // ──────────────────────────────────────────────────────────
   // TAB 0 — INFO LAHAN
   // ──────────────────────────────────────────────────────────
-  Widget _buildInfoTab(
-      Map<String, dynamic> field, ThemeData theme, bool isDark, bool canEditMasterData) {
+  Widget _buildInfoTab(Map<String, dynamic> field, ThemeData theme, bool isDark,
+      bool canEditMasterData) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 32.0),
       child: Column(
@@ -733,11 +733,13 @@ class _FieldDetailBottomSheetState
                     },
                     borderRadius: BorderRadius.circular(6),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: AdvantaColors.gold.withAlpha(30),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: AdvantaColors.gold.withAlpha(100)),
+                        border: Border.all(
+                            color: AdvantaColors.gold.withAlpha(100)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -747,8 +749,8 @@ class _FieldDetailBottomSheetState
                           const SizedBox(width: 4),
                           Text(
                             'EDIT',
-                            style: AdvantaText.label
-                                .copyWith(color: AdvantaColors.gold, fontSize: 10),
+                            style: AdvantaText.label.copyWith(
+                                color: AdvantaColors.gold, fontSize: 10),
                           ),
                         ],
                       ),
@@ -1013,9 +1015,30 @@ class _FieldDetailBottomSheetState
 
                   // LOGIKA ROUTING:
                   if (_isPSP) {
+                    if (phaseKey == 'vegetative') {
+                      Navigator.pop(context);
+                      await context
+                          .push('/inspect_psp/vegetative/$fieldNumber');
+                      widget.onInspectDone?.call(fieldData);
+                      return;
+                    }
+                    if (phaseKey == 'generative_5') {
+                      Navigator.pop(context);
+                      await context
+                          .push('/inspect_psp/generative/$fieldNumber');
+                      widget.onInspectDone?.call(fieldData);
+                      return;
+                    }
+                    if (phaseKey == 'harvest') {
+                      Navigator.pop(context);
+                      await context.push('/inspect_psp/harvest/$fieldNumber');
+                      widget.onInspectDone?.call(fieldData);
+                      return;
+                    }
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                          content: Text('Modul PSP (ASF) akan segera hadir.')),
+                          content: Text(
+                              'Modul PSP (ASF) selain vegetative akan segera hadir.')),
                     );
                     return;
                   }
