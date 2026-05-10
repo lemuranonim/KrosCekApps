@@ -24,40 +24,40 @@ const _kPhase = Color(0xFF26C6DA); // Cyan — Pre-Harvest
 
 // ─── Option lists ─────────────────────────────────────────
 const _maleChoppingOpts = [
-  GenOpt('A', 'A – Complete'),
-  GenOpt('B', 'B – Not Complete'),
+  GenOpt('Complete', 'A – Complete'),
+  GenOpt('Not Complete', 'B – Not Complete'),
 ];
 
 const _cropCondOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('Very Poor', '1 – Very Poor'),
+  GenOpt('Poor', '2 – Poor'),
+  GenOpt('Fair', '3 – Fair'),
+  GenOpt('Good', '4 – Good'),
+  GenOpt('Best', '5 – Best'),
 ];
 
 const _cropHealthOpts = [
-  GenOpt('0', '0 – 0% serangan'),
-  GenOpt('1', '1 – 1%'),
-  GenOpt('2', '2 – 2%'),
-  GenOpt('3', '3 – 3%'),
-  GenOpt('4', '4 – 4%'),
-  GenOpt('5', '5 – 5%'),
+  GenOpt('0% serangan', '0 – 0% serangan'),
+  GenOpt('1%', '1 – 1%'),
+  GenOpt('2%', '2 – 2%'),
+  GenOpt('3%', '3 – 3%'),
+  GenOpt('4%', '4 – 4%'),
+  GenOpt('5%', '5 – 5%'),
 ];
 
 const _finalFlaggingOpts = [
-  GenOpt('GF',  'GF'),
+  GenOpt('GF', 'GF'),
   GenOpt('RFI', 'RFI'),
   GenOpt('RFD', 'RFD'),
-  GenOpt('BF',  'BF'),
+  GenOpt('BF', 'BF'),
   GenOpt('PLD', 'PLD'),
 ];
 
 const _finalDecisionOpts = [
-  GenOpt('A', 'A – Pass'),
-  GenOpt('B', 'B – Pass w/ Note'),
-  GenOpt('C', 'C – Hold'),
-  GenOpt('D', 'D – Discard'),
+  GenOpt('Pass', 'A – Pass'),
+  GenOpt('Pass w/ Note', 'B – Pass w/ Note'),
+  GenOpt('Hold', 'C – Hold'),
+  GenOpt('Discard', 'D – Discard'),
 ];
 
 // ─────────────────────────────────────────────────────────
@@ -70,8 +70,8 @@ class FormPreHarvestSC extends ConsumerStatefulWidget {
 }
 
 class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
-  final _formKey  = GlobalKey<FormState>();
-  bool _isSaving  = false;
+  final _formKey = GlobalKey<FormState>();
+  bool _isSaving = false;
   bool _dataLoaded = false;
 
   // ── NEW: session untuk GuestGuard ────────────────────────
@@ -79,11 +79,11 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
   bool get _isGuest => GuestGuard.isGuest(_session);
 
   // Controllers
-  final _qaFiCtrl         = TextEditingController();
-  final _qaSpvCtrl        = TextEditingController();
-  final _discardAreaCtrl  = TextEditingController();
+  final _qaFiCtrl = TextEditingController();
+  final _qaSpvCtrl = TextEditingController();
+  final _discardAreaCtrl = TextEditingController();
   final _discardReasonCtrl = TextEditingController();
-  final _remarksCtrl      = TextEditingController();
+  final _remarksCtrl = TextEditingController();
 
   // Date
   DateTime _auditDate = DateTime.now();
@@ -95,7 +95,7 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
   String? _cropUniformity;
   String? _cropHealth;
 
-  bool get _isDiscard => _finalDecision == 'D';
+  bool get _isDiscard => genIsDiscardDecision(_finalDecision);
 
   @override
   void initState() {
@@ -118,25 +118,30 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
   void _loadAudit(Map<String, dynamic> a) {
     if (_dataLoaded) return;
     _dataLoaded = true;
-    _qaFiCtrl.text        = a['qa_fi']  ?? '';
-    _qaSpvCtrl.text       = a['qa_spv'] ?? '';
-    _discardAreaCtrl.text  = a['discard_area_ha']?.toString() ?? '';
+    _qaFiCtrl.text = a['qa_fi'] ?? '';
+    _qaSpvCtrl.text = a['qa_spv'] ?? '';
+    _discardAreaCtrl.text = a['discard_area_ha']?.toString() ?? '';
     _discardReasonCtrl.text = a['discard_reason'] ?? '';
-    _remarksCtrl.text     = a['remarks'] ?? '';
+    _remarksCtrl.text = a['remarks'] ?? '';
     if (a['audit_date'] != null) {
-      try { _auditDate = DateTime.parse(a['audit_date']); } catch (_) {}
+      try {
+        _auditDate = DateTime.parse(a['audit_date']);
+      } catch (_) {}
     }
     setState(() {
-      _maleChopping  = a['male_chopping_rows'];
+      _maleChopping = a['male_chopping_rows'];
       _finalFlagging = a['final_flagging'];
       _finalDecision = a['final_decision'];
       _cropUniformity = a['crop_uniformity'];
-      _cropHealth     = a['crop_health'];
+      _cropHealth = a['crop_health'];
     });
   }
 
   Future<void> _pickDate() async {
-    if (_isGuest) { GuestGuard.blockIfGuest(context, _session); return; }
+    if (_isGuest) {
+      GuestGuard.blockIfGuest(context, _session);
+      return;
+    }
     final p = await showDatePicker(
       context: context,
       initialDate: _auditDate,
@@ -159,25 +164,23 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
     setState(() => _isSaving = true);
     try {
       final data = {
-        'field_number'      : widget.fieldNumber,
-        'audit_date'        : DateFormat('yyyy-MM-dd').format(_auditDate),
-        'audit_week'        : calcAuditWeek(_auditDate),
+        'field_number': widget.fieldNumber,
+        'audit_date': DateFormat('yyyy-MM-dd').format(_auditDate),
+        'audit_week': calcAuditWeek(_auditDate),
         'male_chopping_rows': _maleChopping,
-        'final_flagging'    : _finalFlagging,
-        'final_decision'    : _finalDecision,
-        'crop_uniformity'   : _cropUniformity,
-        'crop_health'       : _cropHealth,
-        'discard_area_ha'   : _isDiscard
+        'final_flagging': _finalFlagging,
+        'final_decision': _finalDecision,
+        'crop_uniformity': _cropUniformity,
+        'crop_health': _cropHealth,
+        'discard_area_ha': _isDiscard
             ? double.tryParse(_discardAreaCtrl.text.replaceAll(',', '.'))
             : null,
-        'discard_reason'    : _isDiscard
-            ? _discardReasonCtrl.text.trim()
-            : null,
-        'remarks'           : _remarksCtrl.text.trim(),
-        'qa_fi'             : _qaFiCtrl.text.trim(),
-        'qa_spv'            : _qaSpvCtrl.text.trim(),
-        'fase'              : 'Pre-Harvest',
-        'updated_at'        : DateTime.now().toIso8601String(),
+        'discard_reason': _isDiscard ? _discardReasonCtrl.text.trim() : null,
+        'remarks': _remarksCtrl.text.trim(),
+        'qa_fi': _qaFiCtrl.text.trim(),
+        'qa_spv': _qaSpvCtrl.text.trim(),
+        'fase': 'Pre-Harvest',
+        'updated_at': DateTime.now().toIso8601String(),
       };
 
       final svc = ref.read(supabaseServiceProvider);
@@ -187,22 +190,24 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
       try {
         final pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
-              timeLimit: Duration(seconds: 5)),
+              accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 5)),
         );
-        lat = pos.latitude; lng = pos.longitude;
+        lat = pos.latitude;
+        lng = pos.longitude;
       } catch (_) {}
 
       final att = ref.read(attendanceProvider);
       if (att.isCheckedIn && att.attendanceId != null) {
         await svc.logActivity(
           attendanceId: att.attendanceId!,
-          userId      : _qaFiCtrl.text.trim().isNotEmpty
-              ? _qaFiCtrl.text.trim() : 'unknown',
-          fieldNumber : widget.fieldNumber,
-          phase       : 'pre_harvest',
-          actionType  : 'single_submit',
-          lat: lat, lng: lng,
+          userId: _qaFiCtrl.text.trim().isNotEmpty
+              ? _qaFiCtrl.text.trim()
+              : 'unknown',
+          fieldNumber: widget.fieldNumber,
+          phase: 'pre_harvest',
+          actionType: 'single_submit',
+          lat: lat,
+          lng: lng,
         );
       }
 
@@ -223,11 +228,12 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
   void _snack(String msg, {bool err = false}) {
     final theme = Theme.of(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content        : Text(msg, style: AdvantaText.body2.copyWith(color: Colors.white)),
+      content:
+          Text(msg, style: AdvantaText.body2.copyWith(color: Colors.white)),
       backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
-      behavior       : SnackBarBehavior.floating,
-      shape          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      margin         : const EdgeInsets.all(12),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      margin: const EdgeInsets.all(12),
     ));
   }
 
@@ -235,25 +241,25 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
   @override
   Widget build(BuildContext context) {
     final auditAsync = ref.watch(preharvestAuditProvider(widget.fieldNumber));
-    final fields     = ref.watch(masterFieldsProvider).value ?? [];
-    final fd         = fields.firstWhere(
-            (f) => f['field_number'] == widget.fieldNumber, orElse: () => {});
+    final fields = ref.watch(masterFieldsProvider).value ?? [];
+    final fd = fields.firstWhere((f) => f['field_number'] == widget.fieldNumber,
+        orElse: () => {});
 
     return Scaffold(
       appBar: GenAppBar(
         checkpointLabel: 'Pre-Harvest Audit (SC)',
-        fieldNumber    : widget.fieldNumber,
-        isDiscard      : _isDiscard,
-        accentColor    : _kPhase,
-        onBack         : () => Navigator.pop(context),
+        fieldNumber: widget.fieldNumber,
+        isDiscard: _isDiscard,
+        accentColor: _kPhase,
+        onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
         loading: () =>
-        const Center(child: CircularProgressIndicator(color: _kPhase)),
-        error: (e, _) =>
-            Center(child: Text('Error: $e',
-                style: AdvantaText.body2.copyWith(
-                    color: Theme.of(context).colorScheme.error))),
+            const Center(child: CircularProgressIndicator(color: _kPhase)),
+        error: (e, _) => Center(
+            child: Text('Error: $e',
+                style: AdvantaText.body2
+                    .copyWith(color: Theme.of(context).colorScheme.error))),
         data: (audit) {
           if (audit != null) _loadAudit(audit);
           return _buildBody(fd);
@@ -286,29 +292,29 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
                   // ── Section: Audit Info ──
                   GenSection(
                     title: 'Informasi Audit',
-                    icon : Icons.assignment_outlined,
+                    icon: Icons.assignment_outlined,
                     color: _kPhase,
                     children: [
                       GenDateTile(
                           label: 'Tanggal Audit',
-                          date : _auditDate,
+                          date: _auditDate,
                           onTap: _pickDate),
                       const SizedBox(height: 12),
                       GenTextField(
-                        controller : _qaFiCtrl,
-                        label      : 'QA FI',
-                        hint       : 'Nama QA Field Inspector',
-                        required   : !_isGuest,
-                        icon       : Icons.person_outline,
+                        controller: _qaFiCtrl,
+                        label: 'QA FI',
+                        hint: 'Nama QA Field Inspector',
+                        required: !_isGuest,
+                        icon: Icons.person_outline,
                         accentColor: _kPhase,
                       ),
                       const SizedBox(height: 12),
                       GenTextField(
-                        controller : _qaSpvCtrl,
-                        label      : 'QA SPV',
-                        hint       : 'Nama QA Supervisor',
-                        required   : !_isGuest,
-                        icon       : Icons.supervisor_account_outlined,
+                        controller: _qaSpvCtrl,
+                        label: 'QA SPV',
+                        hint: 'Nama QA Supervisor',
+                        required: !_isGuest,
+                        icon: Icons.supervisor_account_outlined,
                         accentColor: _kPhase,
                       ),
                     ],
@@ -318,45 +324,51 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
                   // ── Section: Penilaian ──
                   GenSection(
                     title: 'Penilaian Pre-Harvest',
-                    icon : Icons.checklist_outlined,
+                    icon: Icons.checklist_outlined,
                     color: _kPhase,
                     children: [
                       GenOptionPicker(
-                        label      : 'Male Chopping (Rows)',
-                        required   : !_isDiscard && !_isGuest,
-                        options    : _maleChoppingOpts,
-                        value      : _maleChopping,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _maleChopping = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Male Chopping (Rows)',
+                        required: !_isDiscard && !_isGuest,
+                        options: _maleChoppingOpts,
+                        value: _maleChopping,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _maleChopping = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: _kPhase,
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Crop Uniformity',
-                        required   : !_isDiscard && !_isGuest,
-                        options    : _cropCondOpts,
-                        value      : _cropUniformity,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _cropUniformity = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Crop Uniformity',
+                        required: !_isDiscard && !_isGuest,
+                        options: _cropCondOpts,
+                        value: _cropUniformity,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _cropUniformity = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: _kPhase,
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Crop Health (Bulai, Hawar) % dari Populasi',
-                        required   : !_isDiscard && !_isGuest,
-                        options    : _cropHealthOpts,
-                        value      : _cropHealth,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _cropHealth = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Crop Health (Bulai, Hawar) % dari Populasi',
+                        required: !_isDiscard && !_isGuest,
+                        options: _cropHealthOpts,
+                        value: _cropHealth,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _cropHealth = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: _kPhase,
                       ),
                     ],
@@ -366,19 +378,21 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
                   // ── Section: Flagging ──
                   GenSection(
                     title: 'Flagging',
-                    icon : Icons.flag_outlined,
+                    icon: Icons.flag_outlined,
                     color: const Color(0xFF42A5F5),
                     children: [
                       GenOptionPicker(
-                        label      : 'Final Flagging',
-                        required   : !_isGuest,
-                        options    : _finalFlaggingOpts,
-                        value      : _finalFlagging,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _finalFlagging = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Final Flagging',
+                        required: !_isGuest,
+                        options: _finalFlaggingOpts,
+                        value: _finalFlagging,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _finalFlagging = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: const Color(0xFF42A5F5),
                       ),
                     ],
@@ -388,60 +402,64 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
                   // ── Section: Keputusan Final ──
                   GenSection(
                     title: 'Keputusan Final',
-                    icon : Icons.gavel_outlined,
+                    icon: Icons.gavel_outlined,
                     color: AdvantaColors.error,
                     children: [
                       GenOptionPicker(
-                        label      : 'Final Decision',
-                        required   : !_isGuest,
-                        options    : _finalDecisionOpts,
-                        value      : _finalDecision,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() {
-                            _finalDecision = v;
-                            if (v != 'D') {
-                              _discardAreaCtrl.clear();
-                              _discardReasonCtrl.clear();
-                            }
-                          });
-                        } else { GuestGuard.blockIfGuest(context, _session); } },
+                        label: 'Final Decision',
+                        required: !_isGuest,
+                        options: _finalDecisionOpts,
+                        value: _finalDecision,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() {
+                              _finalDecision = v;
+                              if (!genIsDiscardDecision(v)) {
+                                _discardAreaCtrl.clear();
+                                _discardReasonCtrl.clear();
+                              }
+                            });
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: AdvantaColors.error,
                       ),
                       if (_isDiscard) ...[
                         const SizedBox(height: 12),
                         const GenDiscardBanner(
                           message:
-                          'Final Decision Discard — isi Discard Area & Reason sebelum menyimpan.',
+                              'Final Decision Discard — isi Discard Area & Reason sebelum menyimpan.',
                         ),
                         const SizedBox(height: 14),
                         GenTextField(
-                          controller  : _discardAreaCtrl,
-                          label       : 'Discard Area (Ha)',
-                          hint        : 'Luas area discard',
-                          required    : !_isGuest,
+                          controller: _discardAreaCtrl,
+                          label: 'Discard Area (Ha)',
+                          hint: 'Luas area discard',
+                          required: !_isGuest,
                           keyboardType: TextInputType.number,
-                          icon        : Icons.crop_landscape_outlined,
-                          accentColor : AdvantaColors.error,
+                          icon: Icons.crop_landscape_outlined,
+                          accentColor: AdvantaColors.error,
                         ),
                         const SizedBox(height: 12),
                         GenTextField(
-                          controller : _discardReasonCtrl,
-                          label      : 'Discard Reason',
-                          hint       : 'Alasan discard...',
-                          required   : !_isGuest,
-                          maxLines   : 3,
-                          icon       : Icons.notes_outlined,
+                          controller: _discardReasonCtrl,
+                          label: 'Discard Reason',
+                          hint: 'Alasan discard...',
+                          required: !_isGuest,
+                          maxLines: 3,
+                          icon: Icons.notes_outlined,
                           accentColor: AdvantaColors.error,
                         ),
                       ],
                       const SizedBox(height: 12),
                       GenTextField(
-                        controller  : _remarksCtrl,
-                        label       : 'Remarks',
-                        hint        : 'Catatan tambahan...',
-                        maxLines    : 2,
-                        icon        : Icons.comment_outlined,
-                        accentColor : _kPhase,
+                        controller: _remarksCtrl,
+                        label: 'Remarks',
+                        hint: 'Catatan tambahan...',
+                        maxLines: 2,
+                        icon: Icons.comment_outlined,
+                        accentColor: _kPhase,
                       ),
                     ],
                   ),
@@ -450,12 +468,14 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
             ),
           ),
           GenSaveBar(
-            isSaving : _isSaving,
+            isSaving: _isSaving,
             isDiscard: _isDiscard && !_isGuest,
             saveLabel: _isGuest
                 ? 'READ-ONLY — TIDAK DAPAT MENYIMPAN'
-                : (_isDiscard ? 'SIMPAN — DISCARD PRE-HARVEST' : 'SIMPAN PRE-HARVEST'),
-            onSave   : _isGuest
+                : (_isDiscard
+                    ? 'SIMPAN — DISCARD PRE-HARVEST'
+                    : 'SIMPAN PRE-HARVEST'),
+            onSave: _isGuest
                 ? () => GuestGuard.blockIfGuest(context, _session)
                 : _save,
           ),

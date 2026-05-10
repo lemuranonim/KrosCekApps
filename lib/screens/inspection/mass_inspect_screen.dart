@@ -26,75 +26,76 @@ const _kHarv = Color(0xFFFF7043);
 
 // — Vegetative —
 const _vegRoguingOpts = [
-  GenOpt('A', 'A – Not Yet'),
-  GenOpt('B', 'B – On Going'),
-  GenOpt('C', 'C – Done'),
+  GenOpt('Not Yet', 'A – Not Yet'),
+  GenOpt('On Going', 'B – On Going'),
+  GenOpt('Done', 'C – Done'),
 ];
 const _vegLsvOpts = [
-  GenOpt('A', 'A – None'),
-  GenOpt('B', 'B – Low'),
-  GenOpt('C', 'C – Moderate'),
-  GenOpt('D', 'D – High'),
+  GenOpt('None', 'A – None'),
+  GenOpt('Low', 'B – Low'),
+  GenOpt('Moderate', 'C – Moderate'),
+  GenOpt('High', 'D – High'),
 ];
 const _vegCropUniformityOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('Very Poor', '1 – Very Poor'),
+  GenOpt('Poor', '2 – Poor'),
+  GenOpt('Fair', '3 – Fair'),
+  GenOpt('Good', '4 – Good'),
+  GenOpt('Best', '5 – Best'),
 ];
 const _vegCropHealthOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('Very Poor', '1 – Very Poor'),
+  GenOpt('Poor', '2 – Poor'),
+  GenOpt('Fair', '3 – Fair'),
+  GenOpt('Good', '4 – Good'),
+  GenOpt('Best', '5 – Best'),
 ];
-const _vegOfftypeOpts = [GenOpt('A', 'A – 0'), GenOpt('B', 'B – >0')];
-const _vegIsolationOpts = [GenOpt('A', 'A – Yes'), GenOpt('B', 'B – No')];
-const _pspYesNoOpts = [GenOpt('A', 'A – NO'), GenOpt('B', 'B – YES')];
-const _pspLsvOpts = [GenOpt('A', 'A – NO'), GenOpt('B', 'B – YES')];
+const _vegOfftypeOpts = [GenOpt('0', 'A – 0'), GenOpt('>0', 'B – >0')];
+const _vegIsolationOpts = [GenOpt('Yes', 'A – Yes'), GenOpt('No', 'B – No')];
+const _pspYesNoOpts = [GenOpt('NO', 'A – NO'), GenOpt('YES', 'B – YES')];
+const _pspLsvOpts = [GenOpt('NO', 'A – NO'), GenOpt('YES', 'B – YES')];
 const _pspIsolationTypeOpts = [
-  GenOpt('A', 'A – Other Seed Production'),
-  GenOpt('B', 'B – Commercial'),
+  GenOpt('Other Seed Production', 'A – Other Seed Production'),
+  GenOpt('Commercial', 'B – Commercial'),
 ];
 const _pspIsolationDistanceOpts = [
-  GenOpt('A', 'A – >400'),
-  GenOpt('B', 'B – <400'),
+  GenOpt('>400', 'A – >400'),
+  GenOpt('<400', 'B – <400'),
 ];
 const _vegPreviousCropOpts = [
-  GenOpt('CAC', 'Corn After Corn'),
-  GenOpt('NC', 'Not Corn'),
+  GenOpt('Corn After Corn', 'Corn After Corn'),
+  GenOpt('Not Corn', 'Not Corn'),
 ];
 const _pspPreviousCropOpts = [
-  GenOpt('A', 'A – Not Corn'),
-  GenOpt('B', 'B – Corn after corn with different trait'),
-  GenOpt('C', 'C – Corn after Corn same trait'),
+  GenOpt('Not Corn', 'A – Not Corn'),
+  GenOpt('Corn after corn with different trait',
+      'B – Corn after corn with different trait'),
+  GenOpt('Corn after Corn same trait', 'C – Corn after Corn same trait'),
 ];
 const _vegFinalDecisionOpts = [
-  GenOpt('A', 'A – Pass'),
-  GenOpt('B', 'B – Pass w/ Note'),
-  GenOpt('C', 'C – Hold'),
-  GenOpt('D', 'D – Discard'),
+  GenOpt('Pass', 'A – Pass'),
+  GenOpt('Pass w/ Note', 'B – Pass w/ Note'),
+  GenOpt('Hold', 'C – Hold'),
+  GenOpt('Discard', 'D – Discard'),
 ];
 const _pspRecommendationOpts = [
   GenOpt('Continue', 'Continue'),
   GenOpt('Discard', 'Discard'),
 ];
 const _vegActionNeededOpts = [
-  GenOpt('A', 'A – None'),
-  GenOpt('B', 'B – Roguing'),
-  GenOpt('C', 'C – Re-Detasseling'),
-  GenOpt('D', 'D – Monitor'),
-  GenOpt('E', 'E – Hold'),
-  GenOpt('F', 'F – Discard Partial'),
-  GenOpt('G', 'G – Discard Full'),
+  GenOpt('None', 'A – None'),
+  GenOpt('Roguing', 'B – Roguing'),
+  GenOpt('Re-Detasseling', 'C – Re-Detasseling'),
+  GenOpt('Monitor', 'D – Monitor'),
+  GenOpt('Hold', 'E – Hold'),
+  GenOpt('Discard Partial', 'F – Discard Partial'),
+  GenOpt('Discard Full', 'G – Discard Full'),
 ];
 const _vegPldReasonOpts = [
-  GenOpt('A', 'A – Poor Population'),
-  GenOpt('B', 'B – Water Logging'),
-  GenOpt('C', 'C – Pest/Disease Attack'),
-  GenOpt('D', 'D – No Field'),
+  GenOpt('Poor Population', 'A – Poor Population'),
+  GenOpt('Water Logging', 'B – Water Logging'),
+  GenOpt('Pest/Disease Attack', 'C – Pest/Disease Attack'),
+  GenOpt('No Field', 'D – No Field'),
 ];
 const _vegFinalFlaggingOpts = [
   GenOpt('GF', 'GF'),
@@ -112,9 +113,9 @@ const _pspTypeSeedOpts = [
   GenOpt('Pre Basic', 'Pre Basic'),
   GenOpt('Basic', 'Basic')
 ];
-const _vegMaleSplitOpts = [GenOpt('Y', 'Y – Yes'), GenOpt('N', 'N – No')];
-const _vegSplitFieldOpts = [GenOpt('A', 'A – Yes'), GenOpt('B', 'B – No')];
-const _vegYesNoOpts = [GenOpt('Y', 'Y – Yes'), GenOpt('N', 'N – No')];
+const _vegMaleSplitOpts = [GenOpt('Yes', 'Y – Yes'), GenOpt('No', 'N – No')];
+const _vegSplitFieldOpts = [GenOpt('Yes', 'A – Yes'), GenOpt('No', 'B – No')];
+const _vegYesNoOpts = [GenOpt('Yes', 'Y – Yes'), GenOpt('No', 'N – No')];
 const _vegPoiAccuracyOpts = [
   GenOpt('Valid', 'Valid'),
   GenOpt('Not Valid', 'Not Valid')
@@ -122,83 +123,86 @@ const _vegPoiAccuracyOpts = [
 
 // — Generative shared —
 const _genReadinessOpts = [
-  GenOpt('A', 'A – 100%'),
-  GenOpt('B', 'B – 75%'),
-  GenOpt('C', 'C – 50%'),
-  GenOpt('D', 'D – <25%'),
+  GenOpt('100%', 'A – 100%'),
+  GenOpt('75%', 'B – 75%'),
+  GenOpt('50%', 'C – 50%'),
+  GenOpt('<25%', 'D – <25%'),
 ];
 const _genRoguingOpts = [
-  GenOpt('A', 'A – Not Yet'),
-  GenOpt('B', 'B – On Going'),
-  GenOpt('C', 'C – Done'),
+  GenOpt('Not Yet', 'A – Not Yet'),
+  GenOpt('On Going', 'B – On Going'),
+  GenOpt('Done', 'C – Done'),
 ];
 const _genLsvOpts = [
-  GenOpt('A', 'A – None'),
-  GenOpt('B', 'B – Low'),
-  GenOpt('C', 'C – Moderate'),
-  GenOpt('D', 'D – High'),
+  GenOpt('None', 'A – None'),
+  GenOpt('Low', 'B – Low'),
+  GenOpt('Moderate', 'C – Moderate'),
+  GenOpt('High', 'D – High'),
 ];
 // Crop Uniformity — sama untuk FC dan SC
 const _genCropUniformityOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('Very Poor', '1 – Very Poor'),
+  GenOpt('Poor', '2 – Poor'),
+  GenOpt('Fair', '3 – Fair'),
+  GenOpt('Good', '4 – Good'),
+  GenOpt('Best', '5 – Best'),
 ];
 // Crop Health FC — Very Poor s/d Best
 const _genCropHealthFCOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('Very Poor', '1 – Very Poor'),
+  GenOpt('Poor', '2 – Poor'),
+  GenOpt('Fair', '3 – Fair'),
+  GenOpt('Good', '4 – Good'),
+  GenOpt('Best', '5 – Best'),
 ];
 // Crop Health SC — persentase 0%–5%
 const _genCropHealthSCOpts = [
-  GenOpt('0', '0 – 0% serangan'),
-  GenOpt('1', '1 – 1%'),
-  GenOpt('2', '2 – 2%'),
-  GenOpt('3', '3 – 3%'),
-  GenOpt('4', '4 – 4%'),
-  GenOpt('5', '5 – 5%'),
+  GenOpt('0% serangan', '0 – 0% serangan'),
+  GenOpt('1%', '1 – 1%'),
+  GenOpt('2%', '2 – 2%'),
+  GenOpt('3%', '3 – 3%'),
+  GenOpt('4%', '4 – 4%'),
+  GenOpt('5%', '5 – 5%'),
 ];
 
 const _genOfftypeOpts = [
-  GenOpt('A', 'A – 0%–1%'),
-  GenOpt('B', 'B – 1%–3%'),
-  GenOpt('C', 'C – 3%–5%'),
-  GenOpt('D', 'D – >5%'),
+  GenOpt('0%–1%', 'A – 0%–1%'),
+  GenOpt('1%–3%', 'B – 1%–3%'),
+  GenOpt('3%–5%', 'C – 3%–5%'),
+  GenOpt('>5%', 'D – >5%'),
 ];
 const _genFemaleShedOpts = [
-  GenOpt('A', 'A – 0%–10%'),
-  GenOpt('B', 'B – 10%–30%'),
-  GenOpt('C', 'C – 30%–50%'),
-  GenOpt('D', 'D – >50%'),
+  GenOpt('0%–10%', 'A – 0%–10%'),
+  GenOpt('10%–30%', 'B – 10%–30%'),
+  GenOpt('30%–50%', 'C – 30%–50%'),
+  GenOpt('>50%', 'D – >50%'),
 ];
 const _genActionNeededOpts = [
-  GenOpt('A', 'A – None'),
-  GenOpt('B', 'B – Roguing'),
-  GenOpt('C', 'C – Re-Detasseling'),
-  GenOpt('D', 'D – Monitor'),
-  GenOpt('E', 'E – Hold'),
-  GenOpt('F', 'F – Discard Partial'),
-  GenOpt('G', 'G – Discard Full'),
+  GenOpt('None', 'A – None'),
+  GenOpt('Roguing', 'B – Roguing'),
+  GenOpt('Re-Detasseling', 'C – Re-Detasseling'),
+  GenOpt('Monitor', 'D – Monitor'),
+  GenOpt('Hold', 'E – Hold'),
+  GenOpt('Discard Partial', 'F – Discard Partial'),
+  GenOpt('Discard Full', 'G – Discard Full'),
 ];
 const _genFinalDecisionOpts = [
-  GenOpt('A', 'A – Pass'),
-  GenOpt('B', 'B – Pass w/ Note'),
-  GenOpt('C', 'C – Hold'),
-  GenOpt('D', 'D – Discard'),
+  GenOpt('Pass', 'A – Pass'),
+  GenOpt('Pass w/ Note', 'B – Pass w/ Note'),
+  GenOpt('Hold', 'C – Hold'),
+  GenOpt('Discard', 'D – Discard'),
 ];
 const _genDetasselingOpts = [
-  GenOpt('A', 'A – 0%–5%'),
-  GenOpt('B', 'B – 5%–10%'),
-  GenOpt('C', 'C – 10%–15%'),
-  GenOpt('D', 'D – >15%'),
+  GenOpt('0%–5%', 'A – 0%–5%'),
+  GenOpt('5%–10%', 'B – 5%–10%'),
+  GenOpt('10%–15%', 'C – 10%–15%'),
+  GenOpt('>15%', 'D – >15%'),
 ];
-const _genIsolationOpts = [GenOpt('A', 'A – Good'), GenOpt('B', 'B – Risky')];
-const _genAffectedOpts = [GenOpt('Y', 'Y – Yes'), GenOpt('N', 'N – No')];
+const _genIsolationOpts = [
+  GenOpt('Good', 'A – Good'),
+  GenOpt('Risky', 'B – Risky')
+];
+const _genAffectedOpts = [GenOpt('Yes', 'Y – Yes'), GenOpt('No', 'N – No')];
 const _genFlaggingOpts = [
   GenOpt('GF', 'GF'),
   GenOpt('RFI', 'RFI'),
@@ -209,22 +213,22 @@ const _genFlaggingOpts = [
 
 // — Pre-Harvest —
 const _preHMaleChoppingOpts = [
-  GenOpt('A', 'A – Complete'),
-  GenOpt('B', 'B – Not Complete'),
+  GenOpt('Complete', 'A – Complete'),
+  GenOpt('Not Complete', 'B – Not Complete'),
 ];
 const _preHCropUniformityOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('Very Poor', '1 – Very Poor'),
+  GenOpt('Poor', '2 – Poor'),
+  GenOpt('Fair', '3 – Fair'),
+  GenOpt('Good', '4 – Good'),
+  GenOpt('Best', '5 – Best'),
 ];
 const _preHCropHealthOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('Very Poor', '1 – Very Poor'),
+  GenOpt('Poor', '2 – Poor'),
+  GenOpt('Fair', '3 – Fair'),
+  GenOpt('Good', '4 – Good'),
+  GenOpt('Best', '5 – Best'),
 ];
 const _preHFinalFlaggingOpts = [
   GenOpt('GF', 'GF'),
@@ -234,40 +238,41 @@ const _preHFinalFlaggingOpts = [
   GenOpt('PLD', 'PLD'),
 ];
 const _preHFinalDecisionOpts = [
-  GenOpt('A', 'A – Pass'),
-  GenOpt('B', 'B – Pass w/ Note'),
-  GenOpt('C', 'C – Hold'),
-  GenOpt('D', 'D – Discard'),
+  GenOpt('Pass', 'A – Pass'),
+  GenOpt('Pass w/ Note', 'B – Pass w/ Note'),
+  GenOpt('Hold', 'C – Hold'),
+  GenOpt('Discard', 'D – Discard'),
 ];
 
 // — Harvest —
 const _harvEarCondOpts = [
-  GenOpt('2', 'Stage 2'),
-  GenOpt('3', 'Stage 3'),
-  GenOpt('4', 'Stage 4'),
+  GenOpt('Stage 2', 'Stage 2'),
+  GenOpt('Stage 3', 'Stage 3'),
+  GenOpt('Stage 4', 'Stage 4'),
 ];
 const _harvCropUniformityOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('Very Poor', '1 – Very Poor'),
+  GenOpt('Poor', '2 – Poor'),
+  GenOpt('Fair', '3 – Fair'),
+  GenOpt('Good', '4 – Good'),
+  GenOpt('Best', '5 – Best'),
 ];
 const _harvCropHealthOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('Very Poor', '1 – Very Poor'),
+  GenOpt('Poor', '2 – Poor'),
+  GenOpt('Fair', '3 – Fair'),
+  GenOpt('Good', '4 – Good'),
+  GenOpt('Best', '5 – Best'),
 ];
 const _harvReasonDowngradeOpts = [
-  GenOpt('A', 'A – Suspect Mix Material'),
-  GenOpt('B', 'B – Not Accessible during Detasseling'),
-  GenOpt('C', 'C – Not Sure during Harvest'),
+  GenOpt('Suspect Mix Material', 'A – Suspect Mix Material'),
+  GenOpt('Not Accessible during Detasseling',
+      'B – Not Accessible during Detasseling'),
+  GenOpt('Not Sure during Harvest', 'C – Not Sure during Harvest'),
 ];
 const _harvStatusDowngradeOpts = [
-  GenOpt('A', 'A – Yes'),
-  GenOpt('B', 'B – No')
+  GenOpt('Yes', 'A – Yes'),
+  GenOpt('No', 'B – No')
 ];
 const _harvDowngradeFlaggingOpts = [GenOpt('RFI', 'RFI'), GenOpt('RFD', 'RFD')];
 const _harvFinalFlaggingOpts = [
@@ -455,19 +460,20 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   bool get _isDiscard {
     switch (widget.targetPhase) {
       case 'vegetative':
-        return _vegFinalDecision == 'D';
+        return genIsDiscardDecision(_vegFinalDecision);
       case 'generative_1':
-        return _gen1ActionNeeded == 'G';
+        return genIsDiscardFull(_gen1ActionNeeded);
       case 'generative_2':
-        return _gen2ActionNeeded == 'G';
+        return genIsDiscardFull(_gen2ActionNeeded);
       case 'generative_3':
-        return _gen3FinalDecision == 'D';
+        return genIsDiscardDecision(_gen3FinalDecision);
       case 'generative_4':
-        return _gen4ActionNeeded == 'G';
+        return genIsDiscardFull(_gen4ActionNeeded);
       case 'generative_5':
-        return _gen5ActionNeeded == 'G' || _pspGenRecommendation == 'Discard';
+        return genIsDiscardFull(_gen5ActionNeeded) ||
+            genIsDiscardDecision(_pspGenRecommendation);
       case 'pre_harvest':
-        return _preHFinalDecision == 'D';
+        return genIsDiscardDecision(_preHFinalDecision);
       default:
         return false;
     }
@@ -693,7 +699,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 'offtype_in_male': r4.offtype ?? r1.offtype,
                 'offtype_in_female': r4.offtype ?? r1.offtype,
                 'decision': _vegFinalDecision,
-                'pld_reason': _vegFinalDecision == 'Discard'
+                'pld_reason': genIsDiscardDecision(_vegFinalDecision)
                     ? 'PSP Recommendation Discard'
                     : null,
                 'flagging': _vegFinalFlagging,
@@ -736,7 +742,9 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'poi_accuracy': _vegPoiAccuracy,
               'decision': _vegFinalDecision,
               'action_needed': _vegActionNeeded,
-              'pld_reason': _vegFinalDecision == 'D' ? _vegPldReason : null,
+              'pld_reason': genIsDiscardDecision(_vegFinalDecision)
+                  ? _vegPldReason
+                  : null,
               'flagging': _vegFinalFlagging,
               'remarks': _vegRemarksCtrl.text.trim(),
               'fase': 'vegetative',
@@ -779,7 +787,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             });
 
           case 'generative_3':
-            final isD3 = _gen3FinalDecision == 'D';
+            final isD3 = genIsDiscardDecision(_gen3FinalDecision);
             rec.addAll({
               'date_of_audit_3': dateStr,
               'week_of_audit_3': week,
@@ -799,7 +807,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                   : null,
               'flagging': _gen3Flagging,
               'final_decision_3': _gen3FinalDecision,
-              'action_needed_3': isD3 ? 'G' : 'A',
+              'action_needed_3': isD3 ? 'Discard Full' : 'None',
               'discard_area_ha_3': isD3
                   ? double.tryParse(
                       _gen3DiscardAreaCtrl.text.replaceAll(',', '.'))
@@ -842,11 +850,11 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 'crop_health_5': r6.cropHealth,
                 'final_flagging_5': r6.flagging,
                 'final_decision_5': _pspGenRecommendation,
-                'pld_area_ha_5': (_pspGenRecommendation == 'Discard')
+                'pld_area_ha_5': genIsDiscardDecision(_pspGenRecommendation)
                     ? double.tryParse(
                         _pspGenPldAreaCtrl.text.replaceAll(',', '.'))
                     : null,
-                'pld_reason_5': (_pspGenRecommendation == 'Discard')
+                'pld_reason_5': genIsDiscardDecision(_pspGenRecommendation)
                     ? 'PSP Recommendation Discard'
                     : null,
                 'remarks_5': _pspGenRemarksCtrl.text.trim(),
@@ -878,7 +886,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             });
 
           case 'pre_harvest':
-            final isDPH = _preHFinalDecision == 'D';
+            final isDPH = genIsDiscardDecision(_preHFinalDecision);
             rec.addAll({
               'audit_date': dateStr,
               'audit_week': week,
@@ -1243,7 +1251,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     BuildContext context, {
     required bool isSweetCorn,
   }) {
-    final isD = _vegFinalDecision == 'D';
+    final isD = genIsDiscardDecision(_vegFinalDecision);
     return [
       GenSection(
         title: 'Kondisi Lahan',
@@ -1408,7 +1416,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             value: _vegFinalDecision,
             onChanged: (v) => setState(() {
               _vegFinalDecision = v;
-              if (v != 'D') _vegPldReason = null;
+              if (!genIsDiscardDecision(v)) _vegPldReason = null;
             }),
             accentColor: AdvantaColors.error,
           ),
@@ -1468,7 +1476,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   }
 
   List<Widget> _buildVegetativePspFields(BuildContext context) {
-    final isD = _vegFinalDecision == 'Discard';
+    final isD = genIsDiscardDecision(_vegFinalDecision);
     return [
       GenSection(
         title: 'Roguing 1',
@@ -1720,7 +1728,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     required bool isFinal,
   }) {
     final color = isFinal ? AdvantaColors.error : _kGen1;
-    final isPld = _pspGenRecommendation == 'Discard';
+    final isPld = genIsDiscardDecision(_pspGenRecommendation);
     return GenSection(
       title: 'Roguing ${roguing.number}${isFinal ? ' Final' : ''}',
       icon: isFinal ? Icons.gavel_outlined : Icons.fact_check_outlined,
@@ -2024,7 +2032,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
 
   // ── GENERATIVE 1 (FC score, SC disease percentage) ────────
   List<Widget> _buildGen1Fields({required bool isSweetCorn}) {
-    final isD = _gen1ActionNeeded == 'G';
+    final isD = genIsDiscardFull(_gen1ActionNeeded);
     return [
       GenSection(
         title: 'Penilaian Readiness',
@@ -2107,7 +2115,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
 
   // ── GENERATIVE 2 (FC score, SC disease percentage) ────────
   List<Widget> _buildGen2Fields({required bool isSweetCorn}) {
-    final isD = _gen2ActionNeeded == 'G';
+    final isD = genIsDiscardFull(_gen2ActionNeeded);
     return [
       GenSection(
         title: 'Penilaian Process',
@@ -2211,7 +2219,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     BuildContext context, {
     required bool isSweetCorn,
   }) {
-    final isD = _gen3FinalDecision == 'D';
+    final isD = genIsDiscardDecision(_gen3FinalDecision);
     return [
       GenSection(
         title: 'Penilaian Final',
@@ -2361,7 +2369,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             value: _gen3FinalDecision,
             onChanged: (v) => setState(() {
               _gen3FinalDecision = v;
-              if (v != 'D') {
+              if (!genIsDiscardDecision(v)) {
                 _gen3DiscardAreaCtrl.clear();
                 _gen3DiscardReasonCtrl.clear();
               }
@@ -2403,7 +2411,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   // ── GENERATIVE 4 (SC Only — Crop Health: 0%–5%) ───────────
   List<Widget> _buildGen4Fields() {
     final color = Colors.purple;
-    final isD = _gen4ActionNeeded == 'G';
+    final isD = genIsDiscardFull(_gen4ActionNeeded);
     return [
       GenSection(
         title: 'Penilaian Audit (SC CP4)',
@@ -2504,7 +2512,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   // ── GENERATIVE 5 (SC Only — Crop Health: 0%–5%) ───────────
   List<Widget> _buildGen5Fields() {
     final color = Colors.pink;
-    final isD = _gen5ActionNeeded == 'G';
+    final isD = genIsDiscardFull(_gen5ActionNeeded);
     return [
       GenSection(
         title: 'Penilaian Audit (SC CP5)',
@@ -2604,7 +2612,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
 
   // ── PRE-HARVEST ───────────────────────────────────────────
   List<Widget> _buildPreHarvestFields({required bool isSweetCorn}) {
-    final isD = _preHFinalDecision == 'D';
+    final isD = genIsDiscardDecision(_preHFinalDecision);
     return [
       GenSection(
         title: 'Penilaian Pre-Harvest',
@@ -2670,7 +2678,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             value: _preHFinalDecision,
             onChanged: (v) => setState(() {
               _preHFinalDecision = v;
-              if (v != 'D') {
+              if (!genIsDiscardDecision(v)) {
                 _preHDiscardAreaCtrl.clear();
                 _preHDiscardReasonCtrl.clear();
               }

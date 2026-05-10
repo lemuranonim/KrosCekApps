@@ -14,17 +14,17 @@ import 'fc_form_widgets.dart';
 const _kPspHarvest = Color(0xFF43A047);
 
 const _earConditionOpts = [
-  GenOpt('2', 'Stage 2'),
-  GenOpt('3', 'Stage 3'),
-  GenOpt('4', 'Stage 4'),
+  GenOpt('Stage 2', 'Stage 2'),
+  GenOpt('Stage 3', 'Stage 3'),
+  GenOpt('Stage 4', 'Stage 4'),
 ];
 
 const _cropHealthOpts = [
-  GenOpt('1', '1 - Very Poor'),
-  GenOpt('2', '2 - Poor'),
-  GenOpt('3', '3 - Fair'),
-  GenOpt('4', '4 - Good'),
-  GenOpt('5', '5 - Best'),
+  GenOpt('Very Poor', '1 - Very Poor'),
+  GenOpt('Poor', '2 - Poor'),
+  GenOpt('Fair', '3 - Fair'),
+  GenOpt('Good', '4 - Good'),
+  GenOpt('Best', '5 - Best'),
 ];
 
 class FormHarvestPSP extends ConsumerStatefulWidget {

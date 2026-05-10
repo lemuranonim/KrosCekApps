@@ -14,36 +14,36 @@ import 'fc_form_widgets.dart';
 const _kPspGen = Color(0xFFE53935);
 
 const _binaryFindingOpts = [
-  GenOpt('A', 'A - 0'),
-  GenOpt('B', 'B - >0'),
+  GenOpt('0', 'A - 0'),
+  GenOpt('>0', 'B - >0'),
 ];
 
 const _lsvOpts = [
-  GenOpt('A', 'A - NO'),
-  GenOpt('B', 'B - YES'),
+  GenOpt('NO', 'A - NO'),
+  GenOpt('YES', 'B - YES'),
 ];
 
 const _scoreOpts = [
-  GenOpt('1', '1 - Very Poor'),
-  GenOpt('2', '2 - Poor'),
-  GenOpt('3', '3 - Fair'),
-  GenOpt('4', '4 - Good'),
-  GenOpt('5', '5 - Best'),
+  GenOpt('Very Poor', '1 - Very Poor'),
+  GenOpt('Poor', '2 - Poor'),
+  GenOpt('Fair', '3 - Fair'),
+  GenOpt('Good', '4 - Good'),
+  GenOpt('Best', '5 - Best'),
 ];
 
 const _yesNoOpts = [
-  GenOpt('A', 'A - NO'),
-  GenOpt('B', 'B - YES'),
+  GenOpt('NO', 'A - NO'),
+  GenOpt('YES', 'B - YES'),
 ];
 
 const _isolationTypeOpts = [
-  GenOpt('A', 'A - Other Seed Production'),
-  GenOpt('B', 'B - Commercial'),
+  GenOpt('Other Seed Production', 'A - Other Seed Production'),
+  GenOpt('Commercial', 'B - Commercial'),
 ];
 
 const _isolationDistanceOpts = [
-  GenOpt('A', 'A - >400'),
-  GenOpt('B', 'B - <400'),
+  GenOpt('>400', 'A - >400'),
+  GenOpt('<400', 'B - <400'),
 ];
 
 const _flaggingOpts = [
@@ -80,7 +80,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
   String? _recommendation;
 
   bool get _isGuest => GuestGuard.isGuest(_session);
-  bool get _isPld => _recommendation == 'Discard';
+  bool get _isPld => genIsDiscardDecision(_recommendation);
 
   @override
   void initState() {

@@ -14,106 +14,106 @@ import 'package:supabase_flutter/supabase_flutter.dart'; // <── TAMBAHKAN IN
 import '../../providers/audit_vegetative_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
-import '../../services/session_manager.dart';   // ← NEW
+import '../../services/session_manager.dart'; // ← NEW
 import '../../theme/app_theme.dart';
 import '../../utils/coord_helper.dart';
-import '../../utils/guest_guard.dart';           // ← NEW
+import '../../utils/guest_guard.dart'; // ← NEW
 import 'fc_form_widgets.dart';
 
 const _kPhaseVeg = Color(0xFF78909C);
 
 const _roguingOpts = [
-  GenOpt('A', 'A – Not Yet'),
-  GenOpt('B', 'B – On Going'),
-  GenOpt('C', 'C – Done'),
+  GenOpt('Not Yet', 'A – Not Yet'),
+  GenOpt('On Going', 'B – On Going'),
+  GenOpt('Done', 'C – Done'),
 ];
 
 const _lsvOpts = [
-  GenOpt('A', 'A – None'),
-  GenOpt('B', 'B – Low'),
-  GenOpt('C', 'C – Moderate'),
-  GenOpt('D', 'D – High'),
+  GenOpt('None', 'A – None'),
+  GenOpt('Low', 'B – Low'),
+  GenOpt('Moderate', 'C – Moderate'),
+  GenOpt('High', 'D – High'),
 ];
 
 const _cropUniformityOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('Very Poor', '1 – Very Poor'),
+  GenOpt('Poor', '2 – Poor'),
+  GenOpt('Fair', '3 – Fair'),
+  GenOpt('Good', '4 – Good'),
+  GenOpt('Best', '5 – Best'),
 ];
 
 const _cropHealthOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('Very Poor', '1 – Very Poor'),
+  GenOpt('Poor', '2 – Poor'),
+  GenOpt('Fair', '3 – Fair'),
+  GenOpt('Good', '4 – Good'),
+  GenOpt('Best', '5 – Best'),
 ];
 
 const _offtypeOpts = [
-  GenOpt('A', 'A – 0'),
-  GenOpt('B', 'B – >0'),
+  GenOpt('0', 'A – 0'),
+  GenOpt('>0', 'B – >0'),
 ];
 
 const _isolationOpts = [
-  GenOpt('A', 'A – Yes'),
-  GenOpt('B', 'B – No'),
+  GenOpt('Yes', 'A – Yes'),
+  GenOpt('No', 'B – No'),
 ];
 
 const _previousCropOpts = [
-  GenOpt('CAC', 'Corn After Corn'),
-  GenOpt('NC',  'Not Corn'),
+  GenOpt('Corn After Corn', 'Corn After Corn'),
+  GenOpt('Not Corn', 'Not Corn'),
 ];
 
 const _decisionOpts = [
-  GenOpt('A', 'A – Pass'),
-  GenOpt('B', 'B – Pass with Note'),
-  GenOpt('C', 'C – Hold'),
-  GenOpt('D', 'D – PLD'),
+  GenOpt('Pass', 'A – Pass'),
+  GenOpt('Pass with Note', 'B – Pass with Note'),
+  GenOpt('Hold', 'C – Hold'),
+  GenOpt('PLD', 'D – PLD'),
 ];
 
 const _actionNeededOpts = [
-  GenOpt('A', 'A – None'),
-  GenOpt('B', 'B – Roguing'),
-  GenOpt('C', 'C – Re-Detasseling'),
-  GenOpt('D', 'D – Hold'),
-  GenOpt('E', 'E – Recom PLD Partial'),
-  GenOpt('F', 'F – Recom PLD Full'),
+  GenOpt('None', 'A – None'),
+  GenOpt('Roguing', 'B – Roguing'),
+  GenOpt('Re-Detasseling', 'C – Re-Detasseling'),
+  GenOpt('Hold', 'D – Hold'),
+  GenOpt('Recom PLD Partial', 'E – Recom PLD Partial'),
+  GenOpt('Recom PLD Full', 'F – Recom PLD Full'),
 ];
 
 const _pldReasonOpts = [
-  GenOpt('A', 'A – Poor Population'),
-  GenOpt('B', 'B – Water Logging'),
-  GenOpt('C', 'C – Pest/Disease Attack'),
-  GenOpt('D', 'D – No Field'),
+  GenOpt('Poor Population', 'A – Poor Population'),
+  GenOpt('Water Logging', 'B – Water Logging'),
+  GenOpt('Pest/Disease Attack', 'C – Pest/Disease Attack'),
+  GenOpt('No Field', 'D – No Field'),
 ];
 
 const _flaggingOpts = [
-  GenOpt('GF',  'GF'),
+  GenOpt('GF', 'GF'),
   GenOpt('RFI', 'RFI'),
   GenOpt('RFD', 'RFD'),
-  GenOpt('BF',  'BF'),
+  GenOpt('BF', 'BF'),
   GenOpt('PLD', 'PLD'),
 ];
 
 const _maleSplitOpts = [
-  GenOpt('Y', 'Y – Yes'),
-  GenOpt('N', 'N – No'),
+  GenOpt('Yes', 'Y – Yes'),
+  GenOpt('No', 'N – No'),
 ];
 
 const _yesNoOpts = [
-  GenOpt('Y', 'Y – Yes'),
-  GenOpt('N', 'N – No'),
+  GenOpt('Yes', 'Y – Yes'),
+  GenOpt('No', 'N – No'),
 ];
 
 const _splitFieldOpts = [
-  GenOpt('A', 'A – Yes'),
-  GenOpt('B', 'B – No'),
+  GenOpt('Yes', 'A – Yes'),
+  GenOpt('No', 'B – No'),
 ];
 
 const _poiAccuracyOpts = [
-  GenOpt('Valid',     'Valid'),
+  GenOpt('Valid', 'Valid'),
   GenOpt('Not Valid', 'Not Valid'),
 ];
 
@@ -126,30 +126,30 @@ class FormVegetative extends ConsumerStatefulWidget {
 }
 
 class _FormVegetativeState extends ConsumerState<FormVegetative> {
-  final _formKey   = GlobalKey<FormState>();
-  bool _isSaving   = false;
+  final _formKey = GlobalKey<FormState>();
+  bool _isSaving = false;
   bool _dataLoaded = false;
 
   // ── NEW: session untuk GuestGuard ────────────────────────
   ActiveSession? _session;
   bool get _isGuest => GuestGuard.isGuest(_session);
 
-  final _qaFiCtrl          = TextEditingController();
-  final _qaSpvCtrl         = TextEditingController();
-  final _corrTaggingCtrl   = TextEditingController();
+  final _qaFiCtrl = TextEditingController();
+  final _qaSpvCtrl = TextEditingController();
+  final _corrTaggingCtrl = TextEditingController();
   final _coDetasselingCtrl = TextEditingController();
-  final _fieldSizeCtrl     = TextEditingController();
-  final _sowingRatioFCtrl  = TextEditingController();
-  final _sowingRatioMCtrl  = TextEditingController();
-  final _remarksCtrl       = TextEditingController();
-  final _manualLatCtrl     = TextEditingController();
-  final _manualLngCtrl     = TextEditingController();
+  final _fieldSizeCtrl = TextEditingController();
+  final _sowingRatioFCtrl = TextEditingController();
+  final _sowingRatioMCtrl = TextEditingController();
+  final _remarksCtrl = TextEditingController();
+  final _manualLatCtrl = TextEditingController();
+  final _manualLngCtrl = TextEditingController();
 
   DateTime _auditDateUser = DateTime.now();
   DateTime? _revPlantingDate; // Untuk Rev Planting Date
 
-  String? _cropUniformity;    // Pengganti _cropCondition
-  String? _cropHealth;        // Variabel baru
+  String? _cropUniformity; // Pengganti _cropCondition
+  String? _cropHealth; // Variabel baru
   String? _previousCrop;
   String? _maleSplit;
   String? _splitField;
@@ -166,7 +166,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   String? _flagging;
 
   bool _isGeocodingExisting = false;
-  bool _isCapturingGps      = false;
+  bool _isCapturingGps = false;
   Map<String, String>? _existingGeoResult;
   Map<String, String>? _newGeoResult;
   String? _existingCoordinate;
@@ -236,8 +236,11 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final subColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
-    final fillColor = isDark ? AdvantaColors.deepForest.withAlpha(200) : AdvantaColors.softGrey;
-    final borderColor = isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+    final fillColor = isDark
+        ? AdvantaColors.deepForest.withAlpha(200)
+        : AdvantaColors.softGrey;
+    final borderColor =
+        isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
     final textColor = Theme.of(context).colorScheme.onSurface;
 
     return Column(
@@ -245,7 +248,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       children: [
         Text(
           isRequired ? '$label *' : label,
-          style: AdvantaText.body2.copyWith(color: subColor, fontWeight: FontWeight.w500),
+          style: AdvantaText.body2
+              .copyWith(color: subColor, fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 8),
         Autocomplete<String>(
@@ -257,7 +261,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
             controller.text = selection;
             FocusScope.of(context).unfocus();
           },
-          fieldViewBuilder: (context, fieldController, focusNode, onFieldSubmitted) {
+          fieldViewBuilder:
+              (context, fieldController, focusNode, onFieldSubmitted) {
             // Sinkronisasi controller Autocomplete dengan controller form
             fieldController.addListener(() {
               if (controller.text != fieldController.text) {
@@ -268,15 +273,18 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
             return TextFormField(
               controller: fieldController,
               focusNode: focusNode,
-              textCapitalization: TextCapitalization.characters, // Otomatis Huruf Besar
+              textCapitalization:
+                  TextCapitalization.characters, // Otomatis Huruf Besar
               style: AdvantaText.body1.copyWith(color: textColor),
               decoration: InputDecoration(
                 hintText: hint,
-                hintStyle: TextStyle(color: subColor.withAlpha(100), fontSize: 13),
+                hintStyle:
+                    TextStyle(color: subColor.withAlpha(100), fontSize: 13),
                 prefixIcon: Icon(icon, color: accentColor, size: 20),
                 filled: true,
                 fillColor: fillColor,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(color: borderColor),
@@ -291,20 +299,23 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                 ),
                 focusedErrorBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: AdvantaColors.error, width: 1.5),
+                  borderSide:
+                      const BorderSide(color: AdvantaColors.error, width: 1.5),
                 ),
                 suffixIcon: fieldController.text.isNotEmpty
                     ? IconButton(
-                  icon: const Icon(Icons.clear_rounded, size: 18),
-                  color: subColor,
-                  onPressed: () {
-                    fieldController.clear();
-                    controller.clear();
-                  },
-                )
+                        icon: const Icon(Icons.clear_rounded, size: 18),
+                        color: subColor,
+                        onPressed: () {
+                          fieldController.clear();
+                          controller.clear();
+                        },
+                      )
                     : null,
               ),
-              validator: isRequired ? (v) => (v == null || v.isEmpty) ? 'Wajib diisi' : null : null,
+              validator: isRequired
+                  ? (v) => (v == null || v.isEmpty) ? 'Wajib diisi' : null
+                  : null,
               onFieldSubmitted: (v) => onFieldSubmitted(),
             );
           },
@@ -314,30 +325,38 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
               child: Material(
                 color: Colors.transparent,
                 child: Container(
-                  width: MediaQuery.of(context).size.width - 64, // Sesuaikan lebar dalam kotak Section
+                  width: MediaQuery.of(context).size.width -
+                      64, // Sesuaikan lebar dalam kotak Section
                   margin: const EdgeInsets.only(top: 4),
                   decoration: BoxDecoration(
                     color: isDark ? AdvantaColors.deepForest : Colors.white,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: borderColor),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withAlpha(50), blurRadius: 10, offset: const Offset(0, 4)),
+                      BoxShadow(
+                          color: Colors.black.withAlpha(50),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4)),
                     ],
                   ),
                   child: ListView.separated(
                     padding: EdgeInsets.zero,
                     shrinkWrap: true,
                     itemCount: options.length,
-                    separatorBuilder: (_, __) => Divider(height: 1, color: borderColor),
+                    separatorBuilder: (_, __) =>
+                        Divider(height: 1, color: borderColor),
                     itemBuilder: (context, index) {
                       final option = options.elementAt(index);
                       return InkWell(
                         onTap: () => onSelected(option),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
                           child: Text(
                             option,
-                            style: AdvantaText.body2.copyWith(color: accentColor, fontWeight: FontWeight.w600),
+                            style: AdvantaText.body2.copyWith(
+                                color: accentColor,
+                                fontWeight: FontWeight.w600),
                           ),
                         ),
                       );
@@ -352,17 +371,15 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     );
   }
 
-
-
   void _loadAudit(Map<String, dynamic> audit, Map<String, dynamic> fieldData) {
     if (_dataLoaded) return;
     _dataLoaded = true;
-    _qaFiCtrl.text          = audit['qa_fi']  ?? '';
-    _qaSpvCtrl.text         = audit['qa_spv'] ?? '';
-    _corrTaggingCtrl.text   = audit['correction_tagging'] ?? '';
-    _coDetasselingCtrl.text = audit['co_detasseling']     ?? '';
-    _fieldSizeCtrl.text     = audit['field_size_by_audit_ha']?.toString() ?? '';
-    _remarksCtrl.text       = audit['remarks']      ?? '';
+    _qaFiCtrl.text = audit['qa_fi'] ?? '';
+    _qaSpvCtrl.text = audit['qa_spv'] ?? '';
+    _corrTaggingCtrl.text = audit['correction_tagging'] ?? '';
+    _coDetasselingCtrl.text = audit['co_detasseling'] ?? '';
+    _fieldSizeCtrl.text = audit['field_size_by_audit_ha']?.toString() ?? '';
+    _remarksCtrl.text = audit['remarks'] ?? '';
 
     final ratio = audit['sowing_ratio_by_audit'] as String?;
     if (ratio != null && ratio.contains(':')) {
@@ -372,36 +389,43 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     }
 
     if (audit['audit_date_user'] != null) {
-      try { _auditDateUser = DateTime.parse(audit['audit_date_user']); } catch (_) {}
+      try {
+        _auditDateUser = DateTime.parse(audit['audit_date_user']);
+      } catch (_) {}
     }
 
     if (audit['rev_planting_date'] != null) {
-      try { _revPlantingDate = DateTime.parse(audit['rev_planting_date']); } catch (_) {}
+      try {
+        _revPlantingDate = DateTime.parse(audit['rev_planting_date']);
+      } catch (_) {}
     } else {
       // Fallback to planting_date_pdn if audit has no rev_planting_date
       final pdn = fieldData['planting_date_pdn'];
       if (pdn != null) {
-        try { _revPlantingDate = DateTime.parse(pdn.toString()); } catch (_) {}
+        try {
+          _revPlantingDate = DateTime.parse(pdn.toString());
+        } catch (_) {}
       }
     }
 
     setState(() {
-      _cropUniformity    = audit['crop_uniformity']; // Baca dari kolom baru hasil rename
-      _cropHealth        = audit['crop_health'];
-      _previousCrop     = audit['previous_crop_by_audit'];
-      _maleSplit        = audit['male_split_by_audit'];
-      _splitField       = audit['split_field_by_audit'];
-      _oneSeedPerHole   = audit['one_seed_per_hole'];
+      _cropUniformity =
+          audit['crop_uniformity']; // Baca dari kolom baru hasil rename
+      _cropHealth = audit['crop_health'];
+      _previousCrop = audit['previous_crop_by_audit'];
+      _maleSplit = audit['male_split_by_audit'];
+      _splitField = audit['split_field_by_audit'];
+      _oneSeedPerHole = audit['one_seed_per_hole'];
       _isolationProblem = audit['isolation_problem_by_audit'];
-      _roguingStatus    = audit['roguing_status'];
-      _lsvStatus        = audit['lsv_status'];
-      _offtypeM         = audit['offtype_in_male'];
-      _offtypeF         = audit['offtype_in_female'];
-      _poiAccuracy      = audit['poi_accuracy'];
-      _decision         = audit['decision'];
-      _actionNeeded     = audit['action_needed'];
-      _pldReason        = audit['pld_reason'];
-      _flagging         = audit['flagging'];
+      _roguingStatus = audit['roguing_status'];
+      _lsvStatus = audit['lsv_status'];
+      _offtypeM = audit['offtype_in_male'];
+      _offtypeF = audit['offtype_in_female'];
+      _poiAccuracy = audit['poi_accuracy'];
+      _decision = audit['decision'];
+      _actionNeeded = audit['action_needed'];
+      _pldReason = audit['pld_reason'];
+      _flagging = audit['flagging'];
     });
   }
 
@@ -442,8 +466,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   }
 
   ({String coordinate, double lat, double lng, String source})?
-  _resolveFieldCoordinate(Map<String, dynamic> fieldData) {
-    final centroid = CoordHelper.wktCentroid(fieldData['geometry_wkt']?.toString());
+      _resolveFieldCoordinate(Map<String, dynamic> fieldData) {
+    final centroid =
+        CoordHelper.wktCentroid(fieldData['geometry_wkt']?.toString());
     if (centroid != null) {
       final lat = centroid['lat']!;
       final lng = centroid['lng']!;
@@ -499,7 +524,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     try {
       final url = Uri.parse(
         'https://nominatim.openstreetmap.org/reverse'
-            '?format=json&lat=$lat&lon=$lng&zoom=14&addressdetails=1',
+        '?format=json&lat=$lat&lon=$lng&zoom=14&addressdetails=1',
       );
       final resp = await http.get(url, headers: {
         'User-Agent': 'AdvantaSeedsFieldAudit/1.0 (audit@advantaseeds.com)',
@@ -508,11 +533,27 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
 
       if (resp.statusCode == 200) {
         final jsonData = jsonDecode(resp.body) as Map<String, dynamic>;
-        final addr    = jsonData['address'] as Map<String, dynamic>? ?? {};
+        final addr = jsonData['address'] as Map<String, dynamic>? ?? {};
         return {
-          'desa'      : (addr['village'] ?? addr['hamlet'] ?? addr['suburb'] ?? addr['neighbourhood'] ?? '-').toString(),
-          'kecamatan' : (addr['subdistrict'] ?? addr['city_district'] ?? addr['district'] ?? addr['county'] ?? '-').toString(),
-          'kabupaten' : (addr['regency'] ?? addr['city'] ?? addr['state_district'] ?? addr['county'] ?? addr['state'] ?? '-').toString(),
+          'desa': (addr['village'] ??
+                  addr['hamlet'] ??
+                  addr['suburb'] ??
+                  addr['neighbourhood'] ??
+                  '-')
+              .toString(),
+          'kecamatan': (addr['subdistrict'] ??
+                  addr['city_district'] ??
+                  addr['district'] ??
+                  addr['county'] ??
+                  '-')
+              .toString(),
+          'kabupaten': (addr['regency'] ??
+                  addr['city'] ??
+                  addr['state_district'] ??
+                  addr['county'] ??
+                  addr['state'] ??
+                  '-')
+              .toString(),
         };
       }
     } on TimeoutException {
@@ -529,7 +570,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     setState(() => _isGeocodingExisting = true);
     final result = await _reverseGeocode(parsed.lat, parsed.lng);
     if (mounted && _existingCoordinate == coordinate) {
-      setState(() { _existingGeoResult = result; _isGeocodingExisting = false; });
+      setState(() {
+        _existingGeoResult = result;
+        _isGeocodingExisting = false;
+      });
     }
   }
 
@@ -541,27 +585,36 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.deniedForever || perm == LocationPermission.denied) {
-        if (mounted) { _snack('Izin lokasi ditolak', err: true); setState(() => _isCapturingGps = false); }
+      if (perm == LocationPermission.deniedForever ||
+          perm == LocationPermission.denied) {
+        if (mounted) {
+          _snack('Izin lokasi ditolak', err: true);
+          setState(() => _isCapturingGps = false);
+        }
         return;
       }
-      final pos       = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 15)),
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 15)),
       );
-      final coordStr  = '${pos.latitude.toStringAsFixed(6)},${pos.longitude.toStringAsFixed(6)}';
+      final coordStr =
+          '${pos.latitude.toStringAsFixed(6)},${pos.longitude.toStringAsFixed(6)}';
       final geoResult = await _reverseGeocode(pos.latitude, pos.longitude);
       if (mounted) {
         setState(() {
           _corrTaggingCtrl.text = coordStr;
-          _newGeoResult         = geoResult;
-          _corrTaggingSource    = 'gps';
-          _pendingGeometryWkt   = null;
-          _isCapturingGps       = false;
+          _newGeoResult = geoResult;
+          _corrTaggingSource = 'gps';
+          _pendingGeometryWkt = null;
+          _isCapturingGps = false;
         });
         _snack('GPS berhasil diambil: $coordStr');
       }
     } catch (e) {
-      if (mounted) { _snack('Gagal ambil GPS: $e', err: true); setState(() => _isCapturingGps = false); }
+      if (mounted) {
+        _snack('Gagal ambil GPS: $e', err: true);
+        setState(() => _isCapturingGps = false);
+      }
     }
   }
 
@@ -573,16 +626,17 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     }
     setState(() {
       _corrTaggingCtrl.text = _existingCoordinate!.trim();
-      _newGeoResult         = _existingGeoResult;
-      _corrTaggingSource    = 'confirmed';
-      _pendingGeometryWkt   = null;
+      _newGeoResult = _existingGeoResult;
+      _corrTaggingSource = 'confirmed';
+      _pendingGeometryWkt = null;
     });
-    _snack('${_coordinateSourceLabel(_existingCoordinateSource)} dikonfirmasi sebagai koreksi');
+    _snack(
+        '${_coordinateSourceLabel(_existingCoordinateSource)} dikonfirmasi sebagai koreksi');
   }
 
   Future<LatLng?> _geocodeWilayah(Map<String, dynamic> fieldData) async {
-    final dusun     = fieldData['hamlet_dusun']?.toString().trim() ?? '';
-    final desa      = fieldData['village_desa']?.toString().trim() ?? '';
+    final dusun = fieldData['hamlet_dusun']?.toString().trim() ?? '';
+    final desa = fieldData['village_desa']?.toString().trim() ?? '';
     final kecamatan = fieldData['sub_district_kec']?.toString().trim() ?? '';
     final kabupaten = fieldData['district_kab']?.toString().trim() ?? '';
 
@@ -605,11 +659,11 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       try {
         final url = Uri.parse(
           'https://nominatim.openstreetmap.org/search'
-              '?format=json&q=${Uri.encodeComponent(q)}&limit=1&countrycodes=id',
+          '?format=json&q=${Uri.encodeComponent(q)}&limit=1&countrycodes=id',
         );
         final resp = await http.get(url, headers: {
           'User-Agent': 'AdvantaSeedsFieldAudit/1.0 (audit@advantaseeds.com)',
-          'Accept'    : 'application/json',
+          'Accept': 'application/json',
         }).timeout(const Duration(seconds: 10));
 
         if (resp.statusCode == 200) {
@@ -635,14 +689,14 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     if (GuestGuard.blockIfGuest(context, _session)) return;
     try {
       final result = await FilePicker.pickFiles(
-        type             : FileType.custom,
+        type: FileType.custom,
         allowedExtensions: ['kml', 'KML'],
-        withData         : true,
+        withData: true,
       );
       if (result == null || result.files.isEmpty) return;
 
       final bytes = result.files.first.bytes;
-      final path  = result.files.first.path;
+      final path = result.files.first.path;
       String content;
       if (bytes != null) {
         content = utf8.decode(bytes);
@@ -663,18 +717,18 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
         return;
       }
 
-      final coordStr  = '${coordinate.lat.toStringAsFixed(6)},${coordinate.lng.toStringAsFixed(6)}';
+      final coordStr =
+          '${coordinate.lat.toStringAsFixed(6)},${coordinate.lng.toStringAsFixed(6)}';
       final geoResult = await _reverseGeocode(coordinate.lat, coordinate.lng);
       if (mounted) {
         setState(() {
           _corrTaggingCtrl.text = coordStr;
-          _newGeoResult         = geoResult;
-          _corrTaggingSource    = 'kml';
-          _pendingGeometryWkt   = polygon?.wkt;
+          _newGeoResult = geoResult;
+          _corrTaggingSource = 'kml';
+          _pendingGeometryWkt = polygon?.wkt;
         });
-        final polygonInfo = polygon == null
-            ? ''
-            : ' + polygon ${polygon.pointCount} titik';
+        final polygonInfo =
+            polygon == null ? '' : ' + polygon ${polygon.pointCount} titik';
         _snack('KML berhasil dimuat$polygonInfo: $coordStr');
       }
     } catch (e) {
@@ -684,20 +738,22 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
 
   Future<void> _applyManualCoord() async {
     if (GuestGuard.blockIfGuest(context, _session)) return;
-    final lat = double.tryParse(_manualLatCtrl.text.trim().replaceAll(',', '.'));
-    final lng = double.tryParse(_manualLngCtrl.text.trim().replaceAll(',', '.'));
+    final lat =
+        double.tryParse(_manualLatCtrl.text.trim().replaceAll(',', '.'));
+    final lng =
+        double.tryParse(_manualLngCtrl.text.trim().replaceAll(',', '.'));
     if (lat == null || lng == null) {
       _snack('Latitude / Longitude tidak valid', err: true);
       return;
     }
-    final coordStr  = '${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
+    final coordStr = '${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
     final geoResult = await _reverseGeocode(lat, lng);
     if (mounted) {
       setState(() {
         _corrTaggingCtrl.text = coordStr;
-        _newGeoResult         = geoResult;
-        _corrTaggingSource    = 'manual';
-        _pendingGeometryWkt   = null;
+        _newGeoResult = geoResult;
+        _corrTaggingSource = 'manual';
+        _pendingGeometryWkt = null;
       });
       _snack('Koordinat manual diterapkan: $coordStr');
     }
@@ -720,11 +776,14 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
               content: Row(
                 children: [
                   SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
                   ),
                   SizedBox(width: 12),
-                  Text('Mencari koordinat wilayah...', style: TextStyle(fontSize: 13)),
+                  Text('Mencari koordinat wilayah...',
+                      style: TextStyle(fontSize: 13)),
                 ],
               ),
               duration: Duration(seconds: 5),
@@ -746,23 +805,27 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     );
 
     if (result == null || !mounted) return;
-    final coordStr  = '${result.latitude.toStringAsFixed(6)},${result.longitude.toStringAsFixed(6)}';
+    final coordStr =
+        '${result.latitude.toStringAsFixed(6)},${result.longitude.toStringAsFixed(6)}';
     final geoResult = await _reverseGeocode(result.latitude, result.longitude);
     if (mounted) {
       setState(() {
         _corrTaggingCtrl.text = coordStr;
-        _newGeoResult         = geoResult;
-        _corrTaggingSource    = 'map';
-        _pendingGeometryWkt   = null;
-        _manualLatCtrl.text   = result.latitude.toStringAsFixed(6);
-        _manualLngCtrl.text   = result.longitude.toStringAsFixed(6);
+        _newGeoResult = geoResult;
+        _corrTaggingSource = 'map';
+        _pendingGeometryWkt = null;
+        _manualLatCtrl.text = result.latitude.toStringAsFixed(6);
+        _manualLngCtrl.text = result.longitude.toStringAsFixed(6);
       });
       _snack('Koordinat dari peta diterapkan: $coordStr');
     }
   }
 
   Future<void> _pickAuditDate() async {
-    if (_isGuest) { GuestGuard.blockIfGuest(context, _session); return; }
+    if (_isGuest) {
+      GuestGuard.blockIfGuest(context, _session);
+      return;
+    }
     final p = await showDatePicker(
       context: context,
       initialDate: _auditDateUser,
@@ -792,66 +855,74 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
 
     setState(() => _isSaving = true);
     try {
-      final now  = DateTime.now();
+      final now = DateTime.now();
       final data = {
-        'field_number'              : widget.fieldNumber,
-        'date_of_audit'             : DateFormat('yyyy-MM-dd').format(now),
-        'audit_date_user'           : DateFormat('yyyy-MM-dd').format(_auditDateUser),
-        'audit_week'                : calcAuditWeek(_auditDateUser),
-        'qa_fi'                     : _qaFiCtrl.text.trim(),
-        'qa_spv'                    : _qaSpvCtrl.text.trim(),
-        'correction_tagging'        : _corrTaggingCtrl.text.trim(),
-        'co_detasseling'            : _coDetasselingCtrl.text.trim(),
-        'field_size_by_audit_ha'    : double.tryParse(_fieldSizeCtrl.text.replaceAll(',', '.')),
-        'male_split_by_audit'       : _maleSplit,
-        'sowing_ratio_by_audit'     : '${_sowingRatioFCtrl.text.trim()}:${_sowingRatioMCtrl.text.trim()}',
-        'split_field_by_audit'      : _splitField,
-        'previous_crop_by_audit'    : _previousCrop,
-        'one_seed_per_hole'         : _oneSeedPerHole,
+        'field_number': widget.fieldNumber,
+        'date_of_audit': DateFormat('yyyy-MM-dd').format(now),
+        'audit_date_user': DateFormat('yyyy-MM-dd').format(_auditDateUser),
+        'audit_week': calcAuditWeek(_auditDateUser),
+        'qa_fi': _qaFiCtrl.text.trim(),
+        'qa_spv': _qaSpvCtrl.text.trim(),
+        'correction_tagging': _corrTaggingCtrl.text.trim(),
+        'co_detasseling': _coDetasselingCtrl.text.trim(),
+        'field_size_by_audit_ha':
+            double.tryParse(_fieldSizeCtrl.text.replaceAll(',', '.')),
+        'male_split_by_audit': _maleSplit,
+        'sowing_ratio_by_audit':
+            '${_sowingRatioFCtrl.text.trim()}:${_sowingRatioMCtrl.text.trim()}',
+        'split_field_by_audit': _splitField,
+        'previous_crop_by_audit': _previousCrop,
+        'one_seed_per_hole': _oneSeedPerHole,
         'isolation_problem_by_audit': _isolationProblem,
-        'rev_planting_date'         : _revPlantingDate != null ? DateFormat('yyyy-MM-dd').format(_revPlantingDate!) : null, // MENGGUNAKAN TANGGAL PILIHAN USER
-        'crop_uniformity'           : _cropUniformity,
-        'crop_health'               : _cropHealth,
-        'roguing_status'            : _roguingStatus,
-        'lsv_status'                : _lsvStatus,
-        'offtype_in_male'           : _offtypeM,
-        'offtype_in_female'         : _offtypeF,
-        'poi_accuracy'              : _poiAccuracy,
-        'decision'                  : _decision,
-        'action_needed'             : _actionNeeded,
-        'pld_reason'                : _decision == 'D' ? _pldReason : null,
-        'flagging'                  : _flagging,
-        'remarks'                   : _remarksCtrl.text.trim(),
-        'fase'                      : 'vegetative',
-        'updated_at'                : now.toIso8601String(),
+        'rev_planting_date': _revPlantingDate != null
+            ? DateFormat('yyyy-MM-dd').format(_revPlantingDate!)
+            : null, // MENGGUNAKAN TANGGAL PILIHAN USER
+        'crop_uniformity': _cropUniformity,
+        'crop_health': _cropHealth,
+        'roguing_status': _roguingStatus,
+        'lsv_status': _lsvStatus,
+        'offtype_in_male': _offtypeM,
+        'offtype_in_female': _offtypeF,
+        'poi_accuracy': _poiAccuracy,
+        'decision': _decision,
+        'action_needed': _actionNeeded,
+        'pld_reason': genIsDiscardDecision(_decision) ? _pldReason : null,
+        'flagging': _flagging,
+        'remarks': _remarksCtrl.text.trim(),
+        'fase': 'vegetative',
+        'updated_at': now.toIso8601String(),
       };
 
       final service = ref.read(supabaseServiceProvider);
       await service.upsertVegetativeAudit(data);
-      if (_pendingGeometryWkt != null && _pendingGeometryWkt!.trim().isNotEmpty) {
+      if (_pendingGeometryWkt != null &&
+          _pendingGeometryWkt!.trim().isNotEmpty) {
         await service.updateFieldGeometryWkt(
-          fieldNumber : widget.fieldNumber,
-          geometryWkt : _pendingGeometryWkt!.trim(),
+          fieldNumber: widget.fieldNumber,
+          geometryWkt: _pendingGeometryWkt!.trim(),
         );
       }
 
       double lat = 0.0, lng = 0.0;
       try {
         final pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 5)),
+          locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 5)),
         );
-        lat = pos.latitude; lng = pos.longitude;
+        lat = pos.latitude;
+        lng = pos.longitude;
       } catch (_) {}
 
       final attendance = ref.read(attendanceProvider);
       if (attendance.isCheckedIn && attendance.attendanceId != null) {
         await service.logActivity(
           attendanceId: attendance.attendanceId!,
-          userId      : _qaFiCtrl.text.trim(),
-          fieldNumber : widget.fieldNumber,
-          phase       : 'vegetative',
-          actionType  : 'single_submit',
-          lat: lat, lng: lng,
+          userId: _qaFiCtrl.text.trim(),
+          fieldNumber: widget.fieldNumber,
+          phase: 'vegetative',
+          actionType: 'single_submit',
+          lat: lat,
+          lng: lng,
         );
       }
 
@@ -873,20 +944,21 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   void _snack(String msg, {bool err = false}) {
     final theme = Theme.of(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content        : Text(msg, style: AdvantaText.body2.copyWith(color: Colors.white)),
+      content:
+          Text(msg, style: AdvantaText.body2.copyWith(color: Colors.white)),
       backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
-      behavior       : SnackBarBehavior.floating,
-      shape          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      margin         : const EdgeInsets.all(12),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      margin: const EdgeInsets.all(12),
     ));
   }
 
   @override
   Widget build(BuildContext context) {
     final auditAsync = ref.watch(vegetativeAuditProvider(widget.fieldNumber));
-    final fields     = ref.watch(masterFieldsProvider).value ?? [];
-    final fieldData  = fields.firstWhere(
-          (f) => f['field_number'] == widget.fieldNumber,
+    final fields = ref.watch(masterFieldsProvider).value ?? [];
+    final fieldData = fields.firstWhere(
+      (f) => f['field_number'] == widget.fieldNumber,
       orElse: () => {},
     );
 
@@ -907,23 +979,25 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       _existingGeoResult = null;
     }
 
-    final isDiscard = _decision == 'D';
+    final isDiscard = genIsDiscardDecision(_decision);
 
     return Scaffold(
       appBar: GenAppBar(
         checkpointLabel: 'Vegetative Audit',
-        fieldNumber    : widget.fieldNumber,
-        isDiscard      : isDiscard,
-        accentColor    : _kPhaseVeg,
-        onBack         : () => Navigator.pop(context),
+        fieldNumber: widget.fieldNumber,
+        isDiscard: isDiscard,
+        accentColor: _kPhaseVeg,
+        onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: _kPhaseVeg)),
-        error  : (e, _) => Center(
+        loading: () =>
+            const Center(child: CircularProgressIndicator(color: _kPhaseVeg)),
+        error: (e, _) => Center(
           child: Text('Error: $e',
-              style: AdvantaText.body2.copyWith(color: Theme.of(context).colorScheme.error)),
+              style: AdvantaText.body2
+                  .copyWith(color: Theme.of(context).colorScheme.error)),
         ),
-        data   : (audit) {
+        data: (audit) {
           if (audit != null) {
             _loadAudit(audit, fieldData);
           } else {
@@ -973,20 +1047,24 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                   // ── Section 1: Informasi Audit ──
                   GenSection(
                     title: 'Informasi Audit',
-                    icon : Icons.assignment_outlined,
+                    icon: Icons.assignment_outlined,
                     color: _kPhaseVeg,
                     children: [
                       GenDateTile(
                         label: 'Tanggal Audit',
-                        date : _auditDateUser,
+                        date: _auditDateUser,
                         onTap: _pickAuditDate,
                       ),
                       const SizedBox(height: 12),
                       GenDateTile(
                         label: 'Rev Planting Date',
-                        date : _revPlantingDate ?? DateTime.now(), // <--- TAMBAHKAN INI
+                        date: _revPlantingDate ??
+                            DateTime.now(), // <--- TAMBAHKAN INI
                         onTap: () async {
-                          if (_isGuest) { GuestGuard.blockIfGuest(context, _session); return; }
+                          if (_isGuest) {
+                            GuestGuard.blockIfGuest(context, _session);
+                            return;
+                          }
                           final p = await showDatePicker(
                             context: context,
                             initialDate: _revPlantingDate ?? DateTime.now(),
@@ -1004,34 +1082,34 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
 
                       // ── GANTI GENTEXTFIELD QA FI MENJADI INI ──
                       _buildQaAutocomplete(
-                        label      : 'QA FI',
-                        hint       : 'Ketik Nama QA Field Inspector...',
-                        column     : 'qa_fi', // Referensi kolom di database
-                        controller : _qaFiCtrl,
-                        icon       : Icons.person_outline,
+                        label: 'QA FI',
+                        hint: 'Ketik Nama QA Field Inspector...',
+                        column: 'qa_fi', // Referensi kolom di database
+                        controller: _qaFiCtrl,
+                        icon: Icons.person_outline,
                         accentColor: _kPhaseVeg,
-                        isRequired : !_isGuest,
+                        isRequired: !_isGuest,
                       ),
                       const SizedBox(height: 12),
 
                       // ── GANTI GENTEXTFIELD QA SPV MENJADI INI ──
                       _buildQaAutocomplete(
-                        label      : 'QA SPV',
-                        hint       : 'Ketik Nama QA Supervisor...',
-                        column     : 'qa_spv', // Referensi kolom di database
-                        controller : _qaSpvCtrl,
-                        icon       : Icons.supervisor_account_outlined,
+                        label: 'QA SPV',
+                        hint: 'Ketik Nama QA Supervisor...',
+                        column: 'qa_spv', // Referensi kolom di database
+                        controller: _qaSpvCtrl,
+                        icon: Icons.supervisor_account_outlined,
                         accentColor: _kPhaseVeg,
-                        isRequired : !_isGuest,
+                        isRequired: !_isGuest,
                       ),
                       const SizedBox(height: 12),
                       _buildCorrectionTaggingWidget(context, fieldData),
                       const SizedBox(height: 12),
                       GenTextField(
-                        controller : _coDetasselingCtrl,
-                        label      : 'Co Detasseling',
-                        hint       : 'Nama Co Detasseling',
-                        icon       : Icons.group_outlined,
+                        controller: _coDetasselingCtrl,
+                        label: 'Co Detasseling',
+                        hint: 'Nama Co Detasseling',
+                        icon: Icons.group_outlined,
                         accentColor: _kPhaseVeg,
                       ),
                     ],
@@ -1041,70 +1119,78 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                   // ── Section 2: Kondisi Lahan ──
                   GenSection(
                     title: 'Kondisi Lahan',
-                    icon : Icons.landscape_outlined,
+                    icon: Icons.landscape_outlined,
                     color: const Color(0xFF26A69A),
                     children: [
                       GenTextField(
-                        controller  : _fieldSizeCtrl,
-                        label       : 'Field Size (Ha)',
-                        hint        : 'Luas lahan audit',
+                        controller: _fieldSizeCtrl,
+                        label: 'Field Size (Ha)',
+                        hint: 'Luas lahan audit',
                         keyboardType: TextInputType.number,
-                        icon        : Icons.crop_landscape_outlined,
-                        required    : !isDiscard,
-                        accentColor : const Color(0xFF26A69A),
+                        icon: Icons.crop_landscape_outlined,
+                        required: !isDiscard,
+                        accentColor: const Color(0xFF26A69A),
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Male Split',
-                        required   : !isDiscard && !_isGuest,
-                        options    : _maleSplitOpts,
-                        value      : _maleSplit,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _maleSplit = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Male Split',
+                        required: !isDiscard && !_isGuest,
+                        options: _maleSplitOpts,
+                        value: _maleSplit,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _maleSplit = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: const Color(0xFF26A69A),
                       ),
                       const SizedBox(height: 14),
                       _buildSowingRatio(context, isDiscard),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Split Field',
-                        required   : !isDiscard && !_isGuest,
-                        options    : _splitFieldOpts,
-                        value      : _splitField,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _splitField = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Split Field',
+                        required: !isDiscard && !_isGuest,
+                        options: _splitFieldOpts,
+                        value: _splitField,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _splitField = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: const Color(0xFF26A69A),
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Previous Crop',
-                        required   : !isDiscard && !_isGuest,
-                        options    : _previousCropOpts,
-                        value      : _previousCrop,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _previousCrop = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Previous Crop',
+                        required: !isDiscard && !_isGuest,
+                        options: _previousCropOpts,
+                        value: _previousCrop,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _previousCrop = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: const Color(0xFF26A69A),
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'One Seed / Hole',
-                        required   : !isDiscard && !_isGuest,
-                        options    : _yesNoOpts,
-                        value      : _oneSeedPerHole,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _oneSeedPerHole = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'One Seed / Hole',
+                        required: !isDiscard && !_isGuest,
+                        options: _yesNoOpts,
+                        value: _oneSeedPerHole,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _oneSeedPerHole = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: const Color(0xFF26A69A),
                       ),
                     ],
@@ -1114,63 +1200,69 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                   // ── Section 3: Penilaian Audit ──
                   GenSection(
                     title: 'Penilaian Audit',
-                    icon : Icons.assessment_outlined,
+                    icon: Icons.assessment_outlined,
                     color: const Color(0xFFFFCA28),
                     children: [
                       GenOptionPicker(
-                        label      : 'Crop Uniformity', // Ganti label
-                        required   : !isDiscard && !_isGuest,
-                        options    : _cropUniformityOpts,
-                        value      : _cropUniformity,
-                        onChanged  : (v) => setState(() => _cropUniformity = v),
+                        label: 'Crop Uniformity', // Ganti label
+                        required: !isDiscard && !_isGuest,
+                        options: _cropUniformityOpts,
+                        value: _cropUniformity,
+                        onChanged: (v) => setState(() => _cropUniformity = v),
                         accentColor: const Color(0xFFFFCA28),
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Crop Health', // Field baru
-                        required   : !isDiscard && !_isGuest,
-                        options    : _cropHealthOpts,
-                        value      : _cropHealth,
-                        onChanged  : (v) => setState(() => _cropHealth = v),
+                        label: 'Crop Health', // Field baru
+                        required: !isDiscard && !_isGuest,
+                        options: _cropHealthOpts,
+                        value: _cropHealth,
+                        onChanged: (v) => setState(() => _cropHealth = v),
                         accentColor: const Color(0xFFFFCA28),
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Roguing Status',
-                        required   : !isDiscard && !_isGuest,
-                        options    : _roguingOpts,
-                        value      : _roguingStatus,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _roguingStatus = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Roguing Status',
+                        required: !isDiscard && !_isGuest,
+                        options: _roguingOpts,
+                        value: _roguingStatus,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _roguingStatus = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: const Color(0xFFFFCA28),
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'LSV Status',
-                        required   : !isDiscard && !_isGuest,
-                        options    : _lsvOpts,
-                        value      : _lsvStatus,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _lsvStatus = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'LSV Status',
+                        required: !isDiscard && !_isGuest,
+                        options: _lsvOpts,
+                        value: _lsvStatus,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _lsvStatus = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: const Color(0xFFFFCA28),
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Isolation Problem',
-                        required   : !isDiscard && !_isGuest,
-                        options    : _isolationOpts,
-                        value      : _isolationProblem,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _isolationProblem = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Isolation Problem',
+                        required: !isDiscard && !_isGuest,
+                        options: _isolationOpts,
+                        value: _isolationProblem,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _isolationProblem = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: const Color(0xFFFFCA28),
                       ),
                       const SizedBox(height: 14),
@@ -1179,30 +1271,34 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                         children: [
                           Expanded(
                             child: GenOptionPicker(
-                              label      : 'Offtype M',
-                              required   : !isDiscard && !_isGuest,
-                              options    : _offtypeOpts,
-                              value      : _offtypeM,
-                              onChanged  : (v) { if (!_isGuest) {
-                                setState(() => _offtypeM = v);
-                              } else {
-                                GuestGuard.blockIfGuest(context, _session);
-                              } },
+                              label: 'Offtype M',
+                              required: !isDiscard && !_isGuest,
+                              options: _offtypeOpts,
+                              value: _offtypeM,
+                              onChanged: (v) {
+                                if (!_isGuest) {
+                                  setState(() => _offtypeM = v);
+                                } else {
+                                  GuestGuard.blockIfGuest(context, _session);
+                                }
+                              },
                               accentColor: const Color(0xFFFFCA28),
                             ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
                             child: GenOptionPicker(
-                              label      : 'Offtype F',
-                              required   : !isDiscard && !_isGuest,
-                              options    : _offtypeOpts,
-                              value      : _offtypeF,
-                              onChanged  : (v) { if (!_isGuest) {
-                                setState(() => _offtypeF = v);
-                              } else {
-                                GuestGuard.blockIfGuest(context, _session);
-                              } },
+                              label: 'Offtype F',
+                              required: !isDiscard && !_isGuest,
+                              options: _offtypeOpts,
+                              value: _offtypeF,
+                              onChanged: (v) {
+                                if (!_isGuest) {
+                                  setState(() => _offtypeF = v);
+                                } else {
+                                  GuestGuard.blockIfGuest(context, _session);
+                                }
+                              },
                               accentColor: const Color(0xFFFFCA28),
                             ),
                           ),
@@ -1210,15 +1306,17 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'POI Accuracy',
-                        required   : !isDiscard && !_isGuest,
-                        options    : _poiAccuracyOpts,
-                        value      : _poiAccuracy,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _poiAccuracy = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'POI Accuracy',
+                        required: !isDiscard && !_isGuest,
+                        options: _poiAccuracyOpts,
+                        value: _poiAccuracy,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _poiAccuracy = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: const Color(0xFFFFCA28),
                       ),
                     ],
@@ -1228,67 +1326,76 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                   // ── Section 4: Keputusan ──
                   GenSection(
                     title: 'Keputusan',
-                    icon : Icons.gavel_outlined,
+                    icon: Icons.gavel_outlined,
                     color: AdvantaColors.error,
                     children: [
                       GenOptionPicker(
-                        label      : 'Decision',
-                        required   : !_isGuest,
-                        options    : _decisionOpts,
-                        value      : _decision,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() {
-                          _decision = v;
-                          if (v != 'D') _pldReason = null;
-                        });
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Decision',
+                        required: !_isGuest,
+                        options: _decisionOpts,
+                        value: _decision,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() {
+                              _decision = v;
+                              if (!genIsDiscardDecision(v)) _pldReason = null;
+                            });
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: AdvantaColors.error,
                       ),
                       if (isDiscard) ...[
                         const SizedBox(height: 12),
                         const GenDiscardBanner(
-                          message: 'Mode PLD aktif — pastikan PLD Reason terisi sebelum menyimpan.',
+                          message:
+                              'Mode PLD aktif — pastikan PLD Reason terisi sebelum menyimpan.',
                         ),
                         const SizedBox(height: 14),
                         GenOptionPicker(
-                          label      : 'PLD Reason',
-                          required   : !_isGuest,
-                          options    : _pldReasonOpts,
-                          value      : _pldReason,
-                          onChanged  : (v) { if (!_isGuest) {
-                            setState(() => _pldReason = v);
-                          } else {
-                            GuestGuard.blockIfGuest(context, _session);
-                          } },
+                          label: 'PLD Reason',
+                          required: !_isGuest,
+                          options: _pldReasonOpts,
+                          value: _pldReason,
+                          onChanged: (v) {
+                            if (!_isGuest) {
+                              setState(() => _pldReason = v);
+                            } else {
+                              GuestGuard.blockIfGuest(context, _session);
+                            }
+                          },
                           accentColor: AdvantaColors.error,
                         ),
                       ],
                       const SizedBox(height: 14),
                       GenOptionPickerLong(
-                        label      : 'Action Needed',
-                        required   : !_isGuest,
-                        options    : _actionNeededOpts,
-                        value      : _actionNeeded,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _actionNeeded = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Action Needed',
+                        required: !_isGuest,
+                        options: _actionNeededOpts,
+                        value: _actionNeeded,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _actionNeeded = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: AdvantaColors.error,
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label      : 'Flagging',
-                        required   : !_isGuest,
-                        options    : _flaggingOpts,
-                        value      : _flagging,
-                        onChanged  : (v) { if (!_isGuest) {
-                          setState(() => _flagging = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Flagging',
+                        required: !_isGuest,
+                        options: _flaggingOpts,
+                        value: _flagging,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _flagging = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: AdvantaColors.error,
                       ),
                     ],
@@ -1298,15 +1405,15 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                   // ── Section 5: Catatan ──
                   GenSection(
                     title: 'Catatan',
-                    icon : Icons.notes_outlined,
+                    icon: Icons.notes_outlined,
                     color: AdvantaColors.mutedGrey,
                     children: [
                       GenTextField(
-                        controller : _remarksCtrl,
-                        label      : 'Remarks',
-                        hint       : 'Catatan tambahan di lapangan...',
-                        maxLines   : 4,
-                        icon       : Icons.edit_note_outlined,
+                        controller: _remarksCtrl,
+                        label: 'Remarks',
+                        hint: 'Catatan tambahan di lapangan...',
+                        maxLines: 4,
+                        icon: Icons.edit_note_outlined,
                         accentColor: AdvantaColors.mutedGrey,
                       ),
                     ],
@@ -1315,14 +1422,13 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
               ),
             ),
           ),
-
           GenSaveBar(
-            isSaving : _isSaving,
+            isSaving: _isSaving,
             isDiscard: isDiscard && !_isGuest,
             saveLabel: _isGuest
                 ? 'READ-ONLY — TIDAK DAPAT MENYIMPAN'
                 : (isDiscard ? 'SIMPAN — PLD' : 'SIMPAN VEGETATIVE'),
-            onSave   : _isGuest
+            onSave: _isGuest
                 ? () => GuestGuard.blockIfGuest(context, _session)
                 : _saveAudit,
           ),
@@ -1332,17 +1438,18 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   }
 
   // ── Field Card ────────────────────────────────────────────
-  Widget _buildFieldCard(BuildContext context, Map<String, dynamic> f, String? corrTag) {
+  Widget _buildFieldCard(
+      BuildContext context, Map<String, dynamic> f, String? corrTag) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final labelColor   = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
-    final valueColor   = Theme.of(context).colorScheme.onSurface;
+    final labelColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
+    final valueColor = Theme.of(context).colorScheme.onSurface;
 
     return Container(
-      padding   : const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color       : _kPhaseVeg.withValues(alpha: 0.08),
+        color: _kPhaseVeg.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
-        border      : Border.all(color: _kPhaseVeg.withValues(alpha: 0.30)),
+        border: Border.all(color: _kPhaseVeg.withValues(alpha: 0.30)),
       ),
       child: Column(
         children: [
@@ -1352,48 +1459,78 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
               const SizedBox(width: 8),
               const Text(
                 'DATA LAHAN (READ ONLY)',
-                style: TextStyle(color: _kPhaseVeg, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8),
+                style: TextStyle(
+                    color: _kPhaseVeg,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8),
               ),
               const Spacer(),
               if (corrTag != null && corrTag.isNotEmpty)
                 Container(
-                  padding   : const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color        : const Color(0xFFFF7043).withValues(alpha: 0.15),
-                    borderRadius : BorderRadius.circular(8),
-                    border       : Border.all(color: const Color(0xFFFF7043).withValues(alpha: 0.5)),
+                    color: const Color(0xFFFF7043).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: const Color(0xFFFF7043).withValues(alpha: 0.5)),
                   ),
                   child: Text(
                     'Corr: $corrTag',
-                    style: const TextStyle(color: Color(0xFFFF8A65), fontSize: 10, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        color: Color(0xFFFF8A65),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold),
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 10),
           Row(children: [
-            Expanded(child: _VegCell('Petani',    f['farmer_name']?.toString(), labelColor: labelColor, valueColor: valueColor)),
-            Expanded(child: _VegCell('Hybrid',    f['hybrid']?.toString(), labelColor: labelColor, valueColor: valueColor)),
+            Expanded(
+                child: _VegCell('Petani', f['farmer_name']?.toString(),
+                    labelColor: labelColor, valueColor: valueColor)),
+            Expanded(
+                child: _VegCell('Hybrid', f['hybrid']?.toString(),
+                    labelColor: labelColor, valueColor: valueColor)),
           ]),
           const SizedBox(height: 4),
           Row(children: [
-            Expanded(child: _VegCell('Grower',    f['grower']?.toString(), labelColor: labelColor, valueColor: valueColor)),
-            Expanded(child: _VegCell('Luas Eff',  '${f['effective_area_ha'] ?? '-'} Ha', labelColor: labelColor, valueColor: valueColor)),
+            Expanded(
+                child: _VegCell('Grower', f['grower']?.toString(),
+                    labelColor: labelColor, valueColor: valueColor)),
+            Expanded(
+                child: _VegCell(
+                    'Luas Eff', '${f['effective_area_ha'] ?? '-'} Ha',
+                    labelColor: labelColor, valueColor: valueColor)),
           ]),
           const SizedBox(height: 4),
           Row(children: [
-            Expanded(child: _VegCell('Season',    f['season']?.toString(), labelColor: labelColor, valueColor: valueColor)),
-            Expanded(child: _VegCell('Region',    f['region']?.toString(), labelColor: labelColor, valueColor: valueColor)),
+            Expanded(
+                child: _VegCell('Season', f['season']?.toString(),
+                    labelColor: labelColor, valueColor: valueColor)),
+            Expanded(
+                child: _VegCell('Region', f['region']?.toString(),
+                    labelColor: labelColor, valueColor: valueColor)),
           ]),
           const SizedBox(height: 4),
           Row(children: [
-            Expanded(child: _VegCell('Dusun',     f['hamlet_dusun']?.toString(), labelColor: labelColor, valueColor: valueColor)),
-            Expanded(child: _VegCell('Desa',      f['village_desa']?.toString(), labelColor: labelColor, valueColor: valueColor)),
+            Expanded(
+                child: _VegCell('Dusun', f['hamlet_dusun']?.toString(),
+                    labelColor: labelColor, valueColor: valueColor)),
+            Expanded(
+                child: _VegCell('Desa', f['village_desa']?.toString(),
+                    labelColor: labelColor, valueColor: valueColor)),
           ]),
           const SizedBox(height: 4),
           Row(children: [
-            Expanded(child: _VegCell('Kecamatan', f['sub_district_kec']?.toString(), labelColor: labelColor, valueColor: valueColor)),
-            Expanded(child: _VegCell('Kabupaten', f['district_kab']?.toString(), labelColor: labelColor, valueColor: valueColor)),
+            Expanded(
+                child: _VegCell('Kecamatan', f['sub_district_kec']?.toString(),
+                    labelColor: labelColor, valueColor: valueColor)),
+            Expanded(
+                child: _VegCell('Kabupaten', f['district_kab']?.toString(),
+                    labelColor: labelColor, valueColor: valueColor)),
           ]),
         ],
       ),
@@ -1401,73 +1538,82 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   }
 
   // ── Correction Tagging Widget ─────────────────────────────
-  Widget _buildCorrectionTaggingWidget(BuildContext context, Map<String, dynamic> fieldData) {
-    final isDark         = Theme.of(context).brightness == Brightness.dark;
-    final resolvedCoord  = _resolveFieldCoordinate(fieldData);
-    final displayCoord   = resolvedCoord?.coordinate ??
-        fieldData['coordinate']?.toString() ??
-        '';
+  Widget _buildCorrectionTaggingWidget(
+      BuildContext context, Map<String, dynamic> fieldData) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final resolvedCoord = _resolveFieldCoordinate(fieldData);
+    final displayCoord =
+        resolvedCoord?.coordinate ?? fieldData['coordinate']?.toString() ?? '';
     final coordSourceLabel = _coordinateSourceLabel(resolvedCoord?.source);
-    final hasCoord       = displayCoord.isNotEmpty;
-    final parsed         = _parseCoordinate(displayCoord);
-    final isZeroCoord    = parsed != null && parsed.lat.abs() < 0.0001 && parsed.lng.abs() < 0.0001;
+    final hasCoord = displayCoord.isNotEmpty;
+    final parsed = _parseCoordinate(displayCoord);
+    final isZeroCoord = parsed != null &&
+        parsed.lat.abs() < 0.0001 &&
+        parsed.lng.abs() < 0.0001;
 
     // Theme-aware colors
-    final kBlue          = isDark ? const Color(0xFF4FC3F7) : const Color(0xFF0288D1);
-    final kBlueMuted     = isDark ? const Color(0xFF80CBC4) : const Color(0xFF26A69A);
-    final kDarkPanel     = isDark ? const Color(0xFF1A2E40) : const Color(0xFFF0F4F8);
-    final kDarkBorder    = isDark ? const Color(0xFF2A4A60) : const Color(0xFFB0BEC5);
-    final kManualColor   = const Color(0xFF4DB6AC);
-    final kKmlColor      = const Color(0xFFFFB74D);
-    final kMapColor      = const Color(0xFF9575CD);
-    final subColor       = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
-    final fillColor      = isDark ? AdvantaColors.deepForest.withAlpha(200) : AdvantaColors.softGrey;
-    final borderColor    = isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
-    final textColor      = Theme.of(context).colorScheme.onSurface;
+    final kBlue = isDark ? const Color(0xFF4FC3F7) : const Color(0xFF0288D1);
+    final kBlueMuted =
+        isDark ? const Color(0xFF80CBC4) : const Color(0xFF26A69A);
+    final kDarkPanel =
+        isDark ? const Color(0xFF1A2E40) : const Color(0xFFF0F4F8);
+    final kDarkBorder =
+        isDark ? const Color(0xFF2A4A60) : const Color(0xFFB0BEC5);
+    final kManualColor = const Color(0xFF4DB6AC);
+    final kKmlColor = const Color(0xFFFFB74D);
+    final kMapColor = const Color(0xFF9575CD);
+    final subColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
+    final fillColor = isDark
+        ? AdvantaColors.deepForest.withAlpha(200)
+        : AdvantaColors.softGrey;
+    final borderColor =
+        isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+    final textColor = Theme.of(context).colorScheme.onSurface;
 
-    IconData  sourceIcon  = Icons.check_circle_outline;
-    Color     sourceColor = kBlue;
-    String    sourceLabel = 'KOREKSI — KOORDINAT DIKONFIRMASI';
+    IconData sourceIcon = Icons.check_circle_outline;
+    Color sourceColor = kBlue;
+    String sourceLabel = 'KOREKSI — KOORDINAT DIKONFIRMASI';
     switch (_corrTaggingSource) {
       case 'gps':
-        sourceIcon  = Icons.gps_fixed;
+        sourceIcon = Icons.gps_fixed;
         sourceColor = AdvantaColors.success;
         sourceLabel = 'KOREKSI — GPS BARU DIAMBIL';
         break;
       case 'kml':
-        sourceIcon  = Icons.file_open_outlined;
+        sourceIcon = Icons.file_open_outlined;
         sourceColor = kKmlColor;
         sourceLabel = 'KOREKSI — DARI FILE KML';
         break;
       case 'map':
-        sourceIcon  = Icons.pin_drop_outlined;
+        sourceIcon = Icons.pin_drop_outlined;
         sourceColor = kMapColor;
         sourceLabel = 'KOREKSI — GESER PIN PETA';
         break;
       case 'manual':
-        sourceIcon  = Icons.edit_location_alt_outlined;
+        sourceIcon = Icons.edit_location_alt_outlined;
         sourceColor = kManualColor;
         sourceLabel = 'KOREKSI — INPUT MANUAL';
         break;
     }
     final hasCorrection = _corrTaggingCtrl.text.trim().isNotEmpty;
-    final panelAccent   = hasCorrection ? sourceColor : _kPhaseVeg;
-    final panelBg       = isDark
+    final panelAccent = hasCorrection ? sourceColor : _kPhaseVeg;
+    final panelBg = isDark
         ? panelAccent.withValues(alpha: 0.10)
         : panelAccent.withValues(alpha: 0.06);
-    final panelBorder   = panelAccent.withValues(alpha: hasCorrection ? 0.45 : 0.24);
+    final panelBorder =
+        panelAccent.withValues(alpha: hasCorrection ? 0.45 : 0.24);
 
     return Container(
-      padding   : const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color       : panelBg,
+        color: panelBg,
         borderRadius: BorderRadius.circular(16),
-        border      : Border.all(color: panelBorder, width: 1.2),
-        boxShadow   : [
+        border: Border.all(color: panelBorder, width: 1.2),
+        boxShadow: [
           BoxShadow(
-            color     : panelAccent.withValues(alpha: isDark ? 0.08 : 0.10),
+            color: panelAccent.withValues(alpha: isDark ? 0.08 : 0.10),
             blurRadius: 14,
-            offset    : const Offset(0, 6),
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -1477,13 +1623,14 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
           Row(
             children: [
               Container(
-                width     : 34,
-                height    : 34,
+                width: 34,
+                height: 34,
                 decoration: BoxDecoration(
-                  color       : panelAccent.withValues(alpha: 0.16),
+                  color: panelAccent.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(Icons.edit_location_alt_rounded, color: panelAccent, size: 19),
+                child: Icon(Icons.edit_location_alt_rounded,
+                    color: panelAccent, size: 19),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1497,26 +1644,34 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                     const SizedBox(height: 2),
                     Text(
                       'Koreksi titik koordinat lahan sebelum submit audit.',
-                      style: AdvantaText.caption.copyWith(color: subColor, height: 1.25),
+                      style: AdvantaText.caption
+                          .copyWith(color: subColor, height: 1.25),
                     ),
                   ],
                 ),
               ),
               Container(
-                padding   : const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(
-                  color       : panelAccent.withValues(alpha: 0.14),
+                  color: panelAccent.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(999),
-                  border      : Border.all(color: panelAccent.withValues(alpha: 0.28)),
+                  border:
+                      Border.all(color: panelAccent.withValues(alpha: 0.28)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(hasCorrection ? sourceIcon : Icons.radio_button_unchecked_rounded,
-                        size: 12, color: panelAccent),
+                    Icon(
+                        hasCorrection
+                            ? sourceIcon
+                            : Icons.radio_button_unchecked_rounded,
+                        size: 12,
+                        color: panelAccent),
                     const SizedBox(width: 5),
                     Text(
-                      hasCorrection ? sourceLabel.replaceFirst('KOREKSI — ', '') : 'BELUM DIISI',
+                      hasCorrection
+                          ? sourceLabel.replaceFirst('KOREKSI — ', '')
+                          : 'BELUM DIISI',
                       style: TextStyle(
                         color: panelAccent,
                         fontSize: 9,
@@ -1531,363 +1686,449 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
           ),
           const SizedBox(height: 12),
 
-        // ── Master coordinate card ──────────────────────────────────────────
-        if (hasCoord) ...[
-          Container(
-            padding   : const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color       : isZeroCoord ? AdvantaColors.error.withValues(alpha: 0.08) : kDarkPanel,
-              borderRadius: BorderRadius.circular(10),
-              border      : Border.all(color: isZeroCoord ? AdvantaColors.error.withValues(alpha: 0.40) : kDarkBorder),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      isZeroCoord ? Icons.wrong_location_outlined : Icons.location_on_outlined,
-                      color: isZeroCoord ? const Color(0xFFEF9A9A) : kBlue,
-                      size: 14,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'KOORDINAT LAHAN (MASTER)',
-                      style: TextStyle(
+          // ── Master coordinate card ──────────────────────────────────────────
+          if (hasCoord) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isZeroCoord
+                    ? AdvantaColors.error.withValues(alpha: 0.08)
+                    : kDarkPanel,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: isZeroCoord
+                        ? AdvantaColors.error.withValues(alpha: 0.40)
+                        : kDarkBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        isZeroCoord
+                            ? Icons.wrong_location_outlined
+                            : Icons.location_on_outlined,
                         color: isZeroCoord ? const Color(0xFFEF9A9A) : kBlue,
-                        fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.6,
+                        size: 14,
                       ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding   : const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color       : isZeroCoord ? AdvantaColors.error.withValues(alpha: 0.15) : kBlue.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        isZeroCoord ? '⚠ Koordinat Nol' : coordSourceLabel,
+                      const SizedBox(width: 6),
+                      Text(
+                        'KOORDINAT LAHAN (MASTER)',
                         style: TextStyle(
                           color: isZeroCoord ? const Color(0xFFEF9A9A) : kBlue,
-                          fontSize: 8.5, fontWeight: FontWeight.w700,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.6,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  displayCoord,
-                  style: TextStyle(
-                    color: isZeroCoord ? const Color(0xFFEF9A9A).withValues(alpha: 0.70) : kBlueMuted,
-                    fontSize: 10, fontFamily: 'monospace',
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isZeroCoord
+                              ? AdvantaColors.error.withValues(alpha: 0.15)
+                              : kBlue.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          isZeroCoord ? '⚠ Koordinat Nol' : coordSourceLabel,
+                          style: TextStyle(
+                            color:
+                                isZeroCoord ? const Color(0xFFEF9A9A) : kBlue,
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                if (!isZeroCoord) ...[
-                  const SizedBox(height: 8),
-                  if (_isGeocodingExisting)
-                    Row(children: [
-                      SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: kBlue)),
-                      const SizedBox(width: 8),
-                      Text('Memuat detail lokasi…', style: TextStyle(color: kBlueMuted, fontSize: 11)),
-                    ])
-                  else if (_existingGeoResult != null) ...[
-                    _geoRow(Icons.home_outlined,          'Desa',      _existingGeoResult!['desa'],      color: kBlueMuted),
-                    const SizedBox(height: 4),
-                    _geoRow(Icons.map_outlined,           'Kecamatan', _existingGeoResult!['kecamatan'], color: kBlueMuted),
-                    const SizedBox(height: 4),
-                    _geoRow(Icons.location_city_outlined, 'Kabupaten', _existingGeoResult!['kabupaten'], color: kBlueMuted),
-                  ],
-                ] else ...[
                   const SizedBox(height: 6),
                   Text(
-                    'Koordinat mengarah ke titik 0,0 (tidak valid). Gunakan tombol koreksi di bawah.',
-                    style: TextStyle(color: const Color(0xFFEF9A9A), fontSize: 10, height: 1.4),
+                    displayCoord,
+                    style: TextStyle(
+                      color: isZeroCoord
+                          ? const Color(0xFFEF9A9A).withValues(alpha: 0.70)
+                          : kBlueMuted,
+                      fontSize: 10,
+                      fontFamily: 'monospace',
+                    ),
                   ),
+                  if (!isZeroCoord) ...[
+                    const SizedBox(height: 8),
+                    if (_isGeocodingExisting)
+                      Row(children: [
+                        SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 1.5, color: kBlue)),
+                        const SizedBox(width: 8),
+                        Text('Memuat detail lokasi…',
+                            style: TextStyle(color: kBlueMuted, fontSize: 11)),
+                      ])
+                    else if (_existingGeoResult != null) ...[
+                      _geoRow(Icons.home_outlined, 'Desa',
+                          _existingGeoResult!['desa'],
+                          color: kBlueMuted),
+                      const SizedBox(height: 4),
+                      _geoRow(Icons.map_outlined, 'Kecamatan',
+                          _existingGeoResult!['kecamatan'],
+                          color: kBlueMuted),
+                      const SizedBox(height: 4),
+                      _geoRow(Icons.location_city_outlined, 'Kabupaten',
+                          _existingGeoResult!['kabupaten'],
+                          color: kBlueMuted),
+                    ],
+                  ] else ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Koordinat mengarah ke titik 0,0 (tidak valid). Gunakan tombol koreksi di bawah.',
+                      style: TextStyle(
+                          color: const Color(0xFFEF9A9A),
+                          fontSize: 10,
+                          height: 1.4),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-        ],
+            const SizedBox(height: 10),
+          ],
 
-        // ── Row 1: Konfirmasi + GPS ─────────────────────────────────────────
-        Row(
-          children: [
-            if (hasCoord && parsed != null && !isZeroCoord) ...[
+          // ── Row 1: Konfirmasi + GPS ─────────────────────────────────────────
+          Row(
+            children: [
+              if (hasCoord && parsed != null && !isZeroCoord) ...[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _corrTaggingSource == 'confirmed'
+                        ? null
+                        : _useExistingCoordinate,
+                    icon: Icon(
+                      _corrTaggingSource == 'confirmed'
+                          ? Icons.check_circle_rounded
+                          : Icons.done_all_rounded,
+                      size: 15,
+                    ),
+                    label: Text(
+                      _corrTaggingSource == 'confirmed'
+                          ? 'Sudah Dikonfirmasi'
+                          : 'Koordinat Sudah Benar',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _corrTaggingSource == 'confirmed'
+                          ? AdvantaColors.success
+                          : kBlue,
+                      side: BorderSide(
+                        color: _corrTaggingSource == 'confirmed'
+                            ? AdvantaColors.success.withValues(alpha: 0.50)
+                            : kDarkBorder,
+                        width: 1.2,
+                      ),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: _isCapturingGps
+                    ? Container(
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: _kPhaseVeg.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color: _kPhaseVeg.withValues(alpha: 0.40)),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: _kPhaseVeg)),
+                            SizedBox(width: 8),
+                            Text('Mengambil GPS…',
+                                style:
+                                    TextStyle(color: _kPhaseVeg, fontSize: 12)),
+                          ],
+                        ),
+                      )
+                    : OutlinedButton.icon(
+                        onPressed: _captureUserGps,
+                        icon: const Icon(Icons.my_location_rounded, size: 15),
+                        label: const Text('Ambil GPS Saya',
+                            style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _corrTaggingSource == 'gps'
+                              ? AdvantaColors.success
+                              : _kPhaseVeg,
+                          side: BorderSide(
+                            color: _corrTaggingSource == 'gps'
+                                ? AdvantaColors.success.withValues(alpha: 0.60)
+                                : _kPhaseVeg.withValues(alpha: 0.60),
+                          ),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                        ),
+                      ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // ── Row 2: Import KML + Geser Pin ──────────────────────────────────
+          Row(
+            children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _corrTaggingSource == 'confirmed' ? null : _useExistingCoordinate,
-                  icon : Icon(
-                    _corrTaggingSource == 'confirmed' ? Icons.check_circle_rounded : Icons.done_all_rounded,
-                    size: 15,
-                  ),
-                  label: Text(
-                    _corrTaggingSource == 'confirmed' ? 'Sudah Dikonfirmasi' : 'Koordinat Sudah Benar',
-                    style: const TextStyle(fontSize: 11),
-                  ),
+                  onPressed: _importFromKml,
+                  icon: const Icon(Icons.file_open_outlined, size: 15),
+                  label:
+                      const Text('Import KML', style: TextStyle(fontSize: 12)),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: _corrTaggingSource == 'confirmed' ? AdvantaColors.success : kBlue,
-                    side           : BorderSide(
-                      color: _corrTaggingSource == 'confirmed'
-                          ? AdvantaColors.success.withValues(alpha: 0.50)
-                          : kDarkBorder,
+                    foregroundColor: _corrTaggingSource == 'kml'
+                        ? kKmlColor
+                        : kKmlColor.withValues(alpha: 0.70),
+                    side: BorderSide(
+                      color: _corrTaggingSource == 'kml'
+                          ? kKmlColor.withValues(alpha: 0.70)
+                          : kKmlColor.withValues(alpha: 0.30),
                       width: 1.2,
                     ),
-                    shape  : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
               ),
               const SizedBox(width: 10),
-            ],
-            Expanded(
-              child: _isCapturingGps
-                  ? Container(
-                height    : 42,
-                decoration: BoxDecoration(
-                  color       : _kPhaseVeg.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10),
-                  border      : Border.all(color: _kPhaseVeg.withValues(alpha: 0.40)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: _kPhaseVeg)),
-                    SizedBox(width: 8),
-                    Text('Mengambil GPS…', style: TextStyle(color: _kPhaseVeg, fontSize: 12)),
-                  ],
-                ),
-              )
-                  : OutlinedButton.icon(
-                onPressed: _captureUserGps,
-                icon : const Icon(Icons.my_location_rounded, size: 15),
-                label: const Text('Ambil GPS Saya', style: TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _corrTaggingSource == 'gps' ? AdvantaColors.success : _kPhaseVeg,
-                  side           : BorderSide(
-                    color: _corrTaggingSource == 'gps'
-                        ? AdvantaColors.success.withValues(alpha: 0.60)
-                        : _kPhaseVeg.withValues(alpha: 0.60),
-                  ),
-                  shape  : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        // ── Row 2: Import KML + Geser Pin ──────────────────────────────────
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _importFromKml,
-                icon : const Icon(Icons.file_open_outlined, size: 15),
-                label: const Text('Import KML', style: TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _corrTaggingSource == 'kml' ? kKmlColor : kKmlColor.withValues(alpha: 0.70),
-                  side           : BorderSide(
-                    color: _corrTaggingSource == 'kml'
-                        ? kKmlColor.withValues(alpha: 0.70)
-                        : kKmlColor.withValues(alpha: 0.30),
-                    width: 1.2,
-                  ),
-                  shape  : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _openMapPinDialog(fieldData),
-                icon : const Icon(Icons.pin_drop_outlined, size: 15),
-                label: const Text('Geser Pin Peta', style: TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _corrTaggingSource == 'map' ? kMapColor : kMapColor.withValues(alpha: 0.70),
-                  side           : BorderSide(
-                    color: _corrTaggingSource == 'map'
-                        ? kMapColor.withValues(alpha: 0.70)
-                        : kMapColor.withValues(alpha: 0.30),
-                    width: 1.2,
-                  ),
-                  shape  : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-
-        // ── Manual Lat/Lng input ────────────────────────────────────────────
-        Container(
-          padding   : const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color       : kManualColor.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(10),
-            border      : Border.all(color: kManualColor.withValues(alpha: 0.25)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                const Icon(Icons.edit_location_alt_outlined, color: Color(0xFF4DB6AC), size: 13),
-                const SizedBox(width: 6),
-                const Text(
-                  'INPUT MANUAL KOORDINAT',
-                  style: TextStyle(color: Color(0xFF4DB6AC), fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5),
-                ),
-              ]),
-              const SizedBox(height: 10),
-              Row(children: [
-                Expanded(
-                  child: TextField(
-                    controller  : _manualLatCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                    style       : AdvantaText.body2.copyWith(color: textColor),
-                    decoration  : _manualCoordDecor(context, 'Latitude', '-7.123456'),
-                    onChanged   : (_) {},
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller  : _manualLngCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                    style       : AdvantaText.body2.copyWith(color: textColor),
-                    decoration  : _manualCoordDecor(context, 'Longitude', '110.123456'),
-                    onChanged   : (_) {},
-                  ),
-                ),
-                const SizedBox(width: 10),
-                SizedBox(
-                  height: 42,
-                  child: ElevatedButton(
-                    onPressed: _applyManualCoord,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: kManualColor.withValues(alpha: 0.20),
-                      foregroundColor: kManualColor,
-                      elevation      : 0,
-                      side           : BorderSide(color: kManualColor.withValues(alpha: 0.50)),
-                      shape          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding        : const EdgeInsets.symmetric(horizontal: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _openMapPinDialog(fieldData),
+                  icon: const Icon(Icons.pin_drop_outlined, size: 15),
+                  label: const Text('Geser Pin Peta',
+                      style: TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _corrTaggingSource == 'map'
+                        ? kMapColor
+                        : kMapColor.withValues(alpha: 0.70),
+                    side: BorderSide(
+                      color: _corrTaggingSource == 'map'
+                          ? kMapColor.withValues(alpha: 0.70)
+                          : kMapColor.withValues(alpha: 0.30),
+                      width: 1.2,
                     ),
-                    child: const Text('Terapkan', style: TextStyle(fontSize: 12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
-              ]),
+              ),
             ],
           ),
-        ),
-        const SizedBox(height: 10),
+          const SizedBox(height: 10),
 
-        // ── Result card ─────────────────────────────────────────────────────
-        if (_corrTaggingCtrl.text.isNotEmpty) ...[
+          // ── Manual Lat/Lng input ────────────────────────────────────────────
           Container(
-            padding   : const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color       : sourceColor.withValues(alpha: 0.07),
+              color: kManualColor.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(10),
-              border      : Border.all(color: sourceColor.withValues(alpha: 0.35)),
+              border: Border.all(color: kManualColor.withValues(alpha: 0.25)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(sourceIcon, color: sourceColor, size: 13),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        sourceLabel,
-                        style: TextStyle(
-                          color: sourceColor,
-                          fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.6,
+                Row(children: [
+                  const Icon(Icons.edit_location_alt_outlined,
+                      color: Color(0xFF4DB6AC), size: 13),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'INPUT MANUAL KOORDINAT',
+                    style: TextStyle(
+                        color: Color(0xFF4DB6AC),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _manualLatCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true, signed: true),
+                      style: AdvantaText.body2.copyWith(color: textColor),
+                      decoration:
+                          _manualCoordDecor(context, 'Latitude', '-7.123456'),
+                      onChanged: (_) {},
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: _manualLngCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true, signed: true),
+                      style: AdvantaText.body2.copyWith(color: textColor),
+                      decoration:
+                          _manualCoordDecor(context, 'Longitude', '110.123456'),
+                      onChanged: (_) {},
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    height: 42,
+                    child: ElevatedButton(
+                      onPressed: _applyManualCoord,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kManualColor.withValues(alpha: 0.20),
+                        foregroundColor: kManualColor,
+                        elevation: 0,
+                        side: BorderSide(
+                            color: kManualColor.withValues(alpha: 0.50)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      child: const Text('Terapkan',
+                          style: TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // ── Result card ─────────────────────────────────────────────────────
+          if (_corrTaggingCtrl.text.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: sourceColor.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: sourceColor.withValues(alpha: 0.35)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(sourceIcon, color: sourceColor, size: 13),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          sourceLabel,
+                          style: TextStyle(
+                            color: sourceColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                          ),
                         ),
                       ),
+                      GestureDetector(
+                        onTap: () => setState(() {
+                          _corrTaggingCtrl.clear();
+                          _newGeoResult = null;
+                          _corrTaggingSource = null;
+                          _pendingGeometryWkt = null;
+                        }),
+                        child: Icon(Icons.close, color: subColor, size: 16),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _corrTaggingCtrl.text,
+                    style: TextStyle(
+                      color: sourceColor.withValues(alpha: 0.80),
+                      fontSize: 11,
+                      fontFamily: 'monospace',
                     ),
-                    GestureDetector(
-                      onTap: () => setState(() {
-                        _corrTaggingCtrl.clear();
-                        _newGeoResult      = null;
-                        _corrTaggingSource = null;
-                        _pendingGeometryWkt = null;
-                      }),
-                      child: Icon(Icons.close, color: subColor, size: 16),
-                    ),
+                  ),
+                  if (_newGeoResult != null) ...[
+                    const SizedBox(height: 8),
+                    _geoRow(Icons.home_outlined, 'Desa', _newGeoResult!['desa'],
+                        color: sourceColor.withValues(alpha: 0.90)),
+                    const SizedBox(height: 3),
+                    _geoRow(Icons.map_outlined, 'Kecamatan',
+                        _newGeoResult!['kecamatan'],
+                        color: sourceColor.withValues(alpha: 0.90)),
+                    const SizedBox(height: 3),
+                    _geoRow(Icons.location_city_outlined, 'Kabupaten',
+                        _newGeoResult!['kabupaten'],
+                        color: sourceColor.withValues(alpha: 0.90)),
                   ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _corrTaggingCtrl.text,
-                  style: TextStyle(
-                    color: sourceColor.withValues(alpha: 0.80),
-                    fontSize: 11, fontFamily: 'monospace',
-                  ),
-                ),
-                if (_newGeoResult != null) ...[
-                  const SizedBox(height: 8),
-                  _geoRow(Icons.home_outlined,          'Desa',      _newGeoResult!['desa'],      color: sourceColor.withValues(alpha: 0.90)),
-                  const SizedBox(height: 3),
-                  _geoRow(Icons.map_outlined,           'Kecamatan', _newGeoResult!['kecamatan'], color: sourceColor.withValues(alpha: 0.90)),
-                  const SizedBox(height: 3),
-                  _geoRow(Icons.location_city_outlined, 'Kabupaten', _newGeoResult!['kabupaten'], color: sourceColor.withValues(alpha: 0.90)),
                 ],
-              ],
+              ),
             ),
-          ),
-        ] else ...[
-          Container(
-            padding   : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color       : fillColor,
-              borderRadius: BorderRadius.circular(10),
-              border      : Border.all(color: borderColor),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, color: subColor.withValues(alpha: 0.50), size: 14),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Pilih salah satu opsi di atas untuk mengisi koreksi koordinat.',
-                    style: AdvantaText.caption.copyWith(color: subColor, height: 1.4),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: fillColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: borderColor),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      color: subColor.withValues(alpha: 0.50), size: 14),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Pilih salah satu opsi di atas untuk mengisi koreksi koordinat.',
+                      style: AdvantaText.caption
+                          .copyWith(color: subColor, height: 1.4),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
         ],
       ),
     );
   }
 
-  InputDecoration _manualCoordDecor(BuildContext context, String label, String hint) {
-    final isDark      = Theme.of(context).brightness == Brightness.dark;
-    final subColor    = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
-    final fillColor   = isDark ? AdvantaColors.deepForest.withAlpha(200) : AdvantaColors.softGrey;
-    final borderColor = isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+  InputDecoration _manualCoordDecor(
+      BuildContext context, String label, String hint) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final subColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
+    final fillColor = isDark
+        ? AdvantaColors.deepForest.withAlpha(200)
+        : AdvantaColors.softGrey;
+    final borderColor =
+        isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
     return InputDecoration(
-      labelText     : label,
-      hintText      : hint,
-      labelStyle    : TextStyle(color: subColor, fontSize: 11),
-      hintStyle     : TextStyle(color: subColor.withValues(alpha: 0.40), fontSize: 11),
-      filled        : true,
-      fillColor     : fillColor,
-      isDense       : true,
+      labelText: label,
+      hintText: hint,
+      labelStyle: TextStyle(color: subColor, fontSize: 11),
+      hintStyle:
+          TextStyle(color: subColor.withValues(alpha: 0.40), fontSize: 11),
+      filled: true,
+      fillColor: fillColor,
+      isDense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      enabledBorder : OutlineInputBorder(
+      enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide  : BorderSide(color: borderColor),
+        borderSide: BorderSide(color: borderColor),
       ),
-      focusedBorder : OutlineInputBorder(
+      focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide  : const BorderSide(color: Color(0xFF4DB6AC), width: 1.5),
+        borderSide: const BorderSide(color: Color(0xFF4DB6AC), width: 1.5),
       ),
     );
   }
@@ -1897,11 +2138,13 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     return Row(children: [
       Icon(icon, size: 11, color: color.withValues(alpha: 0.70)),
       const SizedBox(width: 5),
-      Text('$label: ', style: TextStyle(color: color.withValues(alpha: 0.70), fontSize: 11)),
+      Text('$label: ',
+          style: TextStyle(color: color.withValues(alpha: 0.70), fontSize: 11)),
       Expanded(
         child: Text(
           value?.isNotEmpty == true ? value! : '-',
-          style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+          style: TextStyle(
+              color: color, fontSize: 11, fontWeight: FontWeight.w600),
           overflow: TextOverflow.ellipsis,
         ),
       ),
@@ -1909,40 +2152,49 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   }
 
   Widget _buildSowingRatio(BuildContext context, bool isDiscard) {
-    final isDark      = Theme.of(context).brightness == Brightness.dark;
-    final subColor    = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
-    final textColor   = Theme.of(context).colorScheme.onSurface;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final subColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
+    final textColor = Theme.of(context).colorScheme.onSurface;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           isDiscard ? 'Sowing Ratio (F : M)' : 'Sowing Ratio (F : M) *',
-          style: AdvantaText.body2.copyWith(color: subColor, fontWeight: FontWeight.w500),
+          style: AdvantaText.body2
+              .copyWith(color: subColor, fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: TextFormField(
-                controller   : _sowingRatioFCtrl,
-                keyboardType : TextInputType.number,
-                style        : AdvantaText.body1.copyWith(color: textColor),
-                decoration   : _ratioDecor(context, 'Female'),
-                validator    : !isDiscard ? (v) => (v == null || v.isEmpty) ? 'Wajib' : null : null,
+                controller: _sowingRatioFCtrl,
+                keyboardType: TextInputType.number,
+                style: AdvantaText.body1.copyWith(color: textColor),
+                decoration: _ratioDecor(context, 'Female'),
+                validator: !isDiscard
+                    ? (v) => (v == null || v.isEmpty) ? 'Wajib' : null
+                    : null,
               ),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10),
-              child  : Text(':', style: TextStyle(color: subColor.withValues(alpha: 0.70), fontSize: 22, fontWeight: FontWeight.w300)),
+              child: Text(':',
+                  style: TextStyle(
+                      color: subColor.withValues(alpha: 0.70),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w300)),
             ),
             Expanded(
               child: TextFormField(
-                controller   : _sowingRatioMCtrl,
-                keyboardType : TextInputType.number,
-                style        : AdvantaText.body1.copyWith(color: textColor),
-                decoration   : _ratioDecor(context, 'Male'),
-                validator    : !isDiscard ? (v) => (v == null || v.isEmpty) ? 'Wajib' : null : null,
+                controller: _sowingRatioMCtrl,
+                keyboardType: TextInputType.number,
+                style: AdvantaText.body1.copyWith(color: textColor),
+                decoration: _ratioDecor(context, 'Male'),
+                validator: !isDiscard
+                    ? (v) => (v == null || v.isEmpty) ? 'Wajib' : null
+                    : null,
               ),
             ),
           ],
@@ -1952,31 +2204,34 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   }
 
   InputDecoration _ratioDecor(BuildContext context, String label) {
-    final isDark      = Theme.of(context).brightness == Brightness.dark;
-    final subColor    = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
-    final fillColor   = isDark ? AdvantaColors.deepForest.withAlpha(200) : AdvantaColors.softGrey;
-    final borderColor = isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final subColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
+    final fillColor = isDark
+        ? AdvantaColors.deepForest.withAlpha(200)
+        : AdvantaColors.softGrey;
+    final borderColor =
+        isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
     return InputDecoration(
-      labelText    : label,
-      labelStyle   : TextStyle(color: subColor, fontSize: 12),
-      filled       : true,
-      fillColor    : fillColor,
+      labelText: label,
+      labelStyle: TextStyle(color: subColor, fontSize: 12),
+      filled: true,
+      fillColor: fillColor,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide  : BorderSide(color: borderColor),
+        borderSide: BorderSide(color: borderColor),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide  : const BorderSide(color: _kPhaseVeg, width: 1.5),
+        borderSide: const BorderSide(color: _kPhaseVeg, width: 1.5),
       ),
-      errorBorder : OutlineInputBorder(
+      errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide  : BorderSide(color: AdvantaColors.error),
+        borderSide: BorderSide(color: AdvantaColors.error),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide  : BorderSide(color: AdvantaColors.error, width: 1.5),
+        borderSide: BorderSide(color: AdvantaColors.error, width: 1.5),
       ),
     );
   }
@@ -1986,23 +2241,29 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
 // Veg Cell Widget
 // ─────────────────────────────────────────────────────────────────────────────
 class _VegCell extends StatelessWidget {
-  final String  label;
+  final String label;
   final String? value;
-  final Color   labelColor;
-  final Color   valueColor;
-  const _VegCell(this.label, this.value, {required this.labelColor, required this.valueColor});
+  final Color labelColor;
+  final Color valueColor;
+  const _VegCell(this.label, this.value,
+      {required this.labelColor, required this.valueColor});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
-      child  : Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: labelColor, fontSize: 10, fontWeight: FontWeight.w500)),
+          Text(label,
+              style: TextStyle(
+                  color: labelColor,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500)),
           Text(
             value?.isNotEmpty == true ? value! : '—',
-            style: TextStyle(color: valueColor, fontSize: 12, fontWeight: FontWeight.w500),
+            style: TextStyle(
+                color: valueColor, fontSize: 12, fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -2034,30 +2295,31 @@ class _MapPinDialogState extends State<_MapPinDialog> {
   void initState() {
     super.initState();
     _pinPosition = widget.initial;
-    _mapCtrl     = MapController();
+    _mapCtrl = MapController();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark       = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final surfaceColor = isDark ? AdvantaColors.primaryGreen : Colors.white;
-    final textColor    = Theme.of(context).colorScheme.onSurface;
-    final subColor     = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
+    final textColor = Theme.of(context).colorScheme.onSurface;
+    final subColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
 
     return Dialog(
       backgroundColor: surfaceColor,
-      shape          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      insetPadding   : const EdgeInsets.all(16),
-      child          : SizedBox(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.all(16),
+      child: SizedBox(
         height: MediaQuery.of(context).size.height * 0.68,
-        child : Column(
+        child: Column(
           children: [
             // ── Header ──
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
-              child  : Row(
+              child: Row(
                 children: [
-                  const Icon(Icons.pin_drop_outlined, color: Color(0xFF9575CD), size: 16),
+                  const Icon(Icons.pin_drop_outlined,
+                      color: Color(0xFF9575CD), size: 16),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -2067,8 +2329,8 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon     : Icon(Icons.close, color: subColor, size: 20),
-                    padding  : EdgeInsets.zero,
+                    icon: Icon(Icons.close, color: subColor, size: 20),
+                    padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
                 ],
@@ -2076,21 +2338,27 @@ class _MapPinDialogState extends State<_MapPinDialog> {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child  : Container(
-                padding   : const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color       : const Color(0xFF9575CD).withValues(alpha: 0.10),
+                  color: const Color(0xFF9575CD).withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(8),
-                  border      : Border.all(color: const Color(0xFF9575CD).withValues(alpha: 0.30)),
+                  border: Border.all(
+                      color: const Color(0xFF9575CD).withValues(alpha: 0.30)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.touch_app_outlined, color: Color(0xFF9575CD), size: 13),
+                    const Icon(Icons.touch_app_outlined,
+                        color: Color(0xFF9575CD), size: 13),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         '${_pinPosition.latitude.toStringAsFixed(6)},  ${_pinPosition.longitude.toStringAsFixed(6)}',
-                        style: const TextStyle(color: Color(0xFFCE93D8), fontSize: 11, fontFamily: 'monospace'),
+                        style: const TextStyle(
+                            color: Color(0xFFCE93D8),
+                            fontSize: 11,
+                            fontFamily: 'monospace'),
                       ),
                     ),
                   ],
@@ -2100,15 +2368,17 @@ class _MapPinDialogState extends State<_MapPinDialog> {
             // ── Map ──
             Expanded(
               child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-                child       : Stack(
+                borderRadius:
+                    const BorderRadius.vertical(bottom: Radius.circular(16)),
+                child: Stack(
                   children: [
                     FlutterMap(
                       mapController: _mapCtrl,
-                      options      : MapOptions(
+                      options: MapOptions(
                         initialCenter: _pinPosition,
-                        initialZoom  : 15,
-                        onTap        : (tapPos, latLng) => setState(() => _pinPosition = latLng),
+                        initialZoom: 15,
+                        onTap: (tapPos, latLng) =>
+                            setState(() => _pinPosition = latLng),
                       ),
                       children: [
                         TileLayer(
@@ -2119,13 +2389,14 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                         MarkerLayer(
                           markers: [
                             Marker(
-                              point : _pinPosition,
-                              width : 40,
+                              point: _pinPosition,
+                              width: 40,
                               height: 50,
-                              child : const Column(
+                              child: const Column(
                                 mainAxisSize: MainAxisSize.min,
-                                children    : [
-                                  Icon(Icons.location_pin, color: Color(0xFF9575CD), size: 38),
+                                children: [
+                                  Icon(Icons.location_pin,
+                                      color: Color(0xFF9575CD), size: 38),
                                 ],
                               ),
                             ),
@@ -2173,31 +2444,35 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                         left: 12,
                         bottom: 52,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.48),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Text(
                             'Esri World Imagery',
-                            style: TextStyle(color: Colors.white70, fontSize: 9),
+                            style:
+                                TextStyle(color: Colors.white70, fontSize: 9),
                           ),
                         ),
                       ),
                     Positioned(
                       bottom: 12,
-                      left  : 0,
-                      right : 0,
-                      child : Center(
+                      left: 0,
+                      right: 0,
+                      child: Center(
                         child: Container(
-                          padding   : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
-                            color       : Colors.black.withValues(alpha: 0.55),
+                            color: Colors.black.withValues(alpha: 0.55),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: const Text(
                             'Ketuk peta untuk memindahkan pin',
-                            style: TextStyle(color: Colors.white70, fontSize: 11),
+                            style:
+                                TextStyle(color: Colors.white70, fontSize: 11),
                           ),
                         ),
                       ),
@@ -2209,17 +2484,18 @@ class _MapPinDialogState extends State<_MapPinDialog> {
             // ── Confirm button ──
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-              child  : SizedBox(
+              child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () => Navigator.pop(context, _pinPosition),
-                  icon     : const Icon(Icons.check_rounded, size: 18),
-                  label    : const Text('Gunakan Koordinat Ini'),
-                  style    : ElevatedButton.styleFrom(
+                  icon: const Icon(Icons.check_rounded, size: 18),
+                  label: const Text('Gunakan Koordinat Ini'),
+                  style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF9575CD),
                     foregroundColor: Colors.white,
-                    padding        : const EdgeInsets.symmetric(vertical: 12),
-                    shape          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
               ),

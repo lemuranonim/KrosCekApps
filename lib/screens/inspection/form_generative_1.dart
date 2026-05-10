@@ -11,9 +11,9 @@ import 'package:geolocator/geolocator.dart';
 import '../../providers/audit_generative_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
-import '../../services/session_manager.dart';   // ← NEW
+import '../../services/session_manager.dart'; // ← NEW
 import '../../theme/app_theme.dart';
-import '../../utils/guest_guard.dart';           // ← NEW
+import '../../utils/guest_guard.dart'; // ← NEW
 import 'fc_form_widgets.dart';
 
 class FormGenerative1 extends ConsumerStatefulWidget {
@@ -25,15 +25,15 @@ class FormGenerative1 extends ConsumerStatefulWidget {
 }
 
 class _FormGenerative1State extends ConsumerState<FormGenerative1> {
-  final _formKey   = GlobalKey<FormState>();
-  bool _isSaving   = false;
+  final _formKey = GlobalKey<FormState>();
+  bool _isSaving = false;
   bool _dataLoaded = false;
 
   // ── NEW: session untuk GuestGuard ────────────────────────
   ActiveSession? _session;
 
   // Controllers
-  final _qaFiCtrl  = TextEditingController();
+  final _qaFiCtrl = TextEditingController();
   final _qaSpvCtrl = TextEditingController();
 
   // Date
@@ -69,17 +69,19 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
   void _loadAudit(Map<String, dynamic> audit) {
     if (_dataLoaded) return;
     _dataLoaded = true;
-    _qaFiCtrl.text  = audit['qa_fi_1'] ?? audit['qa_fi'] ?? '';
-    _qaSpvCtrl.text = audit['qa_spv']  ?? '';
+    _qaFiCtrl.text = audit['qa_fi_1'] ?? audit['qa_fi'] ?? '';
+    _qaSpvCtrl.text = audit['qa_spv'] ?? '';
     if (audit['date_of_audit_1'] != null) {
-      try { _auditDate = DateTime.parse(audit['date_of_audit_1']); } catch (_) {}
+      try {
+        _auditDate = DateTime.parse(audit['date_of_audit_1']);
+      } catch (_) {}
     }
     setState(() {
-      _readiness    = audit['readiness_status_1'];
-      _roguing      = audit['roguing_status_1'];
-      _lsv          = audit['lsv_status_1'];
+      _readiness = audit['readiness_status_1'];
+      _roguing = audit['roguing_status_1'];
+      _lsv = audit['lsv_status_1'];
       _cropUniformity = audit['crop_uniformity_1'];
-      _cropHealth     = audit['crop_health_1'];
+      _cropHealth = audit['crop_health_1'];
       _actionNeeded = audit['action_needed_1'];
     });
   }
@@ -93,10 +95,10 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
     final p = await showDatePicker(
       context: context,
       initialDate: _auditDate,
-      firstDate:   DateTime(2020),
-      lastDate:    DateTime.now(),
-      builder:     (ctx, child) => Theme(
-        data:  genDatePickerTheme(ctx, kGen1Color),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (ctx, child) => Theme(
+        data: genDatePickerTheme(ctx, kGen1Color),
         child: child!,
       ),
     );
@@ -113,36 +115,35 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
     }
     setState(() => _isSaving = true);
     try {
-      final now  = DateTime.now();
+      final now = DateTime.now();
       final data = {
-        'field_number'       : widget.fieldNumber,
-        'date_of_audit_1'    : DateFormat('yyyy-MM-dd').format(_auditDate),
-        'week_of_audit_1'    : calcAuditWeek(_auditDate),
-        'readiness_status_1' : _readiness,
-        'roguing_status_1'   : _roguing,
-        'lsv_status_1'       : _lsv,
-        'crop_uniformity_1'   : _cropUniformity,
-        'crop_health_1'       : _cropHealth,
-        'action_needed_1'    : _actionNeeded,
-        'qa_fi_1'            : _qaFiCtrl.text.trim(),
-        'qa_spv'             : _qaSpvCtrl.text.trim(),
-        'submitted_at_1'     : now.toIso8601String(),
-        'fase'               : 'generative_1',
+        'field_number': widget.fieldNumber,
+        'date_of_audit_1': DateFormat('yyyy-MM-dd').format(_auditDate),
+        'week_of_audit_1': calcAuditWeek(_auditDate),
+        'readiness_status_1': _readiness,
+        'roguing_status_1': _roguing,
+        'lsv_status_1': _lsv,
+        'crop_uniformity_1': _cropUniformity,
+        'crop_health_1': _cropHealth,
+        'action_needed_1': _actionNeeded,
+        'qa_fi_1': _qaFiCtrl.text.trim(),
+        'qa_spv': _qaSpvCtrl.text.trim(),
+        'submitted_at_1': now.toIso8601String(),
+        'fase': 'generative_1',
       };
 
       final svc = ref.read(supabaseServiceProvider);
       await svc.upsertGenerativeCheckpoint(
         fieldNumber: widget.fieldNumber,
-        checkpoint : 1,
-        data       : data,
+        checkpoint: 1,
+        data: data,
       );
 
       double lat = 0, lng = 0;
       try {
         final pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-              accuracy:  LocationAccuracy.high,
-              timeLimit: Duration(seconds: 5)),
+              accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 5)),
         );
         lat = pos.latitude;
         lng = pos.longitude;
@@ -152,12 +153,14 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
       if (att.isCheckedIn && att.attendanceId != null) {
         await svc.logActivity(
           attendanceId: att.attendanceId!,
-          userId:       _qaFiCtrl.text.trim().isNotEmpty
-              ? _qaFiCtrl.text.trim() : 'unknown',
-          fieldNumber:  widget.fieldNumber,
-          phase:        'generative_1',
-          actionType:   'single_submit',
-          lat: lat, lng: lng,
+          userId: _qaFiCtrl.text.trim().isNotEmpty
+              ? _qaFiCtrl.text.trim()
+              : 'unknown',
+          fieldNumber: widget.fieldNumber,
+          phase: 'generative_1',
+          actionType: 'single_submit',
+          lat: lat,
+          lng: lng,
         );
       }
 
@@ -178,44 +181,40 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
   void _snack(String msg, {bool err = false}) {
     final theme = Theme.of(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content:         Text(msg,
-          style: AdvantaText.body2.copyWith(color: Colors.white)),
-      backgroundColor: err
-          ? theme.colorScheme.error
-          : AdvantaColors.success,
-      behavior:        SnackBarBehavior.floating,
-      shape:           RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10)),
-      margin:          const EdgeInsets.all(12),
+      content:
+          Text(msg, style: AdvantaText.body2.copyWith(color: Colors.white)),
+      backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      margin: const EdgeInsets.all(12),
     ));
   }
 
   @override
   Widget build(BuildContext context) {
     final auditAsync = ref.watch(generativeAuditProvider(widget.fieldNumber));
-    final fields     = ref.watch(masterFieldsProvider).value ?? [];
-    final fieldData  = fields.firstWhere(
-            (f) => f['field_number'] == widget.fieldNumber,
+    final fields = ref.watch(masterFieldsProvider).value ?? [];
+    final fieldData = fields.firstWhere(
+        (f) => f['field_number'] == widget.fieldNumber,
         orElse: () => {});
 
-    final isDiscard = _actionNeeded == 'G';
+    final isDiscard = genIsDiscardFull(_actionNeeded);
 
     return Scaffold(
       appBar: GenAppBar(
         checkpointLabel: 'Audit 1 – Readiness Check',
-        fieldNumber:     widget.fieldNumber,
-        isDiscard:       isDiscard,
-        accentColor:     kGen1Color,
-        onBack:          () => Navigator.pop(context),
+        fieldNumber: widget.fieldNumber,
+        isDiscard: isDiscard,
+        accentColor: kGen1Color,
+        onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () => Center(
-            child: CircularProgressIndicator(
-                color: kGen1Color)),
+        loading: () =>
+            Center(child: CircularProgressIndicator(color: kGen1Color)),
         error: (e, _) => Center(
             child: Text('Error: $e',
-                style: AdvantaText.body2.copyWith(
-                    color: Theme.of(context).colorScheme.error))),
+                style: AdvantaText.body2
+                    .copyWith(color: Theme.of(context).colorScheme.error))),
         data: (audit) {
           if (audit != null) _loadAudit(audit);
           return _buildBody(fieldData, isDiscard);
@@ -248,29 +247,29 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
                   // ── Section: Audit Info ──
                   GenSection(
                     title: 'Informasi Audit',
-                    icon:  Icons.assignment_outlined,
+                    icon: Icons.assignment_outlined,
                     color: kGen1Color,
                     children: [
                       GenDateTile(
                           label: 'Tanggal Audit',
-                          date:  _auditDate,
+                          date: _auditDate,
                           onTap: _pickDate),
                       const SizedBox(height: 12),
                       GenTextField(
-                        controller:  _qaFiCtrl,
-                        label:       'QA FI',
-                        hint:        'Nama QA Field Inspector',
-                        required:    !_isGuest,
-                        icon:        Icons.person_outline,
+                        controller: _qaFiCtrl,
+                        label: 'QA FI',
+                        hint: 'Nama QA Field Inspector',
+                        required: !_isGuest,
+                        icon: Icons.person_outline,
                         accentColor: kGen1Color,
                       ),
                       const SizedBox(height: 12),
                       GenTextField(
-                        controller:  _qaSpvCtrl,
-                        label:       'QA SPV',
-                        hint:        'Nama QA Supervisor',
-                        required:    !_isGuest,
-                        icon:        Icons.supervisor_account_outlined,
+                        controller: _qaSpvCtrl,
+                        label: 'QA SPV',
+                        hint: 'Nama QA Supervisor',
+                        required: !_isGuest,
+                        icon: Icons.supervisor_account_outlined,
                         accentColor: kGen1Color,
                       ),
                     ],
@@ -280,71 +279,81 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
                   // ── Section: Penilaian ──
                   GenSection(
                     title: 'Penilaian Readiness',
-                    icon:  Icons.checklist_outlined,
+                    icon: Icons.checklist_outlined,
                     color: kGen1Color,
                     children: [
                       GenOptionPicker(
-                        label:       'Readiness Status',
-                        required:    !isDiscard && !_isGuest,
-                        options:     genReadinessOpts,
-                        value:       _readiness,
-                        onChanged:   (v) { if (!_isGuest) {
-                          setState(() => _readiness = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Readiness Status',
+                        required: !isDiscard && !_isGuest,
+                        options: genReadinessOpts,
+                        value: _readiness,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _readiness = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: kGen1Color,
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label:       'Roguing Status',
-                        required:    !isDiscard && !_isGuest,
-                        options:     genRoguingOpts,
-                        value:       _roguing,
-                        onChanged:   (v) { if (!_isGuest) {
-                          setState(() => _roguing = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Roguing Status',
+                        required: !isDiscard && !_isGuest,
+                        options: genRoguingOpts,
+                        value: _roguing,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _roguing = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: kGen1Color,
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label:       'LSV Status',
-                        required:    !isDiscard && !_isGuest,
-                        options:     genLsvOpts,
-                        value:       _lsv,
-                        onChanged:   (v) { if (!_isGuest) {
-                          setState(() => _lsv = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'LSV Status',
+                        required: !isDiscard && !_isGuest,
+                        options: genLsvOpts,
+                        value: _lsv,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _lsv = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: kGen1Color,
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label:       'Crop Uniformity',
-                        required:    !isDiscard && !_isGuest,
-                        options:     genCropUniformityOpts,
-                        value:       _cropUniformity,
-                        onChanged:   (v) { if (!_isGuest) {
-                          setState(() => _cropUniformity = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Crop Uniformity',
+                        required: !isDiscard && !_isGuest,
+                        options: genCropUniformityOpts,
+                        value: _cropUniformity,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _cropUniformity = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: kGen1Color,
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
-                        label:       'Crop Health',
-                        required:    !isDiscard && !_isGuest,
-                        options:     genCropHealthOpts,
-                        value:       _cropHealth,
-                        onChanged:   (v) { if (!_isGuest) {
-                          setState(() => _cropHealth = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Crop Health',
+                        required: !isDiscard && !_isGuest,
+                        options: genCropHealthOpts,
+                        value: _cropHealth,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _cropHealth = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: kGen1Color,
                       ),
                     ],
@@ -354,26 +363,28 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
                   // ── Section: Action Needed ──
                   GenSection(
                     title: 'Action Needed',
-                    icon:  Icons.gavel_outlined,
+                    icon: Icons.gavel_outlined,
                     color: AdvantaColors.error,
                     children: [
                       GenOptionPickerLong(
-                        label:       'Action Needed',
-                        required:    !_isGuest,
-                        options:     genActionNeededOpts,
-                        value:       _actionNeeded,
-                        onChanged:   (v) { if (!_isGuest) {
-                          setState(() => _actionNeeded = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        label: 'Action Needed',
+                        required: !_isGuest,
+                        options: genActionNeededOpts,
+                        value: _actionNeeded,
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _actionNeeded = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: AdvantaColors.error,
                       ),
                       if (isDiscard && !_isGuest) ...[
                         const SizedBox(height: 12),
                         const GenDiscardBanner(
                           message:
-                          'Action Discard Full dipilih — hanya field wajib '
+                              'Action Discard Full dipilih — hanya field wajib '
                               '(QA FI, SPV, Tanggal) yang harus diisi.',
                         ),
                       ],
@@ -386,11 +397,13 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
 
           // ── Save Bar — disabled + label berubah untuk Guest ──
           GenSaveBar(
-            isSaving:  _isSaving,
+            isSaving: _isSaving,
             isDiscard: isDiscard && !_isGuest,
             saveLabel: _isGuest
                 ? 'READ-ONLY — TIDAK DAPAT MENYIMPAN'
-                : (isDiscard ? 'SIMPAN — DISCARD FULL' : 'SIMPAN GEN-1 READINESS'),
+                : (isDiscard
+                    ? 'SIMPAN — DISCARD FULL'
+                    : 'SIMPAN GEN-1 READINESS'),
             onSave: _isGuest
                 ? () => GuestGuard.blockIfGuest(context, _session)
                 : _save,

@@ -26,17 +26,17 @@ class FormGenerative5SC extends ConsumerStatefulWidget {
 }
 
 class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
-  final _formKey           = GlobalKey<FormState>();
-  bool _isSaving           = false;
-  bool _dataLoaded         = false;
+  final _formKey = GlobalKey<FormState>();
+  bool _isSaving = false;
+  bool _dataLoaded = false;
   ActiveSession? _session;
 
   // Controllers
-  final _qaFiCtrl          = TextEditingController();
-  final _qaSpvCtrl         = TextEditingController();
-  final _discardAreaCtrl   = TextEditingController();
+  final _qaFiCtrl = TextEditingController();
+  final _qaSpvCtrl = TextEditingController();
+  final _discardAreaCtrl = TextEditingController();
   final _discardReasonCtrl = TextEditingController();
-  final _remarksCtrl       = TextEditingController();
+  final _remarksCtrl = TextEditingController();
 
   // Dates
   DateTime _auditDate = DateTime.now();
@@ -56,7 +56,7 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
   String? _finalDecision;
 
   bool get _isGuest => GuestGuard.isGuest(_session);
-  bool get _isDiscard => _finalDecision == 'D';
+  bool get _isDiscard => genIsDiscardDecision(_finalDecision);
 
   @override
   void initState() {
@@ -79,36 +79,43 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
   void _loadAudit(Map<String, dynamic> audit) {
     if (_dataLoaded) return;
     _dataLoaded = true;
-    _qaFiCtrl.text           = audit['qa_fi_5'] ?? audit['qa_fi'] ?? '';
-    _qaSpvCtrl.text          = audit['qa_spv']  ?? '';
-    _discardAreaCtrl.text    = audit['pld_area_ha_5']?.toString() ?? '';
-    _discardReasonCtrl.text  = audit['pld_reason_5'] ?? '';
-    _remarksCtrl.text        = audit['remarks_5'] ?? '';
+    _qaFiCtrl.text = audit['qa_fi_5'] ?? audit['qa_fi'] ?? '';
+    _qaSpvCtrl.text = audit['qa_spv'] ?? '';
+    _discardAreaCtrl.text = audit['pld_area_ha_5']?.toString() ?? '';
+    _discardReasonCtrl.text = audit['pld_reason_5'] ?? '';
+    _remarksCtrl.text = audit['remarks_5'] ?? '';
 
     if (audit['date_of_audit_5'] != null) {
-      try { _auditDate = DateTime.parse(audit['date_of_audit_5']); } catch (_) {}
+      try {
+        _auditDate = DateTime.parse(audit['date_of_audit_5']);
+      } catch (_) {}
     }
     if (audit['closed_out_date_5'] != null) {
-      try { _closedOutDate = DateTime.parse(audit['closed_out_date_5']); } catch (_) {}
+      try {
+        _closedOutDate = DateTime.parse(audit['closed_out_date_5']);
+      } catch (_) {}
     }
 
     setState(() {
-      _femaleShed      = audit['female_shedding_5'];
-      _offtypeM        = audit['offtype_m_5'];
-      _offtypeF        = audit['offtype_f_5'];
-      _lsv             = audit['lsv_status_5'];
-      _cropUniformity  = audit['crop_uniformity_5'];
-      _cropHealth      = audit['crop_health_5'];
-      _detasseling     = audit['detasseling_assesment_5'];
-      _isolationProblem= audit['isolation_problem_5'];
-      _affectedOther   = audit['affected_other_field_5'];
-      _finalFlagging   = audit['final_flagging_5'];
-      _finalDecision   = audit['final_decision_5'];
+      _femaleShed = audit['female_shedding_5'];
+      _offtypeM = audit['offtype_m_5'];
+      _offtypeF = audit['offtype_f_5'];
+      _lsv = audit['lsv_status_5'];
+      _cropUniformity = audit['crop_uniformity_5'];
+      _cropHealth = audit['crop_health_5'];
+      _detasseling = audit['detasseling_assesment_5'];
+      _isolationProblem = audit['isolation_problem_5'];
+      _affectedOther = audit['affected_other_field_5'];
+      _finalFlagging = audit['final_flagging_5'];
+      _finalDecision = audit['final_decision_5'];
     });
   }
 
   Future<void> _pickAuditDate() async {
-    if (_isGuest) { GuestGuard.blockIfGuest(context, _session); return; }
+    if (_isGuest) {
+      GuestGuard.blockIfGuest(context, _session);
+      return;
+    }
     final p = await showDatePicker(
       context: context,
       initialDate: _auditDate,
@@ -123,7 +130,10 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
   }
 
   Future<void> _pickClosedDate() async {
-    if (_isGuest) { GuestGuard.blockIfGuest(context, _session); return; }
+    if (_isGuest) {
+      GuestGuard.blockIfGuest(context, _session);
+      return;
+    }
     final p = await showDatePicker(
       context: context,
       initialDate: _closedOutDate ?? DateTime.now(),
@@ -146,36 +156,34 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
 
     setState(() => _isSaving = true);
     try {
-      final now  = DateTime.now();
+      final now = DateTime.now();
       final data = {
-        'field_number'            : widget.fieldNumber,
-        'date_of_audit_5'         : DateFormat('yyyy-MM-dd').format(_auditDate),
-        'week_of_audit_5'         : calcAuditWeek(_auditDate),
-        'female_shedding_5'       : _femaleShed,
-        'offtype_m_5'             : _offtypeM,
-        'offtype_f_5'             : _offtypeF,
-        'lsv_status_5'            : _lsv,
-        'crop_uniformity_5'       : _cropUniformity,
-        'crop_health_5'           : _cropHealth,
-        'detasseling_assesment_5' : _detasseling,
-        'isolation_problem_5'     : _isolationProblem,
-        'affected_other_field_5'  : _affectedOther,
-        'closed_out_date_5'       : _closedOutDate != null 
-            ? DateFormat('yyyy-MM-dd').format(_closedOutDate!) 
+        'field_number': widget.fieldNumber,
+        'date_of_audit_5': DateFormat('yyyy-MM-dd').format(_auditDate),
+        'week_of_audit_5': calcAuditWeek(_auditDate),
+        'female_shedding_5': _femaleShed,
+        'offtype_m_5': _offtypeM,
+        'offtype_f_5': _offtypeF,
+        'lsv_status_5': _lsv,
+        'crop_uniformity_5': _cropUniformity,
+        'crop_health_5': _cropHealth,
+        'detasseling_assesment_5': _detasseling,
+        'isolation_problem_5': _isolationProblem,
+        'affected_other_field_5': _affectedOther,
+        'closed_out_date_5': _closedOutDate != null
+            ? DateFormat('yyyy-MM-dd').format(_closedOutDate!)
             : null,
-        'final_flagging_5'        : _finalFlagging,
-        'final_decision_5'        : _finalDecision,
-        'pld_area_ha_5'           : _isDiscard 
-            ? double.tryParse(_discardAreaCtrl.text.replaceAll(',', '.')) 
+        'final_flagging_5': _finalFlagging,
+        'final_decision_5': _finalDecision,
+        'pld_area_ha_5': _isDiscard
+            ? double.tryParse(_discardAreaCtrl.text.replaceAll(',', '.'))
             : null,
-        'pld_reason_5'            : _isDiscard 
-            ? _discardReasonCtrl.text.trim() 
-            : null,
-        'remarks_5'               : _remarksCtrl.text.trim(),
-        'qa_fi_5'                 : _qaFiCtrl.text.trim(),
-        'qa_spv'                  : _qaSpvCtrl.text.trim(),
-        'submitted_at_5'          : now.toIso8601String(),
-        'fase'                    : 'generative_5',
+        'pld_reason_5': _isDiscard ? _discardReasonCtrl.text.trim() : null,
+        'remarks_5': _remarksCtrl.text.trim(),
+        'qa_fi_5': _qaFiCtrl.text.trim(),
+        'qa_spv': _qaSpvCtrl.text.trim(),
+        'submitted_at_5': now.toIso8601String(),
+        'fase': 'generative_5',
       };
 
       final svc = ref.read(supabaseServiceProvider);
@@ -190,8 +198,7 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
       try {
         final pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
-              timeLimit: Duration(seconds: 5)),
+              accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 5)),
         );
         lat = pos.latitude;
         lng = pos.longitude;
@@ -202,11 +209,13 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
         await svc.logActivity(
           attendanceId: att.attendanceId!,
           userId: _qaFiCtrl.text.trim().isNotEmpty
-              ? _qaFiCtrl.text.trim() : 'unknown',
+              ? _qaFiCtrl.text.trim()
+              : 'unknown',
           fieldNumber: widget.fieldNumber,
           phase: 'generative_5',
           actionType: 'single_submit',
-          lat: lat, lng: lng,
+          lat: lat,
+          lng: lng,
         );
       }
 
@@ -227,12 +236,11 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
   void _snack(String msg, {bool err = false}) {
     final theme = Theme.of(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg,
-          style: AdvantaText.body2.copyWith(color: Colors.white)),
+      content:
+          Text(msg, style: AdvantaText.body2.copyWith(color: Colors.white)),
       backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       margin: const EdgeInsets.all(12),
     ));
   }
@@ -240,9 +248,9 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
   @override
   Widget build(BuildContext context) {
     final auditAsync = ref.watch(generativeAuditProvider(widget.fieldNumber));
-    final fields     = ref.watch(masterFieldsProvider).value ?? [];
-    final fieldData  = fields.firstWhere(
-            (f) => f['field_number'] == widget.fieldNumber,
+    final fields = ref.watch(masterFieldsProvider).value ?? [];
+    final fieldData = fields.firstWhere(
+        (f) => f['field_number'] == widget.fieldNumber,
         orElse: () => {});
 
     return Scaffold(
@@ -254,7 +262,8 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
         onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: kGen5Color)),
+        loading: () =>
+            const Center(child: CircularProgressIndicator(color: kGen5Color)),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (audit) {
           if (audit != null) _loadAudit(audit);
@@ -328,11 +337,13 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                         required: !_isDiscard && !_isGuest,
                         options: genFemaleShedOpts,
                         value: _femaleShed,
-                        onChanged: (v) { if (!_isGuest) {
-                          setState(() => _femaleShed = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _femaleShed = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: kGen5Color,
                       ),
                       const SizedBox(height: 14),
@@ -347,11 +358,13 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                               required: !_isDiscard && !_isGuest,
                               options: genOfftypeOpts,
                               value: _offtypeM,
-                              onChanged: (v) { if (!_isGuest) {
-                                setState(() => _offtypeM = v);
-                              } else {
-                                GuestGuard.blockIfGuest(context, _session);
-                              } },
+                              onChanged: (v) {
+                                if (!_isGuest) {
+                                  setState(() => _offtypeM = v);
+                                } else {
+                                  GuestGuard.blockIfGuest(context, _session);
+                                }
+                              },
                               accentColor: kGen5Color,
                             ),
                           ),
@@ -362,11 +375,13 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                               required: !_isDiscard && !_isGuest,
                               options: genOfftypeOpts,
                               value: _offtypeF,
-                              onChanged: (v) { if (!_isGuest) {
-                                setState(() => _offtypeF = v);
-                              } else {
-                                GuestGuard.blockIfGuest(context, _session);
-                              } },
+                              onChanged: (v) {
+                                if (!_isGuest) {
+                                  setState(() => _offtypeF = v);
+                                } else {
+                                  GuestGuard.blockIfGuest(context, _session);
+                                }
+                              },
                               accentColor: kGen5Color,
                             ),
                           ),
@@ -380,11 +395,13 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                         required: !_isDiscard && !_isGuest,
                         options: genLsvOpts,
                         value: _lsv,
-                        onChanged: (v) { if (!_isGuest) {
-                          setState(() => _lsv = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _lsv = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: kGen5Color,
                       ),
                       const SizedBox(height: 14),
@@ -395,11 +412,13 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                         required: !_isDiscard && !_isGuest,
                         options: genCropUniformityOpts,
                         value: _cropUniformity,
-                        onChanged: (v) { if (!_isGuest) {
-                          setState(() => _cropUniformity = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _cropUniformity = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: kGen5Color,
                       ),
                       const SizedBox(height: 14),
@@ -410,11 +429,13 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                         required: !_isDiscard && !_isGuest,
                         options: genCropHealthOpts,
                         value: _cropHealth,
-                        onChanged: (v) { if (!_isGuest) {
-                          setState(() => _cropHealth = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _cropHealth = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: kGen5Color,
                       ),
                     ],
@@ -432,15 +453,16 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                         required: !_isGuest,
                         options: genDetasselingOpts,
                         value: _detasseling,
-                        onChanged: (v) { if (!_isGuest) {
-                          setState(() => _detasseling = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _detasseling = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: const Color(0xFFAB47BC),
                       ),
                       const SizedBox(height: 14),
-
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -449,11 +471,13 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                               label: 'Isolation Problem',
                               options: genAffectedOpts,
                               value: _isolationProblem,
-                              onChanged: (v) { if (!_isGuest) {
-                                setState(() => _isolationProblem = v);
-                              } else {
-                                GuestGuard.blockIfGuest(context, _session);
-                              } },
+                              onChanged: (v) {
+                                if (!_isGuest) {
+                                  setState(() => _isolationProblem = v);
+                                } else {
+                                  GuestGuard.blockIfGuest(context, _session);
+                                }
+                              },
                               accentColor: const Color(0xFFAB47BC),
                             ),
                           ),
@@ -463,18 +487,19 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                               label: 'Affected Other Field',
                               options: genAffectedOpts,
                               value: _affectedOther,
-                              onChanged: (v) { if (!_isGuest) {
-                                setState(() => _affectedOther = v);
-                              } else {
-                                GuestGuard.blockIfGuest(context, _session);
-                              } },
+                              onChanged: (v) {
+                                if (!_isGuest) {
+                                  setState(() => _affectedOther = v);
+                                } else {
+                                  GuestGuard.blockIfGuest(context, _session);
+                                }
+                              },
                               accentColor: const Color(0xFFAB47BC),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 14),
-
                       GenDateTileNullable(
                         label: 'Closed Out Date (Opsional)',
                         date: _closedOutDate,
@@ -498,15 +523,16 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                         required: !_isGuest,
                         options: genFlaggingOpts,
                         value: _finalFlagging,
-                        onChanged: (v) { if (!_isGuest) {
-                          setState(() => _finalFlagging = v);
-                        } else {
-                          GuestGuard.blockIfGuest(context, _session);
-                        } },
+                        onChanged: (v) {
+                          if (!_isGuest) {
+                            setState(() => _finalFlagging = v);
+                          } else {
+                            GuestGuard.blockIfGuest(context, _session);
+                          }
+                        },
                         accentColor: const Color(0xFF42A5F5),
                       ),
                       const SizedBox(height: 14),
-
                       GenOptionPicker(
                         label: 'Final Decision',
                         required: !_isGuest,
@@ -519,7 +545,7 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                           }
                           setState(() {
                             _finalDecision = v;
-                            if (v != 'D') {
+                            if (!genIsDiscardDecision(v)) {
                               _discardAreaCtrl.clear();
                               _discardReasonCtrl.clear();
                             }
@@ -527,11 +553,11 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                         },
                         accentColor: kGen5Color,
                       ),
-
                       if (_isDiscard && !_isGuest) ...[
                         const SizedBox(height: 14),
                         const GenDiscardBanner(
-                          message: 'Final Decision Discard — isi Discard Area & Reason sebelum menyimpan.',
+                          message:
+                              'Final Decision Discard — isi Discard Area & Reason sebelum menyimpan.',
                         ),
                         const SizedBox(height: 14),
                         GenTextField(
@@ -572,8 +598,12 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
           GenSaveBar(
             isSaving: _isSaving,
             isDiscard: _isDiscard && !_isGuest,
-            saveLabel: _isGuest ? 'READ-ONLY' : (_isDiscard ? 'SIMPAN — DISCARD' : 'SIMPAN GEN-5 (FINAL)'),
-            onSave: _isGuest ? () => GuestGuard.blockIfGuest(context, _session) : _save,
+            saveLabel: _isGuest
+                ? 'READ-ONLY'
+                : (_isDiscard ? 'SIMPAN — DISCARD' : 'SIMPAN GEN-5 (FINAL)'),
+            onSave: _isGuest
+                ? () => GuestGuard.blockIfGuest(context, _session)
+                : _save,
           ),
         ],
       ),

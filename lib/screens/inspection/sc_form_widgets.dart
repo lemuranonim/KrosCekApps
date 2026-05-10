@@ -19,128 +19,184 @@ const kGen3Color = Color(0xFFE53935); // Generative CP3 (Final) — red
 // INTERNAL THEME HELPERS
 // ─────────────────────────────────────────────────────────
 extension _GenTheme on BuildContext {
-  bool  get isDark      => Theme.of(this).brightness == Brightness.dark;
-  Color get genSurface  => isDark ? AdvantaColors.primaryGreen : Colors.white;
-  Color get genBorder   => isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
-  Color get genSub      => isDark ? Colors.white60 : AdvantaColors.mutedGrey;
-  Color get genText     => Theme.of(this).colorScheme.onSurface;
-  Color get genFill     => isDark
-      ? AdvantaColors.deepForest.withAlpha(200)
-      : AdvantaColors.softGrey;
+  bool get isDark => Theme.of(this).brightness == Brightness.dark;
+  Color get genSurface => isDark ? AdvantaColors.primaryGreen : Colors.white;
+  Color get genBorder =>
+      isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+  Color get genSub => isDark ? Colors.white60 : AdvantaColors.mutedGrey;
+  Color get genText => Theme.of(this).colorScheme.onSurface;
+  Color get genFill =>
+      isDark ? AdvantaColors.deepForest.withAlpha(200) : AdvantaColors.softGrey;
 }
 
 // ─────────────────────────────────────────────────────────
 // OPTION MODEL
 // ─────────────────────────────────────────────────────────
 class GenOpt {
+  // `value` is kept as the legacy code so older rows still render selected;
+  // new submissions persist `persistedValue`.
   final String value;
   final String label;
   const GenOpt(this.value, this.label);
+
+  String get persistedValue => genPersistedOptionValue(label);
 }
+
+String genPersistedOptionValue(String label) {
+  final trimmed = label.trim();
+  final match = RegExp(r'^[A-Z0-9]{1,4}\s+[–-]\s+(.+)$').firstMatch(trimmed);
+  return match?.group(1)?.trim() ?? trimmed;
+}
+
+String genLegacyOptionValue(String label) {
+  final trimmed = label.trim();
+  final match = RegExp(r'^([A-Z0-9]{1,4})\s+[–-]\s+.+$').firstMatch(trimmed);
+  if (match != null) return match.group(1)?.trim() ?? '';
+  const aliases = {
+    'Corn After Corn': 'CAC',
+    'Not Corn': 'NC',
+    'Stage 2': '2',
+    'Stage 3': '3',
+    'Stage 4': '4',
+    'Found': 'Y',
+    'Not Found': 'N',
+  };
+  return aliases[trimmed] ?? '';
+}
+
+bool genOptionMatches(String? value, GenOpt option) {
+  if (value == null) return false;
+  final trimmed = value.trim();
+  final legacyValue = genLegacyOptionValue(option.label);
+  return trimmed == option.value ||
+      trimmed == option.label ||
+      trimmed == option.persistedValue ||
+      (legacyValue.isNotEmpty && trimmed == legacyValue);
+}
+
+String? genResolveOptionValue(String? value, List<GenOpt> options) {
+  if (value == null || value.trim().isEmpty) return value;
+  for (final option in options) {
+    if (genOptionMatches(value, option)) return option.persistedValue;
+  }
+  return value;
+}
+
+bool genValueIn(String? value, Iterable<String> accepted) {
+  if (value == null) return false;
+  final normalized = value.trim().toLowerCase();
+  return accepted.any((item) => normalized == item.trim().toLowerCase());
+}
+
+bool genIsDiscardFull(String? value) =>
+    genValueIn(value, const ['G', 'Discard Full']);
+
+bool genIsDiscardDecision(String? value) =>
+    genValueIn(value, const ['D', 'Discard', 'PLD']);
 
 // ─────────────────────────────────────────────────────────
 // SHARED OPTION LISTS
 // ─────────────────────────────────────────────────────────
 const genReadinessOpts = [
-  GenOpt('A', 'A – 100%'),
-  GenOpt('B', 'B – 75%'),
-  GenOpt('C', 'C – 50%'),
-  GenOpt('D', 'D – <25%'),
+  GenOpt('100%', 'A – 100%'),
+  GenOpt('75%', 'B – 75%'),
+  GenOpt('50%', 'C – 50%'),
+  GenOpt('<25%', 'D – <25%'),
 ];
 
 const genRoguingOpts = [
-  GenOpt('A', 'A – Not Yet'),
-  GenOpt('B', 'B – On Going'),
-  GenOpt('C', 'C – Done'),
+  GenOpt('Not Yet', 'A – Not Yet'),
+  GenOpt('On Going', 'B – On Going'),
+  GenOpt('Done', 'C – Done'),
 ];
 
 const genRoguingStatusOpts = [
-  GenOpt('A', 'Not Yet'),
-  GenOpt('B', 'On Going'),
-  GenOpt('C', 'Done'),
+  GenOpt('Not Yet', 'Not Yet'),
+  GenOpt('On Going', 'On Going'),
+  GenOpt('Done', 'Done'),
 ];
 
 const genLsvOpts = [
-  GenOpt('A', 'A – None'),
-  GenOpt('B', 'B – Low'),
-  GenOpt('C', 'C – Moderate'),
-  GenOpt('D', 'D – High'),
+  GenOpt('None', 'A – None'),
+  GenOpt('Low', 'B – Low'),
+  GenOpt('Moderate', 'C – Moderate'),
+  GenOpt('High', 'D – High'),
 ];
 
 const genCropUniformityOpts = [
-  GenOpt('1', '1 – Very Poor'),
-  GenOpt('2', '2 – Poor'),
-  GenOpt('3', '3 – Fair'),
-  GenOpt('4', '4 – Good'),
-  GenOpt('5', '5 – Best'),
+  GenOpt('Very Poor', '1 – Very Poor'),
+  GenOpt('Poor', '2 – Poor'),
+  GenOpt('Fair', '3 – Fair'),
+  GenOpt('Good', '4 – Good'),
+  GenOpt('Best', '5 – Best'),
 ];
 
 const genCropHealthOpts = [
-  GenOpt('0', '0 – 0% serangan'),
-  GenOpt('1', '1 – 1%'),
-  GenOpt('2', '2 – 2%'),
-  GenOpt('3', '3 – 3%'),
-  GenOpt('4', '4 – 4%'),
-  GenOpt('5', '5 – 5%'),
+  GenOpt('0% serangan', '0 – 0% serangan'),
+  GenOpt('1%', '1 – 1%'),
+  GenOpt('2%', '2 – 2%'),
+  GenOpt('3%', '3 – 3%'),
+  GenOpt('4%', '4 – 4%'),
+  GenOpt('5%', '5 – 5%'),
 ];
 
 const genFemaleShedOpts = [
-  GenOpt('A', 'A – 0'),
-  GenOpt('B', 'B – >0 <2'),
-  GenOpt('C', 'C – ≥2 <5'),
-  GenOpt('D', 'D – ≥5'),
+  GenOpt('0', 'A – 0'),
+  GenOpt('>0 <2', 'B – >0 <2'),
+  GenOpt('≥2 <5', 'C – ≥2 <5'),
+  GenOpt('≥5', 'D – ≥5'),
 ];
 
 const genNSTOpts = [
-  GenOpt('Y', 'Found'),
-  GenOpt('N', 'Not Found'),
+  GenOpt('Found', 'Found'),
+  GenOpt('Not Found', 'Not Found'),
 ];
 
 const genOfftypeOpts = [
-  GenOpt('A', 'A – 0'),
-  GenOpt('B', 'B – >0'),
+  GenOpt('0', 'A – 0'),
+  GenOpt('>0', 'B – >0'),
 ];
 
 const genDetasselingOpts = [
-  GenOpt('A', 'A – Best'),
-  GenOpt('B', 'B – Good'),
-  GenOpt('C', 'C – Fair'),
-  GenOpt('D', 'D – Poor'),
-  GenOpt('E', 'E – Very Poor'),
+  GenOpt('Best', 'A – Best'),
+  GenOpt('Good', 'B – Good'),
+  GenOpt('Fair', 'C – Fair'),
+  GenOpt('Poor', 'D – Poor'),
+  GenOpt('Very Poor', 'E – Very Poor'),
 ];
 
 const genIsolationOpts = [
-  GenOpt('A', 'A – Yes'),
-  GenOpt('B', 'B – No'),
+  GenOpt('Yes', 'A – Yes'),
+  GenOpt('No', 'B – No'),
 ];
 
 const genAffectedOpts = [
-  GenOpt('A', 'A – Yes'),
-  GenOpt('B', 'B – No'),
+  GenOpt('Yes', 'A – Yes'),
+  GenOpt('No', 'B – No'),
 ];
 
 const genActionNeededOpts = [
-  GenOpt('A', 'A – None'),
-  GenOpt('B', 'B – Roguing'),
-  GenOpt('C', 'C – Re-Detasseling'),
-  GenOpt('D', 'D – Monitor'),
-  GenOpt('E', 'E – Hold'),
-  GenOpt('F', 'F – Discard Partial'),
-  GenOpt('G', 'G – Discard Full'),
+  GenOpt('None', 'A – None'),
+  GenOpt('Roguing', 'B – Roguing'),
+  GenOpt('Re-Detasseling', 'C – Re-Detasseling'),
+  GenOpt('Monitor', 'D – Monitor'),
+  GenOpt('Hold', 'E – Hold'),
+  GenOpt('Discard Partial', 'F – Discard Partial'),
+  GenOpt('Discard Full', 'G – Discard Full'),
 ];
 
 const genFinalDecisionOpts = [
-  GenOpt('A', 'A – Pass'),
-  GenOpt('B', 'B – Pass w/ Note'),
-  GenOpt('C', 'C – Hold'),
-  GenOpt('D', 'D – Discard'),
+  GenOpt('Pass', 'A – Pass'),
+  GenOpt('Pass w/ Note', 'B – Pass w/ Note'),
+  GenOpt('Hold', 'C – Hold'),
+  GenOpt('Discard', 'D – Discard'),
 ];
 
 const genFlaggingOpts = [
-  GenOpt('GF',  'GF'),
+  GenOpt('GF', 'GF'),
   GenOpt('RFI', 'RFI'),
   GenOpt('RFD', 'RFD'),
-  GenOpt('BF',  'BF'),
+  GenOpt('BF', 'BF'),
   GenOpt('PLD', 'PLD'),
 ];
 
@@ -149,7 +205,7 @@ const genFlaggingOpts = [
 // ─────────────────────────────────────────────────────────
 String calcAuditWeek(DateTime date) {
   final start = DateTime(date.year, 1, 1);
-  final week  = (date.difference(start).inDays / 7).ceil();
+  final week = (date.difference(start).inDays / 7).ceil();
   return 'W${week.toString().padLeft(2, '0')}';
 }
 
@@ -160,18 +216,18 @@ ThemeData genDatePickerTheme(BuildContext context, Color accentColor) {
   final isDark = Theme.of(context).brightness == Brightness.dark;
   return isDark
       ? ThemeData.dark().copyWith(
-    colorScheme: ColorScheme.dark(
-      primary: accentColor,
-      surface: AdvantaColors.primaryGreen,
-    ),
-  )
+          colorScheme: ColorScheme.dark(
+            primary: accentColor,
+            surface: AdvantaColors.primaryGreen,
+          ),
+        )
       : ThemeData.light().copyWith(
-    colorScheme: ColorScheme.light(
-      primary:   accentColor,
-      surface:   Colors.white,
-      onSurface: AdvantaColors.deepForest,
-    ),
-  );
+          colorScheme: ColorScheme.light(
+            primary: accentColor,
+            surface: Colors.white,
+            onSurface: AdvantaColors.deepForest,
+          ),
+        );
 }
 
 // ─────────────────────────────────────────────────────────
@@ -198,22 +254,27 @@ class GenAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark      = Theme.of(context).brightness == Brightness.dark;
-    final discardBg   = isDark ? const Color(0xFF7B1821) : AdvantaColors.error;
-    final normalBg    = isDark ? AdvantaColors.deepForest : AdvantaColors.primaryGreen;
-    final bgColor     = isDiscard ? discardBg : normalBg;
-    final fgColor     = isDark && !isDiscard ? AdvantaColors.goldLight : Colors.white;
-    final labelColor  = isDiscard
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final discardBg = isDark ? const Color(0xFF7B1821) : AdvantaColors.error;
+    final normalBg =
+        isDark ? AdvantaColors.deepForest : AdvantaColors.primaryGreen;
+    final bgColor = isDiscard ? discardBg : normalBg;
+    final fgColor =
+        isDark && !isDiscard ? AdvantaColors.goldLight : Colors.white;
+    final labelColor = isDiscard
         ? const Color(0xFFFF8A80)
-        : (isDark ? AdvantaColors.goldLight.withAlpha(200) : Colors.white.withAlpha(210));
-    final borderColor = isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(25);
+        : (isDark
+            ? AdvantaColors.goldLight.withAlpha(200)
+            : Colors.white.withAlpha(210));
+    final borderColor =
+        isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(25);
 
     return AppBar(
-      backgroundColor:  bgColor,
+      backgroundColor: bgColor,
       surfaceTintColor: Colors.transparent,
-      elevation:        0,
+      elevation: 0,
       leading: IconButton(
-        icon:    Icon(Icons.arrow_back_ios_new_rounded, color: fgColor, size: 18),
+        icon: Icon(Icons.arrow_back_ios_new_rounded, color: fgColor, size: 18),
         onPressed: onBack,
         tooltip: 'Kembali ke Field Detail',
       ),
@@ -223,8 +284,8 @@ class GenAppBar extends StatelessWidget implements PreferredSizeWidget {
           Text(
             checkpointLabel,
             style: AdvantaText.caption.copyWith(
-              color:       labelColor,
-              fontWeight:  FontWeight.w600,
+              color: labelColor,
+              fontWeight: FontWeight.w600,
               letterSpacing: 0.3,
             ),
           ),
@@ -237,12 +298,12 @@ class GenAppBar extends StatelessWidget implements PreferredSizeWidget {
       actions: [
         if (isDiscard)
           Container(
-            margin:  const EdgeInsets.only(right: 16),
+            margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color:        AdvantaColors.error.withAlpha(isDark ? 60 : 30),
+              color: AdvantaColors.error.withAlpha(isDark ? 60 : 30),
               borderRadius: BorderRadius.circular(8),
-              border:       Border.all(
+              border: Border.all(
                   color: AdvantaColors.error.withAlpha(isDark ? 120 : 80)),
             ),
             child: const Row(
@@ -253,9 +314,9 @@ class GenAppBar extends StatelessWidget implements PreferredSizeWidget {
                 Text(
                   'DISCARD',
                   style: TextStyle(
-                    color:       Color(0xFFFF8A80),
-                    fontSize:    10,
-                    fontWeight:  FontWeight.bold,
+                    color: Color(0xFFFF8A80),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -294,9 +355,9 @@ class GenFieldCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color:        accentColor.withAlpha(isDark ? 25 : 15),
+        color: accentColor.withAlpha(isDark ? 25 : 15),
         borderRadius: BorderRadius.circular(14),
-        border:       Border.all(color: accentColor.withAlpha(isDark ? 80 : 55)),
+        border: Border.all(color: accentColor.withAlpha(isDark ? 80 : 55)),
       ),
       child: Column(
         children: [
@@ -307,8 +368,8 @@ class GenFieldCard extends StatelessWidget {
               Text(
                 'DATA LAHAN (READ ONLY)',
                 style: AdvantaText.caption.copyWith(
-                  color:       accentColor,
-                  fontWeight:  FontWeight.w700,
+                  color: accentColor,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0.8,
                 ),
               ),
@@ -316,18 +377,20 @@ class GenFieldCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Row(children: [
-            Expanded(child: _Cell('Petani',  _f(fieldData['farmer_name']))),
-            Expanded(child: _Cell('Hybrid',  _f(fieldData['hybrid']))),
+            Expanded(child: _Cell('Petani', _f(fieldData['farmer_name']))),
+            Expanded(child: _Cell('Hybrid', _f(fieldData['hybrid']))),
           ]),
           const SizedBox(height: 4),
           Row(children: [
-            Expanded(child: _Cell('Grower',  _f(fieldData['grower']))),
-            Expanded(child: _Cell('Efektif', '${_f(fieldData['effective_area_ha'])} Ha')),
+            Expanded(child: _Cell('Grower', _f(fieldData['grower']))),
+            Expanded(
+                child: _Cell(
+                    'Efektif', '${_f(fieldData['effective_area_ha'])} Ha')),
           ]),
           const SizedBox(height: 4),
           Row(children: [
-            Expanded(child: _Cell('Season',  _f(fieldData['season']))),
-            Expanded(child: _Cell('Region',  _f(fieldData['region']))),
+            Expanded(child: _Cell('Season', _f(fieldData['season']))),
+            Expanded(child: _Cell('Region', _f(fieldData['region']))),
           ]),
         ],
       ),
@@ -378,16 +441,16 @@ class GenSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surface     = context.genSurface;
+    final surface = context.genSurface;
     final borderColor = context.genBorder;
-    final isDark      = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       decoration: BoxDecoration(
-        color:        surface,
+        color: surface,
         borderRadius: BorderRadius.circular(14),
-        border:       Border.all(color: borderColor),
-        boxShadow:    AdvantaShadows.card(isDark),
+        border: Border.all(color: borderColor),
+        boxShadow: AdvantaShadows.card(isDark),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -401,8 +464,8 @@ class GenSection extends StatelessWidget {
                 Text(
                   title.toUpperCase(),
                   style: AdvantaText.caption.copyWith(
-                    color:       color,
-                    fontWeight:  FontWeight.w700,
+                    color: color,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -438,26 +501,26 @@ class GenDateTile extends StatelessWidget {
     required this.label,
     required this.date,
     required this.onTap,
-    this.required    = true,
+    this.required = true,
     this.allowFuture = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final weekLabel   = calcAuditWeek(date);
-    final bgColor     = context.genFill;
+    final weekLabel = calcAuditWeek(date);
+    final bgColor = context.genFill;
     final borderColor = context.genBorder;
-    final subColor    = context.genSub;
-    final textColor   = context.genText;
+    final subColor = context.genSub;
+    final textColor = context.genText;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color:        bgColor,
+          color: bgColor,
           borderRadius: BorderRadius.circular(10),
-          border:       Border.all(color: borderColor),
+          border: Border.all(color: borderColor),
         ),
         child: Row(
           children: [
@@ -480,8 +543,8 @@ class GenDateTile extends StatelessWidget {
               ),
             ),
             Text(weekLabel,
-                style: AdvantaText.caption.copyWith(
-                    color: subColor, fontWeight: FontWeight.bold)),
+                style: AdvantaText.caption
+                    .copyWith(color: subColor, fontWeight: FontWeight.bold)),
             const SizedBox(width: 6),
             Icon(Icons.edit_calendar_outlined, color: subColor, size: 15),
           ],
@@ -508,19 +571,19 @@ class GenDateTileNullable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor     = context.genFill;
+    final bgColor = context.genFill;
     final borderColor = context.genBorder;
-    final subColor    = context.genSub;
-    final textColor   = context.genText;
+    final subColor = context.genSub;
+    final textColor = context.genText;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color:        bgColor,
+          color: bgColor,
           borderRadius: BorderRadius.circular(10),
-          border:       Border.all(color: borderColor),
+          border: Border.all(color: borderColor),
         ),
         child: Row(
           children: [
@@ -539,8 +602,9 @@ class GenDateTileNullable extends StatelessWidget {
                         ? DateFormat('dd MMMM yyyy', 'id_ID').format(date!)
                         : 'Pilih tanggal (opsional)',
                     style: AdvantaText.body1.copyWith(
-                      color:      date != null ? textColor : subColor,
-                      fontWeight: date != null ? FontWeight.w600 : FontWeight.normal,
+                      color: date != null ? textColor : subColor,
+                      fontWeight:
+                          date != null ? FontWeight.w600 : FontWeight.normal,
                     ),
                   ),
                 ],
@@ -578,8 +642,8 @@ class GenTextField extends StatelessWidget {
     required this.controller,
     required this.label,
     this.hint,
-    this.required     = false,
-    this.maxLines     = 1,
+    this.required = false,
+    this.maxLines = 1,
     this.keyboardType,
     this.icon,
     this.accentColor,
@@ -587,44 +651,42 @@ class GenTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent      = accentColor ?? Theme.of(context).colorScheme.primary;
-    final bgColor     = context.genFill;
+    final accent = accentColor ?? Theme.of(context).colorScheme.primary;
+    final bgColor = context.genFill;
     final borderColor = context.genBorder;
-    final subColor    = context.genSub;
-    final textColor   = context.genText;
+    final subColor = context.genSub;
+    final textColor = context.genText;
 
     return TextFormField(
-      controller:   controller,
-      maxLines:     maxLines,
+      controller: controller,
+      maxLines: maxLines,
       keyboardType: keyboardType,
-      style:        AdvantaText.body1.copyWith(color: textColor),
+      style: AdvantaText.body1.copyWith(color: textColor),
       decoration: InputDecoration(
-        labelText:  required ? '$label *' : label,
+        labelText: required ? '$label *' : label,
         labelStyle: AdvantaText.caption.copyWith(color: subColor),
-        hintText:   hint,
-        hintStyle:  AdvantaText.caption.copyWith(
-            color: subColor.withAlpha(120)),
-        prefixIcon: icon != null
-            ? Icon(icon, color: subColor, size: 16)
-            : null,
-        filled:         true,
-        fillColor:      bgColor,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        hintText: hint,
+        hintStyle: AdvantaText.caption.copyWith(color: subColor.withAlpha(120)),
+        prefixIcon: icon != null ? Icon(icon, color: subColor, size: 16) : null,
+        filled: true,
+        fillColor: bgColor,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide:   BorderSide(color: borderColor),
+          borderSide: BorderSide(color: borderColor),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide:   BorderSide(color: accent, width: 1.5),
+          borderSide: BorderSide(color: accent, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide:   BorderSide(color: AdvantaColors.error),
+          borderSide: BorderSide(color: AdvantaColors.error),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide:   BorderSide(color: AdvantaColors.error, width: 1.5),
+          borderSide: BorderSide(color: AdvantaColors.error, width: 1.5),
         ),
       ),
       validator: required
@@ -651,52 +713,58 @@ class GenOptionPicker extends StatelessWidget {
     required this.options,
     required this.value,
     required this.onChanged,
-    this.required    = false,
+    this.required = false,
     this.accentColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    final accent      = accentColor ?? Theme.of(context).colorScheme.primary;
-    final bgColor     = context.genFill;
+    final accent = accentColor ?? Theme.of(context).colorScheme.primary;
+    final bgColor = context.genFill;
     final borderColor = context.genBorder;
-    final subColor    = context.genSub;
-    final isDark      = Theme.of(context).brightness == Brightness.dark;
+    final subColor = context.genSub;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return FormField<String>(
       initialValue: value,
-      validator:    required
+      validator: required
           ? (v) => (v == null || v.isEmpty) ? 'Wajib dipilih' : null
           : null,
       builder: (state) {
+        final resolvedValue = genResolveOptionValue(value, options);
+        if (resolvedValue != null && resolvedValue != value) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            onChanged(resolvedValue);
+            state.didChange(resolvedValue);
+          });
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               required ? '$label *' : label,
-              style: AdvantaText.caption.copyWith(
-                  color: subColor, fontWeight: FontWeight.w600),
+              style: AdvantaText.caption
+                  .copyWith(color: subColor, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             Wrap(
-              spacing:    8,
+              spacing: 8,
               runSpacing: 8,
-              children:   options.map((opt) {
-                final isSel = value == opt.value;
+              children: options.map((opt) {
+                final isSel = genOptionMatches(value, opt);
                 return GestureDetector(
                   onTap: () {
-                    final next = isSel ? null : opt.value;
+                    final next = isSel ? null : opt.persistedValue;
                     onChanged(next);
                     state.didChange(next);
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isSel
-                          ? accent.withAlpha(isDark ? 55 : 28)
-                          : bgColor,
+                      color:
+                          isSel ? accent.withAlpha(isDark ? 55 : 28) : bgColor,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: isSel ? accent : borderColor,
@@ -706,7 +774,7 @@ class GenOptionPicker extends StatelessWidget {
                     child: Text(
                       opt.label,
                       style: AdvantaText.caption.copyWith(
-                        color:      isSel ? accent : subColor,
+                        color: isSel ? accent : subColor,
                         fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
                       ),
                     ),
@@ -717,8 +785,8 @@ class GenOptionPicker extends StatelessWidget {
             if (state.hasError) ...[
               const SizedBox(height: 4),
               Text(state.errorText!,
-                  style: AdvantaText.caption.copyWith(
-                      color: AdvantaColors.error)),
+                  style:
+                      AdvantaText.caption.copyWith(color: AdvantaColors.error)),
             ],
           ],
         );
@@ -744,17 +812,17 @@ class GenOptionPickerLong extends StatelessWidget {
     required this.options,
     required this.value,
     required this.onChanged,
-    this.required    = false,
+    this.required = false,
     this.accentColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    final accent      = accentColor ?? Theme.of(context).colorScheme.primary;
-    final bgColor     = context.genFill;
+    final accent = accentColor ?? Theme.of(context).colorScheme.primary;
+    final bgColor = context.genFill;
     final borderColor = context.genBorder;
-    final subColor    = context.genSub;
-    final isDark      = Theme.of(context).brightness == Brightness.dark;
+    final subColor = context.genSub;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return FormField<String>(
       initialValue: value,
@@ -762,31 +830,37 @@ class GenOptionPickerLong extends StatelessWidget {
           ? (v) => (v == null || v.isEmpty) ? 'Wajib dipilih' : null
           : null,
       builder: (state) {
+        final resolvedValue = genResolveOptionValue(value, options);
+        if (resolvedValue != null && resolvedValue != value) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            onChanged(resolvedValue);
+            state.didChange(resolvedValue);
+          });
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               required ? '$label *' : label,
-              style: AdvantaText.caption.copyWith(
-                  color: subColor, fontWeight: FontWeight.w600),
+              style: AdvantaText.caption
+                  .copyWith(color: subColor, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             ...options.map((opt) {
-              final isSel = value == opt.value;
+              final isSel = genOptionMatches(value, opt);
               return GestureDetector(
                 onTap: () {
-                  final next = isSel ? null : opt.value;
+                  final next = isSel ? null : opt.persistedValue;
                   onChanged(next);
                   state.didChange(next);
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 130),
                   margin: const EdgeInsets.only(bottom: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: isSel
-                        ? accent.withAlpha(isDark ? 55 : 25)
-                        : bgColor,
+                    color: isSel ? accent.withAlpha(isDark ? 55 : 25) : bgColor,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: isSel ? accent : borderColor,
@@ -808,7 +882,8 @@ class GenOptionPickerLong extends StatelessWidget {
                           ),
                         ),
                         child: isSel
-                            ? const Icon(Icons.check, color: Colors.white, size: 11)
+                            ? const Icon(Icons.check,
+                                color: Colors.white, size: 11)
                             : null,
                       ),
                       const SizedBox(width: 12),
@@ -816,7 +891,8 @@ class GenOptionPickerLong extends StatelessWidget {
                         opt.label,
                         style: AdvantaText.body2.copyWith(
                           color: isSel ? accent : subColor,
-                          fontWeight: isSel ? FontWeight.w600 : FontWeight.normal,
+                          fontWeight:
+                              isSel ? FontWeight.w600 : FontWeight.normal,
                         ),
                       ),
                     ],
@@ -846,7 +922,7 @@ class GenDiscardBanner extends StatelessWidget {
   const GenDiscardBanner({
     super.key,
     this.message =
-    'Mode Discard aktif — pastikan semua field wajib telah terisi.',
+        'Mode Discard aktif — pastikan semua field wajib telah terisi.',
   });
 
   @override
@@ -855,10 +931,10 @@ class GenDiscardBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color:        AdvantaColors.error.withAlpha(isDark ? 40 : 18),
+        color: AdvantaColors.error.withAlpha(isDark ? 40 : 18),
         borderRadius: BorderRadius.circular(10),
-        border:       Border.all(
-            color: AdvantaColors.error.withAlpha(isDark ? 100 : 60)),
+        border:
+            Border.all(color: AdvantaColors.error.withAlpha(isDark ? 100 : 60)),
       ),
       child: Row(
         children: [
@@ -870,7 +946,7 @@ class GenDiscardBanner extends StatelessWidget {
             child: Text(
               message,
               style: AdvantaText.caption.copyWith(
-                color:  isDark ? const Color(0xFFFF8A80) : AdvantaColors.error,
+                color: isDark ? const Color(0xFFFF8A80) : AdvantaColors.error,
                 height: 1.4,
               ),
             ),
@@ -900,22 +976,22 @@ class GenSaveBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark      = Theme.of(context).brightness == Brightness.dark;
-    final surface     = context.genSurface;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = context.genSurface;
     final borderColor = context.genBorder;
-    final subColor    = context.genSub;
-    final btnColor    = isDiscard ? AdvantaColors.error : AdvantaColors.success;
+    final subColor = context.genSub;
+    final btnColor = isDiscard ? AdvantaColors.error : AdvantaColors.success;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: BoxDecoration(
-        color:  surface,
+        color: surface,
         border: Border(top: BorderSide(color: borderColor)),
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withAlpha(isDark ? 80 : 30),
+            color: Colors.black.withAlpha(isDark ? 80 : 30),
             blurRadius: 20,
-            offset:     const Offset(0, -4),
+            offset: const Offset(0, -4),
           ),
         ],
       ),
@@ -923,46 +999,46 @@ class GenSaveBar extends StatelessWidget {
         top: false,
         child: isSaving
             ? Center(
-          child: SizedBox(
-            height: 44,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width:  20,
-                  height: 20,
-                  child:  CircularProgressIndicator(
-                      strokeWidth: 2.5, color: subColor),
+                child: SizedBox(
+                  height: 44,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.5, color: subColor),
+                      ),
+                      const SizedBox(width: 12),
+                      Text('Menyimpan…',
+                          style: AdvantaText.body2.copyWith(color: subColor)),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 12),
-                Text('Menyimpan…',
-                    style: AdvantaText.body2.copyWith(color: subColor)),
-              ],
-            ),
-          ),
-        )
+              )
             : SizedBox(
-          width:  double.infinity,
-          height: 50,
-          child:  ElevatedButton.icon(
-            onPressed: onSave,
-            icon: Icon(
-              isDiscard
-                  ? Icons.do_not_disturb_on_outlined
-                  : Icons.check_circle_outline,
-              size: 18,
-            ),
-            label: Text(saveLabel),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: btnColor,
-              foregroundColor: Colors.white,
-              elevation:       0,
-              textStyle:       AdvantaText.button,
-              shape: const RoundedRectangleBorder(
-                  borderRadius: AdvantaRadius.buttonRadius),
-            ),
-          ),
-        ),
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: onSave,
+                  icon: Icon(
+                    isDiscard
+                        ? Icons.do_not_disturb_on_outlined
+                        : Icons.check_circle_outline,
+                    size: 18,
+                  ),
+                  label: Text(saveLabel),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: btnColor,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    textStyle: AdvantaText.button,
+                    shape: const RoundedRectangleBorder(
+                        borderRadius: AdvantaRadius.buttonRadius),
+                  ),
+                ),
+              ),
       ),
     );
   }
