@@ -765,10 +765,37 @@ class CoverageScreen extends ConsumerStatefulWidget {
   ConsumerState<CoverageScreen> createState() => _CoverageScreenState();
 }
 
+enum _CoverageViewRole { manager, spv, fi }
+
+extension _CoverageViewRoleX on _CoverageViewRole {
+  String get label {
+    switch (this) {
+      case _CoverageViewRole.manager:
+        return 'Manager';
+      case _CoverageViewRole.spv:
+        return 'QA SPV';
+      case _CoverageViewRole.fi:
+        return 'QA FI';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case _CoverageViewRole.manager:
+        return Icons.business_center_rounded;
+      case _CoverageViewRole.spv:
+        return Icons.supervisor_account_rounded;
+      case _CoverageViewRole.fi:
+        return Icons.person_search_rounded;
+    }
+  }
+}
+
 class _CoverageScreenState extends ConsumerState<CoverageScreen>
     with SingleTickerProviderStateMixin {
   ActiveSession? _session;
   bool _sessionLoaded = false;
+  _CoverageViewRole _devPreviewRole = _CoverageViewRole.manager;
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
 
@@ -800,6 +827,8 @@ class _CoverageScreenState extends ConsumerState<CoverageScreen>
 
   String get _role => _session?.role.toUpperCase() ?? 'FI';
 
+  bool get _isDev => _role == 'DEV';
+
   // Dev & Manager masuk ke Manager View
   bool get _isManager => _role == 'MANAGER' || _role == 'DEV';
 
@@ -818,13 +847,45 @@ class _CoverageScreenState extends ConsumerState<CoverageScreen>
       backgroundColor: AdvantaColors.softGrey,
       body: FadeTransition(
         opacity: _fadeAnim,
-        child: _isManager
-            ? _ManagerView(session: _session!)
-            : _isSpv
-                ? _SPVView(session: _session!)
-                : _FIView(session: _session!),
+        child: _buildRoleView(),
       ),
     );
+  }
+
+  Widget _buildRoleView() {
+    if (_isDev) {
+      switch (_devPreviewRole) {
+        case _CoverageViewRole.manager:
+          return _ManagerView(
+            session: _session!,
+            isDevPreview: true,
+            previewRole: _devPreviewRole,
+            onPreviewRoleChanged: _setDevPreviewRole,
+          );
+        case _CoverageViewRole.spv:
+          return _SPVView(
+            session: _session!,
+            isDevPreview: true,
+            previewRole: _devPreviewRole,
+            onPreviewRoleChanged: _setDevPreviewRole,
+          );
+        case _CoverageViewRole.fi:
+          return _FIView(
+            session: _session!,
+            isDevPreview: true,
+            previewRole: _devPreviewRole,
+            onPreviewRoleChanged: _setDevPreviewRole,
+          );
+      }
+    }
+
+    if (_isManager) return _ManagerView(session: _session!);
+    if (_isSpv) return _SPVView(session: _session!);
+    return _FIView(session: _session!);
+  }
+
+  void _setDevPreviewRole(_CoverageViewRole role) {
+    setState(() => _devPreviewRole = role);
   }
 }
 
@@ -834,7 +895,17 @@ class _CoverageScreenState extends ConsumerState<CoverageScreen>
 
 class _ManagerView extends ConsumerStatefulWidget {
   final ActiveSession session;
-  const _ManagerView({required this.session});
+  final bool isDevPreview;
+  final _CoverageViewRole? previewRole;
+  final ValueChanged<_CoverageViewRole>? onPreviewRoleChanged;
+
+  const _ManagerView({
+    required this.session,
+    this.isDevPreview = false,
+    this.previewRole,
+    this.onPreviewRoleChanged,
+  });
+
   @override
   ConsumerState<_ManagerView> createState() => _ManagerViewState();
 }
@@ -923,8 +994,17 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
             SliverToBoxAdapter(
                 child: _CoverageHeader(
                     title: 'Coverage Monitoring',
-                    subtitle: 'Manager View',
+                    subtitle: widget.isDevPreview
+                        ? 'Dev Preview - Manager View'
+                        : 'Manager View',
                     session: widget.session)),
+            if (widget.isDevPreview)
+              SliverToBoxAdapter(
+                child: _DevRolePreviewBar(
+                  selected: widget.previewRole ?? _CoverageViewRole.manager,
+                  onSelected: widget.onPreviewRoleChanged ?? (_) {},
+                ),
+              ),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -1082,12 +1162,23 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
 
 class _SPVView extends ConsumerStatefulWidget {
   final ActiveSession session;
-  const _SPVView({required this.session});
+  final bool isDevPreview;
+  final _CoverageViewRole? previewRole;
+  final ValueChanged<_CoverageViewRole>? onPreviewRoleChanged;
+
+  const _SPVView({
+    required this.session,
+    this.isDevPreview = false,
+    this.previewRole,
+    this.onPreviewRoleChanged,
+  });
+
   @override
   ConsumerState<_SPVView> createState() => _SPVViewState();
 }
 
 class _SPVViewState extends ConsumerState<_SPVView> {
+  String? _selectedSpv;
   String? _selectedDistrict;
   String? _selectedFi;
   int _expandedDistrictIndex = -1;
@@ -1103,18 +1194,30 @@ class _SPVViewState extends ConsumerState<_SPVView> {
       data: (allFields) {
         // 1. FILTER DASAR: Ambil hanya lahan milik SPV yang sedang login
         final String myName = widget.session.name.trim().toLowerCase();
-        final mySpvFields = allFields
-            .where((f) => f.qaSpv.trim().toLowerCase() == myName)
-            .toList();
+        final mySpvFields = widget.isDevPreview
+            ? allFields
+            : allFields
+                .where((f) => f.qaSpv.trim().toLowerCase() == myName)
+                .toList();
 
         // 2. CASCADING LOGIC SPV (Berdasarkan lahan milik SPV ini saja)
+        final spvOptions = mySpvFields
+            .map((f) => f.qaSpv)
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+        final spvScopedFields = mySpvFields
+            .where((f) => _selectedSpv == null || f.qaSpv == _selectedSpv)
+            .toList();
         final districts = mySpvFields
+            .where((f) => _selectedSpv == null || f.qaSpv == _selectedSpv)
             .map((f) => f.district)
             .where((d) => d.isNotEmpty)
             .toSet()
             .toList()
           ..sort();
-        final fiOptions = mySpvFields
+        final fiOptions = spvScopedFields
             .where((f) =>
                 _selectedDistrict == null || f.district == _selectedDistrict)
             .map((f) => f.qaFi)
@@ -1124,7 +1227,7 @@ class _SPVViewState extends ConsumerState<_SPVView> {
           ..sort();
 
         // 3. APPLY FILTER DROPDOWN USER
-        final fields = mySpvFields.where((f) {
+        final fields = spvScopedFields.where((f) {
           if (_selectedDistrict != null && f.district != _selectedDistrict) {
             return false;
           }
@@ -1170,11 +1273,32 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             SliverToBoxAdapter(
                 child: _CoverageHeader(
                     title: 'Coverage Monitoring',
-                    subtitle: 'QA SPV — ${widget.session.name}',
+                    subtitle: widget.isDevPreview
+                        ? 'Dev Preview - QA SPV View'
+                        : 'QA SPV — ${widget.session.name}',
                     session: widget.session)),
+            if (widget.isDevPreview)
+              SliverToBoxAdapter(
+                child: _DevRolePreviewBar(
+                  selected: widget.previewRole ?? _CoverageViewRole.spv,
+                  onSelected: widget.onPreviewRoleChanged ?? (_) {},
+                ),
+              ),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
+                  if (widget.isDevPreview)
+                    PremiumFilterChip(
+                      label: _selectedSpv ?? 'All QA SPV',
+                      options: ['All QA SPV', ...spvOptions],
+                      selected: _selectedSpv,
+                      icon: Icons.supervisor_account_rounded,
+                      onSelected: (v) => setState(() {
+                        _selectedSpv = v == 'All QA SPV' ? null : v;
+                        _selectedDistrict = null;
+                        _selectedFi = null;
+                      }),
+                    ),
                   PremiumFilterChip(
                     label: _selectedDistrict ?? 'All Kabupaten',
                     options: ['All Kabupaten', ...districts],
@@ -1309,12 +1433,23 @@ class _SPVViewState extends ConsumerState<_SPVView> {
 
 class _FIView extends ConsumerStatefulWidget {
   final ActiveSession session;
-  const _FIView({required this.session});
+  final bool isDevPreview;
+  final _CoverageViewRole? previewRole;
+  final ValueChanged<_CoverageViewRole>? onPreviewRoleChanged;
+
+  const _FIView({
+    required this.session,
+    this.isDevPreview = false,
+    this.previewRole,
+    this.onPreviewRoleChanged,
+  });
+
   @override
   ConsumerState<_FIView> createState() => _FIViewState();
 }
 
 class _FIViewState extends ConsumerState<_FIView> {
+  String? _selectedFi;
   String? _selectedDistrict;
   String? _selectedVillage;
   String? _selectedPhase;
@@ -1331,18 +1466,29 @@ class _FIViewState extends ConsumerState<_FIView> {
       data: (allFields) {
         // 1. FILTER DASAR: Ambil hanya lahan milik QA FI yang sedang login
         final String myName = widget.session.name.trim().toLowerCase();
-        final myFiFields = allFields
-            .where((f) => f.qaFi.trim().toLowerCase() == myName)
-            .toList();
+        final myFiFields = widget.isDevPreview
+            ? allFields
+            : allFields
+                .where((f) => f.qaFi.trim().toLowerCase() == myName)
+                .toList();
 
         // 2. CASCADING LOGIC FI (Gunakan myFiFields)
-        final districts = myFiFields
+        final fiOptions = myFiFields
+            .map((f) => f.qaFi)
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+        final fiScopedFields = myFiFields
+            .where((f) => _selectedFi == null || f.qaFi == _selectedFi)
+            .toList();
+        final districts = fiScopedFields
             .map((f) => f.district)
             .where((d) => d.isNotEmpty)
             .toSet()
             .toList()
           ..sort();
-        final villageOptions = myFiFields
+        final villageOptions = fiScopedFields
             .where((f) =>
                 _selectedDistrict == null || f.district == _selectedDistrict)
             .map((f) => f.village)
@@ -1352,7 +1498,7 @@ class _FIViewState extends ConsumerState<_FIView> {
           ..sort();
 
         // 3. APPLY FILTERS DROPDOWN USER
-        final fields = myFiFields.where((f) {
+        final fields = fiScopedFields.where((f) {
           if (_selectedDistrict != null && f.district != _selectedDistrict) {
             return false;
           }
@@ -1429,11 +1575,32 @@ class _FIViewState extends ConsumerState<_FIView> {
             SliverToBoxAdapter(
                 child: _CoverageHeader(
                     title: 'Coverage Monitoring',
-                    subtitle: 'QA FI — ${widget.session.name}',
+                    subtitle: widget.isDevPreview
+                        ? 'Dev Preview - QA FI View'
+                        : 'QA FI — ${widget.session.name}',
                     session: widget.session)),
+            if (widget.isDevPreview)
+              SliverToBoxAdapter(
+                child: _DevRolePreviewBar(
+                  selected: widget.previewRole ?? _CoverageViewRole.fi,
+                  onSelected: widget.onPreviewRoleChanged ?? (_) {},
+                ),
+              ),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
+                  if (widget.isDevPreview)
+                    PremiumFilterChip(
+                      label: _selectedFi ?? 'All QA FI',
+                      options: ['All QA FI', ...fiOptions],
+                      selected: _selectedFi,
+                      icon: Icons.person_search_rounded,
+                      onSelected: (v) => setState(() {
+                        _selectedFi = v == 'All QA FI' ? null : v;
+                        _selectedDistrict = null;
+                        _selectedVillage = null;
+                      }),
+                    ),
                   PremiumFilterChip(
                     label: _selectedDistrict ?? 'All Kabupaten',
                     options: ['All Kabupaten', ...districts],
@@ -1876,6 +2043,145 @@ class _CoverageHeader extends StatelessWidget {
                         decoration: const BoxDecoration(
                             color: Color(0xFFFFB300), shape: BoxShape.circle)))
               ])
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DevRolePreviewBar extends StatelessWidget {
+  final _CoverageViewRole selected;
+  final ValueChanged<_CoverageViewRole> onSelected;
+
+  const _DevRolePreviewBar({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AdvantaColors.deepForest,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 14),
+        decoration: const BoxDecoration(
+          color: AdvantaColors.softGrey,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 420;
+            final buttons = _CoverageViewRole.values.map((role) {
+              final active = role == selected;
+              return _DevRoleButton(
+                role: role,
+                active: active,
+                compact: compact,
+                onTap: () => onSelected(role),
+              );
+            }).toList();
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Dev role preview',
+                  style: TextStyle(
+                    color: Colors.grey[700],
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                compact
+                    ? SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: buttons),
+                      )
+                    : Row(
+                        children: buttons
+                            .map((button) => Expanded(child: button))
+                            .toList(),
+                      ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _DevRoleButton extends StatelessWidget {
+  final _CoverageViewRole role;
+  final bool active;
+  final bool compact;
+  final VoidCallback onTap;
+
+  const _DevRoleButton({
+    required this.role,
+    required this.active,
+    required this.compact,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          constraints: BoxConstraints(
+            minWidth: compact ? 116 : 0,
+            minHeight: 42,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: active ? AdvantaColors.deepForest : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color:
+                  active ? AdvantaColors.deepForest : AdvantaColors.dividerGrey,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: active ? 0.08 : 0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+            children: [
+              Icon(
+                role.icon,
+                size: 16,
+                color: active ? Colors.white : AdvantaColors.deepForest,
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  role.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: active ? Colors.white : AdvantaColors.deepForest,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
