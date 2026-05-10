@@ -53,6 +53,41 @@ import '../../services/session_manager.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
+const _adminOnlyRoutes = {
+  '/admin',
+  '/accounts',
+  '/regions',
+  '/absensi',
+  '/aktivitas',
+  '/config',
+  '/filter',
+  '/audit_dashboard',
+  '/flagging_graph',
+  '/notifications_management',
+};
+
+const _operationalWriteRoles = {
+  'fi',
+  'spv',
+  'qa',
+  'manager',
+  'dev',
+};
+
+bool _isAdminRole(String? role) => role?.toLowerCase() == 'admin';
+bool _isGuestRole(String? role) => role?.toLowerCase() == 'guest';
+bool _canWriteOperational(String? role) =>
+    _operationalWriteRoles.contains(role?.toLowerCase());
+String _homeForRole(String? role) => _isAdminRole(role) ? '/admin' : '/qa';
+bool _isInspectionRoute(String path) =>
+    path.startsWith('/inspect/') || path.startsWith('/inspect_sc/');
+bool _isOperationalWriteRoute(String path) =>
+    _isInspectionRoute(path) ||
+    path == '/inspect/mass' ||
+    path == '/edit-field' ||
+    path == '/checkin' ||
+    path == '/checkout';
+
 final router = GoRouter(
   navigatorKey: _rootNavigatorKey,
   initialLocation: '/splash',
@@ -252,7 +287,8 @@ final router = GoRouter(
     ),
   ],
   redirect: (context, state) async {
-    if (state.matchedLocation == '/splash') return null;
+    final path = state.uri.path;
+    if (path == '/splash') return null;
 
     final supabaseUser = Supabase.instance.client.auth.currentUser;
     final session      = await SessionManager.instance.getActiveSession();
@@ -260,14 +296,31 @@ final router = GoRouter(
     final isLoggedIn = supabaseUser != null && session != null;
     final userRole   = session?.role;
 
-    if (!isLoggedIn && state.matchedLocation != '/login') {
+    if (!isLoggedIn && path != '/login') {
       return '/login';
     }
 
-    // PI role: jika somehow masuk /qa, redirect ke /pi
-    if (isLoggedIn && userRole?.toLowerCase() == 'pi' &&
-        state.matchedLocation == '/qa') {
-      return '/pi';
+    if (isLoggedIn && path == '/login') {
+      return _homeForRole(userRole);
+    }
+
+    if (!isLoggedIn) return null;
+
+    if (_adminOnlyRoutes.contains(path) && !_isAdminRole(userRole)) {
+      return _homeForRole(userRole);
+    }
+
+    if (_isAdminRole(userRole) && !_adminOnlyRoutes.contains(path)) {
+      return _homeForRole(userRole);
+    }
+
+    if (_isOperationalWriteRoute(path) && !_canWriteOperational(userRole)) {
+      return _homeForRole(userRole);
+    }
+
+    if ((path == '/coverage' || path == '/qa/settings/mapping') &&
+        _isGuestRole(userRole)) {
+      return '/qa';
     }
 
     return null;

@@ -313,9 +313,10 @@ class SupabaseService {
     String? referenceInspectionId,
   }) async {
     try {
+      final activeUserId = _supabase.auth.currentUser?.id ?? userId;
       await _supabase.from('attendance_activity').insert({
         'attendance_id': attendanceId,
-        'user_id': userId,
+        'user_id': activeUserId,
         'field_number': fieldNumber,
         'phase': phase,
         'action_type': actionType,

@@ -461,18 +461,6 @@ class SplashScreenState extends State<SplashScreen>
         case 'admin':
           context.go('/admin');
           break;
-        case 'psp':
-          context.go('/psp');
-          break;
-        case 'hsp':
-          context.go('/hsp');
-          break;
-        case 'psphsp':
-          context.go('/psphsp');
-          break;
-        case 'pi':
-          context.go('/pi');
-          break;
       // FI, SPV, Dev, Manager, QA → /qa
         default:
           context.go('/qa');

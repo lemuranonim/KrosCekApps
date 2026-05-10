@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; // Tambahan untuk akses database
 import '../../../theme/app_theme.dart';
 import '../../../providers/master_fields_provider.dart'; // Import provider untuk di-refresh
+import '../../../services/session_manager.dart';
+import '../../../utils/guest_guard.dart';
 
 // 1. Ubah menjadi ConsumerStatefulWidget agar bisa akses ref
 class EditFieldScreen extends ConsumerStatefulWidget {
@@ -23,6 +25,8 @@ class _EditFieldScreenState extends ConsumerState<EditFieldScreen> {
   late TextEditingController _dusunCtrl;
 
   bool _isLoading = false; // Indikator loading saat menyimpan
+  ActiveSession? _session;
+  bool get _isGuest => GuestGuard.isGuest(_session);
 
   @override
   void initState() {
@@ -32,6 +36,9 @@ class _EditFieldScreenState extends ConsumerState<EditFieldScreen> {
     _kecCtrl = TextEditingController(text: widget.fieldData['sub_district_kec']?.toString() ?? '');
     _desaCtrl = TextEditingController(text: widget.fieldData['village_desa']?.toString() ?? '');
     _dusunCtrl = TextEditingController(text: widget.fieldData['hamlet_dusun']?.toString() ?? '');
+    SessionManager.instance.getActiveSession().then((session) {
+      if (mounted) setState(() => _session = session);
+    });
   }
 
   @override
@@ -66,6 +73,8 @@ class _EditFieldScreenState extends ConsumerState<EditFieldScreen> {
 
   // 2. FUNGSI SIMPAN REAL (UPDATE KE SUPABASE)
   Future<void> _saveData() async {
+    if (GuestGuard.blockIfGuest(context, _session)) return;
+
     final fieldNumber = widget.fieldData['field_number']?.toString();
 
     // Validasi No Lahan
@@ -152,6 +161,10 @@ class _EditFieldScreenState extends ConsumerState<EditFieldScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_isGuest) ...[
+              GuestGuard.banner(),
+              const SizedBox(height: 16),
+            ],
             Container(
               padding: const EdgeInsets.all(12),
               margin: const EdgeInsets.only(bottom: 16),
@@ -200,7 +213,11 @@ class _EditFieldScreenState extends ConsumerState<EditFieldScreen> {
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: ElevatedButton(
-            onPressed: _isLoading ? null : _saveData, // Tombol nonaktif kalau sedang loading
+            onPressed: _isLoading
+                ? null
+                : _isGuest
+                    ? () => GuestGuard.blockIfGuest(context, _session)
+                    : _saveData, // Tombol nonaktif kalau sedang loading
             style: ElevatedButton.styleFrom(
               backgroundColor: AdvantaColors.primaryGreen,
               disabledBackgroundColor: AdvantaColors.primaryGreen.withAlpha(100),
@@ -213,7 +230,7 @@ class _EditFieldScreenState extends ConsumerState<EditFieldScreen> {
               child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
             )
                 : Text(
-              'SIMPAN PERUBAHAN',
+              _isGuest ? 'MODE READ-ONLY' : 'SIMPAN PERUBAHAN',
               style: AdvantaText.button.copyWith(color: Colors.white),
             ),
           ),
@@ -231,9 +248,11 @@ class _EditFieldScreenState extends ConsumerState<EditFieldScreen> {
     return Autocomplete<String>(
       initialValue: TextEditingValue(text: controller.text),
       optionsBuilder: (TextEditingValue textEditingValue) async {
+        if (_isGuest) return const Iterable<String>.empty();
         return await _fetchLocation(table, textEditingValue.text);
       },
       onSelected: (String selection) {
+        if (_isGuest) return;
         controller.text = selection;
         FocusScope.of(context).unfocus();
       },
@@ -245,6 +264,7 @@ class _EditFieldScreenState extends ConsumerState<EditFieldScreen> {
         });
 
         return TextField(
+          enabled: !_isGuest,
           controller: fieldController,
           focusNode: focusNode,
           textCapitalization: TextCapitalization.characters,
@@ -271,7 +291,7 @@ class _EditFieldScreenState extends ConsumerState<EditFieldScreen> {
             suffixIcon: fieldController.text.isNotEmpty
                 ? IconButton(
               icon: const Icon(Icons.clear_rounded, color: Colors.white38, size: 18),
-              onPressed: () {
+              onPressed: _isGuest ? null : () {
                 fieldController.clear();
                 controller.clear();
               },
@@ -329,6 +349,7 @@ class _EditFieldScreenState extends ConsumerState<EditFieldScreen> {
     required IconData icon,
   }) {
     return TextField(
+      enabled: !_isGuest,
       controller: controller,
       textCapitalization: TextCapitalization.characters,
       style: AdvantaText.body2.copyWith(color: Colors.white),

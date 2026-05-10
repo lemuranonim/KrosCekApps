@@ -16,6 +16,8 @@ enum InspectionPhase {
   generative1,
   generative2,
   generative3,
+  generative4,
+  generative5,
   preHarvest,
   harvest,
 }
@@ -27,6 +29,8 @@ extension InspectionPhaseExt on InspectionPhase {
       case InspectionPhase.generative1: return 'Generatif CP1';
       case InspectionPhase.generative2: return 'Generatif CP2';
       case InspectionPhase.generative3: return 'Generatif CP3 (Final)';
+      case InspectionPhase.generative4: return 'Generatif CP4 (SC)';
+      case InspectionPhase.generative5: return 'Generatif CP5 (SC)';
       case InspectionPhase.preHarvest:  return 'Pre-Harvest';
       case InspectionPhase.harvest:     return 'Harvest';
     }
@@ -38,6 +42,8 @@ extension InspectionPhaseExt on InspectionPhase {
       case InspectionPhase.generative1: return 'generative_1';
       case InspectionPhase.generative2: return 'generative_2';
       case InspectionPhase.generative3: return 'generative_3';
+      case InspectionPhase.generative4: return 'generative_4';
+      case InspectionPhase.generative5: return 'generative_5';
       case InspectionPhase.preHarvest:  return 'pre_harvest';
       case InspectionPhase.harvest:     return 'harvest';
     }
@@ -49,7 +55,9 @@ extension InspectionPhaseExt on InspectionPhase {
       case InspectionPhase.vegetative:  return Icons.grass_rounded;
       case InspectionPhase.generative1:
       case InspectionPhase.generative2:
-      case InspectionPhase.generative3: return Icons.spa_rounded;
+      case InspectionPhase.generative3:
+      case InspectionPhase.generative4:
+      case InspectionPhase.generative5: return Icons.spa_rounded;
       case InspectionPhase.preHarvest:  return Icons.content_cut_rounded;
       case InspectionPhase.harvest:     return Icons.agriculture_rounded;
     }
@@ -62,6 +70,8 @@ extension InspectionPhaseExt on InspectionPhase {
       case InspectionPhase.generative1:
       case InspectionPhase.generative2:
       case InspectionPhase.generative3: return const Color(0xFF7B61FF);
+      case InspectionPhase.generative4: return const Color(0xFF8E24AA);
+      case InspectionPhase.generative5: return const Color(0xFFD81B60);
       case InspectionPhase.preHarvest:  return const Color(0xFFE65100);
       case InspectionPhase.harvest:     return const Color(0xFFD4A017);
     }

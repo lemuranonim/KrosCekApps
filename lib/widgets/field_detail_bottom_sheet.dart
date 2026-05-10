@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
+import '../providers/master_fields_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/dap_helper.dart';
 import '../utils/audit_status_helper.dart';
@@ -300,6 +301,8 @@ class _FieldDetailBottomSheetState
     final field = widget.field;
     final fieldNumber = field['field_number']?.toString() ?? '';
     final flag = field['flagging_final']?.toString();
+    final user = ref.watch(currentUserProvider).value;
+    final canEditMasterData = user != null && user.role.toLowerCase() != 'guest';
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -338,7 +341,7 @@ class _FieldDetailBottomSheetState
                           field, theme, isDark),
                       _buildTabBar(theme, isDark),
                       _buildContent(_dap, _recommendedPhase, fieldNumber, field,
-                          theme, isDark),
+                          theme, isDark, canEditMasterData),
                     ],
                   ),
                 ),
@@ -593,11 +596,12 @@ class _FieldDetailBottomSheetState
     Map<String, dynamic> field,
     ThemeData theme,
     bool isDark,
+    bool canEditMasterData,
   ) {
     Widget activeTab;
     switch (_tab) {
       case 0:
-        activeTab = _buildInfoTab(field, theme, isDark);
+        activeTab = _buildInfoTab(field, theme, isDark, canEditMasterData);
         break;
       case 1:
         activeTab = _buildHistoriTab(dap, field, theme, isDark);
@@ -619,7 +623,7 @@ class _FieldDetailBottomSheetState
   // TAB 0 — INFO LAHAN
   // ──────────────────────────────────────────────────────────
   Widget _buildInfoTab(
-      Map<String, dynamic> field, ThemeData theme, bool isDark) {
+      Map<String, dynamic> field, ThemeData theme, bool isDark, bool canEditMasterData) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 32.0),
       child: Column(
@@ -720,36 +724,37 @@ class _FieldDetailBottomSheetState
             icon: Icons.place_outlined,
             theme: theme,
             isDark: isDark,
-            isEditable: true, // <── AKTIFKAN HIGHLIGHT EMAS DI SINI
-            action: InkWell(
-              onTap: () {
-                Navigator.pop(context); // Tutup bottom sheet
-                context.push('/edit-field',
-                    extra: field); // Pindah ke halaman edit
-              },
-              borderRadius: BorderRadius.circular(6),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AdvantaColors.gold.withAlpha(30),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AdvantaColors.gold.withAlpha(100)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.edit_rounded,
-                        color: AdvantaColors.gold, size: 12),
-                    const SizedBox(width: 4),
-                    Text(
-                      'EDIT',
-                      style: AdvantaText.label
-                          .copyWith(color: AdvantaColors.gold, fontSize: 10),
+            isEditable: canEditMasterData,
+            action: canEditMasterData
+                ? InkWell(
+                    onTap: () {
+                      Navigator.pop(context);
+                      context.push('/edit-field', extra: field);
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AdvantaColors.gold.withAlpha(30),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AdvantaColors.gold.withAlpha(100)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.edit_rounded,
+                              color: AdvantaColors.gold, size: 12),
+                          const SizedBox(width: 4),
+                          Text(
+                            'EDIT',
+                            style: AdvantaText.label
+                                .copyWith(color: AdvantaColors.gold, fontSize: 10),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-              ),
-            ),
+                  )
+                : null,
             children: [
               _Row2Col(
                 left: _InfoCell('Provinsi', _fmt(field['prov']),

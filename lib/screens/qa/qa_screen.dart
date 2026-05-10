@@ -790,6 +790,18 @@ class _QAScreenState extends ConsumerState<QAScreen>
     // Hanya 'guest' yang dikecualikan karena read-only.
     final bool canSeeCoverage = user != null &&
         user.role.toLowerCase() != 'guest';
+    final bool canUseMassInspect = user != null &&
+        user.role.toLowerCase() != 'guest';
+
+    if (!canUseMassInspect && _workMode == _WorkMode.mass) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _workMode != _WorkMode.mass) return;
+        setState(() {
+          _workMode = _WorkMode.single;
+          _selectedFieldNumbers.clear();
+        });
+      });
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -870,7 +882,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
             Positioned(
               bottom: _workMode == _WorkMode.mass ? 116 : 32, // Sesuaikan dengan Mass Bar
               left: 16, // Taruh di kiri bawah, berseberangan dengan Speed Dial
-              child: _buildFloatingModeToggle(canSeeCoverage),
+              child: _buildFloatingModeToggle(
+                  canSeeCoverage, canUseMassInspect),
             ),
 
           // ── 5. RIGHT FABs ──────────────────────────────────
@@ -1171,7 +1184,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   // 4. Floating Mode Toggle (Ditaruh di Kiri Bawah)
-  Widget _buildFloatingModeToggle(bool canSeeCoverage) {
+  Widget _buildFloatingModeToggle(
+      bool canSeeCoverage, bool canUseMassInspect) {
     return Container(
       decoration: BoxDecoration(
         color: AdvantaColors.deepForest.withAlpha(220),
@@ -1190,11 +1204,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
               _selectedFieldNumbers.clear();
             }),
           ),
-          _CompactSegmentButton(
-            icon: Icons.checklist_rtl_outlined,
-            isActive: _workMode == _WorkMode.mass,
-            onTap: () => setState(() => _workMode = _WorkMode.mass),
-          ),
+          if (canUseMassInspect)
+            _CompactSegmentButton(
+              icon: Icons.checklist_rtl_outlined,
+              isActive: _workMode == _WorkMode.mass,
+              onTap: () => setState(() => _workMode = _WorkMode.mass),
+            ),
           if (canSeeCoverage)
             _CompactSegmentButton(
               icon: Icons.analytics_outlined,
@@ -3362,6 +3377,21 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   // ─── PHASE SELECTION SHEET (mass only) ──────────────────────
+  bool _selectedFieldsAreSweetCornOnly() {
+    final parsedFields = ref.read(parsedMapFieldsProvider).value;
+    if (parsedFields == null) return false;
+
+    final selectedFields = parsedFields
+        .where((f) => _selectedFieldNumbers
+            .contains(f.raw['field_number']?.toString()))
+        .toList();
+
+    return selectedFields.isNotEmpty &&
+        selectedFields.every(
+          (f) => DapHelper.isSweetCorn(f.raw['hybrid']?.toString()),
+        );
+  }
+
   void _showPhaseSheet() {
     showModalBottomSheet(
       context: context,
@@ -3369,6 +3399,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
       isScrollControlled: true,
       builder: (_) => _PhaseSheet(
         selectionCount: _selectedFieldNumbers.length,
+        includeSweetCornPhases: _selectedFieldsAreSweetCornOnly(),
         onSelected: (phase) {
           Navigator.pop(context);
           context.push('/inspect/mass', extra: {
@@ -4618,27 +4649,38 @@ class _ParamPickerSheet extends StatelessWidget {
 
 class _PhaseSheet extends StatelessWidget {
   final int selectionCount;
+  final bool includeSweetCornPhases;
   final void Function(String) onSelected;
 
   const _PhaseSheet({
     required this.selectionCount,
+    required this.includeSweetCornPhases,
     required this.onSelected,
   });
 
   static const _phases = [
     (Icons.eco_outlined, 'Vegetative', 'vegetative',
-    Color(0xFF78909C), '100% target – semua field aktif'),
+    Color(0xFF78909C), '100% target – semua field aktif', false),
     (Icons.grass_outlined, 'Generative 1', 'generative_1',
-    Color(0xFFFFCA28), 'Checkpoint pertama – readiness & roguing'),
+    Color(0xFFFFCA28), 'Checkpoint pertama – readiness & roguing', false),
     (Icons.grass, 'Generative 2', 'generative_2',
-    Color(0xFFFF7043), 'Checkpoint kedua – female shedding'),
+    Color(0xFFFF7043), 'Checkpoint kedua – female shedding', false),
     (Icons.grass, 'Generative 3 (Final)', 'generative_3',
-    Color(0xFFE53935), 'Checkpoint final – flagging & detasseling'),
+    Color(0xFFE53935), 'Checkpoint final – flagging & detasseling', false),
+    (Icons.grass, 'Generative 4 (SC)', 'generative_4',
+    Color(0xFF8E24AA), 'Sweet Corn – checkpoint keempat', true),
+    (Icons.grass, 'Generative 5 (SC)', 'generative_5',
+    Color(0xFFD81B60), 'Sweet Corn – checkpoint kelima', true),
     (Icons.agriculture_outlined, 'Pre-Harvest', 'pre_harvest',
-    Color(0xFF795548), 'Target 50% – sampling eligible'),
+    Color(0xFF795548), 'Target 50% – sampling eligible', false),
     (Icons.grain, 'Harvest', 'harvest',
-    Color(0xFF43A047), 'Target 50% + field flagged'),
+    Color(0xFF43A047), 'Target 50% + field flagged', false),
   ];
+
+  List<(IconData, String, String, Color, String, bool)> get _visiblePhases {
+    if (includeSweetCornPhases) return _phases;
+    return _phases.where((phase) => !phase.$6).toList(growable: false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -4703,9 +4745,9 @@ class _PhaseSheet extends StatelessWidget {
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: _phases.length,
+            itemCount: _visiblePhases.length,
             itemBuilder: (ctx, i) {
-              final (icon, label, key, color, desc) = _phases[i];
+              final (icon, label, key, color, desc, _) = _visiblePhases[i];
               return ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
                 leading: Container(
