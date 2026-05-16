@@ -11,6 +11,7 @@ import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
 import '../../theme/app_theme.dart';
 import 'fc_form_widgets.dart';
+import 'psp_form_widgets.dart' as psp;
 
 // ─── Phase accent colors ──────────────────────────────────
 const _kVeg = Color(0xFF78909C);
@@ -52,35 +53,15 @@ const _vegCropHealthOpts = [
 ];
 const _vegOfftypeOpts = [GenOpt('0', 'A – 0'), GenOpt('>0', 'B – >0')];
 const _vegIsolationOpts = [GenOpt('Yes', 'A – Yes'), GenOpt('No', 'B – No')];
-const _pspYesNoOpts = [GenOpt('NO', 'A – NO'), GenOpt('YES', 'B – YES')];
-const _pspLsvOpts = [GenOpt('NO', 'A – NO'), GenOpt('YES', 'B – YES')];
-const _pspIsolationTypeOpts = [
-  GenOpt('Other Seed Production', 'A – Other Seed Production'),
-  GenOpt('Commercial', 'B – Commercial'),
-];
-const _pspIsolationDistanceOpts = [
-  GenOpt('>400', 'A – >400'),
-  GenOpt('<400', 'B – <400'),
-];
 const _vegPreviousCropOpts = [
   GenOpt('Corn After Corn', 'Corn After Corn'),
   GenOpt('Not Corn', 'Not Corn'),
-];
-const _pspPreviousCropOpts = [
-  GenOpt('Not Corn', 'A – Not Corn'),
-  GenOpt('Corn after corn with different trait',
-      'B – Corn after corn with different trait'),
-  GenOpt('Corn after Corn same trait', 'C – Corn after Corn same trait'),
 ];
 const _vegFinalDecisionOpts = [
   GenOpt('Pass', 'A – Pass'),
   GenOpt('Pass w/ Note', 'B – Pass w/ Note'),
   GenOpt('Hold', 'C – Hold'),
   GenOpt('Discard', 'D – Discard'),
-];
-const _pspRecommendationOpts = [
-  GenOpt('Continue', 'Continue'),
-  GenOpt('Discard', 'Discard'),
 ];
 const _vegActionNeededOpts = [
   GenOpt('None', 'A – None'),
@@ -103,15 +84,6 @@ const _vegFinalFlaggingOpts = [
   GenOpt('RFD', 'RFD'),
   GenOpt('BF', 'BF'),
   GenOpt('PLD', 'PLD'),
-];
-const _pspFlaggingOpts = [
-  GenOpt('GF', 'GF'),
-  GenOpt('OF', 'OF'),
-  GenOpt('RF', 'RF'),
-];
-const _pspTypeSeedOpts = [
-  GenOpt('Pre Basic', 'Pre Basic'),
-  GenOpt('Basic', 'Basic')
 ];
 const _vegMaleSplitOpts = [GenOpt('Yes', 'Y – Yes'), GenOpt('No', 'N – No')];
 const _vegSplitFieldOpts = [GenOpt('Yes', 'A – Yes'), GenOpt('No', 'B – No')];
@@ -471,7 +443,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
         return genIsDiscardFull(_gen4ActionNeeded);
       case 'generative_5':
         return genIsDiscardFull(_gen5ActionNeeded) ||
-            genIsDiscardDecision(_pspGenRecommendation);
+            psp.pspIsDiscardDecision(_pspGenRecommendation);
       case 'pre_harvest':
         return genIsDiscardDecision(_preHFinalDecision);
       default:
@@ -529,6 +501,31 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     if (p != null) setState(() => _vegRevPlantingDate = p);
   }
 
+  Future<void> _pickPspAuditDate() async {
+    final p = await showDatePicker(
+      context: context,
+      initialDate: _auditDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (ctx, child) =>
+          Theme(data: psp.pspDatePickerTheme(ctx, _phaseColor), child: child!),
+    );
+    if (p != null) setState(() => _auditDate = p);
+  }
+
+  Future<void> _pickPspVegRevPlantingDate() async {
+    final p = await showDatePicker(
+      context: context,
+      initialDate: _vegRevPlantingDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (ctx, child) => Theme(
+          data: psp.pspDatePickerTheme(ctx, psp.kPspVegetativeColor),
+          child: child!),
+    );
+    if (p != null) setState(() => _vegRevPlantingDate = p);
+  }
+
   Future<void> _pickPspRoguingDate(int index) async {
     final roguing = _pspRoguings[index];
     final p = await showDatePicker(
@@ -536,8 +533,9 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       initialDate: roguing.date ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      builder: (ctx, child) =>
-          Theme(data: genDatePickerTheme(ctx, _kVeg), child: child!),
+      builder: (ctx, child) => Theme(
+          data: psp.pspDatePickerTheme(ctx, psp.kPspVegetativeColor),
+          child: child!),
     );
     if (p != null) setState(() => roguing.date = p);
   }
@@ -549,8 +547,9 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       initialDate: roguing.date ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      builder: (ctx, child) =>
-          Theme(data: genDatePickerTheme(ctx, _kGen3), child: child!),
+      builder: (ctx, child) => Theme(
+          data: psp.pspDatePickerTheme(ctx, psp.kPspGenerativeColor),
+          child: child!),
     );
     if (p != null) setState(() => roguing.date = p);
   }
@@ -701,7 +700,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 'offtype_in_male': r4.offtype ?? r1.offtype,
                 'offtype_in_female': r4.offtype ?? r1.offtype,
                 'decision': _vegFinalDecision,
-                'pld_reason': genIsDiscardDecision(_vegFinalDecision)
+                'pld_reason': psp.pspIsDiscardDecision(_vegFinalDecision)
                     ? 'PSP Recommendation Discard'
                     : null,
                 'flagging': _vegFinalFlagging,
@@ -852,11 +851,11 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 'crop_health_5': r6.cropHealth,
                 'final_flagging_5': r6.flagging,
                 'final_decision_5': _pspGenRecommendation,
-                'pld_area_ha_5': genIsDiscardDecision(_pspGenRecommendation)
+                'pld_area_ha_5': psp.pspIsDiscardDecision(_pspGenRecommendation)
                     ? double.tryParse(
                         _pspGenPldAreaCtrl.text.replaceAll(',', '.'))
                     : null,
-                'pld_reason_5': genIsDiscardDecision(_pspGenRecommendation)
+                'pld_reason_5': psp.pspIsDiscardDecision(_pspGenRecommendation)
                     ? 'PSP Recommendation Discard'
                     : null,
                 'remarks_5': _pspGenRemarksCtrl.text.trim(),
@@ -1122,43 +1121,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // ── Common: Informasi Audit ──
-                  GenSection(
-                    title: 'Informasi Audit',
-                    icon: Icons.assignment_outlined,
-                    color: _phaseColor,
-                    children: [
-                      if (!(isPspSelection &&
-                          widget.targetPhase == 'generative_5')) ...[
-                        GenDateTile(
-                            label: widget.targetPhase == 'harvest' &&
-                                    isPspSelection
-                                ? 'Date of Inspeksi Harvest'
-                                : 'Tanggal Audit',
-                            date: _auditDate,
-                            onTap: _pickAuditDate),
-                        const SizedBox(height: 12),
-                      ],
-                      GenQaAutocomplete(
-                        controller: _qaFiCtrl,
-                        label: 'QA FI',
-                        hint: 'Nama QA Field Inspector',
-                        column: 'qa_fi',
-                        required: true,
-                        icon: Icons.person_outline,
-                        accentColor: _phaseColor,
-                      ),
-                      const SizedBox(height: 12),
-                      GenQaAutocomplete(
-                        controller: _qaSpvCtrl,
-                        label: 'QA SPV',
-                        hint: 'Nama QA Supervisor',
-                        column: 'qa_spv',
-                        required: true,
-                        icon: Icons.supervisor_account_outlined,
-                        accentColor: _phaseColor,
-                      ),
-                    ],
-                  ),
+                  _buildAuditInfoSection(isPspSelection: isPspSelection),
                   const SizedBox(height: 12),
 
                   ..._buildPhaseFields(
@@ -1215,6 +1178,86 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAuditInfoSection({required bool isPspSelection}) {
+    final hideAuditDate =
+        isPspSelection && widget.targetPhase == 'generative_5';
+    final auditDateLabel = widget.targetPhase == 'harvest' && isPspSelection
+        ? 'Date of Inspeksi Harvest'
+        : 'Tanggal Audit';
+
+    if (isPspSelection) {
+      return psp.PspSection(
+        title: 'Informasi Audit PSP/PS',
+        icon: Icons.assignment_outlined,
+        color: _phaseColor,
+        children: [
+          if (!hideAuditDate) ...[
+            psp.PspDateTile(
+              label: auditDateLabel,
+              date: _auditDate,
+              onTap: _pickPspAuditDate,
+            ),
+            const SizedBox(height: 12),
+          ],
+          psp.PspQaAutocomplete(
+            controller: _qaFiCtrl,
+            label: 'QA FI',
+            hint: 'Nama QA Field Inspector',
+            column: 'qa_fi',
+            required: true,
+            icon: Icons.person_outline,
+            accentColor: _phaseColor,
+          ),
+          const SizedBox(height: 12),
+          psp.PspQaAutocomplete(
+            controller: _qaSpvCtrl,
+            label: 'QA SPV',
+            hint: 'Nama QA Supervisor',
+            column: 'qa_spv',
+            required: true,
+            icon: Icons.supervisor_account_outlined,
+            accentColor: _phaseColor,
+          ),
+        ],
+      );
+    }
+
+    return GenSection(
+      title: 'Informasi Audit',
+      icon: Icons.assignment_outlined,
+      color: _phaseColor,
+      children: [
+        if (!hideAuditDate) ...[
+          GenDateTile(
+            label: auditDateLabel,
+            date: _auditDate,
+            onTap: _pickAuditDate,
+          ),
+          const SizedBox(height: 12),
+        ],
+        GenQaAutocomplete(
+          controller: _qaFiCtrl,
+          label: 'QA FI',
+          hint: 'Nama QA Field Inspector',
+          column: 'qa_fi',
+          required: true,
+          icon: Icons.person_outline,
+          accentColor: _phaseColor,
+        ),
+        const SizedBox(height: 12),
+        GenQaAutocomplete(
+          controller: _qaSpvCtrl,
+          label: 'QA SPV',
+          hint: 'Nama QA Supervisor',
+          column: 'qa_spv',
+          required: true,
+          icon: Icons.supervisor_account_outlined,
+          accentColor: _phaseColor,
+        ),
+      ],
     );
   }
 
@@ -1480,16 +1523,16 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   }
 
   List<Widget> _buildVegetativePspFields(BuildContext context) {
-    final isD = genIsDiscardDecision(_vegFinalDecision);
+    final isD = psp.pspIsDiscardDecision(_vegFinalDecision);
     return [
-      GenSection(
+      psp.PspSection(
         title: 'Roguing 1',
         icon: Icons.eco_outlined,
         color: const Color(0xFF26A69A),
         children: [
           _buildPspDateTile(0),
           const SizedBox(height: 12),
-          GenTextField(
+          psp.PspTextField(
             controller: _vegCoDetasselingCtrl,
             label: 'Co-Roguing',
             hint: 'Nama PIC co-roguing',
@@ -1497,26 +1540,26 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             accentColor: const Color(0xFF26A69A),
           ),
           const SizedBox(height: 12),
-          GenDateTileNullable(
+          psp.PspDateTileNullable(
             label: 'Rev Tgl Tanam',
             date: _vegRevPlantingDate,
-            onTap: _pickVegRevPlantingDate,
+            onTap: _pickPspVegRevPlantingDate,
             onClear: () => setState(() => _vegRevPlantingDate = null),
           ),
           const SizedBox(height: 14),
-          GenOptionPicker(
+          psp.PspOptionPicker(
             label: 'Previous Crop Actual',
             required: !isD,
-            options: _pspPreviousCropOpts,
+            options: psp.pspPreviousCropActualOpts,
             value: _vegPreviousCrop,
             onChanged: (v) => setState(() => _vegPreviousCrop = v),
             accentColor: const Color(0xFF26A69A),
           ),
           const SizedBox(height: 14),
-          GenOptionPicker(
+          psp.PspOptionPicker(
             label: 'Type Seed',
             required: true,
-            options: _pspTypeSeedOpts,
+            options: psp.pspTypeSeedOpts,
             value: _pspTypeSeed,
             onChanged: (v) => setState(() => _pspTypeSeed = v),
             accentColor: const Color(0xFF26A69A),
@@ -1533,7 +1576,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       const SizedBox(height: 12),
       _buildPspRoguingSection(_pspRoguings[2]),
       const SizedBox(height: 12),
-      GenSection(
+      psp.PspSection(
         title: 'Roguing 4 Final',
         icon: Icons.gavel_outlined,
         color: AdvantaColors.error,
@@ -1545,30 +1588,30 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           const SizedBox(height: 14),
           _buildPspIsolationFields(_pspRoguings[3], AdvantaColors.error),
           const SizedBox(height: 14),
-          GenOptionPicker(
+          psp.PspOptionPicker(
             label: 'Flagging',
-            options: _pspFlaggingOpts,
+            options: psp.pspRoguingFlaggingOpts,
             value: _vegFinalFlagging,
             onChanged: (v) => setState(() => _vegFinalFlagging = v),
             accentColor: AdvantaColors.error,
           ),
           const SizedBox(height: 14),
-          GenOptionPicker(
+          psp.PspOptionPicker(
             label: 'Recommendation',
             required: true,
-            options: _pspRecommendationOpts,
+            options: psp.pspRecommendationOpts,
             value: _vegFinalDecision,
             onChanged: (v) => setState(() => _vegFinalDecision = v),
             accentColor: AdvantaColors.error,
           ),
           if (isD) ...[
             const SizedBox(height: 12),
-            const GenDiscardBanner(
+            const psp.PspDiscardBanner(
               message: 'Recommendation Discard aktif - isi luas PLD bila ada.',
             ),
           ],
           const SizedBox(height: 14),
-          GenTextField(
+          psp.PspTextField(
             controller: _pspRecommendationPldCtrl,
             label: 'Recommendation PLD (Ha)',
             keyboardType: TextInputType.number,
@@ -1577,7 +1620,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             accentColor: AdvantaColors.error,
           ),
           const SizedBox(height: 14),
-          GenTextField(
+          psp.PspTextField(
             controller: _vegRemarksCtrl,
             label: 'Remarks',
             hint: 'Catatan tambahan PSP/PS...',
@@ -1592,7 +1635,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
 
   Widget _buildPspRoguingSection(_MassPspRoguingDraft roguing) {
     const color = Color(0xFFFFCA28);
-    return GenSection(
+    return psp.PspSection(
       title: 'Roguing ${roguing.number}',
       icon: Icons.fact_check_outlined,
       color: color,
@@ -1606,7 +1649,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
 
   Widget _buildPspDateTile(int index) {
     final roguing = _pspRoguings[index];
-    return GenDateTileNullable(
+    return psp.PspDateTileNullable(
       label: 'Date Of Inspeksi Roguing ${roguing.number}',
       date: roguing.date,
       onTap: () => _pickPspRoguingDate(index),
@@ -1625,10 +1668,10 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: GenOptionPicker(
+              child: psp.PspOptionPicker(
                 label: 'Audit Offtype',
                 required: true,
-                options: _vegOfftypeOpts,
+                options: psp.pspBinaryFindingOpts,
                 value: roguing.offtype,
                 onChanged: (v) => setState(() => roguing.offtype = v),
                 accentColor: color,
@@ -1636,10 +1679,10 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: GenOptionPicker(
+              child: psp.PspOptionPicker(
                 label: 'Audit Volunteer',
                 required: true,
-                options: _vegOfftypeOpts,
+                options: psp.pspBinaryFindingOpts,
                 value: roguing.volunteer,
                 onChanged: (v) => setState(() => roguing.volunteer = v),
                 accentColor: color,
@@ -1649,29 +1692,29 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
         ),
         if (includeLsv) ...[
           const SizedBox(height: 14),
-          GenOptionPicker(
+          psp.PspOptionPicker(
             label: 'Audit LSV',
             required: true,
-            options: _pspLsvOpts,
+            options: psp.pspNoYesOpts,
             value: roguing.lsv,
             onChanged: (v) => setState(() => roguing.lsv = v),
             accentColor: color,
           ),
         ],
         const SizedBox(height: 14),
-        GenOptionPicker(
+        psp.PspOptionPicker(
           label: 'Crop Health',
           required: true,
-          options: _vegCropHealthOpts,
+          options: psp.pspScoreOpts,
           value: roguing.cropHealth,
           onChanged: (v) => setState(() => roguing.cropHealth = v),
           accentColor: color,
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        psp.PspOptionPicker(
           label: 'Crop Uniformity',
           required: true,
-          options: _vegCropUniformityOpts,
+          options: psp.pspScoreOpts,
           value: roguing.cropUniformity,
           onChanged: (v) => setState(() => roguing.cropUniformity = v),
           accentColor: color,
@@ -1683,10 +1726,10 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   Widget _buildPspIsolationFields(_MassPspRoguingDraft roguing, Color color) {
     return Column(
       children: [
-        GenOptionPicker(
+        psp.PspOptionPicker(
           label: 'Isolation Audit',
           required: true,
-          options: _pspYesNoOpts,
+          options: psp.pspNoYesOpts,
           value: roguing.isolationAudit,
           onChanged: (v) => setState(() => roguing.isolationAudit = v),
           accentColor: color,
@@ -1695,9 +1738,9 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
         Row(
           children: [
             Expanded(
-              child: GenOptionPicker(
+              child: psp.PspOptionPicker(
                 label: 'Isolation Type',
-                options: _pspIsolationTypeOpts,
+                options: psp.pspIsolationTypeOpts,
                 value: roguing.isolationType,
                 onChanged: (v) => setState(() => roguing.isolationType = v),
                 accentColor: color,
@@ -1705,9 +1748,9 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: GenOptionPicker(
+              child: psp.PspOptionPicker(
                 label: 'Isolation Distance',
-                options: _pspIsolationDistanceOpts,
+                options: psp.pspIsolationDistanceOpts,
                 value: roguing.isolationDistance,
                 onChanged: (v) => setState(() => roguing.isolationDistance = v),
                 accentColor: color,
@@ -1732,13 +1775,13 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     required bool isFinal,
   }) {
     final color = isFinal ? AdvantaColors.error : _kGen1;
-    final isPld = genIsDiscardDecision(_pspGenRecommendation);
-    return GenSection(
+    final isPld = psp.pspIsDiscardDecision(_pspGenRecommendation);
+    return psp.PspSection(
       title: 'Roguing ${roguing.number}${isFinal ? ' Final' : ''}',
       icon: isFinal ? Icons.gavel_outlined : Icons.fact_check_outlined,
       color: color,
       children: [
-        GenDateTileNullable(
+        psp.PspDateTileNullable(
           label: 'Date Of Inspeksi Roguing ${roguing.number}',
           date: roguing.date,
           onTap: () => _pickPspGenRoguingDate(roguing.number - 5),
@@ -1749,41 +1792,41 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
         const SizedBox(height: 14),
         _buildPspGenIsolationFields(roguing, color),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        psp.PspOptionPicker(
           label: 'Nicking Observation',
           required: true,
-          options: _pspYesNoOpts,
+          options: psp.pspNoYesOpts,
           value: roguing.nickingObservation,
           onChanged: (v) => setState(() => roguing.nickingObservation = v),
           accentColor: color,
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        psp.PspOptionPicker(
           label: 'Flagging',
           required: true,
-          options: _pspFlaggingOpts,
+          options: psp.pspRoguingFlaggingOpts,
           value: roguing.flagging,
           onChanged: (v) => setState(() => roguing.flagging = v),
           accentColor: color,
         ),
         if (isFinal) ...[
           const SizedBox(height: 14),
-          GenOptionPicker(
+          psp.PspOptionPicker(
             label: 'Recommendation',
             required: true,
-            options: _pspRecommendationOpts,
+            options: psp.pspRecommendationOpts,
             value: _pspGenRecommendation,
             onChanged: (v) => setState(() => _pspGenRecommendation = v),
             accentColor: color,
           ),
           if (isPld) ...[
             const SizedBox(height: 12),
-            const GenDiscardBanner(
+            const psp.PspDiscardBanner(
               message: 'Recommendation Discard aktif - isi luas PLD bila ada.',
             ),
           ],
           const SizedBox(height: 14),
-          GenTextField(
+          psp.PspTextField(
             controller: _pspGenPldAreaCtrl,
             label: 'Recommendation PLD (Ha)',
             keyboardType: TextInputType.number,
@@ -1792,7 +1835,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             accentColor: color,
           ),
           const SizedBox(height: 14),
-          GenTextField(
+          psp.PspTextField(
             controller: _pspGenRemarksCtrl,
             label: 'Remarks',
             maxLines: 4,
@@ -1811,10 +1854,10 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: GenOptionPicker(
+              child: psp.PspOptionPicker(
                 label: 'Standing crop Offtype',
                 required: true,
-                options: _vegOfftypeOpts,
+                options: psp.pspBinaryFindingOpts,
                 value: roguing.standingCropOfftype,
                 onChanged: (v) =>
                     setState(() => roguing.standingCropOfftype = v),
@@ -1823,10 +1866,10 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: GenOptionPicker(
+              child: psp.PspOptionPicker(
                 label: 'Standing crop Volunteer',
                 required: true,
-                options: _vegOfftypeOpts,
+                options: psp.pspBinaryFindingOpts,
                 value: roguing.standingCropVolunteer,
                 onChanged: (v) =>
                     setState(() => roguing.standingCropVolunteer = v),
@@ -1840,10 +1883,10 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: GenOptionPicker(
+              child: psp.PspOptionPicker(
                 label: 'Offtype Shed',
                 required: true,
-                options: _vegOfftypeOpts,
+                options: psp.pspBinaryFindingOpts,
                 value: roguing.offtypeShed,
                 onChanged: (v) => setState(() => roguing.offtypeShed = v),
                 accentColor: color,
@@ -1851,10 +1894,10 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: GenOptionPicker(
+              child: psp.PspOptionPicker(
                 label: 'Volunteer Shed',
                 required: true,
-                options: _vegOfftypeOpts,
+                options: psp.pspBinaryFindingOpts,
                 value: roguing.volunteerShed,
                 onChanged: (v) => setState(() => roguing.volunteerShed = v),
                 accentColor: color,
@@ -1863,28 +1906,28 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ],
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        psp.PspOptionPicker(
           label: 'Audit LSV',
           required: true,
-          options: _pspLsvOpts,
+          options: psp.pspNoYesOpts,
           value: roguing.lsv,
           onChanged: (v) => setState(() => roguing.lsv = v),
           accentColor: color,
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        psp.PspOptionPicker(
           label: 'Crop Health',
           required: true,
-          options: _vegCropHealthOpts,
+          options: psp.pspScoreOpts,
           value: roguing.cropHealth,
           onChanged: (v) => setState(() => roguing.cropHealth = v),
           accentColor: color,
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        psp.PspOptionPicker(
           label: 'Crop Uniformity',
           required: true,
-          options: _vegCropUniformityOpts,
+          options: psp.pspScoreOpts,
           value: roguing.cropUniformity,
           onChanged: (v) => setState(() => roguing.cropUniformity = v),
           accentColor: color,
@@ -1897,10 +1940,10 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       _MassPspGenRoguingDraft roguing, Color color) {
     return Column(
       children: [
-        GenOptionPicker(
+        psp.PspOptionPicker(
           label: 'Isolation Audit',
           required: true,
-          options: _pspYesNoOpts,
+          options: psp.pspNoYesOpts,
           value: roguing.isolationAudit,
           onChanged: (v) => setState(() => roguing.isolationAudit = v),
           accentColor: color,
@@ -1909,9 +1952,9 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
         Row(
           children: [
             Expanded(
-              child: GenOptionPicker(
+              child: psp.PspOptionPicker(
                 label: 'Isolation Type',
-                options: _pspIsolationTypeOpts,
+                options: psp.pspIsolationTypeOpts,
                 value: roguing.isolationType,
                 onChanged: (v) => setState(() => roguing.isolationType = v),
                 accentColor: color,
@@ -1919,9 +1962,9 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: GenOptionPicker(
+              child: psp.PspOptionPicker(
                 label: 'Isolation Distance',
-                options: _pspIsolationDistanceOpts,
+                options: psp.pspIsolationDistanceOpts,
                 value: roguing.isolationDistance,
                 onChanged: (v) => setState(() => roguing.isolationDistance = v),
                 accentColor: color,
@@ -1935,35 +1978,35 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
 
   List<Widget> _buildHarvestPspFields() {
     return [
-      GenSection(
+      psp.PspSection(
         title: 'Penilaian Harvest',
         icon: Icons.agriculture_outlined,
-        color: _kHarv,
+        color: psp.kPspHarvestColor,
         children: [
-          GenOptionPicker(
+          psp.PspOptionPicker(
             label: 'Ear Condition',
             required: true,
-            options: _harvEarCondOpts,
+            options: psp.pspHarvestEarConditionOpts,
             value: _harvEarCondition,
             onChanged: (v) => setState(() => _harvEarCondition = v),
-            accentColor: _kHarv,
+            accentColor: psp.kPspHarvestColor,
           ),
           const SizedBox(height: 14),
-          GenOptionPicker(
+          psp.PspOptionPicker(
             label: 'Crop Health',
             required: true,
-            options: _harvCropHealthOpts,
+            options: psp.pspScoreOpts,
             value: _harvCropHealth,
             onChanged: (v) => setState(() => _harvCropHealth = v),
-            accentColor: _kHarv,
+            accentColor: psp.kPspHarvestColor,
           ),
           const SizedBox(height: 14),
-          GenTextField(
+          psp.PspTextField(
             controller: _harvRemarksCtrl,
             label: 'Remarks',
             maxLines: 4,
             icon: Icons.edit_note_outlined,
-            accentColor: _kHarv,
+            accentColor: psp.kPspHarvestColor,
           ),
         ],
       ),
