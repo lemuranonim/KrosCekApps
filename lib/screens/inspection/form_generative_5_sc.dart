@@ -149,6 +149,10 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
 
   Future<void> _save() async {
     if (GuestGuard.blockIfGuest(context, _session)) return;
+    if (_closedOutDate == null) {
+      _snack('Closed Out Date wajib diisi', err: true);
+      return;
+    }
     if (!_formKey.currentState!.validate()) {
       _snack('Periksa kembali isian form', err: true);
       return;
@@ -471,6 +475,7 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                           Expanded(
                             child: GenOptionPicker(
                               label: 'Isolation Problem',
+                              required: !_isGuest,
                               options: genAffectedOpts,
                               value: _isolationProblem,
                               onChanged: (v) {
@@ -487,6 +492,7 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                           Expanded(
                             child: GenOptionPicker(
                               label: 'Affected Other Field',
+                              required: !_isGuest,
                               options: genAffectedOpts,
                               value: _affectedOther,
                               onChanged: (v) {
@@ -503,7 +509,7 @@ class _FormGenerative5SCState extends ConsumerState<FormGenerative5SC> {
                       ),
                       const SizedBox(height: 14),
                       GenDateTileNullable(
-                        label: 'Closed Out Date (Opsional)',
+                        label: 'Closed Out Date *',
                         date: _closedOutDate,
                         onTap: _pickClosedDate,
                         onClear: _isGuest

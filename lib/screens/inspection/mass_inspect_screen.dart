@@ -686,6 +686,18 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
         !_validatePspGenMassDates()) {
       return;
     }
+    if (!isPspSelection &&
+        widget.targetPhase == 'generative_3' &&
+        _gen3ClosedOutDate == null) {
+      _snack('Closed Out Date wajib diisi', err: true);
+      return;
+    }
+    if (!isPspSelection &&
+        widget.targetPhase == 'generative_5' &&
+        _gen5ClosedOutDate == null) {
+      _snack('Closed Out Date wajib diisi', err: true);
+      return;
+    }
 
     if (!_formKey.currentState!.validate()) {
       _snack('Periksa kembali isian form', err: true);
@@ -1605,6 +1617,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             controller: _vegCoDetasselingCtrl,
             label: 'Co-Roguing',
             hint: 'Nama PIC co-roguing',
+            required: true,
             icon: Icons.group_outlined,
             accentColor: const Color(0xFF26A69A),
           ),
@@ -1659,6 +1672,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           const SizedBox(height: 14),
           psp.PspOptionPicker(
             label: 'Flagging',
+            required: true,
             options: psp.pspRoguingFlaggingOpts,
             value: _vegFinalFlagging,
             onChanged: (v) => setState(() => _vegFinalFlagging = v),
@@ -1809,6 +1823,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             Expanded(
               child: psp.PspOptionPicker(
                 label: 'Isolation Type',
+                required: psp.pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: psp.pspIsolationTypeOpts,
                 value: roguing.isolationType,
                 onChanged: (v) => setState(() => roguing.isolationType = v),
@@ -1819,6 +1834,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             Expanded(
               child: psp.PspOptionPicker(
                 label: 'Isolation Distance',
+                required: psp.pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: psp.pspIsolationDistanceOpts,
                 value: roguing.isolationDistance,
                 onChanged: (v) => setState(() => roguing.isolationDistance = v),
@@ -2023,6 +2039,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             Expanded(
               child: psp.PspOptionPicker(
                 label: 'Isolation Type',
+                required: psp.pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: psp.pspIsolationTypeOpts,
                 value: roguing.isolationType,
                 onChanged: (v) => setState(() => roguing.isolationType = v),
@@ -2033,6 +2050,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             Expanded(
               child: psp.PspOptionPicker(
                 label: 'Isolation Distance',
+                required: psp.pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: psp.pspIsolationDistanceOpts,
                 value: roguing.isolationDistance,
                 onChanged: (v) => setState(() => roguing.isolationDistance = v),
@@ -2429,6 +2447,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               Expanded(
                 child: GenOptionPicker(
                   label: 'Isolation Status',
+                  required: !isD,
                   options:
                       isSweetCorn ? _scGenIsolationOpts : _genIsolationOpts,
                   value: _gen3IsolationStatus,
@@ -2440,6 +2459,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               Expanded(
                 child: GenOptionPicker(
                   label: 'Affected Other Field',
+                  required: !isD,
                   options: isSweetCorn ? _scGenAffectedOpts : _genAffectedOpts,
                   value: _gen3AffectedOther,
                   onChanged: (v) => setState(() => _gen3AffectedOther = v),
@@ -2450,7 +2470,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenDateTileNullable(
-            label: 'Closed Out Date (Opsional)',
+            label: 'Closed Out Date *',
             date: _gen3ClosedOutDate,
             onTap: _pickGen3ClosedDate,
             onClear: () => setState(() => _gen3ClosedOutDate = null),
@@ -2731,6 +2751,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               Expanded(
                 child: GenOptionPicker(
                   label: 'Isolation Problem',
+                  required: true,
                   options: _scGenAffectedOpts,
                   value: _gen5IsolationProblem,
                   onChanged: (v) => setState(() => _gen5IsolationProblem = v),
@@ -2741,6 +2762,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               Expanded(
                 child: GenOptionPicker(
                   label: 'Affected Other Field',
+                  required: true,
                   options: _scGenAffectedOpts,
                   value: _gen5AffectedOther,
                   onChanged: (v) => setState(() => _gen5AffectedOther = v),
@@ -2751,7 +2773,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           ),
           const SizedBox(height: 14),
           GenDateTileNullable(
-            label: 'Closed Out Date (Opsional)',
+            label: 'Closed Out Date *',
             date: _gen5ClosedOutDate,
             onTap: _pickGen5ClosedDate,
             onClear: () => setState(() => _gen5ClosedOutDate = null),
@@ -3096,6 +3118,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                   const SizedBox(height: 14),
                   GenOptionPicker(
                     label: 'Status Downgrade',
+                    required: true,
                     options: _harvStatusDowngradeOpts,
                     value: _harvStatusDowngrade,
                     onChanged: (v) => setState(() => _harvStatusDowngrade = v),
@@ -3104,6 +3127,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                   const SizedBox(height: 14),
                   GenOptionPickerLong(
                     label: 'Reason Downgrade',
+                    required: true,
                     options: _harvReasonDowngradeOpts,
                     value: _harvReasonDowngrade,
                     onChanged: (v) => setState(() => _harvReasonDowngrade = v),

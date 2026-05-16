@@ -1109,6 +1109,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                         controller: _coDetasselingCtrl,
                         label: 'Co Detasseling',
                         hint: 'Nama Co Detasseling',
+                        required: !_isGuest,
                         icon: Icons.group_outlined,
                         accentColor: _kPhaseVeg,
                       ),

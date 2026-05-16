@@ -506,6 +506,8 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Isolation Type',
+                required: !_isGuest &&
+                    pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: pspIsolationTypeOpts,
                 value: roguing.isolationType,
                 onChanged: (v) => _setValue(() => roguing.isolationType = v),
@@ -516,6 +518,8 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Isolation Distance',
+                required: !_isGuest &&
+                    pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: pspIsolationDistanceOpts,
                 value: roguing.isolationDistance,
                 onChanged: (v) =>

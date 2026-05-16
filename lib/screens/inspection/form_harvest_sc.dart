@@ -597,6 +597,7 @@ class _FormHarvestSCState extends ConsumerState<FormHarvestSC> {
                   // Reason downgrade
                   GenOptionPickerLong(
                     label: 'Reason Downgrade',
+                    required: !_isGuest,
                     options: _reasonDowngradeOpts,
                     value: _reasonDowngrade,
                     onChanged: (v) {

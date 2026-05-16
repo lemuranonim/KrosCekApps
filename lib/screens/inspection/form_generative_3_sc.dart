@@ -155,6 +155,11 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
     // ── GUARD ────────────────────────────────────────────
     if (GuestGuard.blockIfGuest(context, _session)) return;
 
+    if (_closedOutDate == null) {
+      _snack('Closed Out Date wajib diisi', err: true);
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) {
       _snack('Periksa kembali isian form', err: true);
       return;
@@ -497,6 +502,7 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
                           Expanded(
                             child: GenOptionPicker(
                               label: 'Isolation Status',
+                              required: !_isGuest,
                               options: genIsolationOpts,
                               value: _isolationStatus,
                               onChanged: (v) {
@@ -513,6 +519,7 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
                           Expanded(
                             child: GenOptionPicker(
                               label: 'Affected Other Field',
+                              required: !_isGuest,
                               options: genAffectedOpts,
                               value: _affectedOther,
                               onChanged: (v) {
@@ -529,7 +536,7 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
                       ),
                       const SizedBox(height: 14),
                       GenDateTileNullable(
-                        label: 'Closed Out Date (Opsional)',
+                        label: 'Closed Out Date *',
                         date: _closedOutDate,
                         onTap: _pickClosedDate,
                         onClear: _isGuest

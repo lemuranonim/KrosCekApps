@@ -828,6 +828,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           controller: _coRoguingCtrl,
           label: 'Co-Roguing',
           hint: 'Nama PIC co-roguing',
+          required: !_isGuest,
           icon: Icons.group_outlined,
           accentColor: color,
         ),
@@ -906,6 +907,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         const SizedBox(height: 14),
         PspOptionPicker(
           label: 'Flagging',
+          required: !_isGuest,
           options: pspRoguingFlaggingOpts,
           value: _flagging,
           onChanged: (v) => _setValue(() => _flagging = v),
@@ -1649,6 +1651,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Isolation Type',
+                required: !_isGuest &&
+                    pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: pspIsolationTypeOpts,
                 value: roguing.isolationType,
                 onChanged: (v) => _setValue(() => roguing.isolationType = v),
@@ -1659,6 +1663,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Isolation Distance',
+                required: !_isGuest &&
+                    pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: pspIsolationDistanceOpts,
                 value: roguing.isolationDistance,
                 onChanged: (v) =>
