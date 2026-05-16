@@ -13,6 +13,7 @@ import 'phase_asset_icon.dart';
 class FieldDetailBottomSheet extends ConsumerStatefulWidget {
   final Map<String, dynamic> field;
   final void Function(Map<String, dynamic>)? onInspectDone;
+  static bool _isShowing = false;
 
   const FieldDetailBottomSheet({
     super.key,
@@ -25,6 +26,9 @@ class FieldDetailBottomSheet extends ConsumerStatefulWidget {
     Map<String, dynamic> field, {
     void Function(Map<String, dynamic>)? onInspectDone,
   }) {
+    if (_isShowing) return;
+    _isShowing = true;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -38,7 +42,7 @@ class FieldDetailBottomSheet extends ConsumerStatefulWidget {
         field: field,
         onInspectDone: onInspectDone,
       ),
-    );
+    ).whenComplete(() => _isShowing = false);
   }
 
   @override
@@ -1016,21 +1020,18 @@ class _FieldDetailBottomSheetState
                   // LOGIKA ROUTING:
                   if (_isPSP) {
                     if (phaseKey == 'vegetative') {
-                      Navigator.pop(context);
                       await context
                           .push('/inspect_psp/vegetative/$fieldNumber');
                       widget.onInspectDone?.call(fieldData);
                       return;
                     }
                     if (phaseKey == 'generative_5') {
-                      Navigator.pop(context);
                       await context
                           .push('/inspect_psp/generative/$fieldNumber');
                       widget.onInspectDone?.call(fieldData);
                       return;
                     }
                     if (phaseKey == 'harvest') {
-                      Navigator.pop(context);
                       await context.push('/inspect_psp/harvest/$fieldNumber');
                       widget.onInspectDone?.call(fieldData);
                       return;
@@ -1042,8 +1043,6 @@ class _FieldDetailBottomSheetState
                     );
                     return;
                   }
-
-                  Navigator.pop(context);
 
                   if (_isSweetCorn) {
                     // Arahkan ke form khusus Sweet Corn (AX01-04)
