@@ -813,7 +813,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     // Hanya 'guest' yang dikecualikan karena read-only.
     final bool canSeeCoverage =
         user != null && user.role.toLowerCase() != 'guest';
-    final bool canSeeDetasseling = canSeeCoverage;
+    final bool canSeeDetasseling = _canSeeDetasselingMap(user?.role);
     final bool canUseMassInspect =
         user != null && user.role.toLowerCase() != 'guest';
 
@@ -1270,7 +1270,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
             ),
           if (canSeeDetasseling)
             _CompactSegmentButton(
-              icon: Icons.content_cut_rounded,
+              icon: Icons.yard_rounded,
               isActive: false,
               isWarning: true,
               onTap: () => context.push('/detasseling-map'),
@@ -1788,6 +1788,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
   bool get _canEditPolygon {
     final role = ref.read(currentUserProvider).value?.role.toLowerCase();
     return role != null && role != 'guest';
+  }
+
+  bool _canSeeDetasselingMap(String? role) {
+    const allowedRoles = {'fi', 'spv', 'qa', 'manager', 'dev'};
+    return allowedRoles.contains(role?.toLowerCase());
   }
 
   void _showPolygonActionSheet(ParsedFieldData field) {

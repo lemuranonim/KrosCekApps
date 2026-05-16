@@ -2,7 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../services/supabase_auth_service.dart';
 import '../utils/dap_helper.dart';
+import '../utils/qa_name_helper.dart';
 import 'master_fields_provider.dart';
 
 enum DetasselingCropFilter { all, fc, sc }
@@ -10,6 +12,46 @@ enum DetasselingCropFilter { all, fc, sc }
 enum DetasselingStatusFilter { all, pending, done }
 
 enum DetasselingGroupStatus { pending, done }
+
+enum DetasselingScopeType { all, fi, spv, blocked }
+
+class DetasselingRoleScope {
+  final DetasselingScopeType type;
+  final String role;
+  final String name;
+  final String action;
+
+  const DetasselingRoleScope({
+    required this.type,
+    required this.role,
+    required this.name,
+    required this.action,
+  });
+
+  bool get canView => type != DetasselingScopeType.blocked;
+
+  bool get isRestricted =>
+      type == DetasselingScopeType.fi || type == DetasselingScopeType.spv;
+
+  String get label {
+    switch (type) {
+      case DetasselingScopeType.fi:
+        return 'QA FI';
+      case DetasselingScopeType.spv:
+        return 'QA SPV Team';
+      case DetasselingScopeType.blocked:
+        return 'No Access';
+      case DetasselingScopeType.all:
+        return role.isEmpty ? 'All Area' : '$role Area';
+    }
+  }
+
+  String get displayLabel {
+    if (type == DetasselingScopeType.all) return '$label • All';
+    if (type == DetasselingScopeType.blocked) return label;
+    return name.isEmpty ? label : '$label • $name';
+  }
+}
 
 class DetasselingWeekOption {
   final String label;
@@ -87,6 +129,7 @@ class DetasselingPlanField {
   final double areaHa;
   final int currentDap;
   final int plannedDap;
+  final int dtEndDap;
   final DateTime plannedDate;
   final bool isAssessmentDone;
 
@@ -101,11 +144,16 @@ class DetasselingPlanField {
     required this.areaHa,
     required this.currentDap,
     required this.plannedDap,
+    required this.dtEndDap,
     required this.plannedDate,
     required this.isAssessmentDone,
   });
 
   String get cropLabel => crop == DetasselingCropFilter.sc ? 'SC' : 'FC';
+
+  String get dtDapRangeLabel => plannedDap == dtEndDap
+      ? 'DT DAP $plannedDap'
+      : 'DT DAP $plannedDap-$dtEndDap';
 }
 
 class DetasselingPlanGroup {
@@ -164,6 +212,7 @@ class DetasselingPlanningData {
   final List<DetasselingDailySummary> dailySummaries;
   final int sourceFieldCount;
   final int plannedFieldCount;
+  final DetasselingRoleScope roleScope;
 
   const DetasselingPlanningData({
     required this.week,
@@ -171,6 +220,7 @@ class DetasselingPlanningData {
     required this.dailySummaries,
     required this.sourceFieldCount,
     required this.plannedFieldCount,
+    required this.roleScope,
   });
 
   double get totalAreaHa =>
@@ -189,7 +239,8 @@ final detasselingPlanningProvider =
     FutureProvider.family<DetasselingPlanningData, DetasselingPlanningParams>(
         (ref, params) async {
   final parsedFields = await ref.watch(parsedMapFieldsProvider.future);
-  return buildDetasselingPlanningData(parsedFields, params);
+  final user = await ref.watch(currentUserProvider.future);
+  return buildDetasselingPlanningData(parsedFields, params, user: user);
 });
 
 DateTime normalizeDate(DateTime date) =>
@@ -231,21 +282,28 @@ int isoWeekNumber(DateTime date) {
 
 DetasselingPlanningData buildDetasselingPlanningData(
   List<ParsedFieldData> parsedFields,
-  DetasselingPlanningParams params,
-) {
+  DetasselingPlanningParams params, {
+  AppUser? user,
+}) {
   final weekStart = params.normalizedWeekStart;
   final week = DetasselingWeekOption(
     label: 'W${isoWeekNumber(weekStart)}',
     startDate: weekStart,
     endDate: weekStart.add(const Duration(days: 6)),
   );
+  final roleScope = detasselingRoleScopeFor(user);
+  final scopedFields = roleScope.canView
+      ? parsedFields
+          .where((parsed) => _isFieldAllowedForScope(parsed.raw, roleScope))
+          .toList(growable: false)
+      : const <ParsedFieldData>[];
   final today = normalizeDate(DateTime.now());
   final startDelta = weekStart.difference(today).inDays;
   final selectedRegion = params.region?.trim().toLowerCase();
   final search = params.searchQuery.trim().toLowerCase();
   final fields = <DetasselingPlanField>[];
 
-  for (final parsed in parsedFields) {
+  for (final parsed in scopedFields) {
     final raw = parsed.raw;
     final hybrid = _readText(raw['hybrid']).toUpperCase();
     if (hybrid.isEmpty || DapHelper.isPsp(hybrid)) continue;
@@ -277,6 +335,7 @@ DetasselingPlanningData buildDetasselingPlanningData(
     if (firstPlannedOffset == null) continue;
 
     final plannedDate = weekStart.add(Duration(days: firstPlannedOffset));
+    final weekEndDap = parsed.dap + startDelta + 6;
     final codet = _readCodet(raw);
     final village = _readText(raw['village_desa'], fallback: 'Unknown Desa');
     fields.add(
@@ -291,6 +350,7 @@ DetasselingPlanningData buildDetasselingPlanningData(
         areaHa: _readArea(raw),
         currentDap: parsed.dap,
         plannedDap: parsed.dap + startDelta + firstPlannedOffset,
+        dtEndDap: weekEndDap,
         plannedDate: plannedDate,
         isAssessmentDone: _hasDetasselingAssessment(raw),
       ),
@@ -357,9 +417,77 @@ DetasselingPlanningData buildDetasselingPlanningData(
     week: week,
     groups: List.unmodifiable(groups),
     dailySummaries: List.unmodifiable(summaries),
-    sourceFieldCount: parsedFields.length,
+    sourceFieldCount: scopedFields.length,
     plannedFieldCount: groups.fold(0, (sum, group) => sum + group.fieldCount),
+    roleScope: roleScope,
   );
+}
+
+DetasselingRoleScope detasselingRoleScopeFor(AppUser? user) {
+  final role = user?.role.trim().toUpperCase() ?? '';
+  final action = user?.action.trim().toLowerCase() ?? '';
+  final name = user?.name.trim() ?? '';
+
+  if (user == null || role == 'GUEST') {
+    return DetasselingRoleScope(
+      type: DetasselingScopeType.blocked,
+      role: role,
+      name: name,
+      action: action,
+    );
+  }
+
+  if (action == 'audit' && role == 'FI') {
+    return DetasselingRoleScope(
+      type: DetasselingScopeType.fi,
+      role: role,
+      name: name,
+      action: action,
+    );
+  }
+
+  if (action == 'audit' && role == 'SPV') {
+    return DetasselingRoleScope(
+      type: DetasselingScopeType.spv,
+      role: role,
+      name: name,
+      action: action,
+    );
+  }
+
+  const allAccessRoles = {'QA', 'MANAGER', 'DEV'};
+  if (action == 'all' || allAccessRoles.contains(role)) {
+    return DetasselingRoleScope(
+      type: DetasselingScopeType.all,
+      role: role,
+      name: name,
+      action: action,
+    );
+  }
+
+  return DetasselingRoleScope(
+    type: DetasselingScopeType.blocked,
+    role: role,
+    name: name,
+    action: action,
+  );
+}
+
+bool _isFieldAllowedForScope(
+  Map<String, dynamic> raw,
+  DetasselingRoleScope scope,
+) {
+  switch (scope.type) {
+    case DetasselingScopeType.fi:
+      return QaNameHelper.fieldHasFi(raw, scope.name);
+    case DetasselingScopeType.spv:
+      return QaNameHelper.normalize(raw['qa_spv']) ==
+          QaNameHelper.normalize(scope.name);
+    case DetasselingScopeType.all:
+      return true;
+    case DetasselingScopeType.blocked:
+      return false;
+  }
 }
 
 int? _firstOffsetAtOrAbove50Dap({

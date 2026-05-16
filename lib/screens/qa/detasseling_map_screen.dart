@@ -3,16 +3,15 @@ import 'dart:io' as io;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:android_path_provider/android_path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:media_store_plus/media_store_plus.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -21,7 +20,9 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../providers/detasseling_plan_provider.dart';
 import '../../providers/filter_data_provider.dart';
+import '../../providers/master_fields_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/field_detail_bottom_sheet.dart';
 
 class DetasselingMapScreen extends ConsumerStatefulWidget {
   const DetasselingMapScreen({super.key});
@@ -492,16 +493,44 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
   }
 
   Widget _buildDailyStrip(DetasselingPlanningData plan) {
-    return SizedBox(
-      height: 92,
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
-        scrollDirection: Axis.horizontal,
-        itemCount: plan.dailySummaries.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final day = plan.dailySummaries[index];
-          return _DayTile(summary: day);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 2, 14, 12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const gap = 7.0;
+          final tileWidth =
+              (constraints.maxWidth - (gap * 6)) / plan.dailySummaries.length;
+          final fitsSevenColumns = tileWidth >= 76;
+
+          if (fitsSevenColumns) {
+            return SizedBox(
+              height: 98,
+              child: Row(
+                children: [
+                  for (var i = 0; i < plan.dailySummaries.length; i++) ...[
+                    Expanded(child: _DayTile(summary: plan.dailySummaries[i])),
+                    if (i != plan.dailySummaries.length - 1)
+                      const SizedBox(width: gap),
+                  ],
+                ],
+              ),
+            );
+          }
+
+          return SizedBox(
+            height: 98,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: plan.dailySummaries.length,
+              separatorBuilder: (_, __) => const SizedBox(width: gap),
+              itemBuilder: (context, index) {
+                return SizedBox(
+                  width: 84,
+                  child: _DayTile(summary: plan.dailySummaries[index]),
+                );
+              },
+            ),
+          );
         },
       ),
     );
@@ -534,7 +563,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
             setState(() => _selectedGroupKey = group.key);
             _fitGroup(group);
           },
-          onDetail: () => _showGroupDetail(group),
+          onDetail: () => _showGroupDetail(plan, group),
         );
       },
     );
@@ -611,12 +640,12 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       final bytes = byteData?.buffer.asUint8List();
       if (bytes == null) throw Exception('Gagal membuat file gambar.');
-      await _saveBytes(
+      final destination = await _saveBytes(
         bytes: bytes,
         fileName: _exportFileName(plan, 'png'),
         mimeType: 'image/png',
       );
-      _snack('Picture weekly planning berhasil diunduh.');
+      _snack('Picture weekly planning tersimpan di $destination.');
     } catch (e) {
       _snack('Gagal download picture: $e', isError: true);
     } finally {
@@ -640,6 +669,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
             ),
             pw.SizedBox(height: 4),
             pw.Text('${plan.week.label} • ${plan.week.rangeLabel}'),
+            pw.Text('Scope: ${plan.roleScope.displayLabel}'),
             pw.SizedBox(height: 12),
             pw.Row(
               children: [
@@ -686,12 +716,12 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
           ],
         ),
       );
-      await _saveBytes(
+      final destination = await _saveBytes(
         bytes: await doc.save(),
         fileName: _exportFileName(plan, 'pdf'),
         mimeType: 'application/pdf',
       );
-      _snack('PDF weekly planning berhasil diunduh.');
+      _snack('PDF weekly planning tersimpan di $destination.');
     } catch (e) {
       _snack('Gagal download PDF: $e', isError: true);
     } finally {
@@ -720,7 +750,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     );
   }
 
-  Future<void> _saveBytes({
+  Future<String> _saveBytes({
     required Uint8List bytes,
     required String fileName,
     required String mimeType,
@@ -729,30 +759,47 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     final tempFile = io.File(p.join(tempDir.path, fileName));
     await tempFile.writeAsBytes(bytes, flush: true);
 
-    final downloadDir = await _downloadDirectory();
-    if (io.Platform.isAndroid || io.Platform.isIOS) {
-      final taskId = await FlutterDownloader.enqueue(
-        url: tempFile.uri.toString(),
-        savedDir: downloadDir.path,
-        fileName: fileName,
-        showNotification: true,
-        openFileFromNotification: true,
-        saveInPublicStorage: io.Platform.isAndroid,
-      );
-      if (taskId == null) {
-        throw Exception('Gagal membuat task download $mimeType.');
+    if (io.Platform.isAndroid) {
+      try {
+        MediaStore.appFolder = 'Kroscek';
+        await MediaStore.ensureInitialized();
+        final saved = await MediaStore().saveFile(
+          tempFilePath: tempFile.path,
+          dirType: DirType.download,
+          dirName: DirName.download,
+        );
+        if (saved == null) {
+          throw Exception('MediaStore tidak mengembalikan lokasi file.');
+        }
+        return 'Download/Kroscek/$fileName';
+      } catch (e) {
+        final fallback = await _saveToAppDocuments(bytes, fileName);
+        await OpenFile.open(fallback.path);
+        return 'Documents/${fallback.uri.pathSegments.last} ($mimeType)';
       }
-      return;
     }
 
+    final downloadDir = await _downloadDirectory();
     final outputFile = io.File(p.join(downloadDir.path, fileName));
     await outputFile.writeAsBytes(bytes, flush: true);
     await OpenFile.open(outputFile.path);
+    return outputFile.path;
+  }
+
+  Future<io.File> _saveToAppDocuments(Uint8List bytes, String fileName) async {
+    final directory = await getApplicationDocumentsDirectory();
+    final outputDir = io.Directory(p.join(directory.path, 'exports'));
+    if (!await outputDir.exists()) {
+      await outputDir.create(recursive: true);
+    }
+    final outputFile = io.File(p.join(outputDir.path, fileName));
+    await outputFile.writeAsBytes(bytes, flush: true);
+    return outputFile;
   }
 
   Future<io.Directory> _downloadDirectory() async {
-    if (io.Platform.isAndroid) {
-      return io.Directory(await AndroidPathProvider.downloadsPath);
+    if (io.Platform.isIOS) {
+      return getApplicationDocumentsDirectory();
     }
     final downloads = await getDownloadsDirectory();
     if (downloads != null) return downloads;
@@ -764,15 +811,42 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     return 'detasseling_${plan.week.label}_$stamp.$extension';
   }
 
-  void _showGroupDetail(DetasselingPlanGroup group) {
+  void _showGroupDetail(
+    DetasselingPlanningData plan,
+    DetasselingPlanGroup group,
+  ) {
     setState(() => _selectedGroupKey = group.key);
     _fitGroup(group);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _CodetDetailSheet(group: group),
+      builder: (_) => _CodetDetailSheet(
+        week: plan.week,
+        group: group,
+        onFieldTap: _openFieldDetail,
+        onDownloadPicture: () => _downloadPicture(plan),
+        onDownloadPdf: () => _downloadPdf(plan),
+      ),
     );
+  }
+
+  void _openFieldDetail(DetasselingPlanField field) {
+    Navigator.of(context).pop();
+    Future<void>.delayed(const Duration(milliseconds: 140), () {
+      if (!mounted) return;
+      FieldDetailBottomSheet.show(
+        context,
+        field.parsed.raw,
+        onInspectDone: _handleInspectDone,
+      );
+    });
+  }
+
+  void _handleInspectDone(Map<String, dynamic> fieldData) {
+    ref.invalidate(masterFieldsProvider);
+    ref.invalidate(parsedMapFieldsProvider);
+    setState(() {});
   }
 
   void _snack(String message, {bool isError = false}) {
@@ -817,8 +891,8 @@ class _PlanningHeader extends StatelessWidget {
               color: AdvantaColors.primaryGreen,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.content_cut_rounded,
-                color: Colors.white, size: 19),
+            child:
+                const Icon(Icons.yard_rounded, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -836,6 +910,15 @@ class _PlanningHeader extends StatelessWidget {
                   '${plan.codetCount} Codet • ${plan.plannedFieldCount} FN • ${_formatHa(plan.totalAreaHa)} Ha',
                   style: AdvantaText.caption.copyWith(
                     color: AdvantaColors.mutedGrey,
+                  ),
+                ),
+                Text(
+                  plan.roleScope.displayLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AdvantaText.caption.copyWith(
+                    color: AdvantaColors.primaryGreen,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
@@ -869,45 +952,104 @@ class _DayTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasPlan = summary.codetCount > 0;
     return Container(
-      width: 92,
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.fromLTRB(9, 8, 9, 8),
       decoration: BoxDecoration(
-        color: hasPlan ? AdvantaColors.paleGreen : Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        gradient: hasPlan
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFEAF7F0),
+                  Color(0xFFFFF8E1),
+                ],
+              )
+            : null,
+        color: hasPlan ? null : Colors.white,
+        borderRadius: BorderRadius.circular(11),
         border: Border.all(
           color: hasPlan
-              ? AdvantaColors.primaryGreen.withAlpha(90)
+              ? AdvantaColors.primaryGreen.withAlpha(105)
               : AdvantaColors.dividerGrey,
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            DateFormat('EEE', 'id_ID').format(summary.date),
-            style: AdvantaText.caption.copyWith(
-              color: AdvantaColors.mutedGrey,
-              fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  DateFormat('EEE', 'id_ID').format(summary.date).toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AdvantaText.caption.copyWith(
+                    color: AdvantaColors.mutedGrey,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: hasPlan
+                      ? AdvantaColors.primaryGreen.withAlpha(22)
+                      : AdvantaColors.softGrey,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  DateFormat('d', 'id_ID').format(summary.date),
+                  style: AdvantaText.caption.copyWith(
+                    color: AdvantaColors.deepForest,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          Center(
+            child: Text(
+              summary.codetCount.toString(),
+              style: TextStyle(
+                color: hasPlan
+                    ? AdvantaColors.primaryGreen
+                    : AdvantaColors.mutedGrey,
+                fontSize: 24,
+                height: 0.95,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
+          const SizedBox(height: 2),
           Text(
-            DateFormat('d MMM', 'id_ID').format(summary.date),
-            style: AdvantaText.label.copyWith(
+            'Codet',
+            textAlign: TextAlign.center,
+            style: AdvantaText.caption.copyWith(
               color: AdvantaColors.deepForest,
+              fontSize: 10,
               fontWeight: FontWeight.w800,
             ),
           ),
           const Spacer(),
-          Text(
-            '${summary.codetCount} Codet',
-            style: AdvantaText.caption.copyWith(
-              color: AdvantaColors.deepForest,
-              fontWeight: FontWeight.w800,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(hasPlan ? 180 : 120),
+              borderRadius: BorderRadius.circular(8),
             ),
-          ),
-          Text(
-            '${_formatHa(summary.areaHa)} Ha',
-            style: AdvantaText.caption.copyWith(color: AdvantaColors.mutedGrey),
+            child: Text(
+              '${_formatHa(summary.areaHa)} Ha',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: AdvantaText.caption.copyWith(
+                color: AdvantaColors.charcoal,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
         ],
       ),
@@ -1021,79 +1163,146 @@ class _CodetSummaryRow extends StatelessWidget {
   }
 }
 
-class _CodetDetailSheet extends StatelessWidget {
+class _CodetDetailSheet extends StatefulWidget {
+  final DetasselingWeekOption week;
   final DetasselingPlanGroup group;
+  final ValueChanged<DetasselingPlanField> onFieldTap;
+  final Future<void> Function()? onDownloadPicture;
+  final Future<void> Function()? onDownloadPdf;
 
-  const _CodetDetailSheet({required this.group});
+  const _CodetDetailSheet({
+    required this.week,
+    required this.group,
+    required this.onFieldTap,
+    required this.onDownloadPicture,
+    required this.onDownloadPdf,
+  });
+
+  @override
+  State<_CodetDetailSheet> createState() => _CodetDetailSheetState();
+}
+
+class _CodetDetailSheetState extends State<_CodetDetailSheet> {
+  late DateTime _selectedDate;
+  bool _exportingPicture = false;
+  bool _exportingPdf = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDate = _initialSelectedDate();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CodetDetailSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.group.key != widget.group.key ||
+        oldWidget.week.startDate != widget.week.startDate) {
+      _selectedDate = _initialSelectedDate();
+    }
+  }
+
+  DateTime _initialSelectedDate() {
+    if (widget.group.fields.isEmpty) return widget.week.startDate;
+    return normalizeDate(widget.group.fields.first.plannedDate);
+  }
+
+  List<DateTime> get _weekDays => List.generate(
+        7,
+        (index) => widget.week.startDate.add(Duration(days: index)),
+      );
+
+  List<DetasselingPlanField> _fieldsFor(DateTime day) {
+    final date = normalizeDate(day);
+    return widget.group.fields
+        .where((field) => normalizeDate(field.plannedDate) == date)
+        .toList();
+  }
+
+  double _areaFor(List<DetasselingPlanField> fields) =>
+      fields.fold(0, (sum, field) => sum + field.areaHa);
+
+  Future<void> _handlePictureExport() async {
+    final callback = widget.onDownloadPicture;
+    if (callback == null || _exportingPicture) return;
+    setState(() => _exportingPicture = true);
+    try {
+      await callback();
+    } finally {
+      if (mounted) setState(() => _exportingPicture = false);
+    }
+  }
+
+  Future<void> _handlePdfExport() async {
+    final callback = widget.onDownloadPdf;
+    if (callback == null || _exportingPdf) return;
+    setState(() => _exportingPdf = true);
+    try {
+      await callback();
+    } finally {
+      if (mounted) setState(() => _exportingPdf = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final selectedFields = _fieldsFor(_selectedDate);
+    final raw = widget.group.fields.isEmpty
+        ? null
+        : widget.group.fields.first.parsed.raw;
+    final season = _rawText(
+      raw,
+      const ['season', 'season_code', 'planting_season'],
+    );
+    final region = _rawText(raw, const ['region']);
+
     return DraggableScrollableSheet(
-      initialChildSize: 0.72,
-      minChildSize: 0.45,
-      maxChildSize: 0.92,
+      initialChildSize: 0.94,
+      minChildSize: 0.55,
+      maxChildSize: 0.98,
       expand: false,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: AdvantaColors.deepForest,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: const Color(0xFF032B1D),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(90),
+                blurRadius: 28,
+                offset: const Offset(0, -8),
+              ),
+            ],
           ),
-          child: Column(
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 44,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(4),
+          child: CustomScrollView(
+            controller: scrollController,
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                  child: _buildTopBar(context),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            group.codet,
-                            style: AdvantaText.heading2.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          Text(
-                            '${group.village} • ${group.hybrid} • ${_formatHa(group.totalAreaHa)} Ha',
-                            style: AdvantaText.body2.copyWith(
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    _MiniBadge(
-                      label: group.statusLabel,
-                      color: group.status == DetasselingGroupStatus.done
-                          ? AdvantaColors.lightGreen
-                          : AdvantaColors.goldLight,
-                      dark: true,
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView.separated(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                  itemCount: group.fields.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (_, index) {
-                    final field = group.fields[index];
-                    return _DetailFieldTile(field: field);
-                  },
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate(
+                    [
+                      _buildSummaryCard(season: season, region: region),
+                      const SizedBox(height: 12),
+                      _buildDaySelector(),
+                      const SizedBox(height: 12),
+                      _buildDayMetric(selectedFields),
+                      const SizedBox(height: 12),
+                      _buildFnTable(selectedFields),
+                      const SizedBox(height: 12),
+                      _buildInfoNote(),
+                      const SizedBox(height: 16),
+                      _buildActions(selectedFields),
+                      const SizedBox(height: 18),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -1102,71 +1311,816 @@ class _CodetDetailSheet extends StatelessWidget {
       },
     );
   }
-}
 
-class _DetailFieldTile extends StatelessWidget {
-  final DetasselingPlanField field;
-
-  const _DetailFieldTile({required this.field});
-
-  @override
-  Widget build(BuildContext context) {
-    final statusColor = field.isAssessmentDone
-        ? AdvantaColors.lightGreen
-        : AdvantaColors.goldLight;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withAlpha(20)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+  Widget _buildTopBar(BuildContext context) {
+    return Row(
+      children: [
+        Tooltip(
+          message: 'Kembali',
+          child: IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.arrow_back_rounded),
+            color: Colors.white,
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+        const SizedBox(width: 2),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  field.fieldNumber.isEmpty ? '-' : field.fieldNumber,
-                  style: AdvantaText.bodyBold.copyWith(color: Colors.white),
+              Text(
+                'Weekly Detail',
+                style: AdvantaText.heading2.copyWith(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
-              _MiniBadge(
-                label: field.isAssessmentDone ? 'Done' : 'Pending',
-                color: statusColor,
-                dark: true,
+              Text(
+                widget.group.codet,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AdvantaText.body2.copyWith(color: Colors.white70),
               ),
             ],
           ),
-          if (field.farmerName.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              field.farmerName,
-              style: AdvantaText.caption.copyWith(color: Colors.white70),
+        ),
+        PopupMenuButton<String>(
+          tooltip: 'Action',
+          color: const Color(0xFF073A28),
+          icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+          onSelected: (value) {
+            if (value == 'picture') _handlePictureExport();
+            if (value == 'pdf') _handlePdfExport();
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'picture',
+              child: Text(
+                'Download Picture',
+                style: AdvantaText.body2.copyWith(color: Colors.white),
+              ),
+            ),
+            PopupMenuItem(
+              value: 'pdf',
+              child: Text(
+                'Download PDF',
+                style: AdvantaText.body2.copyWith(color: Colors.white),
+              ),
             ),
           ],
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryCard({
+    required String season,
+    required String region,
+  }) {
+    return _DetailPanel(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _DarkInfoBadge(
-                icon: Icons.calendar_today_rounded,
-                label:
-                    DateFormat('EEE, d MMM', 'id_ID').format(field.plannedDate),
+              Container(
+                width: 78,
+                height: 88,
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha(8),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withAlpha(22)),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(
+                      Icons.yard_rounded,
+                      color: AdvantaColors.goldLight,
+                      size: 42,
+                    ),
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: _MiniBadge(
+                        label: widget.group.cropLabel,
+                        color: AdvantaColors.lightGreen,
+                        dark: true,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              _DarkInfoBadge(
-                icon: Icons.speed_rounded,
-                label: 'DAP ${field.currentDap}->${field.plannedDap}',
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.group.codet,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AdvantaText.heading2.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _DetailSummaryMetric(
+                            label: 'Desa',
+                            value: widget.group.village,
+                          ),
+                        ),
+                        _DetailDivider(),
+                        Expanded(
+                          child: _DetailSummaryMetric(
+                            label: 'Hybrid',
+                            value: widget.group.hybrid,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              _DarkInfoBadge(
-                icon: Icons.area_chart_rounded,
-                label: '${_formatHa(field.areaHa)} Ha',
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _DetailSummaryMetric(
+                  label: 'Crop',
+                  value: widget.group.cropLabel,
+                ),
+              ),
+              _DetailDivider(),
+              Expanded(
+                child: _DetailSummaryMetric(
+                  label: 'Total DT Week',
+                  value: '${_formatHa(widget.group.totalAreaHa)} Ha',
+                  valueColor: AdvantaColors.lightGreen,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _DetailSummaryMetric(label: 'Season', value: season),
+              ),
+              _DetailDivider(),
+              Expanded(
+                child: _DetailSummaryMetric(label: 'Region', value: region),
+              ),
+              _DetailDivider(),
+              Expanded(
+                child: _DetailSummaryMetric(
+                  label: 'Week',
+                  value: widget.week.label,
+                ),
+              ),
+              _DetailDivider(),
+              Expanded(
+                child: _DetailSummaryMetric(
+                  label: 'Status',
+                  value: _detailStatusLabel(widget.group.status),
+                  valueColor: widget.group.status == DetasselingGroupStatus.done
+                      ? AdvantaColors.lightGreen
+                      : Colors.white,
+                  chip: widget.group.status != DetasselingGroupStatus.done,
+                ),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDaySelector() {
+    return _DetailPanel(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'FN by Day',
+            style: AdvantaText.heading3.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 86,
+            child: Row(
+              children: [
+                for (final day in _weekDays) ...[
+                  Expanded(
+                    child: _DetailDayChip(
+                      date: day,
+                      selected: normalizeDate(day) == _selectedDate,
+                      passLabel: _fieldsFor(day).isEmpty
+                          ? '-'
+                          : _passLabelForDate(
+                              widget.week.startDate,
+                              day,
+                              widget.group.crop,
+                            ),
+                      onTap: () => setState(() => _selectedDate = day),
+                    ),
+                  ),
+                  if (day != _weekDays.last) _DetailDivider(height: 56),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDayMetric(List<DetasselingPlanField> selectedFields) {
+    return _DetailPanel(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: _DetailInlineStat(
+              icon: Icons.calendar_month_rounded,
+              value: DateFormat('d MMM', 'id_ID').format(_selectedDate),
+            ),
+          ),
+          _DetailDivider(height: 30),
+          Expanded(
+            child: _DetailInlineStat(
+              icon: Icons.groups_2_rounded,
+              value: '${selectedFields.length} FN',
+            ),
+          ),
+          _DetailDivider(height: 30),
+          Expanded(
+            child: _DetailInlineStat(
+              icon: Icons.eco_rounded,
+              value: '${_formatHa(_areaFor(selectedFields))} Ha',
+              valueColor: AdvantaColors.lightGreen,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFnTable(List<DetasselingPlanField> selectedFields) {
+    return _DetailPanel(
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'FN List - ${DateFormat('d MMM', 'id_ID').format(_selectedDate)}',
+            style: AdvantaText.heading3.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (selectedFields.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text(
+                  'Tidak ada FN pada tanggal ini.',
+                  style: AdvantaText.body2.copyWith(color: Colors.white70),
+                ),
+              ),
+            )
+          else
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: 560,
+                  child: Column(
+                    children: [
+                      const _DetailFnHeader(),
+                      for (final field in selectedFields)
+                        _DetailFnRow(
+                          field: field,
+                          passLabel: _passLabelForDate(
+                            widget.week.startDate,
+                            field.plannedDate,
+                            widget.group.crop,
+                          ),
+                          onTap: () => widget.onFieldTap(field),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoNote() {
+    return _DetailPanel(
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline_rounded, color: Colors.white70),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'For FC, detasseling pass recommendation is staggered every +2 days (P1, P2, P3). For SC, it continues to P4 and P5 every +2 days.',
+              style: AdvantaText.body2.copyWith(
+                color: Colors.white.withAlpha(205),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActions(List<DetasselingPlanField> selectedFields) {
+    final firstField = selectedFields.isEmpty ? null : selectedFields.first;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 520;
+        final halfWidth = (constraints.maxWidth - 8) / 2;
+        final picture = SizedBox(
+          width: compact ? halfWidth : (constraints.maxWidth - 16) * 0.34,
+          child: _DetailActionButton(
+            icon: Icons.image_outlined,
+            title: 'Download Picture',
+            subtitle: 'Export PNG',
+            busy: _exportingPicture,
+            onTap: widget.onDownloadPicture == null
+                ? null
+                : () => unawaited(_handlePictureExport()),
+          ),
+        );
+        final pdf = SizedBox(
+          width: compact ? halfWidth : (constraints.maxWidth - 16) * 0.32,
+          child: _DetailActionButton(
+            icon: Icons.picture_as_pdf_outlined,
+            title: 'Download PDF',
+            subtitle: 'Export PDF',
+            busy: _exportingPdf,
+            onTap: widget.onDownloadPdf == null
+                ? null
+                : () => unawaited(_handlePdfExport()),
+          ),
+        );
+        final inspection = SizedBox(
+          width: compact
+              ? constraints.maxWidth
+              : (constraints.maxWidth - 16) * 0.34,
+          child: _DetailActionButton(
+            icon: Icons.assignment_turned_in_outlined,
+            title: 'Open Inspection',
+            filled: true,
+            onTap:
+                firstField == null ? null : () => widget.onFieldTap(firstField),
+          ),
+        );
+
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [picture, pdf, inspection],
+        );
+      },
+    );
+  }
+}
+
+class _DetailPanel extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  const _DetailPanel({
+    required this.child,
+    this.padding = const EdgeInsets.all(12),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: const Color(0xFF074129).withAlpha(215),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withAlpha(22)),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _DetailSummaryMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final bool chip;
+
+  const _DetailSummaryMetric({
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.chip = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final valueWidget = Text(
+      value.isEmpty ? '-' : value,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: AdvantaText.bodyBold.copyWith(
+        color: valueColor ?? Colors.white,
+        fontWeight: FontWeight.w900,
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AdvantaText.caption.copyWith(color: Colors.white60),
+        ),
+        const SizedBox(height: 4),
+        if (chip)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AdvantaColors.lightGreen.withAlpha(70),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: valueWidget,
+            ),
+          )
+        else
+          valueWidget,
+      ],
+    );
+  }
+}
+
+class _DetailDivider extends StatelessWidget {
+  final double height;
+
+  const _DetailDivider({this.height = 40});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: height,
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      color: Colors.white.withAlpha(24),
+    );
+  }
+}
+
+class _DetailDayChip extends StatelessWidget {
+  final DateTime date;
+  final bool selected;
+  final String passLabel;
+  final VoidCallback onTap;
+
+  const _DetailDayChip({
+    required this.date,
+    required this.selected,
+    required this.passLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPass = passLabel != '-';
+    return Material(
+      color: selected ? Colors.white.withAlpha(12) : Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: selected
+                ? Border.all(color: AdvantaColors.lightGreen, width: 1.5)
+                : null,
+          ),
+          child: Column(
+            children: [
+              Text(
+                DateFormat('d', 'id_ID').format(date),
+                style: AdvantaText.heading3.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                DateFormat('MMM', 'id_ID').format(date),
+                style: AdvantaText.caption.copyWith(color: Colors.white70),
+              ),
+              const Spacer(),
+              if (hasPass)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AdvantaColors.lightGreen.withAlpha(90),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    passLabel,
+                    style: AdvantaText.caption.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                )
+              else
+                Text(
+                  '-',
+                  style: AdvantaText.heading3.copyWith(color: Colors.white70),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailInlineStat extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final Color? valueColor;
+
+  const _DetailInlineStat({
+    required this.icon,
+    required this.value,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: Colors.white.withAlpha(198), size: 20),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AdvantaText.heading3.copyWith(
+              color: valueColor ?? Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailFnHeader extends StatelessWidget {
+  const _DetailFnHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: const [
+          _DetailFnCell('FN Code', width: 110, muted: true),
+          _DetailFnCell('Farmer', width: 112, muted: true),
+          _DetailFnCell('Area', width: 74, muted: true),
+          _DetailFnCell('Est. Date', width: 84, muted: true),
+          _DetailFnCell('Status', width: 92, muted: true),
+          _DetailFnCell('Pass', width: 58, muted: true),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailFnRow extends StatelessWidget {
+  final DetasselingPlanField field;
+  final String passLabel;
+  final VoidCallback onTap;
+
+  const _DetailFnRow({
+    required this.field,
+    required this.passLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final done = field.isAssessmentDone;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(color: Colors.white.withAlpha(16)),
+            ),
+          ),
+          child: Row(
+            children: [
+              _DetailFnCell(field.fieldNumber.isEmpty ? '-' : field.fieldNumber,
+                  width: 110),
+              _DetailFnCell(field.farmerName.isEmpty ? '-' : field.farmerName,
+                  width: 112),
+              _DetailFnCell('${_formatHa(field.areaHa)} Ha',
+                  width: 74, accent: true),
+              _DetailFnCell(
+                DateFormat('d MMM', 'id_ID').format(field.plannedDate),
+                width: 84,
+              ),
+              SizedBox(
+                width: 92,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _MiniBadge(
+                    label: done ? 'Done' : 'Planned',
+                    color: AdvantaColors.lightGreen,
+                    dark: true,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 58,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _MiniBadge(
+                    label: passLabel,
+                    color: AdvantaColors.lightGreen,
+                    dark: true,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailFnCell extends StatelessWidget {
+  final String text;
+  final double width;
+  final bool muted;
+  final bool accent;
+
+  const _DetailFnCell(
+    this.text, {
+    required this.width,
+    this.muted = false,
+    this.accent = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: (muted ? AdvantaText.caption : AdvantaText.body2).copyWith(
+          color: muted
+              ? Colors.white70
+              : accent
+                  ? AdvantaColors.lightGreen
+                  : Colors.white,
+          fontWeight: muted || accent ? FontWeight.w800 : FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailActionButton extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final bool filled;
+  final bool busy;
+  final VoidCallback? onTap;
+
+  const _DetailActionButton({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.filled = false,
+    this.busy = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null && !busy;
+    final background = filled
+        ? AdvantaColors.primaryGreen
+        : Colors.white.withAlpha(enabled ? 10 : 6);
+    final border = filled
+        ? AdvantaColors.lightGreen.withAlpha(160)
+        : Colors.white.withAlpha(enabled ? 28 : 14);
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 64),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white.withAlpha(80)),
+                ),
+                child: busy
+                    ? const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(icon, color: Colors.white, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AdvantaText.bodyBold.copyWith(
+                        color: enabled ? Colors.white : Colors.white38,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    if (subtitle != null)
+                      Text(
+                        subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AdvantaText.caption.copyWith(
+                          color: enabled ? Colors.white70 : Colors.white30,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1469,36 +2423,33 @@ class _InfoBadge extends StatelessWidget {
   }
 }
 
-class _DarkInfoBadge extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _DarkInfoBadge({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: Colors.white60),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: AdvantaText.caption.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
+String _rawText(
+  Map<String, dynamic>? raw,
+  List<String> keys, {
+  String fallback = '-',
+}) {
+  if (raw == null) return fallback;
+  for (final key in keys) {
+    final value = raw[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
   }
+  return fallback;
+}
+
+String _detailStatusLabel(DetasselingGroupStatus status) {
+  return status == DetasselingGroupStatus.done ? 'Done' : 'Planned';
+}
+
+String _passLabelForDate(
+  DateTime weekStart,
+  DateTime date,
+  DetasselingCropFilter crop,
+) {
+  final offset =
+      normalizeDate(date).difference(normalizeDate(weekStart)).inDays;
+  final pass = (offset ~/ 2) + 1;
+  final maxPass = crop == DetasselingCropFilter.sc ? 5 : 3;
+  return 'P${pass.clamp(1, maxPass)}';
 }
 
 String _formatHa(double value) {
