@@ -9,48 +9,9 @@ import '../../providers/master_fields_provider.dart';
 import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/guest_guard.dart';
-import 'fc_form_widgets.dart';
+import 'psp_form_widgets.dart';
 
-const _kPspHarvest = Color(0xFF43A047);
-
-const _earConditionOpts = [
-  GenOpt('Stage 2', 'Stage 2'),
-  GenOpt('Stage 3', 'Stage 3'),
-  GenOpt('Stage 4', 'Stage 4'),
-];
-
-const _cropHealthOpts = [
-  GenOpt('Very Poor', '1 - Very Poor'),
-  GenOpt('Poor', '2 - Poor'),
-  GenOpt('Fair', '3 - Fair'),
-  GenOpt('Good', '4 - Good'),
-  GenOpt('Best', '5 - Best'),
-];
-
-const _reasonDowngradeOpts = [
-  GenOpt('Suspect Mix Material', 'A - Suspect Mix Material'),
-  GenOpt('Not Accessible during Detasseling',
-      'B - Not Accessible during Detasseling'),
-  GenOpt('Not Sure during Harvest', 'C - Not Sure during Harvest'),
-];
-
-const _statusDowngradeOpts = [
-  GenOpt('Yes', 'A - Yes'),
-  GenOpt('No', 'B - No'),
-];
-
-const _downgradeFlaggingOpts = [
-  GenOpt('RFI', 'RFI'),
-  GenOpt('RFD', 'RFD'),
-];
-
-const _finalFlaggingOpts = [
-  GenOpt('GF', 'GF'),
-  GenOpt('RFI', 'RFI'),
-  GenOpt('RFD', 'RFD'),
-  GenOpt('BF', 'BF'),
-  GenOpt('PLD', 'PLD'),
-];
+const _kPspHarvest = kPspHarvestColor;
 
 class FormHarvestPSP extends ConsumerStatefulWidget {
   final String fieldNumber;
@@ -146,7 +107,7 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
       builder: (ctx, child) => Theme(
-        data: genDatePickerTheme(ctx, _kPspHarvest),
+        data: pspDatePickerTheme(ctx, _kPspHarvest),
         child: child!,
       ),
     );
@@ -164,7 +125,7 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
       builder: (ctx, child) => Theme(
-        data: genDatePickerTheme(ctx, _kPspHarvest),
+        data: pspDatePickerTheme(ctx, _kPspHarvest),
         child: child!,
       ),
     );
@@ -267,7 +228,7 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
     );
 
     return Scaffold(
-      appBar: GenAppBar(
+      appBar: PspAppBar(
         checkpointLabel: 'Harvest PSP/PS',
         fieldNumber: widget.fieldNumber,
         isDiscard: false,
@@ -298,24 +259,24 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GenFieldCard(fieldData: fieldData, accentColor: _kPspHarvest),
+                  PspFieldCard(fieldData: fieldData, accentColor: _kPspHarvest),
                   const SizedBox(height: 14),
                   if (_isGuest) ...[
                     GuestGuard.banner(),
                     const SizedBox(height: 8),
                   ],
-                  GenSection(
+                  PspSection(
                     title: 'Informasi Audit',
                     icon: Icons.assignment_outlined,
                     color: _kPspHarvest,
                     children: [
-                      GenDateTile(
+                      PspDateTile(
                         label: 'Date of Inspeksi Harvest',
                         date: _auditDate,
                         onTap: _pickDate,
                       ),
                       const SizedBox(height: 12),
-                      GenQaAutocomplete(
+                      PspQaAutocomplete(
                         controller: _qaFiCtrl,
                         label: 'QA FI',
                         hint: 'Nama QA Field Inspector',
@@ -325,7 +286,7 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
                         accentColor: _kPspHarvest,
                       ),
                       const SizedBox(height: 12),
-                      GenQaAutocomplete(
+                      PspQaAutocomplete(
                         controller: _qaSpvCtrl,
                         label: 'QA SPV',
                         hint: 'Nama QA Supervisor',
@@ -337,33 +298,33 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  GenSection(
+                  PspSection(
                     title: 'Penilaian Harvest',
                     icon: Icons.agriculture_outlined,
                     color: _kPspHarvest,
                     children: [
-                      GenOptionPicker(
+                      PspOptionPicker(
                         label: 'Ear Condition',
                         required: !_isGuest,
-                        options: _earConditionOpts,
+                        options: pspHarvestEarConditionOpts,
                         value: _earCondition,
                         onChanged: (v) => _setValue(() => _earCondition = v),
                         accentColor: _kPspHarvest,
                       ),
                       const SizedBox(height: 14),
-                      GenOptionPicker(
+                      PspOptionPicker(
                         label: 'Crop Uniformity',
                         required: !_isGuest,
-                        options: _cropHealthOpts,
+                        options: pspScoreOpts,
                         value: _cropUniformity,
                         onChanged: (v) => _setValue(() => _cropUniformity = v),
                         accentColor: _kPspHarvest,
                       ),
                       const SizedBox(height: 14),
-                      GenOptionPicker(
+                      PspOptionPicker(
                         label: 'Crop Health',
                         required: !_isGuest,
-                        options: _cropHealthOpts,
+                        options: pspScoreOpts,
                         value: _cropHealth,
                         onChanged: (v) => _setValue(() => _cropHealth = v),
                         accentColor: _kPspHarvest,
@@ -373,21 +334,21 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
                   const SizedBox(height: 12),
                   _buildDowngradeSection(),
                   const SizedBox(height: 12),
-                  GenSection(
+                  PspSection(
                     title: 'Final Flagging',
                     icon: Icons.flag_outlined,
                     color: const Color(0xFF42A5F5),
                     children: [
-                      GenOptionPicker(
+                      PspOptionPicker(
                         label: 'Final Flagging',
                         required: !_isGuest,
-                        options: _finalFlaggingOpts,
+                        options: pspHarvestFinalFlaggingOpts,
                         value: _finalFlagging,
                         onChanged: (v) => _setValue(() => _finalFlagging = v),
                         accentColor: const Color(0xFF42A5F5),
                       ),
                       const SizedBox(height: 14),
-                      GenTextField(
+                      PspTextField(
                         controller: _remarksCtrl,
                         label: 'Remarks',
                         maxLines: 4,
@@ -400,7 +361,7 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
               ),
             ),
           ),
-          GenSaveBar(
+          PspSaveBar(
             isSaving: _isSaving,
             isDiscard: false,
             saveLabel: _isGuest
@@ -486,7 +447,7 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
               padding: const EdgeInsets.all(14),
               child: Column(
                 children: [
-                  GenDateTileNullable(
+                  PspDateTileNullable(
                     label: 'Tanggal Downgrade Flagging',
                     date: _downgradeFlagDate,
                     onTap: _pickDowngradeDate,
@@ -495,28 +456,28 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
                         : () => setState(() => _downgradeFlagDate = null),
                   ),
                   const SizedBox(height: 14),
-                  GenOptionPicker(
+                  PspOptionPicker(
                     label: 'Downgrade Flagging',
                     required: !_isGuest,
-                    options: _statusDowngradeOpts,
+                    options: pspHarvestStatusDowngradeOpts,
                     value: _statusDowngrade,
                     onChanged: (v) => _setValue(() => _statusDowngrade = v),
                     accentColor: accent,
                   ),
                   const SizedBox(height: 14),
-                  GenOptionPickerLong(
+                  PspOptionPickerLong(
                     label: 'Reason Downgrade',
                     required: !_isGuest,
-                    options: _reasonDowngradeOpts,
+                    options: pspHarvestReasonDowngradeOpts,
                     value: _reasonDowngrade,
                     onChanged: (v) => _setValue(() => _reasonDowngrade = v),
                     accentColor: accent,
                   ),
                   const SizedBox(height: 14),
-                  GenOptionPicker(
+                  PspOptionPicker(
                     label: 'Flagging Downgrade',
                     required: !_isGuest,
-                    options: _downgradeFlaggingOpts,
+                    options: pspHarvestDowngradeFlaggingOpts,
                     value: _downgradeFlagging,
                     onChanged: (v) => _setValue(() => _downgradeFlagging = v),
                     accentColor: accent,

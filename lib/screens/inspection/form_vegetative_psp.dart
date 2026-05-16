@@ -10,78 +10,9 @@ import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/coord_helper.dart';
 import '../../utils/guest_guard.dart';
-import 'fc_form_widgets.dart';
+import 'psp_form_widgets.dart';
 
-const _kPspVeg = Color(0xFF78909C);
-
-const _offtypeOpts = [
-  GenOpt('0', 'A - 0'),
-  GenOpt('>0', 'B - >0'),
-];
-
-const _volunteerOpts = [
-  GenOpt('0', 'A - 0'),
-  GenOpt('>0', 'B - >0'),
-];
-
-const _lsvOpts = [
-  GenOpt('NO', 'A - NO'),
-  GenOpt('YES', 'B - YES'),
-];
-
-const _cropHealthOpts = [
-  GenOpt('Very Poor', '1 - Very Poor'),
-  GenOpt('Poor', '2 - Poor'),
-  GenOpt('Fair', '3 - Fair'),
-  GenOpt('Good', '4 - Good'),
-  GenOpt('Best', '5 - Best'),
-];
-
-const _cropUniformityOpts = [
-  GenOpt('Very Poor', '1 - Very Poor'),
-  GenOpt('Poor', '2 - Poor'),
-  GenOpt('Fair', '3 - Fair'),
-  GenOpt('Good', '4 - Good'),
-  GenOpt('Best', '5 - Best'),
-];
-
-const _previousCropOpts = [
-  GenOpt('Not Corn', 'A - Not Corn'),
-  GenOpt('Corn after corn with different trait',
-      'B - Corn after corn with different trait'),
-  GenOpt('Corn after Corn same trait', 'C - Corn after Corn same trait'),
-];
-
-const _isolationAuditOpts = [
-  GenOpt('NO', 'A - NO'),
-  GenOpt('YES', 'B - YES'),
-];
-
-const _isolationTypeOpts = [
-  GenOpt('Other Seed Production', 'A - Other Seed Production'),
-  GenOpt('Commercial', 'B - Commercial'),
-];
-
-const _isolationDistanceOpts = [
-  GenOpt('>400', 'A - >400'),
-  GenOpt('<400', 'B - <400'),
-];
-
-const _recommendationOpts = [
-  GenOpt('Continue', 'Continue'),
-  GenOpt('Discard', 'Discard'),
-];
-
-const _flaggingOpts = [
-  GenOpt('GF', 'GF'),
-  GenOpt('OF', 'OF'),
-  GenOpt('RF', 'RF'),
-];
-
-const _typeSeedOpts = [
-  GenOpt('Pre Basic', 'Pre Basic'),
-  GenOpt('Basic', 'Basic'),
-];
+const _kPspVeg = kPspVegetativeColor;
 
 class FormVegetativePSP extends ConsumerStatefulWidget {
   final String fieldNumber;
@@ -118,7 +49,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   String? _corrTaggingSource;
 
   bool get _isGuest => GuestGuard.isGuest(_session);
-  bool get _isPld => genIsDiscardDecision(_recommendation);
+  bool get _isPld => pspIsDiscardDecision(_recommendation);
 
   @override
   void initState() {
@@ -260,7 +191,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       firstDate: DateTime(2020),
       lastDate: now,
       builder: (ctx, child) => Theme(
-        data: genDatePickerTheme(ctx, _kPspVeg),
+        data: pspDatePickerTheme(ctx, _kPspVeg),
         child: child!,
       ),
     );
@@ -477,7 +408,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     );
 
     return Scaffold(
-      appBar: GenAppBar(
+      appBar: PspAppBar(
         checkpointLabel: 'Vegetative PSP/PS',
         fieldNumber: widget.fieldNumber,
         isDiscard: _isPld,
@@ -514,7 +445,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GenFieldCard(fieldData: fieldData, accentColor: _kPspVeg),
+                  PspFieldCard(fieldData: fieldData, accentColor: _kPspVeg),
                   const SizedBox(height: 14),
                   if (_isGuest) ...[
                     GuestGuard.banner(),
@@ -533,7 +464,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
               ),
             ),
           ),
-          GenSaveBar(
+          PspSaveBar(
             isSaving: _isSaving,
             isDiscard: _isPld && !_isGuest,
             saveLabel: _isGuest
@@ -549,12 +480,12 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   }
 
   Widget _buildHeaderSection() {
-    return GenSection(
+    return PspSection(
       title: 'Informasi Audit',
       icon: Icons.assignment_outlined,
       color: _kPspVeg,
       children: [
-        GenQaAutocomplete(
+        PspQaAutocomplete(
           controller: _qaFiCtrl,
           label: 'QA FI',
           hint: 'Nama QA Field Inspector',
@@ -564,7 +495,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           accentColor: _kPspVeg,
         ),
         const SizedBox(height: 12),
-        GenQaAutocomplete(
+        PspQaAutocomplete(
           controller: _qaSpvCtrl,
           label: 'QA SPV',
           hint: 'Nama QA Supervisor',
@@ -580,7 +511,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   Widget _buildRoguing1Section(Map<String, dynamic> fieldData) {
     final roguing = _roguings[0];
     const color = Color(0xFF26A69A);
-    return GenSection(
+    return PspSection(
       title: 'Roguing 1',
       icon: Icons.eco_outlined,
       color: color,
@@ -589,7 +520,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         const SizedBox(height: 12),
         _buildCorrectionTaggingWidget(fieldData, color),
         const SizedBox(height: 12),
-        GenTextField(
+        PspTextField(
           controller: _coRoguingCtrl,
           label: 'Co-Roguing',
           hint: 'Nama PIC co-roguing',
@@ -597,7 +528,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           accentColor: color,
         ),
         const SizedBox(height: 12),
-        GenDateTileNullable(
+        PspDateTileNullable(
           label: 'Rev Tgl Tanam',
           date: _revTglTanam,
           onTap: () => _pickDate(
@@ -607,7 +538,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           onClear: _isGuest ? null : () => setState(() => _revTglTanam = null),
         ),
         const SizedBox(height: 12),
-        GenTextField(
+        PspTextField(
           controller: _fieldSizeCtrl,
           label: 'Field Size by Audit (Ha)',
           keyboardType: TextInputType.number,
@@ -616,18 +547,18 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           accentColor: color,
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Previous Crop Actual',
-          options: _previousCropOpts,
+          options: pspPreviousCropActualOpts,
           value: _previousCrop,
           required: !_isGuest,
           onChanged: (v) => _setValue(() => _previousCrop = v),
           accentColor: color,
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Type Seed',
-          options: _typeSeedOpts,
+          options: pspTypeSeedOpts,
           value: _typeSeed,
           required: !_isGuest,
           onChanged: (v) => _setValue(() => _typeSeed = v),
@@ -643,7 +574,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
 
   Widget _buildRoguingSection(_PspRoguingDraft roguing) {
     const color = Color(0xFFFFCA28);
-    return GenSection(
+    return PspSection(
       title: 'Roguing ${roguing.number}',
       icon: Icons.fact_check_outlined,
       color: color,
@@ -658,7 +589,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   Widget _buildRoguing4Section() {
     final roguing = _roguings[3];
     const color = AdvantaColors.error;
-    return GenSection(
+    return PspSection(
       title: 'Roguing 4 Final',
       icon: Icons.gavel_outlined,
       color: color,
@@ -669,30 +600,30 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         const SizedBox(height: 14),
         _isolationFields(roguing, color),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Flagging',
-          options: _flaggingOpts,
+          options: pspRoguingFlaggingOpts,
           value: _flagging,
           onChanged: (v) => _setValue(() => _flagging = v),
           accentColor: color,
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Recommendation',
           required: !_isGuest,
-          options: _recommendationOpts,
+          options: pspRecommendationOpts,
           value: _recommendation,
           onChanged: (v) => _setValue(() => _recommendation = v),
           accentColor: color,
         ),
         if (_isPld) ...[
           const SizedBox(height: 12),
-          const GenDiscardBanner(
+          const PspDiscardBanner(
             message: 'Recommendation Discard aktif - isi luas PLD bila ada.',
           ),
         ],
         const SizedBox(height: 14),
-        GenTextField(
+        PspTextField(
           controller: _recommendationPldCtrl,
           label: 'Recommendation PLD (Ha)',
           keyboardType: TextInputType.number,
@@ -701,7 +632,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           accentColor: color,
         ),
         const SizedBox(height: 14),
-        GenTextField(
+        PspTextField(
           controller: _remarksCtrl,
           label: 'Remarks',
           hint: 'Catatan tambahan PSP/PS...',
@@ -868,7 +799,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           Row(
             children: [
               Expanded(
-                child: GenTextField(
+                child: PspTextField(
                   controller: _manualLatCtrl,
                   label: 'Latitude',
                   keyboardType: TextInputType.number,
@@ -877,7 +808,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: GenTextField(
+                child: PspTextField(
                   controller: _manualLngCtrl,
                   label: 'Longitude',
                   keyboardType: TextInputType.number,
@@ -901,7 +832,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   }
 
   Widget _dateTile(String label, _PspRoguingDraft roguing) {
-    return GenDateTileNullable(
+    return PspDateTileNullable(
       label: label,
       date: roguing.date,
       onTap: () => _pickDate(
@@ -923,10 +854,10 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: GenOptionPicker(
+              child: PspOptionPicker(
                 label: 'Audit Offtype',
                 required: !_isGuest,
-                options: _offtypeOpts,
+                options: pspBinaryFindingOpts,
                 value: roguing.offtype,
                 onChanged: (v) => _setValue(() => roguing.offtype = v),
                 accentColor: color,
@@ -934,10 +865,10 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: GenOptionPicker(
+              child: PspOptionPicker(
                 label: 'Audit Volunteer',
                 required: !_isGuest,
-                options: _volunteerOpts,
+                options: pspBinaryFindingOpts,
                 value: roguing.volunteer,
                 onChanged: (v) => _setValue(() => roguing.volunteer = v),
                 accentColor: color,
@@ -947,29 +878,29 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         ),
         if (includeLsv) ...[
           const SizedBox(height: 14),
-          GenOptionPicker(
+          PspOptionPicker(
             label: 'Audit LSV',
             required: !_isGuest,
-            options: _lsvOpts,
+            options: pspNoYesOpts,
             value: roguing.lsv,
             onChanged: (v) => _setValue(() => roguing.lsv = v),
             accentColor: color,
           ),
         ],
         const SizedBox(height: 14),
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Crop Health',
           required: !_isGuest,
-          options: _cropHealthOpts,
+          options: pspScoreOpts,
           value: roguing.cropHealth,
           onChanged: (v) => _setValue(() => roguing.cropHealth = v),
           accentColor: color,
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Crop Uniformity',
           required: !_isGuest,
-          options: _cropUniformityOpts,
+          options: pspScoreOpts,
           value: roguing.cropUniformity,
           onChanged: (v) => _setValue(() => roguing.cropUniformity = v),
           accentColor: color,
@@ -981,10 +912,10 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   Widget _isolationFields(_PspRoguingDraft roguing, Color color) {
     return Column(
       children: [
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Isolation Audit',
           required: !_isGuest,
-          options: _isolationAuditOpts,
+          options: pspNoYesOpts,
           value: roguing.isolationAudit,
           onChanged: (v) => _setValue(() => roguing.isolationAudit = v),
           accentColor: color,
@@ -993,9 +924,9 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         Row(
           children: [
             Expanded(
-              child: GenOptionPicker(
+              child: PspOptionPicker(
                 label: 'Isolation Type',
-                options: _isolationTypeOpts,
+                options: pspIsolationTypeOpts,
                 value: roguing.isolationType,
                 onChanged: (v) => _setValue(() => roguing.isolationType = v),
                 accentColor: color,
@@ -1003,9 +934,9 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: GenOptionPicker(
+              child: PspOptionPicker(
                 label: 'Isolation Distance',
-                options: _isolationDistanceOpts,
+                options: pspIsolationDistanceOpts,
                 value: roguing.isolationDistance,
                 onChanged: (v) =>
                     _setValue(() => roguing.isolationDistance = v),

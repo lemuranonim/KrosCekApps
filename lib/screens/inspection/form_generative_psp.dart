@@ -9,53 +9,9 @@ import '../../providers/master_fields_provider.dart';
 import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/guest_guard.dart';
-import 'fc_form_widgets.dart';
+import 'psp_form_widgets.dart';
 
-const _kPspGen = Color(0xFFE53935);
-
-const _binaryFindingOpts = [
-  GenOpt('0', 'A - 0'),
-  GenOpt('>0', 'B - >0'),
-];
-
-const _lsvOpts = [
-  GenOpt('NO', 'A - NO'),
-  GenOpt('YES', 'B - YES'),
-];
-
-const _scoreOpts = [
-  GenOpt('Very Poor', '1 - Very Poor'),
-  GenOpt('Poor', '2 - Poor'),
-  GenOpt('Fair', '3 - Fair'),
-  GenOpt('Good', '4 - Good'),
-  GenOpt('Best', '5 - Best'),
-];
-
-const _yesNoOpts = [
-  GenOpt('NO', 'A - NO'),
-  GenOpt('YES', 'B - YES'),
-];
-
-const _isolationTypeOpts = [
-  GenOpt('Other Seed Production', 'A - Other Seed Production'),
-  GenOpt('Commercial', 'B - Commercial'),
-];
-
-const _isolationDistanceOpts = [
-  GenOpt('>400', 'A - >400'),
-  GenOpt('<400', 'B - <400'),
-];
-
-const _flaggingOpts = [
-  GenOpt('GF', 'GF'),
-  GenOpt('OF', 'OF'),
-  GenOpt('RF', 'RF'),
-];
-
-const _recommendationOpts = [
-  GenOpt('Continue', 'Continue'),
-  GenOpt('Discard', 'Discard'),
-];
+const _kPspGen = kPspGenerativeColor;
 
 class FormGenerativePSP extends ConsumerStatefulWidget {
   final String fieldNumber;
@@ -80,7 +36,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
   String? _recommendation;
 
   bool get _isGuest => GuestGuard.isGuest(_session);
-  bool get _isPld => genIsDiscardDecision(_recommendation);
+  bool get _isPld => pspIsDiscardDecision(_recommendation);
 
   @override
   void initState() {
@@ -157,7 +113,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
       builder: (ctx, child) => Theme(
-        data: genDatePickerTheme(ctx, _kPspGen),
+        data: pspDatePickerTheme(ctx, _kPspGen),
         child: child!,
       ),
     );
@@ -278,7 +234,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
     );
 
     return Scaffold(
-      appBar: GenAppBar(
+      appBar: PspAppBar(
         checkpointLabel: 'Generative PSP/PS',
         fieldNumber: widget.fieldNumber,
         isDiscard: _isPld,
@@ -309,7 +265,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GenFieldCard(fieldData: fieldData, accentColor: _kPspGen),
+                  PspFieldCard(fieldData: fieldData, accentColor: _kPspGen),
                   const SizedBox(height: 14),
                   if (_isGuest) ...[
                     GuestGuard.banner(),
@@ -324,7 +280,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
               ),
             ),
           ),
-          GenSaveBar(
+          PspSaveBar(
             isSaving: _isSaving,
             isDiscard: _isPld && !_isGuest,
             saveLabel: _isGuest
@@ -342,12 +298,12 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
   }
 
   Widget _buildAuditInfo() {
-    return GenSection(
+    return PspSection(
       title: 'Informasi Audit',
       icon: Icons.assignment_outlined,
       color: _kPspGen,
       children: [
-        GenQaAutocomplete(
+        PspQaAutocomplete(
           controller: _qaFiCtrl,
           label: 'QA FI',
           hint: 'Nama QA Field Inspector',
@@ -357,7 +313,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
           accentColor: _kPspGen,
         ),
         const SizedBox(height: 12),
-        GenQaAutocomplete(
+        PspQaAutocomplete(
           controller: _qaSpvCtrl,
           label: 'QA SPV',
           hint: 'Nama QA Supervisor',
@@ -373,12 +329,12 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
   Widget _buildRoguingSection(_PspGenRoguingDraft roguing,
       {required bool isFinal}) {
     final color = isFinal ? AdvantaColors.error : const Color(0xFFFFCA28);
-    return GenSection(
+    return PspSection(
       title: 'Roguing ${roguing.number}${isFinal ? ' Final' : ''}',
       icon: isFinal ? Icons.gavel_outlined : Icons.fact_check_outlined,
       color: color,
       children: [
-        GenDateTileNullable(
+        PspDateTileNullable(
           label: 'Date Of Inspeksi Roguing ${roguing.number}',
           date: roguing.date,
           onTap: () => _pickDate(roguing),
@@ -389,41 +345,41 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
         const SizedBox(height: 14),
         _isolationFields(roguing, color),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Nicking Observation',
           required: !_isGuest,
-          options: _yesNoOpts,
+          options: pspNoYesOpts,
           value: roguing.nickingObservation,
           onChanged: (v) => _setValue(() => roguing.nickingObservation = v),
           accentColor: color,
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Flagging',
           required: !_isGuest,
-          options: _flaggingOpts,
+          options: pspRoguingFlaggingOpts,
           value: roguing.flagging,
           onChanged: (v) => _setValue(() => roguing.flagging = v),
           accentColor: color,
         ),
         if (isFinal) ...[
           const SizedBox(height: 14),
-          GenOptionPicker(
+          PspOptionPicker(
             label: 'Recommendation',
             required: !_isGuest,
-            options: _recommendationOpts,
+            options: pspRecommendationOpts,
             value: _recommendation,
             onChanged: (v) => _setValue(() => _recommendation = v),
             accentColor: color,
           ),
           if (_isPld) ...[
             const SizedBox(height: 12),
-            const GenDiscardBanner(
+            const PspDiscardBanner(
               message: 'Recommendation Discard aktif - isi luas PLD bila ada.',
             ),
           ],
           const SizedBox(height: 14),
-          GenTextField(
+          PspTextField(
             controller: _pldAreaCtrl,
             label: 'Recommendation PLD (Ha)',
             keyboardType: TextInputType.number,
@@ -432,7 +388,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             accentColor: color,
           ),
           const SizedBox(height: 14),
-          GenTextField(
+          PspTextField(
             controller: _remarksCtrl,
             label: 'Remarks',
             maxLines: 4,
@@ -451,10 +407,10 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: GenOptionPicker(
+              child: PspOptionPicker(
                 label: 'Standing crop Offtype',
                 required: !_isGuest,
-                options: _binaryFindingOpts,
+                options: pspBinaryFindingOpts,
                 value: roguing.standingCropOfftype,
                 onChanged: (v) =>
                     _setValue(() => roguing.standingCropOfftype = v),
@@ -463,10 +419,10 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: GenOptionPicker(
+              child: PspOptionPicker(
                 label: 'Standing crop Volunteer',
                 required: !_isGuest,
-                options: _binaryFindingOpts,
+                options: pspBinaryFindingOpts,
                 value: roguing.standingCropVolunteer,
                 onChanged: (v) =>
                     _setValue(() => roguing.standingCropVolunteer = v),
@@ -480,10 +436,10 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: GenOptionPicker(
+              child: PspOptionPicker(
                 label: 'Offtype Shed',
                 required: !_isGuest,
-                options: _binaryFindingOpts,
+                options: pspBinaryFindingOpts,
                 value: roguing.offtypeShed,
                 onChanged: (v) => _setValue(() => roguing.offtypeShed = v),
                 accentColor: color,
@@ -491,10 +447,10 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: GenOptionPicker(
+              child: PspOptionPicker(
                 label: 'Volunteer Shed',
                 required: !_isGuest,
-                options: _binaryFindingOpts,
+                options: pspBinaryFindingOpts,
                 value: roguing.volunteerShed,
                 onChanged: (v) => _setValue(() => roguing.volunteerShed = v),
                 accentColor: color,
@@ -503,28 +459,28 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
           ],
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Audit LSV',
           required: !_isGuest,
-          options: _lsvOpts,
+          options: pspNoYesOpts,
           value: roguing.lsv,
           onChanged: (v) => _setValue(() => roguing.lsv = v),
           accentColor: color,
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Crop Health',
           required: !_isGuest,
-          options: _scoreOpts,
+          options: pspScoreOpts,
           value: roguing.cropHealth,
           onChanged: (v) => _setValue(() => roguing.cropHealth = v),
           accentColor: color,
         ),
         const SizedBox(height: 14),
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Crop Uniformity',
           required: !_isGuest,
-          options: _scoreOpts,
+          options: pspScoreOpts,
           value: roguing.cropUniformity,
           onChanged: (v) => _setValue(() => roguing.cropUniformity = v),
           accentColor: color,
@@ -536,10 +492,10 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
   Widget _isolationFields(_PspGenRoguingDraft roguing, Color color) {
     return Column(
       children: [
-        GenOptionPicker(
+        PspOptionPicker(
           label: 'Isolation Audit',
           required: !_isGuest,
-          options: _yesNoOpts,
+          options: pspNoYesOpts,
           value: roguing.isolationAudit,
           onChanged: (v) => _setValue(() => roguing.isolationAudit = v),
           accentColor: color,
@@ -548,9 +504,9 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
         Row(
           children: [
             Expanded(
-              child: GenOptionPicker(
+              child: PspOptionPicker(
                 label: 'Isolation Type',
-                options: _isolationTypeOpts,
+                options: pspIsolationTypeOpts,
                 value: roguing.isolationType,
                 onChanged: (v) => _setValue(() => roguing.isolationType = v),
                 accentColor: color,
@@ -558,9 +514,9 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: GenOptionPicker(
+              child: PspOptionPicker(
                 label: 'Isolation Distance',
-                options: _isolationDistanceOpts,
+                options: pspIsolationDistanceOpts,
                 value: roguing.isolationDistance,
                 onChanged: (v) =>
                     _setValue(() => roguing.isolationDistance = v),
