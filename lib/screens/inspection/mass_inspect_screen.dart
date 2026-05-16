@@ -136,6 +136,36 @@ const _genCropHealthSCOpts = [
   GenOpt('4%', '4 – 4%'),
   GenOpt('5%', '5 – 5%'),
 ];
+const _scGenRoguingStatusOpts = [
+  GenOpt('Not Yet', 'Not Yet'),
+  GenOpt('On Going', 'On Going'),
+  GenOpt('Done', 'Done'),
+];
+const _scGenFemaleShedOpts = [
+  GenOpt('0', 'A – 0'),
+  GenOpt('>0 <2', 'B – >0 <2'),
+  GenOpt('≥2 <5', 'C – ≥2 <5'),
+  GenOpt('≥5', 'D – ≥5'),
+];
+const _scGenOfftypeOpts = [
+  GenOpt('0', 'A – 0'),
+  GenOpt('>0', 'B – >0'),
+];
+const _scGenDetasselingOpts = [
+  GenOpt('Best', 'A – Best'),
+  GenOpt('Good', 'B – Good'),
+  GenOpt('Fair', 'C – Fair'),
+  GenOpt('Poor', 'D – Poor'),
+  GenOpt('Very Poor', 'E – Very Poor'),
+];
+const _scGenIsolationOpts = [
+  GenOpt('Yes', 'A – Yes'),
+  GenOpt('No', 'B – No'),
+];
+const _scGenAffectedOpts = [
+  GenOpt('Yes', 'A – Yes'),
+  GenOpt('No', 'B – No'),
+];
 
 const _genOfftypeOpts = [
   GenOpt('0%–1%', 'A – 0%–1%'),
@@ -327,12 +357,21 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       _gen3FinalDecision;
 
   // ── Generative 4 (SC Only) ────────────────────────────────
-  String? _gen4FemaleShed, _gen4OfftypeM, _gen4OfftypeF;
+  String? _gen4FemaleShed, _gen4OfftypeM, _gen4OfftypeF, _gen4RoguingStatus;
   String? _gen4Lsv, _gen4CropUniformity, _gen4CropHealth, _gen4ActionNeeded;
 
   // ── Generative 5 (SC Only) ────────────────────────────────
+  final _gen5DiscardAreaCtrl = TextEditingController();
+  final _gen5DiscardReasonCtrl = TextEditingController();
+  final _gen5RemarksCtrl = TextEditingController();
+  DateTime? _gen5ClosedOutDate;
   String? _gen5FemaleShed, _gen5OfftypeM, _gen5OfftypeF;
-  String? _gen5Lsv, _gen5CropUniformity, _gen5CropHealth, _gen5ActionNeeded;
+  String? _gen5Lsv, _gen5CropUniformity, _gen5CropHealth;
+  String? _gen5Detasseling,
+      _gen5IsolationProblem,
+      _gen5AffectedOther,
+      _gen5FinalFlagging,
+      _gen5FinalDecision;
 
   // ── Pre-Harvest ───────────────────────────────────────────
   final _preHDiscardAreaCtrl = TextEditingController();
@@ -442,7 +481,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       case 'generative_4':
         return genIsDiscardFull(_gen4ActionNeeded);
       case 'generative_5':
-        return genIsDiscardFull(_gen5ActionNeeded) ||
+        return genIsDiscardDecision(_gen5FinalDecision) ||
             psp.pspIsDiscardDecision(_pspGenRecommendation);
       case 'pre_harvest':
         return genIsDiscardDecision(_preHFinalDecision);
@@ -470,6 +509,9 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     }
     _gen3DiscardAreaCtrl.dispose();
     _gen3DiscardReasonCtrl.dispose();
+    _gen5DiscardAreaCtrl.dispose();
+    _gen5DiscardReasonCtrl.dispose();
+    _gen5RemarksCtrl.dispose();
     _preHDiscardAreaCtrl.dispose();
     _preHDiscardReasonCtrl.dispose();
     _harvRemarksCtrl.dispose();
@@ -564,6 +606,18 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           Theme(data: genDatePickerTheme(ctx, _kGen3), child: child!),
     );
     if (p != null) setState(() => _gen3ClosedOutDate = p);
+  }
+
+  Future<void> _pickGen5ClosedDate() async {
+    final p = await showDatePicker(
+      context: context,
+      initialDate: _gen5ClosedOutDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      builder: (ctx, child) =>
+          Theme(data: genDatePickerTheme(ctx, _phaseColor), child: child!),
+    );
+    if (p != null) setState(() => _gen5ClosedOutDate = p);
   }
 
   Future<void> _pickHarvDowngradeDate() async {
@@ -829,6 +883,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'female_shedding_4': _gen4FemaleShed,
               'offtype_m_4': _gen4OfftypeM,
               'offtype_f_4': _gen4OfftypeF,
+              'roguing_status_4': _gen4RoguingStatus,
               'lsv_status_4': _gen4Lsv,
               'crop_uniformity_4': _gen4CropUniformity,
               'crop_health_4': _gen4CropHealth,
@@ -869,6 +924,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               break;
             }
 
+            final isD5 = genIsDiscardDecision(_gen5FinalDecision);
             rec.addAll({
               'date_of_audit_5': dateStr,
               'week_of_audit_5': week,
@@ -880,7 +936,20 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'lsv_status_5': _gen5Lsv,
               'crop_uniformity_5': _gen5CropUniformity,
               'crop_health_5': _gen5CropHealth,
-              'action_needed_5': _gen5ActionNeeded,
+              'detasseling_assesment_5': _gen5Detasseling,
+              'isolation_problem_5': _gen5IsolationProblem,
+              'affected_other_field_5': _gen5AffectedOther,
+              'closed_out_date_5': _gen5ClosedOutDate != null
+                  ? DateFormat('yyyy-MM-dd').format(_gen5ClosedOutDate!)
+                  : null,
+              'final_flagging_5': _gen5FinalFlagging,
+              'final_decision_5': _gen5FinalDecision,
+              'pld_area_ha_5': isD5
+                  ? double.tryParse(
+                      _gen5DiscardAreaCtrl.text.replaceAll(',', '.'))
+                  : null,
+              'pld_reason_5': isD5 ? _gen5DiscardReasonCtrl.text.trim() : null,
+              'remarks_5': _gen5RemarksCtrl.text.trim(),
               'submitted_at_5': nowStr,
               'fase': 'generative_5',
               'is_mass_submit_5': true,
@@ -2172,7 +2241,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           GenOptionPicker(
             label: 'Female Shedding',
             required: !isD,
-            options: _genFemaleShedOpts,
+            options: isSweetCorn ? _scGenFemaleShedOpts : _genFemaleShedOpts,
             value: _gen2FemaleShed,
             onChanged: (v) => setState(() => _gen2FemaleShed = v),
             accentColor: _kGen2,
@@ -2185,7 +2254,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 child: GenOptionPicker(
                   label: 'Offtype M',
                   required: !isD,
-                  options: _genOfftypeOpts,
+                  options: isSweetCorn ? _scGenOfftypeOpts : _genOfftypeOpts,
                   value: _gen2OfftypeM,
                   onChanged: (v) => setState(() => _gen2OfftypeM = v),
                   accentColor: _kGen2,
@@ -2196,7 +2265,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 child: GenOptionPicker(
                   label: 'Offtype F',
                   required: !isD,
-                  options: _genOfftypeOpts,
+                  options: isSweetCorn ? _scGenOfftypeOpts : _genOfftypeOpts,
                   value: _gen2OfftypeF,
                   onChanged: (v) => setState(() => _gen2OfftypeF = v),
                   accentColor: _kGen2,
@@ -2276,7 +2345,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           GenOptionPicker(
             label: 'Female Shedding',
             required: !isD,
-            options: _genFemaleShedOpts,
+            options: isSweetCorn ? _scGenFemaleShedOpts : _genFemaleShedOpts,
             value: _gen3FemaleShed,
             onChanged: (v) => setState(() => _gen3FemaleShed = v),
             accentColor: _kGen3,
@@ -2289,7 +2358,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 child: GenOptionPicker(
                   label: 'Offtype M',
                   required: !isD,
-                  options: _genOfftypeOpts,
+                  options: isSweetCorn ? _scGenOfftypeOpts : _genOfftypeOpts,
                   value: _gen3OfftypeM,
                   onChanged: (v) => setState(() => _gen3OfftypeM = v),
                   accentColor: _kGen3,
@@ -2300,7 +2369,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 child: GenOptionPicker(
                   label: 'Offtype F',
                   required: !isD,
-                  options: _genOfftypeOpts,
+                  options: isSweetCorn ? _scGenOfftypeOpts : _genOfftypeOpts,
                   value: _gen3OfftypeF,
                   onChanged: (v) => setState(() => _gen3OfftypeF = v),
                   accentColor: _kGen3,
@@ -2348,7 +2417,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           GenOptionPicker(
             label: 'Detasseling Assessment',
             required: !isD,
-            options: _genDetasselingOpts,
+            options: isSweetCorn ? _scGenDetasselingOpts : _genDetasselingOpts,
             value: _gen3Detasseling,
             onChanged: (v) => setState(() => _gen3Detasseling = v),
             accentColor: const Color(0xFFAB47BC),
@@ -2360,7 +2429,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               Expanded(
                 child: GenOptionPicker(
                   label: 'Isolation Status',
-                  options: _genIsolationOpts,
+                  options:
+                      isSweetCorn ? _scGenIsolationOpts : _genIsolationOpts,
                   value: _gen3IsolationStatus,
                   onChanged: (v) => setState(() => _gen3IsolationStatus = v),
                   accentColor: const Color(0xFFAB47BC),
@@ -2370,7 +2440,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               Expanded(
                 child: GenOptionPicker(
                   label: 'Affected Other Field',
-                  options: _genAffectedOpts,
+                  options: isSweetCorn ? _scGenAffectedOpts : _genAffectedOpts,
                   value: _gen3AffectedOther,
                   onChanged: (v) => setState(() => _gen3AffectedOther = v),
                   accentColor: const Color(0xFFAB47BC),
@@ -2468,7 +2538,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           GenOptionPicker(
             label: 'Female Shedding',
             required: !isD,
-            options: _genFemaleShedOpts,
+            options: _scGenFemaleShedOpts,
             value: _gen4FemaleShed,
             onChanged: (v) => setState(() => _gen4FemaleShed = v),
             accentColor: color,
@@ -2481,7 +2551,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 child: GenOptionPicker(
                   label: 'Offtype M',
                   required: !isD,
-                  options: _genOfftypeOpts,
+                  options: _scGenOfftypeOpts,
                   value: _gen4OfftypeM,
                   onChanged: (v) => setState(() => _gen4OfftypeM = v),
                   accentColor: color,
@@ -2492,13 +2562,22 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 child: GenOptionPicker(
                   label: 'Offtype F',
                   required: !isD,
-                  options: _genOfftypeOpts,
+                  options: _scGenOfftypeOpts,
                   value: _gen4OfftypeF,
                   onChanged: (v) => setState(() => _gen4OfftypeF = v),
                   accentColor: color,
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 14),
+          GenOptionPicker(
+            label: 'Roguing Status',
+            required: !isD,
+            options: _scGenRoguingStatusOpts,
+            value: _gen4RoguingStatus,
+            onChanged: (v) => setState(() => _gen4RoguingStatus = v),
+            accentColor: color,
           ),
           const SizedBox(height: 14),
           GenOptionPicker(
@@ -2559,17 +2638,17 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   // ── GENERATIVE 5 (SC Only — Crop Health: 0%–5%) ───────────
   List<Widget> _buildGen5Fields() {
     final color = Colors.pink;
-    final isD = genIsDiscardFull(_gen5ActionNeeded);
+    final isD = genIsDiscardDecision(_gen5FinalDecision);
     return [
       GenSection(
-        title: 'Penilaian Audit (SC CP5)',
+        title: 'Penilaian Process (SC CP5)',
         icon: Icons.spa_outlined,
         color: color,
         children: [
           GenOptionPicker(
             label: 'Female Shedding',
             required: !isD,
-            options: _genFemaleShedOpts,
+            options: _scGenFemaleShedOpts,
             value: _gen5FemaleShed,
             onChanged: (v) => setState(() => _gen5FemaleShed = v),
             accentColor: color,
@@ -2582,7 +2661,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 child: GenOptionPicker(
                   label: 'Offtype M',
                   required: !isD,
-                  options: _genOfftypeOpts,
+                  options: _scGenOfftypeOpts,
                   value: _gen5OfftypeM,
                   onChanged: (v) => setState(() => _gen5OfftypeM = v),
                   accentColor: color,
@@ -2593,7 +2672,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                 child: GenOptionPicker(
                   label: 'Offtype F',
                   required: !isD,
-                  options: _genOfftypeOpts,
+                  options: _scGenOfftypeOpts,
                   value: _gen5OfftypeF,
                   onChanged: (v) => setState(() => _gen5OfftypeF = v),
                   accentColor: color,
@@ -2633,25 +2712,117 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       ),
       const SizedBox(height: 12),
       GenSection(
-        title: 'Action Needed',
-        icon: Icons.gavel_outlined,
-        color: AdvantaColors.error,
+        title: 'Detasseling & Isolasi',
+        icon: Icons.agriculture_outlined,
+        color: const Color(0xFFAB47BC),
         children: [
-          GenOptionPickerLong(
-            label: 'Action Needed',
+          GenOptionPicker(
+            label: 'Detasseling Assessment',
             required: true,
-            options: _genActionNeededOpts,
-            value: _gen5ActionNeeded,
-            onChanged: (v) => setState(() => _gen5ActionNeeded = v),
-            accentColor: AdvantaColors.error,
+            options: _scGenDetasselingOpts,
+            value: _gen5Detasseling,
+            onChanged: (v) => setState(() => _gen5Detasseling = v),
+            accentColor: const Color(0xFFAB47BC),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: GenOptionPicker(
+                  label: 'Isolation Problem',
+                  options: _scGenAffectedOpts,
+                  value: _gen5IsolationProblem,
+                  onChanged: (v) => setState(() => _gen5IsolationProblem = v),
+                  accentColor: const Color(0xFFAB47BC),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: GenOptionPicker(
+                  label: 'Affected Other Field',
+                  options: _scGenAffectedOpts,
+                  value: _gen5AffectedOther,
+                  onChanged: (v) => setState(() => _gen5AffectedOther = v),
+                  accentColor: const Color(0xFFAB47BC),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          GenDateTileNullable(
+            label: 'Closed Out Date (Opsional)',
+            date: _gen5ClosedOutDate,
+            onTap: _pickGen5ClosedDate,
+            onClear: () => setState(() => _gen5ClosedOutDate = null),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      GenSection(
+        title: 'Keputusan Final',
+        icon: Icons.gavel_outlined,
+        color: color,
+        children: [
+          GenOptionPicker(
+            label: 'Final Flagging',
+            required: true,
+            options: _genFlaggingOpts,
+            value: _gen5FinalFlagging,
+            onChanged: (v) => setState(() => _gen5FinalFlagging = v),
+            accentColor: const Color(0xFF42A5F5),
+          ),
+          const SizedBox(height: 14),
+          GenOptionPicker(
+            label: 'Final Decision',
+            required: true,
+            options: _genFinalDecisionOpts,
+            value: _gen5FinalDecision,
+            onChanged: (v) => setState(() {
+              _gen5FinalDecision = v;
+              if (!genIsDiscardDecision(v)) {
+                _gen5DiscardAreaCtrl.clear();
+                _gen5DiscardReasonCtrl.clear();
+              }
+            }),
+            accentColor: color,
           ),
           if (isD) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             const GenDiscardBanner(
               message:
-                  'Action Discard Full dipilih — hanya field wajib (QA FI, SPV, Tanggal) yang harus diisi.',
+                  'Final Decision Discard — isi Discard Area & Reason sebelum menyimpan.',
+            ),
+            const SizedBox(height: 14),
+            GenTextField(
+              controller: _gen5DiscardAreaCtrl,
+              label: 'Discard Area (Ha)',
+              hint: 'Luas area discard',
+              required: true,
+              keyboardType: TextInputType.number,
+              icon: Icons.crop_landscape_outlined,
+              accentColor: color,
+            ),
+            const SizedBox(height: 12),
+            GenTextField(
+              controller: _gen5DiscardReasonCtrl,
+              label: 'Discard Reason',
+              hint: 'Alasan discard...',
+              required: true,
+              maxLines: 3,
+              icon: Icons.notes_outlined,
+              accentColor: color,
             ),
           ],
+          const SizedBox(height: 12),
+          GenTextField(
+            controller: _gen5RemarksCtrl,
+            label: 'Remarks',
+            hint: 'Catatan tambahan...',
+            maxLines: 2,
+            icon: Icons.comment_outlined,
+            accentColor: color,
+          ),
         ],
       ),
     ];

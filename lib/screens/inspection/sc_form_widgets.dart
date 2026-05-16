@@ -1229,3 +1229,50 @@ class GenSaveBar extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────
+// SC PUBLIC ALIASES
+// Keep the legacy Gen* API working while exposing SC-owned names for
+// new code and mass-inspect wiring.
+// ─────────────────────────────────────────────────────────
+typedef ScOpt = GenOpt;
+typedef ScAppBar = GenAppBar;
+typedef ScFieldCard = GenFieldCard;
+typedef ScSection = GenSection;
+typedef ScDateTile = GenDateTile;
+typedef ScDateTileNullable = GenDateTileNullable;
+typedef ScTextField = GenTextField;
+typedef ScQaAutocomplete = GenQaAutocomplete;
+typedef ScOptionPicker = GenOptionPicker;
+typedef ScOptionPickerLong = GenOptionPickerLong;
+typedef ScDiscardBanner = GenDiscardBanner;
+typedef ScSaveBar = GenSaveBar;
+
+String scPersistedOptionValue(String label) => genPersistedOptionValue(label);
+String scLegacyOptionValue(String label) => genLegacyOptionValue(label);
+bool scOptionMatches(String? value, ScOpt option) =>
+    genOptionMatches(value, option);
+String? scResolveOptionValue(String? value, List<ScOpt> options) =>
+    genResolveOptionValue(value, options);
+bool scValueIn(String? value, Iterable<String> accepted) =>
+    genValueIn(value, accepted);
+bool scIsDiscardFull(String? value) => genIsDiscardFull(value);
+bool scIsDiscardDecision(String? value) => genIsDiscardDecision(value);
+ThemeData scDatePickerTheme(BuildContext context, Color accentColor) =>
+    genDatePickerTheme(context, accentColor);
+
+const scReadinessOpts = genReadinessOpts;
+const scRoguingOpts = genRoguingOpts;
+const scRoguingStatusOpts = genRoguingStatusOpts;
+const scLsvOpts = genLsvOpts;
+const scCropUniformityOpts = genCropUniformityOpts;
+const scCropHealthOpts = genCropHealthOpts;
+const scFemaleShedOpts = genFemaleShedOpts;
+const scNSTOpts = genNSTOpts;
+const scOfftypeOpts = genOfftypeOpts;
+const scDetasselingOpts = genDetasselingOpts;
+const scIsolationOpts = genIsolationOpts;
+const scAffectedOpts = genAffectedOpts;
+const scActionNeededOpts = genActionNeededOpts;
+const scFinalDecisionOpts = genFinalDecisionOpts;
+const scFlaggingOpts = genFlaggingOpts;
