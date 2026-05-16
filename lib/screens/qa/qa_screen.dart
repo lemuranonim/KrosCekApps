@@ -813,6 +813,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     // Hanya 'guest' yang dikecualikan karena read-only.
     final bool canSeeCoverage =
         user != null && user.role.toLowerCase() != 'guest';
+    final bool canSeeDetasseling = canSeeCoverage;
     final bool canUseMassInspect =
         user != null && user.role.toLowerCase() != 'guest';
 
@@ -910,8 +911,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   ? 116
                   : 32, // Sesuaikan dengan Mass Bar
               left: 16, // Taruh di kiri bawah, berseberangan dengan Speed Dial
-              child:
-                  _buildFloatingModeToggle(canSeeCoverage, canUseMassInspect),
+              child: _buildFloatingModeToggle(
+                canSeeCoverage,
+                canUseMassInspect,
+                canSeeDetasseling,
+              ),
             ),
 
           // ── 5. RIGHT FABs ──────────────────────────────────
@@ -1228,7 +1232,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   // 4. Floating Mode Toggle (Ditaruh di Kiri Bawah)
-  Widget _buildFloatingModeToggle(bool canSeeCoverage, bool canUseMassInspect) {
+  Widget _buildFloatingModeToggle(
+    bool canSeeCoverage,
+    bool canUseMassInspect,
+    bool canSeeDetasseling,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: AdvantaColors.deepForest.withAlpha(220),
@@ -1259,6 +1267,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
               isActive: false,
               isWarning: true,
               onTap: () => context.push('/coverage'),
+            ),
+          if (canSeeDetasseling)
+            _CompactSegmentButton(
+              icon: Icons.content_cut_rounded,
+              isActive: false,
+              isWarning: true,
+              onTap: () => context.push('/detasseling-map'),
             ),
         ],
       ),

@@ -49,6 +49,7 @@ import 'screens/inspection/mass_inspect_screen.dart';
 import 'screens/attendance/check_in_screen.dart';
 import 'screens/attendance/check_out_screen.dart';
 import 'screens/coverage/coverage_screen.dart';
+import 'screens/qa/detasseling_map_screen.dart';
 import 'screens/qa/detailed_map_screen.dart';
 import 'screens/settings/user_settings_screen.dart';
 import 'screens/settings/qa_mapping_screen.dart';
@@ -258,6 +259,10 @@ final router = GoRouter(
       path: '/coverage',
       builder: (context, state) => const CoverageScreen(),
     ),
+    GoRoute(
+      path: '/detasseling-map',
+      builder: (context, state) => const DetasselingMapScreen(),
+    ),
 
     // --- SWEET CORN (SC) INSPECTION ROUTES ---
     GoRoute(
@@ -341,7 +346,9 @@ final router = GoRouter(
       return _homeForRole(userRole);
     }
 
-    if ((path == '/coverage' || path == '/qa/settings/mapping') &&
+    if ((path == '/coverage' ||
+            path == '/detasseling-map' ||
+            path == '/qa/settings/mapping') &&
         _isGuestRole(userRole)) {
       return '/qa';
     }
