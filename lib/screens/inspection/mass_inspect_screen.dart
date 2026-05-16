@@ -340,14 +340,17 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       _gen1CropUniformity,
       _gen1CropHealth,
       _gen1ActionNeeded;
+  final _gen1RemarksCtrl = TextEditingController();
 
   // ── Generative 2 ──────────────────────────────────────────
+  final _gen2RemarksCtrl = TextEditingController();
   String? _gen2FemaleShed, _gen2OfftypeM, _gen2OfftypeF;
   String? _gen2Lsv, _gen2CropUniformity, _gen2CropHealth, _gen2ActionNeeded;
 
   // ── Generative 3 ──────────────────────────────────────────
   final _gen3DiscardAreaCtrl = TextEditingController();
   final _gen3DiscardReasonCtrl = TextEditingController();
+  final _gen3RemarksCtrl = TextEditingController();
   DateTime? _gen3ClosedOutDate;
   String? _gen3FemaleShed, _gen3OfftypeM, _gen3OfftypeF;
   String? _gen3Lsv, _gen3CropUniformity, _gen3CropHealth, _gen3Detasseling;
@@ -357,6 +360,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       _gen3FinalDecision;
 
   // ── Generative 4 (SC Only) ────────────────────────────────
+  final _gen4RemarksCtrl = TextEditingController();
   String? _gen4FemaleShed, _gen4OfftypeM, _gen4OfftypeF, _gen4RoguingStatus;
   String? _gen4Lsv, _gen4CropUniformity, _gen4CropHealth, _gen4ActionNeeded;
 
@@ -507,8 +511,12 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     for (final roguing in _pspGenRoguings) {
       roguing.dispose();
     }
+    _gen1RemarksCtrl.dispose();
+    _gen2RemarksCtrl.dispose();
     _gen3DiscardAreaCtrl.dispose();
     _gen3DiscardReasonCtrl.dispose();
+    _gen3RemarksCtrl.dispose();
+    _gen4RemarksCtrl.dispose();
     _gen5DiscardAreaCtrl.dispose();
     _gen5DiscardReasonCtrl.dispose();
     _gen5RemarksCtrl.dispose();
@@ -830,6 +838,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'crop_uniformity_1': _gen1CropUniformity,
               'crop_health_1': _gen1CropHealth,
               'action_needed_1': _gen1ActionNeeded,
+              'remarks_1': _gen1RemarksCtrl.text.trim(),
               'submitted_at_1': nowStr,
               'fase': 'generative_1',
               'is_mass_submit_1': true,
@@ -848,6 +857,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'crop_uniformity_2': _gen2CropUniformity,
               'crop_health_2': _gen2CropHealth,
               'action_needed_2': _gen2ActionNeeded,
+              'remarks_2': _gen2RemarksCtrl.text.trim(),
               'submitted_at_2': nowStr,
               'fase': 'generative_2',
               'is_mass_submit_2': true,
@@ -875,6 +885,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'flagging': _gen3Flagging,
               'final_decision_3': _gen3FinalDecision,
               'action_needed_3': isD3 ? 'Discard Full' : 'None',
+              'remarks_3': _gen3RemarksCtrl.text.trim(),
               'discard_area_ha_3': isD3
                   ? double.tryParse(
                       _gen3DiscardAreaCtrl.text.replaceAll(',', '.'))
@@ -900,6 +911,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'crop_uniformity_4': _gen4CropUniformity,
               'crop_health_4': _gen4CropHealth,
               'action_needed_4': _gen4ActionNeeded,
+              'remarks_4': _gen4RemarksCtrl.text.trim(),
               'submitted_at_4': nowStr,
               'fase': 'generative_4',
               'is_mass_submit_4': true,
@@ -1594,6 +1606,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             controller: _vegRemarksCtrl,
             label: 'Remarks',
             hint: 'Catatan tambahan di lapangan...',
+            required: genActionNeedsRemarks(_vegActionNeeded),
             maxLines: 4,
             icon: Icons.edit_note_outlined,
             accentColor: AdvantaColors.mutedGrey,
@@ -2242,6 +2255,16 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                   'Action Discard Full dipilih — hanya field wajib (QA FI, SPV, Tanggal) yang harus diisi.',
             ),
           ],
+          const SizedBox(height: 14),
+          GenTextField(
+            controller: _gen1RemarksCtrl,
+            label: 'Remarks',
+            hint: 'Catatan untuk action needed...',
+            required: genActionNeedsRemarks(_gen1ActionNeeded),
+            maxLines: 3,
+            icon: Icons.edit_note_outlined,
+            accentColor: AdvantaColors.error,
+          ),
         ],
       ),
     ];
@@ -2343,6 +2366,16 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                   'Action Discard Full dipilih — hanya field wajib (QA FI, SPV, Tanggal) yang harus diisi.',
             ),
           ],
+          const SizedBox(height: 14),
+          GenTextField(
+            controller: _gen2RemarksCtrl,
+            label: 'Remarks',
+            hint: 'Catatan untuk action needed...',
+            required: genActionNeedsRemarks(_gen2ActionNeeded),
+            maxLines: 3,
+            icon: Icons.edit_note_outlined,
+            accentColor: AdvantaColors.error,
+          ),
         ],
       ),
     ];
@@ -2540,6 +2573,16 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               accentColor: AdvantaColors.error,
             ),
           ],
+          const SizedBox(height: 14),
+          GenTextField(
+            controller: _gen3RemarksCtrl,
+            label: 'Remarks',
+            hint: 'Catatan untuk action needed...',
+            required: genActionNeedsRemarks(isD ? 'Discard Full' : 'None'),
+            maxLines: 3,
+            icon: Icons.edit_note_outlined,
+            accentColor: AdvantaColors.error,
+          ),
         ],
       ),
     ];
@@ -2650,6 +2693,16 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                   'Action Discard Full dipilih — hanya field wajib (QA FI, SPV, Tanggal) yang harus diisi.',
             ),
           ],
+          const SizedBox(height: 14),
+          GenTextField(
+            controller: _gen4RemarksCtrl,
+            label: 'Remarks',
+            hint: 'Catatan untuk action needed...',
+            required: genActionNeedsRemarks(_gen4ActionNeeded),
+            maxLines: 3,
+            icon: Icons.edit_note_outlined,
+            accentColor: AdvantaColors.error,
+          ),
         ],
       ),
     ];

@@ -238,6 +238,65 @@ class _FieldDetailBottomSheetState
   String _fmt(dynamic v, {String fallback = '—'}) =>
       (v == null || v.toString().trim().isEmpty) ? fallback : v.toString();
 
+  bool _isPldDecisionValue(dynamic value) {
+    if (value == null) return false;
+    final normalized = value.toString().trim().toUpperCase();
+    if (normalized.isEmpty) return false;
+    return normalized == 'D' ||
+        normalized == 'G' ||
+        normalized.contains('PLD') ||
+        normalized.contains('DISCARD');
+  }
+
+  List<String> _pldAuditPhases() {
+    final hits = <String>[];
+
+    void addIfPld(String phase, Iterable<dynamic> values) {
+      if (hits.contains(phase)) return;
+      if (values.any(_isPldDecisionValue)) hits.add(phase);
+    }
+
+    final veg = _auditMap('audit_vegetative');
+    addIfPld('Vegetatif', [
+      veg?['decision'],
+      veg?['action_needed'],
+      veg?['flagging'],
+      veg?['pld_reason'],
+    ]);
+
+    final gen = _auditMap('audit_generative');
+    for (var i = 1; i <= 5; i++) {
+      addIfPld('Generatif CP$i', [
+        gen?['final_decision_$i'],
+        gen?['action_needed_$i'],
+        gen?['final_flagging_$i'],
+        gen?['pld_reason_$i'],
+        gen?['discard_reason_$i'],
+      ]);
+    }
+
+    final preHarvest = _auditMap('audit_pre_harvest');
+    addIfPld('Pre-Harvest', [
+      preHarvest?['final_decision'],
+      preHarvest?['discard_reason'],
+    ]);
+
+    final harvest = _auditMap('audit_harvest');
+    addIfPld('Harvest', [
+      harvest?['final_decision'],
+      harvest?['final_flagging'],
+      harvest?['downgrade_flagging'],
+    ]);
+
+    addIfPld('Master', [
+      widget.field['flagging_final'],
+      widget.field['final_decision'],
+      widget.field['status'],
+    ]);
+
+    return hits;
+  }
+
   Color _flagColor(String? flag) {
     switch (flag?.toLowerCase()) {
       case 'green':
@@ -307,6 +366,8 @@ class _FieldDetailBottomSheetState
     final user = ref.watch(currentUserProvider).value;
     final canEditMasterData =
         user != null && user.role.toLowerCase() != 'guest';
+    final pldPhases = _pldAuditPhases();
+    final isPldField = pldPhases.isNotEmpty;
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -331,6 +392,12 @@ class _FieldDetailBottomSheetState
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
                 borderRadius: AdvantaRadius.sheetRadius,
+                border: isPldField
+                    ? Border.all(
+                        color: AdvantaColors.error.withAlpha(150),
+                        width: 1.4,
+                      )
+                    : null,
               ),
               child: Material(
                 color: Colors.transparent,
@@ -342,8 +409,8 @@ class _FieldDetailBottomSheetState
                     children: [
                       _DragHandle(isDark: isDark),
                       _buildHeader(fieldNumber, _dap, _recommendedPhase, flag,
-                          field, theme, isDark),
-                      _buildTabBar(theme, isDark),
+                          field, theme, isDark, pldPhases),
+                      _buildTabBar(theme, isDark, isPldField),
                       _buildContent(_dap, _recommendedPhase, fieldNumber, field,
                           theme, isDark, canEditMasterData),
                     ],
@@ -366,9 +433,13 @@ class _FieldDetailBottomSheetState
     Map<String, dynamic> field,
     ThemeData theme,
     bool isDark,
+    List<String> pldPhases,
   ) {
     final hybrid = field['hybrid']?.toString();
-    final markerColor = DapHelper.getDapMarkerColor(dap, hybrid: hybrid);
+    final isPldField = pldPhases.isNotEmpty;
+    final markerColor = isPldField
+        ? AdvantaColors.error
+        : DapHelper.getDapMarkerColor(dap, hybrid: hybrid);
     final farmName = _fmt(field['farmer_name']);
     final region = _fmt(field['region']);
     final district = _fmt(field['district_kab']);
@@ -393,7 +464,15 @@ class _FieldDetailBottomSheetState
     return Container(
       padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 12.0),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: borderColor)),
+        color:
+            isPldField ? AdvantaColors.error.withAlpha(isDark ? 40 : 18) : null,
+        border: Border(
+          bottom: BorderSide(
+            color: isPldField
+                ? AdvantaColors.error.withAlpha(isDark ? 160 : 120)
+                : borderColor,
+          ),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -420,7 +499,10 @@ class _FieldDetailBottomSheetState
                         ),
                         _buildNavButton(targetLat, targetLng),
                         const SizedBox(width: 8),
-                        if (flag != null && flag.isNotEmpty)
+                        if (isPldField)
+                          const _FlagBadge(
+                              flag: 'PLD', color: AdvantaColors.error)
+                        else if (flag != null && flag.isNotEmpty)
                           _FlagBadge(flag: flag, color: _flagColor(flag)),
                       ],
                     ),
@@ -446,6 +528,10 @@ class _FieldDetailBottomSheetState
             ],
           ),
           const SizedBox(height: 12.0),
+          if (isPldField) ...[
+            _PldAlertBanner(phases: pldPhases, isDark: isDark),
+            const SizedBox(height: 12.0),
+          ],
 
           // DAP Progress bar
           _DapProgressBar(
@@ -526,7 +612,7 @@ class _FieldDetailBottomSheetState
   }
 
   // ── TAB BAR ───────────────────────────────────────────────
-  Widget _buildTabBar(ThemeData theme, bool isDark) {
+  Widget _buildTabBar(ThemeData theme, bool isDark, bool isPldField) {
     const tabs = ['Info Lahan', 'Histori', 'Mulai Inspeksi'];
     const tabIcons = [
       Icons.info_outline_rounded,
@@ -539,17 +625,29 @@ class _FieldDetailBottomSheetState
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark
-            ? AdvantaColors.deepForest.withAlpha(100)
-            : AdvantaColors.softGrey,
-        border: Border(bottom: BorderSide(color: borderColor)),
+        color: isPldField
+            ? AdvantaColors.error.withAlpha(isDark ? 32 : 14)
+            : (isDark
+                ? AdvantaColors.deepForest.withAlpha(100)
+                : AdvantaColors.softGrey),
+        border: Border(
+          bottom: BorderSide(
+            color: isPldField
+                ? AdvantaColors.error.withAlpha(isDark ? 140 : 90)
+                : borderColor,
+          ),
+        ),
       ),
       child: Row(
         children: List.generate(3, (i) {
           final active = _tab == i;
-          final activeColor = i == 2
-              ? AdvantaColors.lightGreen
-              : (isDark ? AdvantaColors.goldLight : theme.colorScheme.primary);
+          final activeColor = isPldField
+              ? AdvantaColors.error
+              : (i == 2
+                  ? AdvantaColors.lightGreen
+                  : (isDark
+                      ? AdvantaColors.goldLight
+                      : theme.colorScheme.primary));
 
           return Expanded(
             child: GestureDetector(
@@ -850,6 +948,9 @@ class _FieldDetailBottomSheetState
             auditData?['flagging']?.toString();
       }
 
+      final itemColor =
+          _isPldDecisionValue(decision) ? AdvantaColors.error : color;
+
       // Penentuan apakah fase sudah selesai
       final bool hasData;
       switch (phaseKey) {
@@ -886,7 +987,7 @@ class _FieldDetailBottomSheetState
           phaseKey: phaseKey,
           label: _phaseLabels[i],
           icon: _phaseIcons[i],
-          color: color,
+          color: itemColor,
           hasData: hasData,
           auditDate: hasDate ? auditDate : null,
           auditWeek: auditWeek,
@@ -1117,6 +1218,63 @@ class _FlagBadge extends StatelessWidget {
               color: color,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PldAlertBanner extends StatelessWidget {
+  final List<String> phases;
+  final bool isDark;
+
+  const _PldAlertBanner({
+    required this.phases,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final phaseText = phases.take(3).join(', ');
+    final extraCount = phases.length - 3;
+    final suffix = extraCount > 0 ? ' +$extraCount fase' : '';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AdvantaColors.error.withAlpha(isDark ? 45 : 24),
+        borderRadius: AdvantaRadius.cardRadius,
+        border: Border.all(
+          color: AdvantaColors.error.withAlpha(isDark ? 140 : 95),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: AdvantaColors.error.withAlpha(48),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.warning_amber_rounded,
+              color: AdvantaColors.error,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Status PLD/Discard terdeteksi: $phaseText$suffix',
+              style: AdvantaText.caption.copyWith(
+                color: isDark ? const Color(0xFFFFCDD2) : AdvantaColors.error,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
             ),
           ),
         ],

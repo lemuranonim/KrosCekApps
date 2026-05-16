@@ -35,6 +35,7 @@ class _FormGenerative2State extends ConsumerState<FormGenerative2> {
   // Controllers
   final _qaFiCtrl = TextEditingController();
   final _qaSpvCtrl = TextEditingController();
+  final _remarksCtrl = TextEditingController();
 
   // Date
   DateTime _auditDate = DateTime.now();
@@ -63,6 +64,7 @@ class _FormGenerative2State extends ConsumerState<FormGenerative2> {
   void dispose() {
     _qaFiCtrl.dispose();
     _qaSpvCtrl.dispose();
+    _remarksCtrl.dispose();
     super.dispose();
   }
 
@@ -71,6 +73,7 @@ class _FormGenerative2State extends ConsumerState<FormGenerative2> {
     _dataLoaded = true;
     _qaFiCtrl.text = audit['qa_fi_2'] ?? audit['qa_fi'] ?? '';
     _qaSpvCtrl.text = audit['qa_spv'] ?? '';
+    _remarksCtrl.text = audit['remarks_2'] ?? '';
     if (audit['date_of_audit_2'] != null) {
       try {
         _auditDate = DateTime.parse(audit['date_of_audit_2']);
@@ -127,6 +130,7 @@ class _FormGenerative2State extends ConsumerState<FormGenerative2> {
         'crop_uniformity_2': _cropUniformity,
         'crop_health_2': _cropHealth,
         'action_needed_2': _actionNeeded,
+        'remarks_2': _remarksCtrl.text.trim(),
         'qa_fi_2': _qaFiCtrl.text.trim(),
         'qa_spv': _qaSpvCtrl.text.trim(),
         'submitted_at_2': now.toIso8601String(),
@@ -415,6 +419,17 @@ class _FormGenerative2State extends ConsumerState<FormGenerative2> {
                               '(QA FI, SPV, Tanggal) yang harus diisi.',
                         ),
                       ],
+                      const SizedBox(height: 14),
+                      GenTextField(
+                        controller: _remarksCtrl,
+                        label: 'Remarks',
+                        hint: 'Catatan untuk action needed...',
+                        required:
+                            genActionNeedsRemarks(_actionNeeded) && !_isGuest,
+                        maxLines: 3,
+                        icon: Icons.edit_note_outlined,
+                        accentColor: AdvantaColors.error,
+                      ),
                     ],
                   ),
                 ],

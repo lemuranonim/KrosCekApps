@@ -95,6 +95,12 @@ bool genIsDiscardFull(String? value) =>
 bool genIsDiscardDecision(String? value) =>
     genValueIn(value, const ['D', 'Discard', 'PLD']);
 
+bool genActionNeedsRemarks(String? value) {
+  final normalized = value?.trim().toLowerCase();
+  if (normalized == null || normalized.isEmpty) return false;
+  return !const {'a', 'none', 'a – none', 'a - none'}.contains(normalized);
+}
+
 // ─────────────────────────────────────────────────────────
 // SHARED OPTION LISTS
 // ─────────────────────────────────────────────────────────

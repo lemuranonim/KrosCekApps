@@ -37,6 +37,7 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
   final _qaSpvCtrl = TextEditingController();
   final _discardAreaCtrl = TextEditingController();
   final _discardReasonCtrl = TextEditingController();
+  final _remarksCtrl = TextEditingController();
 
   // Dates
   DateTime _auditDate = DateTime.now();
@@ -75,6 +76,7 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
     _qaSpvCtrl.dispose();
     _discardAreaCtrl.dispose();
     _discardReasonCtrl.dispose();
+    _remarksCtrl.dispose();
     super.dispose();
   }
 
@@ -85,6 +87,7 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
     _qaSpvCtrl.text = audit['qa_spv'] ?? '';
     _discardAreaCtrl.text = audit['discard_area_ha_3']?.toString() ?? '';
     _discardReasonCtrl.text = audit['discard_reason_3'] ?? '';
+    _remarksCtrl.text = audit['remarks_3'] ?? '';
 
     if (audit['date_of_audit_3'] != null) {
       try {
@@ -191,6 +194,7 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
             : null,
         'discard_reason_3': _isDiscard ? _discardReasonCtrl.text.trim() : null,
         'action_needed_3': _actionNeeded,
+        'remarks_3': _remarksCtrl.text.trim(),
         'qa_fi_3': _qaFiCtrl.text.trim(),
         'qa_spv': _qaSpvCtrl.text.trim(),
         'submitted_at_3': now.toIso8601String(),
@@ -565,6 +569,17 @@ class _FormGenerative3SCState extends ConsumerState<FormGenerative3SC> {
                             GuestGuard.blockIfGuest(context, _session);
                           }
                         },
+                        accentColor: kGen3Color,
+                      ),
+                      const SizedBox(height: 14),
+                      GenTextField(
+                        controller: _remarksCtrl,
+                        label: 'Remarks',
+                        hint: 'Catatan untuk action needed...',
+                        required:
+                            genActionNeedsRemarks(_actionNeeded) && !_isGuest,
+                        maxLines: 3,
+                        icon: Icons.edit_note_outlined,
                         accentColor: kGen3Color,
                       ),
                     ],

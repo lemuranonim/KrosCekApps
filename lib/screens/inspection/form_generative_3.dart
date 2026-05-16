@@ -37,6 +37,7 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
   final _qaSpvCtrl = TextEditingController();
   final _discardAreaCtrl = TextEditingController();
   final _discardReasonCtrl = TextEditingController();
+  final _remarksCtrl = TextEditingController();
 
   // Dates
   DateTime _auditDate = DateTime.now();
@@ -73,6 +74,7 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
     _qaSpvCtrl.dispose();
     _discardAreaCtrl.dispose();
     _discardReasonCtrl.dispose();
+    _remarksCtrl.dispose();
     super.dispose();
   }
 
@@ -83,6 +85,7 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
     _qaSpvCtrl.text = audit['qa_spv'] ?? '';
     _discardAreaCtrl.text = audit['discard_area_ha_3']?.toString() ?? '';
     _discardReasonCtrl.text = audit['discard_reason_3'] ?? '';
+    _remarksCtrl.text = audit['remarks_3'] ?? '';
 
     if (audit['date_of_audit_3'] != null) {
       try {
@@ -186,6 +189,7 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
             : null,
         'discard_reason_3': _isDiscard ? _discardReasonCtrl.text.trim() : null,
         'action_needed_3': _isDiscard ? 'Discard Full' : 'None',
+        'remarks_3': _remarksCtrl.text.trim(),
         'qa_fi_3': _qaFiCtrl.text.trim(),
         'qa_spv': _qaSpvCtrl.text.trim(),
         'submitted_at_3': now.toIso8601String(),
@@ -594,6 +598,18 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
                           accentColor: AdvantaColors.error,
                         ),
                       ],
+                      const SizedBox(height: 14),
+                      GenTextField(
+                        controller: _remarksCtrl,
+                        label: 'Remarks',
+                        hint: 'Catatan untuk action needed...',
+                        required: genActionNeedsRemarks(
+                                _isDiscard ? 'Discard Full' : 'None') &&
+                            !_isGuest,
+                        maxLines: 3,
+                        icon: Icons.edit_note_outlined,
+                        accentColor: AdvantaColors.error,
+                      ),
                     ],
                   ),
                 ],

@@ -1413,6 +1413,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                         controller: _remarksCtrl,
                         label: 'Remarks',
                         hint: 'Catatan tambahan di lapangan...',
+                        required:
+                            genActionNeedsRemarks(_actionNeeded) && !_isGuest,
                         maxLines: 4,
                         icon: Icons.edit_note_outlined,
                         accentColor: AdvantaColors.mutedGrey,

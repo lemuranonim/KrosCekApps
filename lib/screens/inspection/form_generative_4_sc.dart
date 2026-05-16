@@ -35,6 +35,7 @@ class _FormGenerative4SCState extends ConsumerState<FormGenerative4SC> {
   // Controllers
   final _qaFiCtrl = TextEditingController();
   final _qaSpvCtrl = TextEditingController();
+  final _remarksCtrl = TextEditingController();
 
   // Date
   DateTime _auditDate = DateTime.now();
@@ -64,6 +65,7 @@ class _FormGenerative4SCState extends ConsumerState<FormGenerative4SC> {
   void dispose() {
     _qaFiCtrl.dispose();
     _qaSpvCtrl.dispose();
+    _remarksCtrl.dispose();
     super.dispose();
   }
 
@@ -72,6 +74,7 @@ class _FormGenerative4SCState extends ConsumerState<FormGenerative4SC> {
     _dataLoaded = true;
     _qaFiCtrl.text = audit['qa_fi_4'] ?? audit['qa_fi'] ?? '';
     _qaSpvCtrl.text = audit['qa_spv'] ?? '';
+    _remarksCtrl.text = audit['remarks_4'] ?? '';
     if (audit['date_of_audit_4'] != null) {
       try {
         _auditDate = DateTime.parse(audit['date_of_audit_4']);
@@ -129,6 +132,7 @@ class _FormGenerative4SCState extends ConsumerState<FormGenerative4SC> {
         'crop_uniformity_4': _cropUniformity,
         'crop_health_4': _cropHealth,
         'action_needed_4': _actionNeeded,
+        'remarks_4': _remarksCtrl.text.trim(),
         'qa_fi_4': _qaFiCtrl.text.trim(),
         'qa_spv': _qaSpvCtrl.text.trim(),
         'submitted_at_4': now.toIso8601String(),
@@ -437,6 +441,17 @@ class _FormGenerative4SCState extends ConsumerState<FormGenerative4SC> {
                               'Action Discard Full dipilih — pastikan semua field wajib telah terisi.',
                         ),
                       ],
+                      const SizedBox(height: 14),
+                      GenTextField(
+                        controller: _remarksCtrl,
+                        label: 'Remarks',
+                        hint: 'Catatan untuk action needed...',
+                        required:
+                            genActionNeedsRemarks(_actionNeeded) && !_isGuest,
+                        maxLines: 3,
+                        icon: Icons.edit_note_outlined,
+                        accentColor: kGen4Color,
+                      ),
                     ],
                   ),
                 ],
