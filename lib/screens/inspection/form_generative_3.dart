@@ -308,19 +308,21 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
                           date: _auditDate,
                           onTap: _pickAuditDate),
                       const SizedBox(height: 12),
-                      GenTextField(
+                      GenQaAutocomplete(
                         controller: _qaFiCtrl,
                         label: 'QA FI',
                         hint: 'Nama QA Field Inspector',
+                        column: 'qa_fi',
                         required: !_isGuest,
                         icon: Icons.person_outline,
                         accentColor: kGen3Color,
                       ),
                       const SizedBox(height: 12),
-                      GenTextField(
+                      GenQaAutocomplete(
                         controller: _qaSpvCtrl,
                         label: 'QA SPV',
                         hint: 'Nama QA Supervisor',
+                        column: 'qa_spv',
                         required: !_isGuest,
                         icon: Icons.supervisor_account_outlined,
                         accentColor: kGen3Color,

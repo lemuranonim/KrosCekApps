@@ -1138,19 +1138,21 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                             onTap: _pickAuditDate),
                         const SizedBox(height: 12),
                       ],
-                      GenTextField(
+                      GenQaAutocomplete(
                         controller: _qaFiCtrl,
                         label: 'QA FI',
                         hint: 'Nama QA Field Inspector',
+                        column: 'qa_fi',
                         required: true,
                         icon: Icons.person_outline,
                         accentColor: _phaseColor,
                       ),
                       const SizedBox(height: 12),
-                      GenTextField(
+                      GenQaAutocomplete(
                         controller: _qaSpvCtrl,
                         label: 'QA SPV',
                         hint: 'Nama QA Supervisor',
+                        column: 'qa_spv',
                         required: true,
                         icon: Icons.supervisor_account_outlined,
                         accentColor: _phaseColor,

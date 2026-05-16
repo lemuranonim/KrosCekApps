@@ -6,6 +6,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────
@@ -692,6 +693,191 @@ class GenTextField extends StatelessWidget {
       validator: required
           ? (v) => (v == null || v.trim().isEmpty) ? 'Wajib diisi' : null
           : null,
+    );
+  }
+}
+
+class GenQaAutocomplete extends StatefulWidget {
+  final String label;
+  final String hint;
+  final String column;
+  final TextEditingController controller;
+  final IconData icon;
+  final Color accentColor;
+  final bool required;
+
+  const GenQaAutocomplete({
+    super.key,
+    required this.label,
+    required this.hint,
+    required this.column,
+    required this.controller,
+    required this.icon,
+    required this.accentColor,
+    this.required = false,
+  });
+
+  @override
+  State<GenQaAutocomplete> createState() => _GenQaAutocompleteState();
+}
+
+class _GenQaAutocompleteState extends State<GenQaAutocomplete> {
+  Future<Iterable<String>> _fetchQA(String query) async {
+    if (query.trim().isEmpty) return const Iterable<String>.empty();
+    try {
+      final response = await Supabase.instance.client
+          .from('master_fields')
+          .select(widget.column)
+          .ilike(widget.column, '%${query.trim()}%')
+          .limit(20);
+
+      final data = List<dynamic>.from(response);
+      final uniqueNames = data
+          .map((e) => e[widget.column]?.toString().trim() ?? '')
+          .where((s) => s.isNotEmpty)
+          .map((s) => s.toUpperCase())
+          .toSet();
+
+      return uniqueNames.take(5);
+    } catch (e) {
+      debugPrint('Error fetching QA autocomplete: $e');
+      return const Iterable<String>.empty();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final subColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
+    final fillColor = context.genFill;
+    final borderColor = context.genBorder;
+    final textColor = context.genText;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.required ? '${widget.label} *' : widget.label,
+          style: AdvantaText.body2
+              .copyWith(color: subColor, fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: 8),
+        Autocomplete<String>(
+          initialValue: TextEditingValue(text: widget.controller.text),
+          optionsBuilder: (value) => _fetchQA(value.text),
+          onSelected: (selection) {
+            widget.controller.text = selection;
+            FocusScope.of(context).unfocus();
+          },
+          fieldViewBuilder:
+              (context, fieldController, focusNode, onFieldSubmitted) {
+            if (fieldController.text != widget.controller.text) {
+              fieldController.text = widget.controller.text;
+              fieldController.selection =
+                  TextSelection.collapsed(offset: fieldController.text.length);
+            }
+
+            return TextFormField(
+              controller: fieldController,
+              focusNode: focusNode,
+              textCapitalization: TextCapitalization.characters,
+              style: AdvantaText.body1.copyWith(color: textColor),
+              decoration: InputDecoration(
+                hintText: widget.hint,
+                hintStyle: AdvantaText.caption
+                    .copyWith(color: subColor.withAlpha(120)),
+                prefixIcon:
+                    Icon(widget.icon, color: widget.accentColor, size: 20),
+                suffixIcon: fieldController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded, size: 18),
+                        color: subColor,
+                        onPressed: () {
+                          fieldController.clear();
+                          widget.controller.clear();
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: fillColor,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: borderColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: widget.accentColor, width: 1.5),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: AdvantaColors.error),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide:
+                      const BorderSide(color: AdvantaColors.error, width: 1.5),
+                ),
+              ),
+              validator: widget.required
+                  ? (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Wajib diisi' : null
+                  : null,
+              onChanged: (value) => widget.controller.text = value,
+              onFieldSubmitted: (_) => onFieldSubmitted(),
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: MediaQuery.of(context).size.width - 64,
+                  margin: const EdgeInsets.only(top: 4),
+                  decoration: BoxDecoration(
+                    color: isDark ? AdvantaColors.deepForest : Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: borderColor),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(50),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ListView.separated(
+                    padding: EdgeInsets.zero,
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    separatorBuilder: (_, __) =>
+                        Divider(height: 1, color: borderColor),
+                    itemBuilder: (context, index) {
+                      final option = options.elementAt(index);
+                      return InkWell(
+                        onTap: () => onSelected(option),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                          child: Text(
+                            option,
+                            style: AdvantaText.body2.copyWith(
+                              color: widget.accentColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
