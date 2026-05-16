@@ -1020,20 +1020,21 @@ class _FieldDetailBottomSheetState
                   // LOGIKA ROUTING:
                   if (_isPSP) {
                     if (phaseKey == 'vegetative') {
-                      await context
+                      final saved = await context
                           .push('/inspect_psp/vegetative/$fieldNumber');
-                      widget.onInspectDone?.call(fieldData);
+                      if (saved == true) widget.onInspectDone?.call(fieldData);
                       return;
                     }
                     if (phaseKey == 'generative_5') {
-                      await context
+                      final saved = await context
                           .push('/inspect_psp/generative/$fieldNumber');
-                      widget.onInspectDone?.call(fieldData);
+                      if (saved == true) widget.onInspectDone?.call(fieldData);
                       return;
                     }
                     if (phaseKey == 'harvest') {
-                      await context.push('/inspect_psp/harvest/$fieldNumber');
-                      widget.onInspectDone?.call(fieldData);
+                      final saved = await context
+                          .push('/inspect_psp/harvest/$fieldNumber');
+                      if (saved == true) widget.onInspectDone?.call(fieldData);
                       return;
                     }
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -1046,13 +1047,15 @@ class _FieldDetailBottomSheetState
 
                   if (_isSweetCorn) {
                     // Arahkan ke form khusus Sweet Corn (AX01-04)
-                    await context.push('/inspect_sc/$phaseKey/$fieldNumber');
+                    final saved = await context
+                        .push('/inspect_sc/$phaseKey/$fieldNumber');
+                    if (saved == true) widget.onInspectDone?.call(fieldData);
                   } else {
                     // Arahkan ke form reguler/lama (AX non 01-04 atau lainnya)
-                    await context.push('/inspect/$phaseKey/$fieldNumber');
+                    final saved =
+                        await context.push('/inspect/$phaseKey/$fieldNumber');
+                    if (saved == true) widget.onInspectDone?.call(fieldData);
                   }
-
-                  widget.onInspectDone?.call(fieldData);
                 },
               ),
             );

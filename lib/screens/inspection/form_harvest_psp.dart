@@ -196,7 +196,7 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
       ref.invalidate(harvestAuditProvider(widget.fieldNumber));
       _snack('Harvest PSP audit berhasil disimpan');
       await Future.delayed(const Duration(milliseconds: 600));
-      if (mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) _snack('Gagal menyimpan: $e', err: true);
     } finally {

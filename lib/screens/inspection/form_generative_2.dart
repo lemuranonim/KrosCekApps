@@ -170,7 +170,7 @@ class _FormGenerative2State extends ConsumerState<FormGenerative2> {
         ref.invalidate(generativeAuditProvider(widget.fieldNumber));
         _snack('Generative Audit 2 berhasil disimpan ✓');
         await Future.delayed(const Duration(milliseconds: 600));
-        if (mounted) Navigator.pop(context);
+        if (mounted) Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) _snack('Gagal menyimpan: $e', err: true);
