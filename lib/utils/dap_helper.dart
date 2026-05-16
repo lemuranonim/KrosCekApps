@@ -348,11 +348,11 @@ class DapHelper {
   static List<String> getPhaseShortLabels({String? hybrid}) {
     final labels = <String, String>{
       'vegetative': 'Veg',
-      'generative_1': 'G1',
-      'generative_2': 'G2',
-      'generative_3': 'G3',
-      'generative_4': 'G4',
-      'generative_5': 'G5',
+      'generative_1': 'CP1',
+      'generative_2': 'CP2',
+      'generative_3': 'CP3',
+      'generative_4': 'CP4',
+      'generative_5': isPsp(hybrid) ? 'Gen' : 'CP5',
       'pre_harvest': 'Pre-H',
       'harvest': 'Harvest',
     };

@@ -1155,14 +1155,31 @@ class _DapProgressBar extends StatelessWidget {
           children: List.generate(rules.length, (i) {
             final isActive = i == activeSeg;
             return Expanded(
-              child: Text(
-                labels[i],
-                textAlign: TextAlign.center,
-                style: AdvantaText.caption.copyWith(
-                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-                  color: isActive
-                      ? colors[i]
-                      : AdvantaColors.mutedGrey.withAlpha(120),
+              child: Center(
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 28),
+                  padding: isActive
+                      ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
+                      : EdgeInsets.zero,
+                  decoration: isActive
+                      ? BoxDecoration(
+                          color: colors[i].withAlpha(24),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: colors[i].withAlpha(70)),
+                        )
+                      : null,
+                  child: Text(
+                    labels[i],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: AdvantaText.caption.copyWith(
+                      fontWeight: isActive ? FontWeight.w800 : FontWeight.w400,
+                      color: isActive
+                          ? colors[i]
+                          : AdvantaColors.mutedGrey.withAlpha(120),
+                    ),
+                  ),
                 ),
               ),
             );
@@ -1206,7 +1223,10 @@ class _DapProgressBar extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 5),
-        Row(
+        Wrap(
+          spacing: 8.0,
+          runSpacing: 2.0,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(
               'DAP $dap',
@@ -1215,9 +1235,8 @@ class _DapProgressBar extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(width: 8.0),
             Text(
-              '· Rekomendasi: $recommendedPhase',
+              'Rekomendasi: $recommendedPhase',
               style:
                   AdvantaText.caption.copyWith(color: AdvantaColors.mutedGrey),
             ),
