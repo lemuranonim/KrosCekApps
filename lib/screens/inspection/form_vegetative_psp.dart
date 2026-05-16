@@ -8,6 +8,7 @@ import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/coord_helper.dart';
 import '../../utils/guest_guard.dart';
 import 'fc_form_widgets.dart';
 
@@ -100,9 +101,12 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   final _fieldSizeCtrl = TextEditingController();
   final _recommendationPldCtrl = TextEditingController();
   final _remarksCtrl = TextEditingController();
+  final _manualLatCtrl = TextEditingController();
+  final _manualLngCtrl = TextEditingController();
   late final List<_PspRoguingDraft> _roguings;
 
   bool _isSaving = false;
+  bool _isCapturingGps = false;
   bool _dataLoaded = false;
   ActiveSession? _session;
 
@@ -111,6 +115,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   String? _recommendation;
   String? _flagging;
   String? _typeSeed;
+  String? _corrTaggingSource;
 
   bool get _isGuest => GuestGuard.isGuest(_session);
   bool get _isPld => genIsDiscardDecision(_recommendation);
@@ -133,6 +138,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     _fieldSizeCtrl.dispose();
     _recommendationPldCtrl.dispose();
     _remarksCtrl.dispose();
+    _manualLatCtrl.dispose();
+    _manualLngCtrl.dispose();
     for (final roguing in _roguings) {
       roguing.dispose();
     }
@@ -157,6 +164,54 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     final raw = controller.text.trim().replaceAll(',', '.');
     if (raw.isEmpty) return null;
     return double.tryParse(raw);
+  }
+
+  ({double lat, double lng})? _parseCoordinate(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final parts = raw.split(',');
+    if (parts.length != 2) return null;
+    final lat = double.tryParse(parts[0].trim().replaceAll(',', '.'));
+    final lng = double.tryParse(parts[1].trim().replaceAll(',', '.'));
+    if (lat == null || lng == null) return null;
+    return (lat: lat, lng: lng);
+  }
+
+  String _formatCoordinate(double lat, double lng) {
+    return '${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
+  }
+
+  ({String coordinate, String source})? _resolveFieldCoordinate(
+      Map<String, dynamic> fieldData) {
+    final centroid =
+        CoordHelper.wktCentroid(fieldData['geometry_wkt']?.toString());
+    if (centroid != null) {
+      final lat = centroid['lat']!;
+      final lng = centroid['lng']!;
+      if (CoordHelper.isValidIndonesia(lat, lng)) {
+        return (coordinate: _formatCoordinate(lat, lng), source: 'Polygon');
+      }
+    }
+
+    final correction =
+        _parseCoordinate(fieldData['correction_tagging']?.toString());
+    if (correction != null &&
+        CoordHelper.isValidIndonesia(correction.lat, correction.lng)) {
+      return (
+        coordinate: _formatCoordinate(correction.lat, correction.lng),
+        source: 'Correction Tagging'
+      );
+    }
+
+    final coordinate = _parseCoordinate(fieldData['coordinate']?.toString());
+    if (coordinate != null &&
+        CoordHelper.isValidIndonesia(coordinate.lat, coordinate.lng)) {
+      return (
+        coordinate: _formatCoordinate(coordinate.lat, coordinate.lng),
+        source: 'Coordinate'
+      );
+    }
+
+    return null;
   }
 
   void _loadAudit(Map<String, dynamic>? audit, Map<String, dynamic> fieldData) {
@@ -212,6 +267,69 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     if (picked != null) onPicked(picked);
   }
 
+  Future<void> _captureUserGps() async {
+    if (GuestGuard.blockIfGuest(context, _session)) return;
+    setState(() => _isCapturingGps = true);
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _snack('Izin lokasi ditolak', err: true);
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 15),
+        ),
+      );
+      setState(() {
+        _corrTaggingCtrl.text = _formatCoordinate(pos.latitude, pos.longitude);
+        _corrTaggingSource = 'GPS';
+      });
+      _snack('GPS berhasil dipakai untuk correction tagging');
+    } catch (e) {
+      _snack('Gagal ambil GPS: $e', err: true);
+    } finally {
+      if (mounted) setState(() => _isCapturingGps = false);
+    }
+  }
+
+  void _useExistingCoordinate(Map<String, dynamic> fieldData) {
+    if (GuestGuard.blockIfGuest(context, _session)) return;
+    final resolved = _resolveFieldCoordinate(fieldData);
+    if (resolved == null) {
+      _snack('Koordinat lahan belum tersedia', err: true);
+      return;
+    }
+    setState(() {
+      _corrTaggingCtrl.text = resolved.coordinate;
+      _corrTaggingSource = resolved.source;
+    });
+    _snack('${resolved.source} dipakai untuk correction tagging');
+  }
+
+  void _applyManualCoord() {
+    if (GuestGuard.blockIfGuest(context, _session)) return;
+    final lat =
+        double.tryParse(_manualLatCtrl.text.trim().replaceAll(',', '.'));
+    final lng =
+        double.tryParse(_manualLngCtrl.text.trim().replaceAll(',', '.'));
+    if (lat == null || lng == null || !CoordHelper.isValidIndonesia(lat, lng)) {
+      _snack('Latitude / Longitude tidak valid', err: true);
+      return;
+    }
+    setState(() {
+      _corrTaggingCtrl.text = _formatCoordinate(lat, lng);
+      _corrTaggingSource = 'Manual';
+    });
+    _snack('Koordinat manual diterapkan');
+  }
+
   bool _validateDates() {
     if (_roguings.every((roguing) => roguing.date == null)) {
       _snack('Minimal satu tanggal inspeksi roguing harus diisi', err: true);
@@ -232,6 +350,10 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
 
   Future<void> _saveAudit() async {
     if (GuestGuard.blockIfGuest(context, _session)) return;
+    if (_corrTaggingCtrl.text.trim().isEmpty) {
+      _snack('Correction Tagging wajib diisi atau dikonfirmasi', err: true);
+      return;
+    }
     if (!_validateDates()) return;
     if (!_formKey.currentState!.validate()) {
       _snack('Periksa kembali isian form', err: true);
@@ -259,7 +381,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
 
       final data = <String, dynamic>{
         'field_number': widget.fieldNumber,
-        'date_of_audit': completionDate == null ? null : _formatDate(now),
+        'date_of_audit': _formatDate(completionDate),
         'audit_date_user': _formatDate(summaryDate),
         'audit_week': calcAuditWeek(summaryDate),
         'qa_fi': _qaFiCtrl.text.trim(),
@@ -400,7 +522,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                   ],
                   _buildHeaderSection(),
                   const SizedBox(height: 12),
-                  _buildRoguing1Section(),
+                  _buildRoguing1Section(fieldData),
                   const SizedBox(height: 12),
                   _buildRoguingSection(_roguings[1]),
                   const SizedBox(height: 12),
@@ -432,19 +554,21 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       icon: Icons.assignment_outlined,
       color: _kPspVeg,
       children: [
-        GenTextField(
+        GenQaAutocomplete(
           controller: _qaFiCtrl,
           label: 'QA FI',
           hint: 'Nama QA Field Inspector',
+          column: 'qa_fi',
           icon: Icons.person_outline,
           required: !_isGuest,
           accentColor: _kPspVeg,
         ),
         const SizedBox(height: 12),
-        GenTextField(
+        GenQaAutocomplete(
           controller: _qaSpvCtrl,
           label: 'QA SPV',
           hint: 'Nama QA Supervisor',
+          column: 'qa_spv',
           icon: Icons.supervisor_account_outlined,
           required: !_isGuest,
           accentColor: _kPspVeg,
@@ -453,7 +577,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     );
   }
 
-  Widget _buildRoguing1Section() {
+  Widget _buildRoguing1Section(Map<String, dynamic> fieldData) {
     final roguing = _roguings[0];
     const color = Color(0xFF26A69A);
     return GenSection(
@@ -463,14 +587,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       children: [
         _dateTile('Date Of Inspeksi Roguing 1', roguing),
         const SizedBox(height: 12),
-        GenTextField(
-          controller: _corrTaggingCtrl,
-          label: 'Corr. Tagging',
-          hint: '-7.123456,112.123456',
-          icon: Icons.location_on_outlined,
-          required: !_isGuest,
-          accentColor: color,
-        ),
+        _buildCorrectionTaggingWidget(fieldData, color),
         const SizedBox(height: 12),
         GenTextField(
           controller: _coRoguingCtrl,
@@ -593,6 +710,193 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           accentColor: color,
         ),
       ],
+    );
+  }
+
+  Widget _buildCorrectionTaggingWidget(
+      Map<String, dynamic> fieldData, Color color) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final subColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
+    final textColor = theme.colorScheme.onSurface;
+    final fillColor = isDark
+        ? AdvantaColors.deepForest.withAlpha(200)
+        : AdvantaColors.softGrey;
+    final borderColor =
+        isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+    final resolved = _resolveFieldCoordinate(fieldData);
+    final hasCorrection = _corrTaggingCtrl.text.trim().isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withAlpha(isDark ? 26 : 14),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withAlpha(isDark ? 90 : 55)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.edit_location_alt_outlined, color: color, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  !_isGuest ? 'Correction Tagging *' : 'Correction Tagging',
+                  style: AdvantaText.bodyBold.copyWith(color: textColor),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: (hasCorrection ? AdvantaColors.success : color)
+                      .withAlpha(isDark ? 45 : 24),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  hasCorrection
+                      ? (_corrTaggingSource ?? 'TERISI').toUpperCase()
+                      : 'BELUM DIISI',
+                  style: AdvantaText.caption.copyWith(
+                    color: hasCorrection ? AdvantaColors.success : color,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (resolved != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: fillColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: borderColor),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.place_outlined, color: subColor, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(resolved.source,
+                            style: AdvantaText.caption.copyWith(
+                                color: subColor, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 2),
+                        Text(resolved.coordinate,
+                            style: AdvantaText.body2.copyWith(
+                                color: textColor, fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _isGuest
+                        ? null
+                        : () => _useExistingCoordinate(fieldData),
+                    icon: const Icon(Icons.check_circle_outline, size: 16),
+                    label: const Text('Pakai'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          TextFormField(
+            controller: _corrTaggingCtrl,
+            readOnly: _isGuest,
+            style: AdvantaText.body1.copyWith(color: textColor),
+            decoration: InputDecoration(
+              hintText: '-7.123456,112.123456',
+              hintStyle:
+                  AdvantaText.caption.copyWith(color: subColor.withAlpha(120)),
+              prefixIcon:
+                  Icon(Icons.location_on_outlined, color: subColor, size: 18),
+              suffixIcon: hasCorrection && !_isGuest
+                  ? IconButton(
+                      icon: const Icon(Icons.clear_rounded, size: 18),
+                      onPressed: () => setState(() {
+                        _corrTaggingCtrl.clear();
+                        _corrTaggingSource = null;
+                      }),
+                    )
+                  : null,
+              filled: true,
+              fillColor: fillColor,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: borderColor),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: color, width: 1.5),
+              ),
+            ),
+            onChanged: (_) => setState(() => _corrTaggingSource = 'Manual'),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _isGuest || _isCapturingGps ? null : _captureUserGps,
+                icon: _isCapturingGps
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.gps_fixed, size: 16),
+                label: Text(_isCapturingGps ? 'Mengambil GPS' : 'Ambil GPS'),
+              ),
+              OutlinedButton.icon(
+                onPressed:
+                    _isGuest ? null : () => _useExistingCoordinate(fieldData),
+                icon: const Icon(Icons.my_location_outlined, size: 16),
+                label: const Text('Gunakan Koordinat Lahan'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: GenTextField(
+                  controller: _manualLatCtrl,
+                  label: 'Latitude',
+                  keyboardType: TextInputType.number,
+                  accentColor: color,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: GenTextField(
+                  controller: _manualLngCtrl,
+                  label: 'Longitude',
+                  keyboardType: TextInputType.number,
+                  accentColor: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _isGuest ? null : _applyManualCoord,
+              icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
+              label: const Text('Terapkan Manual'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

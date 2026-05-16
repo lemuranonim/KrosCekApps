@@ -18,10 +18,10 @@ import '../utils/dap_helper.dart';
 // ═══════════════════════════════════════════════════════════
 
 class AuditStatusColors {
-  static const sampun      = Color(0xFF43A047); // hijau
+  static const sampun = Color(0xFF43A047); // hijau
   static const derengJangkep = Color(0xFFFFA726); // oranye
-  static const dereng      = Color(0xFFEF5350); // merah
-  static const unknown     = Color(0xFF607D8B); // abu-abu slate
+  static const dereng = Color(0xFFEF5350); // merah
+  static const unknown = Color(0xFF607D8B); // abu-abu slate
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -43,50 +43,68 @@ class AuditProgressDots extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dots = <_DotConfig>[
-      _DotConfig(
-        done: status.vegetative == SingleAuditStatus.sampun,
-        partial: false,
-        tooltip: 'Vegetatif',
-      ),
-      _DotConfig(
-        done: status.gen1Done,
-        partial: false,
-        tooltip: 'Generatif CP1',
-      ),
-      _DotConfig(
-        done: status.gen2Done,
-        partial: false,
-        tooltip: 'Generatif CP2',
-      ),
-      _DotConfig(
-        done: status.gen3Done,
-        partial: false,
-        tooltip: 'Generatif CP3',
-      ),
-      if (status.isSweetCorn)
-        _DotConfig(
-          done: status.gen4Done,
-          partial: false,
-          tooltip: 'Generatif CP4',
-        ),
-      if (status.isSweetCorn)
-        _DotConfig(
-          done: status.gen5Done,
-          partial: false,
-          tooltip: 'Generatif CP5',
-        ),
-      _DotConfig(
-        done: status.preHarvest == SingleAuditStatus.sampun,
-        partial: false,
-        tooltip: 'Pre-Harvest',
-      ),
-      _DotConfig(
-        done: status.harvest == SingleAuditStatus.sampun,
-        partial: false,
-        tooltip: 'Harvest',
-      ),
-    ];
+    final dots = status.isPsp
+        ? <_DotConfig>[
+            _DotConfig(
+              done: status.vegetative == SingleAuditStatus.sampun,
+              partial: false,
+              tooltip: 'Vegetatif PSP',
+            ),
+            _DotConfig(
+              done: status.gen5Done,
+              partial: false,
+              tooltip: 'Generatif PSP',
+            ),
+            _DotConfig(
+              done: status.harvest == SingleAuditStatus.sampun,
+              partial: false,
+              tooltip: 'Harvest PSP',
+            ),
+          ]
+        : <_DotConfig>[
+            _DotConfig(
+              done: status.vegetative == SingleAuditStatus.sampun,
+              partial: false,
+              tooltip: 'Vegetatif',
+            ),
+            _DotConfig(
+              done: status.gen1Done,
+              partial: false,
+              tooltip: 'Generatif CP1',
+            ),
+            _DotConfig(
+              done: status.gen2Done,
+              partial: false,
+              tooltip: 'Generatif CP2',
+            ),
+            _DotConfig(
+              done: status.gen3Done,
+              partial: false,
+              tooltip: 'Generatif CP3',
+            ),
+            if (status.isSweetCorn)
+              _DotConfig(
+                done: status.gen4Done,
+                partial: false,
+                tooltip: 'Generatif CP4',
+              ),
+            if (status.isSweetCorn)
+              _DotConfig(
+                done: status.gen5Done,
+                partial: false,
+                tooltip: 'Generatif CP5',
+              ),
+            _DotConfig(
+              done: status.preHarvest == SingleAuditStatus.sampun,
+              partial: false,
+              tooltip: 'Pre-Harvest',
+            ),
+            _DotConfig(
+              done: status.harvest == SingleAuditStatus.sampun,
+              partial: false,
+              tooltip: 'Harvest',
+            ),
+          ];
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -107,9 +125,7 @@ class AuditProgressDots extends StatelessWidget {
                     : AuditStatusColors.dereng.withAlpha(120),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: dot.done
-                      ? AuditStatusColors.sampun
-                      : Colors.white24,
+                  color: dot.done ? AuditStatusColors.sampun : Colors.white24,
                   width: 1,
                 ),
               ),
@@ -125,7 +141,8 @@ class _DotConfig {
   final bool done;
   final bool partial;
   final String tooltip;
-  const _DotConfig({required this.done, required this.partial, required this.tooltip});
+  const _DotConfig(
+      {required this.done, required this.partial, required this.tooltip});
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -235,9 +252,8 @@ class AuditStatusLeftBorder extends StatelessWidget {
   });
 
   Color _resolveColor() {
-    final phase = activePhase == ActivePhaseView.auto
-        ? _dapToPhase(dap)
-        : activePhase;
+    final phase =
+        activePhase == ActivePhaseView.auto ? _dapToPhase(dap) : activePhase;
 
     final bool isDone = auditStatus.isAuditDoneFor(phase, dap);
 
@@ -269,7 +285,9 @@ class AuditStatusLeftBorder extends StatelessWidget {
           child,
           // Left border strip
           Positioned(
-            top: 0, bottom: 0, left: 0,
+            top: 0,
+            bottom: 0,
+            left: 0,
             child: Container(
               width: 4,
               decoration: BoxDecoration(
@@ -367,12 +385,12 @@ class _PhaseChip extends StatelessWidget {
           ),
           boxShadow: isSelected
               ? [
-            BoxShadow(
-              color: AdvantaColors.primaryGreen.withAlpha(100),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ]
+                  BoxShadow(
+                    color: AdvantaColors.primaryGreen.withAlpha(100),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
               : [],
         ),
         child: Row(
@@ -446,9 +464,8 @@ class MarkerAuditDot extends StatelessWidget {
 
   // Resolve status fase aktif → enum 3 nilai untuk rendering
   _MarkerAuditState _resolveState() {
-    final phase = activePhase == ActivePhaseView.auto
-        ? _dapToPhase(dap)
-        : activePhase;
+    final phase =
+        activePhase == ActivePhaseView.auto ? _dapToPhase(dap) : activePhase;
 
     // GUNAKAN HELPER BARU: mengecek apakah audit sudah selesai untuk
     // sub-fase yang sedang aktif (terutama di Generatif).
@@ -502,7 +519,8 @@ class MarkerAuditDot extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white, width: 1.5),
           boxShadow: [
-            BoxShadow(color: AuditStatusColors.dereng.withAlpha(180), blurRadius: 5),
+            BoxShadow(
+                color: AuditStatusColors.dereng.withAlpha(180), blurRadius: 5),
           ],
         ),
       );
@@ -518,7 +536,9 @@ class MarkerAuditDot extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white, width: 1.5),
           boxShadow: [
-            BoxShadow(color: AuditStatusColors.derengJangkep.withAlpha(180), blurRadius: 5),
+            BoxShadow(
+                color: AuditStatusColors.derengJangkep.withAlpha(180),
+                blurRadius: 5),
           ],
         ),
         child: Center(
@@ -546,7 +566,8 @@ class MarkerAuditDot extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white, width: 1.5),
         boxShadow: [
-          BoxShadow(color: AuditStatusColors.sampun.withAlpha(180), blurRadius: 5),
+          BoxShadow(
+              color: AuditStatusColors.sampun.withAlpha(180), blurRadius: 5),
         ],
       ),
       child: const Center(

@@ -27,6 +27,31 @@ const _cropHealthOpts = [
   GenOpt('Best', '5 - Best'),
 ];
 
+const _reasonDowngradeOpts = [
+  GenOpt('Suspect Mix Material', 'A - Suspect Mix Material'),
+  GenOpt('Not Accessible during Detasseling',
+      'B - Not Accessible during Detasseling'),
+  GenOpt('Not Sure during Harvest', 'C - Not Sure during Harvest'),
+];
+
+const _statusDowngradeOpts = [
+  GenOpt('Yes', 'A - Yes'),
+  GenOpt('No', 'B - No'),
+];
+
+const _downgradeFlaggingOpts = [
+  GenOpt('RFI', 'RFI'),
+  GenOpt('RFD', 'RFD'),
+];
+
+const _finalFlaggingOpts = [
+  GenOpt('GF', 'GF'),
+  GenOpt('RFI', 'RFI'),
+  GenOpt('RFD', 'RFD'),
+  GenOpt('BF', 'BF'),
+  GenOpt('PLD', 'PLD'),
+];
+
 class FormHarvestPSP extends ConsumerStatefulWidget {
   final String fieldNumber;
 
@@ -46,8 +71,15 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
   bool _dataLoaded = false;
   ActiveSession? _session;
   DateTime _auditDate = DateTime.now();
+  DateTime? _downgradeFlagDate;
   String? _earCondition;
+  String? _cropUniformity;
   String? _cropHealth;
+  String? _statusDowngrade;
+  String? _reasonDowngrade;
+  String? _downgradeFlagging;
+  String? _finalFlagging;
+  bool _showDowngrade = false;
 
   bool get _isGuest => GuestGuard.isGuest(_session);
 
@@ -84,7 +116,22 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
 
     setState(() {
       _earCondition = audit?['ear_condition_observation']?.toString();
+      _cropUniformity = audit?['crop_uniformity']?.toString();
       _cropHealth = audit?['crop_health']?.toString();
+      _statusDowngrade = audit?['status_downgrade']?.toString();
+      _reasonDowngrade = audit?['reason_downgrade']?.toString();
+      _downgradeFlagging = audit?['downgrade_flagging']?.toString();
+      _finalFlagging = audit?['final_flagging']?.toString();
+      if (audit?['downgrade_flag_date'] != null) {
+        try {
+          _downgradeFlagDate =
+              DateTime.parse(audit!['downgrade_flag_date'].toString());
+        } catch (_) {}
+      }
+      _showDowngrade = _statusDowngrade != null ||
+          _reasonDowngrade != null ||
+          _downgradeFlagging != null ||
+          _downgradeFlagDate != null;
     });
   }
 
@@ -106,6 +153,24 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
     if (picked != null) setState(() => _auditDate = picked);
   }
 
+  Future<void> _pickDowngradeDate() async {
+    if (_isGuest) {
+      GuestGuard.blockIfGuest(context, _session);
+      return;
+    }
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _downgradeFlagDate ?? _auditDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (ctx, child) => Theme(
+        data: genDatePickerTheme(ctx, _kPspHarvest),
+        child: child!,
+      ),
+    );
+    if (picked != null) setState(() => _downgradeFlagDate = picked);
+  }
+
   Future<void> _save() async {
     if (GuestGuard.blockIfGuest(context, _session)) return;
     if (!_formKey.currentState!.validate()) {
@@ -121,7 +186,15 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
         'date_of_audit': DateFormat('yyyy-MM-dd').format(_auditDate),
         'audit_week': calcAuditWeek(_auditDate),
         'ear_condition_observation': _earCondition,
+        'crop_uniformity': _cropUniformity,
         'crop_health': _cropHealth,
+        'status_downgrade': _showDowngrade ? _statusDowngrade : null,
+        'reason_downgrade': _showDowngrade ? _reasonDowngrade : null,
+        'downgrade_flagging': _showDowngrade ? _downgradeFlagging : null,
+        'downgrade_flag_date': _showDowngrade && _downgradeFlagDate != null
+            ? DateFormat('yyyy-MM-dd').format(_downgradeFlagDate!)
+            : null,
+        'final_flagging': _finalFlagging,
         'remarks': _remarksCtrl.text.trim(),
         'qa_fi': _qaFiCtrl.text.trim(),
         'qa_spv': _qaSpvCtrl.text.trim(),
@@ -242,17 +315,21 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
                         onTap: _pickDate,
                       ),
                       const SizedBox(height: 12),
-                      GenTextField(
+                      GenQaAutocomplete(
                         controller: _qaFiCtrl,
                         label: 'QA FI',
+                        hint: 'Nama QA Field Inspector',
+                        column: 'qa_fi',
                         required: !_isGuest,
                         icon: Icons.person_outline,
                         accentColor: _kPspHarvest,
                       ),
                       const SizedBox(height: 12),
-                      GenTextField(
+                      GenQaAutocomplete(
                         controller: _qaSpvCtrl,
                         label: 'QA SPV',
+                        hint: 'Nama QA Supervisor',
+                        column: 'qa_spv',
                         required: !_isGuest,
                         icon: Icons.supervisor_account_outlined,
                         accentColor: _kPspHarvest,
@@ -275,12 +352,39 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
                       ),
                       const SizedBox(height: 14),
                       GenOptionPicker(
+                        label: 'Crop Uniformity',
+                        required: !_isGuest,
+                        options: _cropHealthOpts,
+                        value: _cropUniformity,
+                        onChanged: (v) => _setValue(() => _cropUniformity = v),
+                        accentColor: _kPspHarvest,
+                      ),
+                      const SizedBox(height: 14),
+                      GenOptionPicker(
                         label: 'Crop Health',
                         required: !_isGuest,
                         options: _cropHealthOpts,
                         value: _cropHealth,
                         onChanged: (v) => _setValue(() => _cropHealth = v),
                         accentColor: _kPspHarvest,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildDowngradeSection(),
+                  const SizedBox(height: 12),
+                  GenSection(
+                    title: 'Final Flagging',
+                    icon: Icons.flag_outlined,
+                    color: const Color(0xFF42A5F5),
+                    children: [
+                      GenOptionPicker(
+                        label: 'Final Flagging',
+                        required: !_isGuest,
+                        options: _finalFlaggingOpts,
+                        value: _finalFlagging,
+                        onChanged: (v) => _setValue(() => _finalFlagging = v),
+                        accentColor: const Color(0xFF42A5F5),
                       ),
                       const SizedBox(height: 14),
                       GenTextField(
@@ -317,5 +421,112 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
       return;
     }
     setState(update);
+  }
+
+  Widget _buildDowngradeSection() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final surface = isDark ? AdvantaColors.primaryGreen : Colors.white;
+    final borderColor =
+        isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+    final subColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
+    const accent = Color(0xFFAB47BC);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: _showDowngrade ? accent.withAlpha(150) : borderColor,
+        ),
+        boxShadow: AdvantaShadows.card(isDark),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+            onTap: () {
+              if (_isGuest) {
+                GuestGuard.blockIfGuest(context, _session);
+                return;
+              }
+              setState(() => _showDowngrade = !_showDowngrade);
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Icon(Icons.trending_down_outlined,
+                      color: _showDowngrade ? accent : subColor, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'DOWNGRADE FLAGGING',
+                      style: AdvantaText.caption.copyWith(
+                        color: _showDowngrade ? accent : subColor,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: _showDowngrade,
+                    activeThumbColor: accent,
+                    onChanged: _isGuest
+                        ? null
+                        : (v) => setState(() => _showDowngrade = v),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_showDowngrade) ...[
+            Divider(height: 1, color: borderColor),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                children: [
+                  GenDateTileNullable(
+                    label: 'Tanggal Downgrade Flagging',
+                    date: _downgradeFlagDate,
+                    onTap: _pickDowngradeDate,
+                    onClear: _isGuest
+                        ? null
+                        : () => setState(() => _downgradeFlagDate = null),
+                  ),
+                  const SizedBox(height: 14),
+                  GenOptionPicker(
+                    label: 'Downgrade Flagging',
+                    required: !_isGuest,
+                    options: _statusDowngradeOpts,
+                    value: _statusDowngrade,
+                    onChanged: (v) => _setValue(() => _statusDowngrade = v),
+                    accentColor: accent,
+                  ),
+                  const SizedBox(height: 14),
+                  GenOptionPickerLong(
+                    label: 'Reason Downgrade',
+                    required: !_isGuest,
+                    options: _reasonDowngradeOpts,
+                    value: _reasonDowngrade,
+                    onChanged: (v) => _setValue(() => _reasonDowngrade = v),
+                    accentColor: accent,
+                  ),
+                  const SizedBox(height: 14),
+                  GenOptionPicker(
+                    label: 'Flagging Downgrade',
+                    required: !_isGuest,
+                    options: _downgradeFlaggingOpts,
+                    value: _downgradeFlagging,
+                    onChanged: (v) => _setValue(() => _downgradeFlagging = v),
+                    accentColor: accent,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }

@@ -18,6 +18,7 @@
 //     Semua CP terisi      → Sampun (FC: 3 CP, SC: 5 CP)
 //     Sebagian terisi      → Dereng Jangkep
 //     Semua kosong         → Dereng Blas
+//     PSP/ASF              → Sampun jika CP5 terisi
 // ─────────────────────────────────────────────────────────
 
 import 'package:flutter/foundation.dart';
@@ -39,6 +40,7 @@ class FieldAuditStatus {
   final bool gen4Done;
   final bool gen5Done;
   final bool isSweetCorn;
+  final bool isPsp;
 
   const FieldAuditStatus({
     required this.vegetative,
@@ -51,13 +53,14 @@ class FieldAuditStatus {
     required this.gen4Done,
     required this.gen5Done,
     this.isSweetCorn = false,
+    this.isPsp = false,
   });
 
   bool get isCompletelyUnaudited =>
       vegetative == SingleAuditStatus.dereng &&
-          generative == GenerativeAuditStatus.derengBlas &&
-          preHarvest == SingleAuditStatus.dereng &&
-          harvest == SingleAuditStatus.dereng;
+      generative == GenerativeAuditStatus.derengBlas &&
+      preHarvest == SingleAuditStatus.dereng &&
+      harvest == SingleAuditStatus.dereng;
 
   bool isActivePhaseDone(int dap) {
     final hybrid = isSweetCorn ? 'AX01' : null;
@@ -84,6 +87,7 @@ class FieldAuditStatus {
   }
 
   bool _isGenerativeAuditDoneForDap(int dap) {
+    if (isPsp) return gen5Done;
     final hybrid = isSweetCorn ? 'AX01' : null;
     final phaseKey = DapHelper.getRecommendedPhase(dap, hybrid: hybrid);
 
@@ -95,9 +99,13 @@ class FieldAuditStatus {
       case 'generative_3':
         return gen3Done;
       case 'generative_4':
-        return isSweetCorn ? gen4Done : generative == GenerativeAuditStatus.sampun;
+        return isSweetCorn
+            ? gen4Done
+            : generative == GenerativeAuditStatus.sampun;
       case 'generative_5':
-        return isSweetCorn ? gen5Done : generative == GenerativeAuditStatus.sampun;
+        return isSweetCorn
+            ? gen5Done
+            : generative == GenerativeAuditStatus.sampun;
       default:
         return generative == GenerativeAuditStatus.sampun;
     }
@@ -111,7 +119,8 @@ class AuditStatusHelper {
   }
 
   // Ekstrak row pertama dari nested join Supabase (List<Map> atau Map)
-  static Map<String, dynamic>? _firstRow(Map<String, dynamic> raw, String tableKey) {
+  static Map<String, dynamic>? _firstRow(
+      Map<String, dynamic> raw, String tableKey) {
     final v = raw[tableKey];
     if (v == null) return null;
     if (v is Map<String, dynamic>) return v;
@@ -128,9 +137,15 @@ class AuditStatusHelper {
     return ['AX01', 'AX02', 'AX03', 'AX04'].contains(h);
   }
 
+  static bool _checkIsPsp(String? hybrid) {
+    final h = hybrid?.toUpperCase().trim() ?? '';
+    return h.startsWith('ASF');
+  }
+
   static FieldAuditStatus fromRaw(Map<String, dynamic> raw) {
     final String? hybrid = raw['hybrid']?.toString();
     final bool isSc = _checkIsSweetCorn(hybrid);
+    final bool isPsp = _checkIsPsp(hybrid);
 
     // ── 1. Vegetatif ──────────────────────────────────────
     final vegRow = _firstRow(raw, 'audit_vegetative');
@@ -146,9 +161,11 @@ class AuditStatusHelper {
     final gen4Done = _hasDate(genRow?['date_of_audit_4']);
     final gen5Done = _hasDate(genRow?['date_of_audit_5']);
 
-    final List<bool> relevantCps = isSc 
-        ? [gen1Done, gen2Done, gen3Done, gen4Done, gen5Done]
-        : [gen1Done, gen2Done, gen3Done];
+    final List<bool> relevantCps = isPsp
+        ? [gen5Done]
+        : (isSc
+            ? [gen1Done, gen2Done, gen3Done, gen4Done, gen5Done]
+            : [gen1Done, gen2Done, gen3Done]);
 
     final doneCount = relevantCps.where((v) => v).length;
     final totalNeeded = relevantCps.length;
@@ -178,13 +195,13 @@ class AuditStatusHelper {
       final fn = raw['field_number'] ?? '?';
       if (vegRow != null || genRow != null || prhRow != null || hvRow != null) {
         debugPrint(
-          '[AuditStatus] $fn (SC=$isSc) | '
-              'veg=${vegRow?['date_of_audit']}(${vegStatus.name}) | '
-              'genStatus=${genStatus.name} | '
-              'gen1=$gen1Done gen2=$gen2Done gen3=$gen3Done '
-              'gen4=$gen4Done gen5=$gen5Done | '
-              'prh=${prhRow?['audit_date']}(${prhStatus.name}) | '
-              'hv=${hvRow?['date_of_audit']}(${hvStatus.name})',
+          '[AuditStatus] $fn (SC=$isSc PSP=$isPsp) | '
+          'veg=${vegRow?['date_of_audit']}(${vegStatus.name}) | '
+          'genStatus=${genStatus.name} | '
+          'gen1=$gen1Done gen2=$gen2Done gen3=$gen3Done '
+          'gen4=$gen4Done gen5=$gen5Done | '
+          'prh=${prhRow?['audit_date']}(${prhStatus.name}) | '
+          'hv=${hvRow?['date_of_audit']}(${hvStatus.name})',
         );
       }
     }
@@ -200,6 +217,7 @@ class AuditStatusHelper {
       gen4Done: gen4Done,
       gen5Done: gen5Done,
       isSweetCorn: isSc,
+      isPsp: isPsp,
     );
   }
 }

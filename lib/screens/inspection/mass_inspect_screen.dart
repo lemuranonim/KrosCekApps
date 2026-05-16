@@ -679,7 +679,9 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
 
               rec.addAll({
                 'audit_date_user': DateFormat('yyyy-MM-dd').format(summaryDate),
-                'date_of_audit': completionDate == null ? null : dateStr,
+                'date_of_audit': completionDate == null
+                    ? null
+                    : DateFormat('yyyy-MM-dd').format(completionDate),
                 'audit_week': calcAuditWeek(summaryDate),
                 'qa_fi': _qaFiCtrl.text.trim(),
                 'qa_spv': _qaSpvCtrl.text.trim(),
