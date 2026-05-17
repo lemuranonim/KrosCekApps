@@ -467,6 +467,132 @@ class PspSection extends StatelessWidget {
   }
 }
 
+class PspRoguingAuditItem {
+  final String label;
+  final DateTime? date;
+  final Color color;
+  final IconData icon;
+
+  const PspRoguingAuditItem({
+    required this.label,
+    required this.date,
+    required this.color,
+    required this.icon,
+  });
+}
+
+class PspRoguingAuditSelector extends StatelessWidget {
+  final List<PspRoguingAuditItem> items;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  const PspRoguingAuditSelector({
+    super.key,
+    required this.items,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final surface = context.pspSurface;
+    final fill = context.pspFill;
+    final borderColor = context.pspBorder;
+    final subColor = context.pspSub;
+    final textColor = context.pspText;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: List.generate(items.length, (index) {
+          final item = items[index];
+          final selected = index == selectedIndex;
+          final dateText = item.date == null
+              ? 'Belum'
+              : DateFormat('dd MMM').format(item.date!);
+          final statusColor = item.date == null ? subColor : item.color;
+          return Padding(
+            padding: EdgeInsets.only(right: index == items.length - 1 ? 0 : 10),
+            child: InkWell(
+              onTap: () => onSelected(index),
+              borderRadius: BorderRadius.circular(12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                width: 124,
+                height: 62,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? item.color.withAlpha(isDark ? 48 : 24)
+                      : surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: selected ? item.color : borderColor,
+                    width: selected ? 1.5 : 1.0,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? item.color.withAlpha(isDark ? 70 : 38)
+                            : fill,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Icon(
+                        item.icon,
+                        color: selected ? item.color : subColor,
+                        size: 17,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AdvantaText.caption.copyWith(
+                              color: selected ? item.color : textColor,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            dateText,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AdvantaText.caption.copyWith(
+                              color: statusColor,
+                              fontSize: 10,
+                              fontWeight: item.date == null
+                                  ? FontWeight.w600
+                                  : FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────
 // DATE PICKER TILE — required date
 // ─────────────────────────────────────────────────────────

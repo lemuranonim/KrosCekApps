@@ -29,6 +29,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
   final _pldAreaCtrl = TextEditingController();
   final _remarksCtrl = TextEditingController();
   late final List<_PspGenRoguingDraft> _roguings;
+  int _selectedRoguingIndex = 0;
 
   bool _isSaving = false;
   bool _dataLoaded = false;
@@ -37,6 +38,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
 
   bool get _isGuest => GuestGuard.isGuest(_session);
   bool get _isPld => pspIsDiscardDecision(_recommendation);
+  _PspGenRoguingDraft get _selectedRoguing => _roguings[_selectedRoguingIndex];
 
   @override
   void initState() {
@@ -121,12 +123,19 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
   }
 
   bool _validateDates() {
-    final missing = _roguings
-        .where((roguing) => roguing.date == null)
-        .map((roguing) => roguing.number)
-        .toList();
-    if (missing.isNotEmpty) {
-      _snack('Tanggal Roguing ${missing.join(', ')} wajib diisi', err: true);
+    final activeRoguing = _selectedRoguing;
+    if (activeRoguing.date == null) {
+      _snack('Tanggal Roguing ${activeRoguing.number} wajib diisi', err: true);
+      return false;
+    }
+
+    final hasFinalData = _recommendation != null ||
+        _pldAreaCtrl.text.trim().isNotEmpty ||
+        _remarksCtrl.text.trim().isNotEmpty ||
+        _roguings[1].flagging != null;
+    if (hasFinalData && _roguings[1].date == null) {
+      _snack('Isi tanggal Roguing 6 untuk recommendation/flagging final',
+          err: true);
       return false;
     }
     return true;
@@ -144,10 +153,12 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
     try {
       final now = DateTime.now();
       final r6 = _roguings[1];
+      final completionDate = r6.date;
       final data = <String, dynamic>{
         'field_number': widget.fieldNumber,
-        'date_of_audit_5': _formatDate(r6.date),
-        'week_of_audit_5': calcAuditWeek(r6.date!),
+        'date_of_audit_5': _formatDate(completionDate),
+        'week_of_audit_5':
+            completionDate == null ? null : calcAuditWeek(completionDate),
         'qa_fi_5': _qaFiCtrl.text.trim(),
         'qa_spv': _qaSpvCtrl.text.trim(),
         'lsv_status_5': r6.lsv,
@@ -253,7 +264,14 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
     );
   }
 
+  Color _roguingColor(int number) =>
+      number == 6 ? AdvantaColors.error : const Color(0xFFFFCA28);
+
+  IconData _roguingIcon(int number) =>
+      number == 6 ? Icons.gavel_outlined : Icons.fact_check_outlined;
+
   Widget _buildBody(Map<String, dynamic> fieldData) {
+    final activeSaveLabel = 'ROGUING ${_selectedRoguing.number}';
     return Form(
       key: _formKey,
       child: Column(
@@ -273,9 +291,12 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
                   ],
                   _buildAuditInfo(),
                   const SizedBox(height: 12),
-                  _buildRoguingSection(_roguings[0], isFinal: false),
+                  _buildRoguingSelector(),
                   const SizedBox(height: 12),
-                  _buildRoguingSection(_roguings[1], isFinal: true),
+                  _buildRoguingSection(
+                    _selectedRoguing,
+                    isFinal: _selectedRoguing.number == 6,
+                  ),
                 ],
               ),
             ),
@@ -286,8 +307,8 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             saveLabel: _isGuest
                 ? 'READ-ONLY - TIDAK DAPAT MENYIMPAN'
                 : (_isPld
-                    ? 'SIMPAN GENERATIVE PSP - PLD'
-                    : 'SIMPAN GENERATIVE PSP'),
+                    ? 'SIMPAN $activeSaveLabel - PLD'
+                    : 'SIMPAN $activeSaveLabel'),
             onSave: _isGuest
                 ? () => GuestGuard.blockIfGuest(context, _session)
                 : _save,
@@ -323,6 +344,23 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
           accentColor: _kPspGen,
         ),
       ],
+    );
+  }
+
+  Widget _buildRoguingSelector() {
+    return PspRoguingAuditSelector(
+      selectedIndex: _selectedRoguingIndex,
+      onSelected: (index) => setState(() => _selectedRoguingIndex = index),
+      items: _roguings
+          .map(
+            (roguing) => PspRoguingAuditItem(
+              label: 'Roguing ${roguing.number}',
+              date: roguing.date,
+              color: _roguingColor(roguing.number),
+              icon: _roguingIcon(roguing.number),
+            ),
+          )
+          .toList(),
     );
   }
 

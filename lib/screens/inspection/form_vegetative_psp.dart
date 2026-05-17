@@ -43,6 +43,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   final _manualLatCtrl = TextEditingController();
   final _manualLngCtrl = TextEditingController();
   late final List<_PspRoguingDraft> _roguings;
+  int _selectedRoguingIndex = 0;
 
   bool _isSaving = false;
   bool _isCapturingGps = false;
@@ -64,6 +65,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
 
   bool get _isGuest => GuestGuard.isGuest(_session);
   bool get _isPld => pspIsDiscardDecision(_recommendation);
+  _PspRoguingDraft get _selectedRoguing => _roguings[_selectedRoguingIndex];
 
   @override
   void initState() {
@@ -542,16 +544,16 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   }
 
   bool _validateDates() {
-    if (_roguings.every((roguing) => roguing.date == null)) {
-      _snack('Minimal satu tanggal inspeksi roguing harus diisi', err: true);
+    final activeRoguing = _selectedRoguing;
+    if (activeRoguing.date == null) {
+      _snack('Tanggal Roguing ${activeRoguing.number} wajib diisi', err: true);
       return false;
     }
-    if (_roguings[3].date != null) return true;
 
     final hasLaterIncomplete = _recommendation != null ||
         _flagging != null ||
         _recommendationPldCtrl.text.trim().isNotEmpty;
-    if (hasLaterIncomplete) {
+    if (hasLaterIncomplete && _roguings[3].date == null) {
       _snack('Isi tanggal Roguing 4 untuk recommendation/flagging final',
           err: true);
       return false;
@@ -737,7 +739,30 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     );
   }
 
+  Color _roguingColor(int number) {
+    switch (number) {
+      case 1:
+        return const Color(0xFF26A69A);
+      case 4:
+        return AdvantaColors.error;
+      default:
+        return const Color(0xFFFFCA28);
+    }
+  }
+
+  IconData _roguingIcon(int number) {
+    switch (number) {
+      case 1:
+        return Icons.eco_outlined;
+      case 4:
+        return Icons.gavel_outlined;
+      default:
+        return Icons.fact_check_outlined;
+    }
+  }
+
   Widget _buildBody(Map<String, dynamic> fieldData) {
+    final activeSaveLabel = 'ROGUING ${_selectedRoguing.number}';
     return Form(
       key: _formKey,
       child: Column(
@@ -755,15 +780,11 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                     GuestGuard.banner(),
                     const SizedBox(height: 8),
                   ],
-                  _buildHeaderSection(),
+                  _buildHeaderSection(fieldData),
                   const SizedBox(height: 12),
-                  _buildRoguing1Section(fieldData),
+                  _buildRoguingSelector(),
                   const SizedBox(height: 12),
-                  _buildRoguingSection(_roguings[1]),
-                  const SizedBox(height: 12),
-                  _buildRoguingSection(_roguings[2]),
-                  const SizedBox(height: 12),
-                  _buildRoguing4Section(),
+                  _buildSelectedRoguingSection(),
                 ],
               ),
             ),
@@ -773,7 +794,9 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
             isDiscard: _isPld && !_isGuest,
             saveLabel: _isGuest
                 ? 'READ-ONLY - TIDAK DAPAT MENYIMPAN'
-                : (_isPld ? 'SIMPAN PSP - PLD' : 'SIMPAN PSP VEGETATIVE'),
+                : (_isPld
+                    ? 'SIMPAN $activeSaveLabel - PLD'
+                    : 'SIMPAN $activeSaveLabel'),
             onSave: _isGuest
                 ? () => GuestGuard.blockIfGuest(context, _session)
                 : _saveAudit,
@@ -783,7 +806,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     );
   }
 
-  Widget _buildHeaderSection() {
+  Widget _buildHeaderSection(Map<String, dynamic> fieldData) {
     return PspSection(
       title: 'Informasi Audit',
       icon: Icons.assignment_outlined,
@@ -808,21 +831,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           required: !_isGuest,
           accentColor: _kPspVeg,
         ),
-      ],
-    );
-  }
-
-  Widget _buildRoguing1Section(Map<String, dynamic> fieldData) {
-    final roguing = _roguings[0];
-    const color = Color(0xFF26A69A);
-    return PspSection(
-      title: 'Roguing 1',
-      icon: Icons.eco_outlined,
-      color: color,
-      children: [
-        _dateTile('Date Of Inspeksi Roguing 1', roguing),
         const SizedBox(height: 12),
-        _buildCorrectionTaggingWidget(fieldData, color),
+        _buildCorrectionTaggingWidget(fieldData, _kPspVeg),
         const SizedBox(height: 12),
         PspTextField(
           controller: _coRoguingCtrl,
@@ -830,7 +840,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           hint: 'Nama PIC co-roguing',
           required: !_isGuest,
           icon: Icons.group_outlined,
-          accentColor: color,
+          accentColor: _kPspVeg,
         ),
         const SizedBox(height: 12),
         PspDateTileNullable(
@@ -849,7 +859,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           keyboardType: TextInputType.number,
           icon: Icons.crop_landscape_outlined,
           required: !_isGuest,
-          accentColor: color,
+          accentColor: _kPspVeg,
         ),
         const SizedBox(height: 14),
         PspOptionPicker(
@@ -858,7 +868,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           value: _previousCrop,
           required: !_isGuest,
           onChanged: (v) => _setValue(() => _previousCrop = v),
-          accentColor: color,
+          accentColor: _kPspVeg,
         ),
         const SizedBox(height: 14),
         PspOptionPicker(
@@ -867,8 +877,49 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           value: _typeSeed,
           required: !_isGuest,
           onChanged: (v) => _setValue(() => _typeSeed = v),
-          accentColor: color,
+          accentColor: _kPspVeg,
         ),
+      ],
+    );
+  }
+
+  Widget _buildRoguingSelector() {
+    return PspRoguingAuditSelector(
+      selectedIndex: _selectedRoguingIndex,
+      onSelected: (index) => setState(() => _selectedRoguingIndex = index),
+      items: _roguings
+          .map(
+            (roguing) => PspRoguingAuditItem(
+              label: 'Roguing ${roguing.number}',
+              date: roguing.date,
+              color: _roguingColor(roguing.number),
+              icon: _roguingIcon(roguing.number),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Widget _buildSelectedRoguingSection() {
+    switch (_selectedRoguing.number) {
+      case 1:
+        return _buildRoguing1Section();
+      case 4:
+        return _buildRoguing4Section();
+      default:
+        return _buildRoguingSection(_selectedRoguing);
+    }
+  }
+
+  Widget _buildRoguing1Section() {
+    final roguing = _roguings[0];
+    const color = Color(0xFF26A69A);
+    return PspSection(
+      title: 'Roguing 1',
+      icon: Icons.eco_outlined,
+      color: color,
+      children: [
+        _dateTile('Date Of Inspeksi Roguing 1', roguing),
         const SizedBox(height: 14),
         _isolationFields(roguing, color),
         const SizedBox(height: 14),
