@@ -238,61 +238,89 @@ class _FieldDetailBottomSheetState
   String _fmt(dynamic v, {String fallback = '—'}) =>
       (v == null || v.toString().trim().isEmpty) ? fallback : v.toString();
 
-  bool _isPldDecisionValue(dynamic value) {
-    if (value == null) return false;
-    final normalized = value.toString().trim().toUpperCase();
+  String _normalizedAuditValue(dynamic value) {
+    if (value == null) return '';
+    return value.toString().trim().toUpperCase();
+  }
+
+  bool _isExplicitPldValue(dynamic value) {
+    final normalized = _normalizedAuditValue(value);
     if (normalized.isEmpty) return false;
-    return normalized == 'D' ||
-        normalized == 'G' ||
-        normalized.contains('PLD') ||
-        normalized.contains('DISCARD');
+    return normalized == 'PLD' || normalized.contains('PLD');
+  }
+
+  bool _isVegetativePldDecision(dynamic value) {
+    final normalized = _normalizedAuditValue(value);
+    if (normalized.isEmpty) return false;
+    return normalized == 'D' || _isExplicitPldValue(value);
+  }
+
+  bool _isVegetativePldAction(dynamic value) {
+    final normalized = _normalizedAuditValue(value);
+    if (normalized.isEmpty) return false;
+    return normalized == 'E' || normalized == 'F' || _isExplicitPldValue(value);
+  }
+
+  bool _isPldFlagging(dynamic value) => _isExplicitPldValue(value);
+
+  bool _isVegetativePldAudit(Map<String, dynamic>? audit) {
+    if (audit == null) return false;
+    return _isVegetativePldDecision(audit['decision']) ||
+        _isVegetativePldDecision(audit['final_decision']) ||
+        _isVegetativePldAction(audit['action_needed']) ||
+        _isPldFlagging(audit['flagging']);
+  }
+
+  bool _isGenerativePldAudit(Map<String, dynamic>? audit, int checkpoint) {
+    if (audit == null) return false;
+    return _isExplicitPldValue(audit['final_decision_$checkpoint']) ||
+        _isExplicitPldValue(audit['action_needed_$checkpoint']) ||
+        _isPldFlagging(audit['final_flagging_$checkpoint']) ||
+        _isPldFlagging(audit['flagging_$checkpoint']);
+  }
+
+  bool _isPreHarvestPldAudit(Map<String, dynamic>? audit) {
+    if (audit == null) return false;
+    return _isExplicitPldValue(audit['final_decision']) ||
+        _isPldFlagging(audit['flagging']) ||
+        _isPldFlagging(audit['final_flagging']);
+  }
+
+  bool _isHarvestPldAudit(Map<String, dynamic>? audit) {
+    if (audit == null) return false;
+    return _isExplicitPldValue(audit['final_decision']) ||
+        _isPldFlagging(audit['final_flagging']) ||
+        _isPldFlagging(audit['downgrade_flagging']);
+  }
+
+  bool _isMasterPldFlag(Map<String, dynamic> field) {
+    return _isPldFlagging(field['flagging_final']) ||
+        _isExplicitPldValue(field['final_decision']);
   }
 
   List<String> _pldAuditPhases() {
     final hits = <String>[];
 
-    void addIfPld(String phase, Iterable<dynamic> values) {
+    void addIfPld(String phase, bool isPld) {
       if (hits.contains(phase)) return;
-      if (values.any(_isPldDecisionValue)) hits.add(phase);
+      if (isPld) hits.add(phase);
     }
 
     final veg = _auditMap('audit_vegetative');
-    addIfPld('Vegetatif', [
-      veg?['decision'],
-      veg?['action_needed'],
-      veg?['flagging'],
-      veg?['pld_reason'],
-    ]);
+    addIfPld('Vegetatif', _isVegetativePldAudit(veg));
 
     final gen = _auditMap('audit_generative');
     for (var i = 1; i <= 5; i++) {
-      addIfPld('Generatif CP$i', [
-        gen?['final_decision_$i'],
-        gen?['action_needed_$i'],
-        gen?['final_flagging_$i'],
-        gen?['pld_reason_$i'],
-        gen?['discard_reason_$i'],
-      ]);
+      addIfPld('Generatif CP$i', _isGenerativePldAudit(gen, i));
     }
 
     final preHarvest = _auditMap('audit_pre_harvest');
-    addIfPld('Pre-Harvest', [
-      preHarvest?['final_decision'],
-      preHarvest?['discard_reason'],
-    ]);
+    addIfPld('Pre-Harvest', _isPreHarvestPldAudit(preHarvest));
 
     final harvest = _auditMap('audit_harvest');
-    addIfPld('Harvest', [
-      harvest?['final_decision'],
-      harvest?['final_flagging'],
-      harvest?['downgrade_flagging'],
-    ]);
+    addIfPld('Harvest', _isHarvestPldAudit(harvest));
 
-    addIfPld('Master', [
-      widget.field['flagging_final'],
-      widget.field['final_decision'],
-      widget.field['status'],
-    ]);
+    addIfPld('Master', _isMasterPldFlag(widget.field));
 
     return hits;
   }
@@ -934,7 +962,8 @@ class _FieldDetailBottomSheetState
       } else if (phaseKey == 'vegetative') {
         auditDate = auditData?['date_of_audit']?.toString();
         auditWeek = auditData?['audit_week']?.toString();
-        decision = auditData?['final_decision']?.toString() ??
+        decision = auditData?['decision']?.toString() ??
+            auditData?['final_decision']?.toString() ??
             auditData?['flagging']?.toString();
       } else if (phaseKey == 'pre_harvest') {
         auditDate = auditData?['audit_date']?.toString();
@@ -948,8 +977,15 @@ class _FieldDetailBottomSheetState
             auditData?['flagging']?.toString();
       }
 
-      final itemColor =
-          _isPldDecisionValue(decision) ? AdvantaColors.error : color;
+      final isPldPhase = switch (phaseKey) {
+        'vegetative' => _isVegetativePldAudit(auditData),
+        'pre_harvest' => _isPreHarvestPldAudit(auditData),
+        'harvest' => _isHarvestPldAudit(auditData),
+        _ when phaseKey.startsWith('generative_') =>
+          _isGenerativePldAudit(auditData, int.parse(phaseKey.split('_')[1])),
+        _ => false,
+      };
+      final itemColor = isPldPhase ? AdvantaColors.error : color;
 
       // Penentuan apakah fase sudah selesai
       final bool hasData;
@@ -1269,7 +1305,7 @@ class _PldAlertBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Status PLD/Discard terdeteksi: $phaseText$suffix',
+              'Status PLD terdeteksi: $phaseText$suffix',
               style: AdvantaText.caption.copyWith(
                 color: isDark ? const Color(0xFFFFCDD2) : AdvantaColors.error,
                 fontWeight: FontWeight.w700,
