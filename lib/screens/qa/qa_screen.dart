@@ -47,7 +47,7 @@ enum _WorkMode { single, mass }
 enum _AuditFilter {
   all, // Semua lahan
   sampun, // Sudah audit fase aktif
-  partial, // Dereng Jangkep (generatif sebagian)
+  partial, // Progress sebagian
   dereng, // Belum audit sama sekali (Dereng Blas)
 }
 
@@ -685,16 +685,23 @@ class _QAScreenState extends ConsumerState<QAScreen>
             if (auditStatus.isAuditDoneFor(phaseToCheck, projectedDap)) {
               return false;
             }
+            if (phaseToCheck == ActivePhaseView.vegetative &&
+                auditStatus.hasVegetativePartialProgress) {
+              return false;
+            }
             if (phaseToCheck == ActivePhaseView.generative &&
                 auditStatus.generative == GenerativeAuditStatus.derengJangkep) {
               return false;
             }
             break;
           case _AuditFilter.partial:
-            if (phaseToCheck != ActivePhaseView.generative) {
-              return false;
-            }
-            if (auditStatus.generative != GenerativeAuditStatus.derengJangkep) {
+            final hasVegetativeProgress =
+                phaseToCheck == ActivePhaseView.vegetative &&
+                    auditStatus.hasVegetativePartialProgress;
+            final hasGenerativeProgress = phaseToCheck ==
+                    ActivePhaseView.generative &&
+                auditStatus.generative == GenerativeAuditStatus.derengJangkep;
+            if (!hasVegetativeProgress && !hasGenerativeProgress) {
               return false;
             }
             break;
@@ -1037,7 +1044,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
         case _AuditFilter.sampun:
           return 'Sampun';
         case _AuditFilter.partial:
-          return 'Jangkep';
+          return 'Progress';
         case _AuditFilter.dereng:
           return 'Belum';
       }
@@ -3934,12 +3941,13 @@ class _AuditStatusSheet extends StatelessWidget {
         icon: Icons.check_circle_rounded,
         color: const Color(0xFF43A047)
       ),
-      // MUNCUL HANYA JIKA FASE = GENERATIF atau AUTO
+      // MUNCUL JIKA FASE BISA PUNYA PROGRESS PARSIAL
       if (activePhase == ActivePhaseView.generative ||
+          activePhase == ActivePhaseView.vegetative ||
           activePhase == ActivePhaseView.auto)
         (
           filter: _AuditFilter.partial,
-          label: 'Jangkep (Generatif Sebagian)',
+          label: 'Progress Sebagian',
           icon: Icons.timelapse_rounded,
           color: const Color(0xFFFFA726)
         ),

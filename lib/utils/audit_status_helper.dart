@@ -39,6 +39,8 @@ class FieldAuditStatus {
   final bool gen3Done;
   final bool gen4Done;
   final bool gen5Done;
+  final int pspVegetativeDoneCount;
+  final int pspVegetativeTotalCount;
   final bool isSweetCorn;
   final bool isPsp;
 
@@ -52,19 +54,52 @@ class FieldAuditStatus {
     required this.gen3Done,
     required this.gen4Done,
     required this.gen5Done,
+    this.pspVegetativeDoneCount = 0,
+    this.pspVegetativeTotalCount = 4,
     this.isSweetCorn = false,
     this.isPsp = false,
   });
 
+  String? get _dapHelperHybrid {
+    if (isPsp) return 'ASF';
+    if (isSweetCorn) return 'AX01';
+    return null;
+  }
+
+  int get vegetativeDoneCount => isPsp
+      ? pspVegetativeDoneCount
+      : (vegetative == SingleAuditStatus.sampun ? 1 : 0);
+
+  int get vegetativeTotalCount => isPsp ? pspVegetativeTotalCount : 1;
+
+  double get vegetativeProgressFraction {
+    final total = vegetativeTotalCount;
+    if (total <= 0) return 0;
+    return (vegetativeDoneCount / total).clamp(0.0, 1.0).toDouble();
+  }
+
+  int get vegetativeProgressPercent =>
+      (vegetativeProgressFraction * 100).round();
+
+  String get vegetativeProgressCountLabel =>
+      '$vegetativeDoneCount/$vegetativeTotalCount';
+
+  String get vegetativeProgressPercentLabel => '$vegetativeProgressPercent%';
+
+  bool get hasVegetativePartialProgress =>
+      isPsp &&
+      vegetative == SingleAuditStatus.dereng &&
+      pspVegetativeDoneCount > 0;
+
   bool get isCompletelyUnaudited =>
       vegetative == SingleAuditStatus.dereng &&
+      !hasVegetativePartialProgress &&
       generative == GenerativeAuditStatus.derengBlas &&
       preHarvest == SingleAuditStatus.dereng &&
       harvest == SingleAuditStatus.dereng;
 
   bool isActivePhaseDone(int dap) {
-    final hybrid = isSweetCorn ? 'AX01' : null;
-    final phase = DapHelper.getActivePhaseView(dap, hybrid: hybrid);
+    final phase = DapHelper.getActivePhaseView(dap, hybrid: _dapHelperHybrid);
     return isAuditDoneFor(phase, dap);
   }
 
@@ -88,8 +123,8 @@ class FieldAuditStatus {
 
   bool _isGenerativeAuditDoneForDap(int dap) {
     if (isPsp) return gen5Done;
-    final hybrid = isSweetCorn ? 'AX01' : null;
-    final phaseKey = DapHelper.getRecommendedPhase(dap, hybrid: hybrid);
+    final phaseKey =
+        DapHelper.getRecommendedPhase(dap, hybrid: _dapHelperHybrid);
 
     switch (phaseKey) {
       case 'generative_1':
@@ -142,6 +177,15 @@ class AuditStatusHelper {
     return h.startsWith('ASF');
   }
 
+  static int _pspVegetativeDoneCount(Map<String, dynamic>? row) {
+    if (row == null) return 0;
+    var count = 0;
+    for (var i = 1; i <= 4; i++) {
+      if (_hasDate(row['date_of_inspeksi_roguing_$i'])) count++;
+    }
+    return count;
+  }
+
   static FieldAuditStatus fromRaw(Map<String, dynamic> raw) {
     final String? hybrid = raw['hybrid']?.toString();
     final bool isSc = _checkIsSweetCorn(hybrid);
@@ -149,9 +193,16 @@ class AuditStatusHelper {
 
     // ── 1. Vegetatif ──────────────────────────────────────
     final vegRow = _firstRow(raw, 'audit_vegetative');
-    final vegStatus = _hasDate(vegRow?['date_of_audit'])
-        ? SingleAuditStatus.sampun
-        : SingleAuditStatus.dereng;
+    var pspVegDoneCount = isPsp ? _pspVegetativeDoneCount(vegRow) : 0;
+    final vegDone = isPsp
+        ? pspVegDoneCount >= 4 || _hasDate(vegRow?['date_of_audit'])
+        : _hasDate(vegRow?['date_of_audit']);
+    if (isPsp && vegDone && pspVegDoneCount < 4) {
+      pspVegDoneCount = 4;
+    }
+    if (pspVegDoneCount > 4) pspVegDoneCount = 4;
+    final vegStatus =
+        vegDone ? SingleAuditStatus.sampun : SingleAuditStatus.dereng;
 
     // ── 2. Generatif ──────────────────────────────────────
     final genRow = _firstRow(raw, 'audit_generative');
@@ -196,7 +247,8 @@ class AuditStatusHelper {
       if (vegRow != null || genRow != null || prhRow != null || hvRow != null) {
         debugPrint(
           '[AuditStatus] $fn (SC=$isSc PSP=$isPsp) | '
-          'veg=${vegRow?['date_of_audit']}(${vegStatus.name}) | '
+          'veg=${vegRow?['date_of_audit']}(${vegStatus.name}'
+          '${isPsp ? ' $pspVegDoneCount/4' : ''}) | '
           'genStatus=${genStatus.name} | '
           'gen1=$gen1Done gen2=$gen2Done gen3=$gen3Done '
           'gen4=$gen4Done gen5=$gen5Done | '
@@ -216,6 +268,8 @@ class AuditStatusHelper {
       gen3Done: gen3Done,
       gen4Done: gen4Done,
       gen5Done: gen5Done,
+      pspVegetativeDoneCount: pspVegDoneCount,
+      pspVegetativeTotalCount: 4,
       isSweetCorn: isSc,
       isPsp: isPsp,
     );

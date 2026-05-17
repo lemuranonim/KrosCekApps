@@ -47,8 +47,10 @@ class AuditProgressDots extends StatelessWidget {
         ? <_DotConfig>[
             _DotConfig(
               done: status.vegetative == SingleAuditStatus.sampun,
-              partial: false,
-              tooltip: 'Vegetatif PSP',
+              partial: status.hasVegetativePartialProgress,
+              tooltip: status.hasVegetativePartialProgress
+                  ? 'Vegetatif PSP ${status.vegetativeProgressCountLabel}'
+                  : 'Vegetatif PSP',
             ),
             _DotConfig(
               done: status.gen5Done,
@@ -111,6 +113,11 @@ class AuditProgressDots extends StatelessWidget {
       children: dots.asMap().entries.map((e) {
         final i = e.key;
         final dot = e.value;
+        final dotColor = dot.done
+            ? AuditStatusColors.sampun
+            : (dot.partial
+                ? AuditStatusColors.derengJangkep
+                : AuditStatusColors.dereng.withAlpha(120));
         return Padding(
           // Sedikit spasi lebih setelah Veg dan setelah Gen3
           padding: EdgeInsets.only(right: (i == 0 || i == 3) ? 5 : 3),
@@ -120,12 +127,10 @@ class AuditProgressDots extends StatelessWidget {
               width: 8,
               height: 8,
               decoration: BoxDecoration(
-                color: dot.done
-                    ? AuditStatusColors.sampun
-                    : AuditStatusColors.dereng.withAlpha(120),
+                color: dotColor,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: dot.done ? AuditStatusColors.sampun : Colors.white24,
+                  color: dot.done || dot.partial ? dotColor : Colors.white24,
                   width: 1,
                 ),
               ),
@@ -159,25 +164,38 @@ class AuditStatusBadge extends StatelessWidget {
 
   /// Ukuran kecil (untuk card) vs normal
   final bool small;
+  final String? progressLabel;
 
   const AuditStatusBadge.single({
     super.key,
     required this.singleStatus,
     this.small = true,
-  }) : genStatus = null;
+  })  : genStatus = null,
+        progressLabel = null;
 
   const AuditStatusBadge.generative({
     super.key,
     required this.genStatus,
     this.small = true,
-  }) : singleStatus = null;
+  })  : singleStatus = null,
+        progressLabel = null;
+
+  const AuditStatusBadge.progress({
+    super.key,
+    required this.progressLabel,
+    this.small = true,
+  })  : singleStatus = null,
+        genStatus = null;
 
   @override
   Widget build(BuildContext context) {
     final String label;
     final Color color;
 
-    if (singleStatus != null) {
+    if (progressLabel != null) {
+      label = progressLabel!;
+      color = AuditStatusColors.derengJangkep;
+    } else if (singleStatus != null) {
       if (singleStatus == SingleAuditStatus.sampun) {
         label = 'Sampun';
         color = AuditStatusColors.sampun;
@@ -259,6 +277,11 @@ class AuditStatusLeftBorder extends StatelessWidget {
 
     if (isDone) return AuditStatusColors.sampun;
 
+    if (phase == ActivePhaseView.vegetative &&
+        auditStatus.hasVegetativePartialProgress) {
+      return AuditStatusColors.derengJangkep;
+    }
+
     // Untuk Generative, kita beri warna oranye jika ada progress tapi belum jangkep
     if (phase == ActivePhaseView.generative &&
         auditStatus.generative == GenerativeAuditStatus.derengJangkep) {
@@ -271,7 +294,8 @@ class AuditStatusLeftBorder extends StatelessWidget {
   ActivePhaseView _dapToPhase(int d) {
     return DapHelper.getActivePhaseView(
       d,
-      hybrid: auditStatus.isSweetCorn ? 'AX01' : null,
+      hybrid:
+          auditStatus.isPsp ? 'ASF' : (auditStatus.isSweetCorn ? 'AX01' : null),
     );
   }
 
@@ -473,6 +497,11 @@ class MarkerAuditDot extends StatelessWidget {
 
     if (isDone) return _MarkerAuditState.sampun;
 
+    if (phase == ActivePhaseView.vegetative &&
+        auditStatus.hasVegetativePartialProgress) {
+      return _MarkerAuditState.derengJangkep;
+    }
+
     // Jika belum selesai, cek apakah ada progress sebagian (khusus generatif)
     if (phase == ActivePhaseView.generative &&
         auditStatus.generative == GenerativeAuditStatus.derengJangkep) {
@@ -485,7 +514,8 @@ class MarkerAuditDot extends StatelessWidget {
   ActivePhaseView _dapToPhase(int d) {
     return DapHelper.getActivePhaseView(
       d,
-      hybrid: auditStatus.isSweetCorn ? 'AX01' : null,
+      hybrid:
+          auditStatus.isPsp ? 'ASF' : (auditStatus.isSweetCorn ? 'AX01' : null),
     );
   }
 
@@ -504,6 +534,16 @@ class MarkerAuditDot extends StatelessWidget {
   }
 
   int get _genTotalCount => auditStatus.isSweetCorn ? 5 : 3;
+
+  String get _partialProgressLabel {
+    final phase =
+        activePhase == ActivePhaseView.auto ? _dapToPhase(dap) : activePhase;
+    if (phase == ActivePhaseView.vegetative &&
+        auditStatus.hasVegetativePartialProgress) {
+      return auditStatus.vegetativeProgressCountLabel;
+    }
+    return '$_genDoneCount/$_genTotalCount';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -527,7 +567,6 @@ class MarkerAuditDot extends StatelessWidget {
     }
 
     if (state == _MarkerAuditState.derengJangkep) {
-      final done = _genDoneCount;
       return Container(
         width: 16,
         height: 16,
@@ -543,7 +582,7 @@ class MarkerAuditDot extends StatelessWidget {
         ),
         child: Center(
           child: Text(
-            '$done/$_genTotalCount',
+            _partialProgressLabel,
             style: const TextStyle(
               fontSize: 6,
               fontWeight: FontWeight.w900,

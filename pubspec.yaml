@@ -2,7 +2,7 @@ name: kroscek
 description: "Crop Inspection and Check Result"
 publish_to: 'none'
 
-version: 4.4.1+136
+version: 4.4.2+137
 
 environment:
   sdk: '>=3.5.4 <4.0.0'
@@ -149,6 +149,7 @@ flutter:
 
   assets:
     - assets/logo.png
+    - assets/advanta-logo.png
     - assets/icon.png
     - assets/icon_foreground.png
     - assets/login_background.png

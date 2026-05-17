@@ -17,6 +17,7 @@ import '../providers/master_fields_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/audit_status_helper.dart';
 import '../utils/active_phase_filter.dart';
+import '../utils/dap_helper.dart';
 import 'audit_status_widgets.dart';
 
 class FieldListView extends StatefulWidget {
@@ -448,13 +449,18 @@ class _FieldListViewState extends State<FieldListView> {
   /// Badge status fase aktif sesuai pilihan user (dari widget.activePhase)
   Widget _buildActivePhaseBadge(FieldAuditStatus auditStatus, int dap) {
     final phase = widget.activePhase;
-    final resolvedPhase = phase == ActivePhaseView.auto
-        ? _dapToPhase(dap, auditStatus.isSweetCorn)
-        : phase;
+    final resolvedPhase =
+        phase == ActivePhaseView.auto ? _dapToPhase(dap, auditStatus) : phase;
 
     if (resolvedPhase == ActivePhaseView.generative) {
       return AuditStatusBadge.generative(
         genStatus: auditStatus.generative,
+        small: true,
+      );
+    } else if (resolvedPhase == ActivePhaseView.vegetative &&
+        auditStatus.hasVegetativePartialProgress) {
+      return AuditStatusBadge.progress(
+        progressLabel: auditStatus.vegetativeProgressPercentLabel,
         small: true,
       );
     } else {
@@ -463,19 +469,11 @@ class _FieldListViewState extends State<FieldListView> {
     }
   }
 
-  ActivePhaseView _dapToPhase(int dap, bool isSc) {
-    if (!isSc) {
-      if (dap < 50) return ActivePhaseView.vegetative;
-      if (dap <= 70) return ActivePhaseView.generative;
-      if (dap <= 94) return ActivePhaseView.preHarvest;
-      return ActivePhaseView.harvest;
-    }
-
-    if (dap <= 35) return ActivePhaseView.vegetative;
-    final int generativeEnd = 80;
-    if (dap <= generativeEnd) return ActivePhaseView.generative;
-    if (dap <= 90) return ActivePhaseView.preHarvest;
-    return ActivePhaseView.harvest;
+  ActivePhaseView _dapToPhase(int dap, FieldAuditStatus status) {
+    return DapHelper.getActivePhaseView(
+      dap,
+      hybrid: status.isPsp ? 'ASF' : (status.isSweetCorn ? 'AX01' : null),
+    );
   }
 
   SingleAuditStatus? _getSingleStatus(

@@ -124,8 +124,11 @@ class FieldCoverageStatus {
   final double effectiveAreaHa;
   final int dap;
   final bool isSweetCorn;
+  final bool isPsp;
 
   final bool vegetativeDone;
+  final int vegetativeAuditDoneCount;
+  final int vegetativeAuditTotalCount;
   final bool gen1Done;
   final bool gen2Done;
   final bool gen3Done;
@@ -163,7 +166,10 @@ class FieldCoverageStatus {
     required this.effectiveAreaHa,
     required this.dap,
     required this.isSweetCorn,
+    required this.isPsp,
     required this.vegetativeDone,
+    required this.vegetativeAuditDoneCount,
+    required this.vegetativeAuditTotalCount,
     required this.gen1Done,
     required this.gen2Done,
     required this.gen3Done,
@@ -229,6 +235,9 @@ class FieldCoverageStatus {
   int get completedTargetPhaseCount =>
       duePhaseKeys.where(_isPhaseComplete).length;
 
+  double get completedTargetPhaseWeight => duePhaseKeys.fold(
+      0.0, (sum, phase) => sum + _phaseCompletionWeight(phase));
+
   int get overdueTargetCount => overduePhaseKeys.length;
 
   /// Jumlah fase yang sudah selesai dari seluruh rule audit field.
@@ -243,7 +252,20 @@ class FieldCoverageStatus {
   /// Coverage score 0-100 berdasarkan fase yang sudah On Going / Overdue.
   double get coverageScore {
     if (targetPhaseCount == 0) return 100.0;
-    return (completedTargetPhaseCount / targetPhaseCount) * 100;
+    return (completedTargetPhaseWeight / targetPhaseCount) * 100;
+  }
+
+  double get vegetativeCompletionFraction {
+    if (!isPsp) return vegetativeDone ? 1.0 : 0.0;
+    if (vegetativeAuditTotalCount <= 0) return 0.0;
+    return (vegetativeAuditDoneCount / vegetativeAuditTotalCount)
+        .clamp(0.0, 1.0)
+        .toDouble();
+  }
+
+  double _phaseCompletionWeight(String phase) {
+    if (phase == 'vegetative') return vegetativeCompletionFraction;
+    return _isPhaseComplete(phase) ? 1.0 : 0.0;
   }
 
   bool _isPhaseComplete(String phase) {
@@ -411,7 +433,10 @@ class FieldCoverageStatus {
       effectiveAreaHa: effectiveArea,
       dap: dap,
       isSweetCorn: isSc,
+      isPsp: DapHelper.isPsp(hybrid),
       vegetativeDone: auditStatus.vegetative == SingleAuditStatus.sampun,
+      vegetativeAuditDoneCount: auditStatus.vegetativeDoneCount,
+      vegetativeAuditTotalCount: auditStatus.vegetativeTotalCount,
       gen1Done: auditStatus.gen1Done,
       gen2Done: auditStatus.gen2Done,
       gen3Done: auditStatus.gen3Done,
@@ -485,8 +510,10 @@ class FICoverage {
     final totalTargets = fields.fold(0, (s, f) => s + f.targetPhaseCount);
     final completedTargets =
         fields.fold(0, (s, f) => s + f.completedTargetPhaseCount);
+    final completedTargetWeight =
+        fields.fold(0.0, (s, f) => s + f.completedTargetPhaseWeight);
     final avgScore = totalTargets > 0
-        ? (completedTargets / totalTargets) * 100
+        ? (completedTargetWeight / totalTargets) * 100
         : fields.isEmpty
             ? 0.0
             : 100.0;
@@ -737,7 +764,8 @@ double aggregateCoverageScore(List<FieldCoverageStatus> fields) {
   if (fields.isEmpty) return 0;
   final totalTargets = fields.fold(0, (s, f) => s + f.targetPhaseCount);
   if (totalTargets == 0) return 100;
-  final completed = fields.fold(0, (s, f) => s + f.completedTargetPhaseCount);
+  final completed =
+      fields.fold(0.0, (s, f) => s + f.completedTargetPhaseWeight);
   return (completed / totalTargets) * 100;
 }
 
@@ -4517,7 +4545,13 @@ class _FieldMiniRow extends StatelessWidget {
                   ]),
             ),
             Row(children: [
-              _PhaseDot(done: field.vegetativeDone, label: 'V'),
+              _PhaseDot(
+                done: field.vegetativeDone,
+                partial: field.isPsp &&
+                    !field.vegetativeDone &&
+                    field.vegetativeAuditDoneCount > 0,
+                label: 'V',
+              ),
               _PhaseDot(done: field.anyGenerativeDone, label: 'G'),
               _PhaseDot(done: field.preHarvestDone, label: 'P'),
               _PhaseDot(done: field.harvestDone, label: 'H')
@@ -4539,22 +4573,39 @@ class _FieldMiniRow extends StatelessWidget {
 
 class _PhaseDot extends StatelessWidget {
   final bool done;
+  final bool partial;
   final String label;
-  const _PhaseDot({required this.done, required this.label});
+  const _PhaseDot({
+    required this.done,
+    required this.label,
+    this.partial = false,
+  });
+
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) {
+    final color = done
+        ? AdvantaColors.success
+        : (partial ? const Color(0xFFFFA726) : Colors.grey[200]);
+    return Container(
       margin: const EdgeInsets.only(right: 3),
       width: 18,
       height: 18,
       decoration: BoxDecoration(
-          color: done ? AdvantaColors.success : Colors.grey[200],
-          borderRadius: BorderRadius.circular(6)),
+        color: color,
+        borderRadius: BorderRadius.circular(6),
+      ),
       child: Center(
-          child: Text(label,
-              style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w800,
-                  color: done ? Colors.white : Colors.grey[400]))));
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w800,
+            color: done || partial ? Colors.white : Colors.grey[400],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ============================================================

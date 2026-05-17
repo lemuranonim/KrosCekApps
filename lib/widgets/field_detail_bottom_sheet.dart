@@ -258,7 +258,7 @@ class _FieldDetailBottomSheetState
   bool _isVegetativePldAction(dynamic value) {
     final normalized = _normalizedAuditValue(value);
     if (normalized.isEmpty) return false;
-    return normalized == 'E' || normalized == 'F' || _isExplicitPldValue(value);
+    return normalized == 'F' || _isExplicitPldValue(value);
   }
 
   bool _isPldFlagging(dynamic value) => _isExplicitPldValue(value);
@@ -985,7 +985,11 @@ class _FieldDetailBottomSheetState
           _isGenerativePldAudit(auditData, int.parse(phaseKey.split('_')[1])),
         _ => false,
       };
-      final itemColor = isPldPhase ? AdvantaColors.error : color;
+      final hasVegetativeProgress =
+          phaseKey == 'vegetative' && auditStatus.hasVegetativePartialProgress;
+      final itemColor = isPldPhase
+          ? AdvantaColors.error
+          : (hasVegetativeProgress ? const Color(0xFFFFA726) : color);
 
       // Penentuan apakah fase sudah selesai
       final bool hasData;
@@ -1016,6 +1020,14 @@ class _FieldDetailBottomSheetState
       }
 
       final hasDate = auditDate != null && auditDate.trim().isNotEmpty;
+      final progressLabel = hasVegetativeProgress
+          ? auditStatus.vegetativeProgressPercentLabel
+          : null;
+      final progressDetail = hasVegetativeProgress
+          ? 'Roguing ${auditStatus.vegetativeProgressCountLabel} selesai'
+          : null;
+      final progressFraction =
+          hasVegetativeProgress ? auditStatus.vegetativeProgressFraction : 0.0;
 
       widgets.add(
         _PhaseTimelineItem(
@@ -1028,6 +1040,9 @@ class _FieldDetailBottomSheetState
           auditDate: hasDate ? auditDate : null,
           auditWeek: auditWeek,
           decision: decision,
+          progressLabel: progressLabel,
+          progressDetail: progressDetail,
+          progressFraction: progressFraction,
           isLast: isLast,
           dap: dap,
           theme: theme,
@@ -1625,6 +1640,9 @@ class _PhaseTimelineItem extends StatelessWidget {
   final String? auditDate;
   final String? auditWeek;
   final String? decision;
+  final String? progressLabel;
+  final String? progressDetail;
+  final double progressFraction;
   final bool isLast;
   final int dap;
   final ThemeData theme;
@@ -1640,6 +1658,9 @@ class _PhaseTimelineItem extends StatelessWidget {
     required this.auditDate,
     required this.auditWeek,
     required this.decision,
+    required this.progressLabel,
+    required this.progressDetail,
+    required this.progressFraction,
     required this.isLast,
     required this.dap,
     required this.theme,
@@ -1649,6 +1670,9 @@ class _PhaseTimelineItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final borderColor = isDark ? Colors.white12 : Colors.black12;
+    final hasProgress = progressLabel != null;
+    final activeColor =
+        hasData || hasProgress ? color : AdvantaColors.mutedGrey;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1661,15 +1685,15 @@ class _PhaseTimelineItem extends StatelessWidget {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: hasData
+                  color: hasData || hasProgress
                       ? color.withAlpha(46)
                       : (isDark ? Colors.white10 : Colors.black12),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: hasData ? color : borderColor,
-                    width: hasData ? 2.0 : 1.0,
+                    color: hasData || hasProgress ? color : borderColor,
+                    width: hasData || hasProgress ? 2.0 : 1.0,
                   ),
-                  boxShadow: hasData
+                  boxShadow: hasData || hasProgress
                       ? [BoxShadow(color: color.withAlpha(76), blurRadius: 8)]
                       : null,
                 ),
@@ -1677,10 +1701,10 @@ class _PhaseTimelineItem extends StatelessWidget {
                   child: PhaseAssetIcon(
                     phaseKey: phaseKey,
                     fallbackIcon: icon,
-                    fallbackColor: hasData ? color : AdvantaColors.mutedGrey,
+                    fallbackColor: activeColor,
                     size: 24,
                     completed: hasData,
-                    opacity: hasData ? 1 : 0.42,
+                    opacity: hasData || hasProgress ? 1 : 0.42,
                   ),
                 ),
               ),
@@ -1690,7 +1714,9 @@ class _PhaseTimelineItem extends StatelessWidget {
                   height: 52,
                   margin: const EdgeInsets.symmetric(vertical: 3),
                   decoration: BoxDecoration(
-                    color: hasData ? color.withAlpha(90) : borderColor,
+                    color: hasData || hasProgress
+                        ? color.withAlpha(90)
+                        : borderColor,
                     borderRadius: BorderRadius.circular(1),
                   ),
                 ),
@@ -1706,12 +1732,16 @@ class _PhaseTimelineItem extends StatelessWidget {
               decoration: BoxDecoration(
                 color: hasData
                     ? color.withAlpha(15)
-                    : (isDark
-                        ? Colors.white.withAlpha(5)
-                        : AdvantaColors.softGrey),
+                    : hasProgress
+                        ? color.withAlpha(10)
+                        : (isDark
+                            ? Colors.white.withAlpha(5)
+                            : AdvantaColors.softGrey),
                 borderRadius: AdvantaRadius.cardRadius,
                 border: Border.all(
-                  color: hasData ? color.withAlpha(64) : borderColor,
+                  color: hasData || hasProgress
+                      ? color.withAlpha(64)
+                      : borderColor,
                 ),
               ),
               child: Column(
@@ -1722,7 +1752,7 @@ class _PhaseTimelineItem extends StatelessWidget {
                       Text(
                         label,
                         style: AdvantaText.label.copyWith(
-                          color: hasData
+                          color: hasData || hasProgress
                               ? theme.colorScheme.onSurface
                               : AdvantaColors.mutedGrey,
                           fontWeight: FontWeight.w700,
@@ -1739,6 +1769,23 @@ class _PhaseTimelineItem extends StatelessWidget {
                           ),
                           child: Text(
                             'SELESAI',
+                            style: AdvantaText.caption.copyWith(
+                              color: color,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        )
+                      else if (hasProgress)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: color.withAlpha(38),
+                            borderRadius: AdvantaRadius.chipRadius,
+                          ),
+                          child: Text(
+                            progressLabel!,
                             style: AdvantaText.caption.copyWith(
                               color: color,
                               fontWeight: FontWeight.w800,
@@ -1799,10 +1846,37 @@ class _PhaseTimelineItem extends StatelessWidget {
                       ),
                     ],
                   ],
+                  if (hasProgress) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: progressFraction.clamp(0.0, 1.0).toDouble(),
+                        minHeight: 5,
+                        backgroundColor:
+                            isDark ? Colors.white12 : Colors.black12,
+                        valueColor: AlwaysStoppedAnimation<Color>(color),
+                      ),
+                    ),
+                    if (progressDetail != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        progressDetail!,
+                        style: AdvantaText.caption.copyWith(
+                          color: isDark
+                              ? color.withAlpha(204)
+                              : color.withAlpha(220),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ],
                   if (!hasData) ...[
                     const SizedBox(height: 4),
                     Text(
-                      'Belum ada data inspeksi',
+                      hasProgress
+                          ? 'Audit PSP vegetative masih berjalan'
+                          : 'Belum ada data inspeksi',
                       style: AdvantaText.caption
                           .copyWith(color: AdvantaColors.mutedGrey),
                     ),

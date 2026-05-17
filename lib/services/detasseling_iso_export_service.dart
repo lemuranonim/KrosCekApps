@@ -1,8 +1,8 @@
 import 'dart:io' as io;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:open_file/open_file.dart';
@@ -26,6 +26,7 @@ class DetasselingIsoFormData {
 }
 
 class DetasselingIsoExportService {
+  static const _advantaLogoAsset = 'assets/advanta-logo.png';
   static const _green = Color(0xFF004822);
   static const _line = Color(0xFF8E9892);
   static const _ink = Color(0xFF101915);
@@ -62,7 +63,7 @@ class DetasselingIsoExportService {
 
   static Future<Uint8List> buildPng(DetasselingIsoFormData data) async {
     const width = 1800.0;
-    const height = 1180.0;
+    const height = 1280.0;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
@@ -76,11 +77,12 @@ class DetasselingIsoExportService {
     final passCount = f.isSweetCorn ? 5 : 3;
     final planDates = _planDates(f.plantingDate, passCount);
     final actualDates = _actualDates(data, passCount);
+    final advantaLogo = await _loadUiImage(_advantaLogoAsset);
 
-    _drawHeader(canvas, f);
+    _drawHeader(canvas, advantaLogo);
     _drawFieldInfo(canvas, f);
     _drawPlanSchedule(canvas, f, planDates, actualDates);
-    _drawLaborBox(canvas, f.isSweetCorn);
+    _drawLaborBox(canvas, f);
     _drawFnSchedule(canvas, f, planDates, actualDates, data.passNumber);
     _drawInspectionSummary(canvas, f);
     _drawFlaggingLegend(canvas);
@@ -93,24 +95,32 @@ class DetasselingIsoExportService {
     return byteData!.buffer.asUint8List();
   }
 
-  static void _drawHeader(Canvas canvas, _FieldSnapshot f) {
-    _text(
-      canvas,
-      'KROSCEK',
-      const Offset(78, 36),
-      size: 31,
-      weight: FontWeight.w800,
-      color: _green,
-    );
-    _text(
-      canvas,
-      'TRUST - VERIFY - IMPROVE',
-      const Offset(80, 77),
-      size: 12,
-      weight: FontWeight.w600,
-      color: _green,
-    );
-    _drawLeafLogo(canvas, const Offset(34, 26));
+  static void _drawHeader(Canvas canvas, ui.Image? advantaLogo) {
+    if (advantaLogo != null) {
+      _drawImageContain(
+        canvas,
+        advantaLogo,
+        const Rect.fromLTWH(22, 24, 282, 58),
+      );
+    } else {
+      _text(
+        canvas,
+        'KROSCEK',
+        const Offset(78, 36),
+        size: 31,
+        weight: FontWeight.w800,
+        color: _green,
+      );
+      _text(
+        canvas,
+        'TRUST - VERIFY - IMPROVE',
+        const Offset(80, 77),
+        size: 12,
+        weight: FontWeight.w600,
+        color: _green,
+      );
+      _drawLeafLogo(canvas, const Offset(34, 26));
+    }
     _text(
       canvas,
       'QUALITY PROCESS: DETASSELLING (PLAN VS ACTUAL & INSPECTION OUTPUT)',
@@ -274,8 +284,13 @@ class DetasselingIsoExportService {
     );
   }
 
-  static void _drawLaborBox(Canvas canvas, bool isSweetCorn) {
+  static void _drawLaborBox(Canvas canvas, _FieldSnapshot f) {
     const rect = Rect.fromLTWH(1514, 122, 268, 372);
+    final passCount = f.isSweetCorn ? 5 : 3;
+    final passTkdPerHa =
+        f.isSweetCorn ? const [4, 4, 4, 4, 4] : const [5, 5, 5];
+    final ruleLabel =
+        f.isSweetCorn ? 'SC 20 TKD/Ha: 4-4-4-4-4' : 'FC 15 TKD/Ha: 5-5-5';
     _drawBorder(canvas, rect, _line, 1);
     _textCentered(
       canvas,
@@ -295,23 +310,33 @@ class DetasselingIsoExportService {
     _drawGridLine(canvas, const Offset(1514, 230), const Offset(1782, 230));
     _textCentered(
       canvas,
-      'Akumulasi jumlah TK detasselling\nper petak-hari',
+      'Akumulasi jumlah TKD\nper petak-hari',
       const Rect.fromLTWH(1530, 249, 236, 46),
       size: 16,
       weight: FontWeight.w800,
     );
+    _textCentered(
+      canvas,
+      ruleLabel,
+      const Rect.fromLTWH(1530, 294, 236, 18),
+      size: 12.5,
+      weight: FontWeight.w800,
+      color: _green,
+    );
 
-    final values = isSweetCorn
-        ? const ['6', '6', '3', '3', '3']
-        : const ['6', '6', '3', '-', '-'];
-    var y = 320.0;
+    final allocatedTkd = _allocateTkdByPass(f.totalAreaHa, passTkdPerHa);
+    final values = List<String>.generate(5, (index) {
+      if (index >= passCount) return '-';
+      return '${allocatedTkd[index]} TKD';
+    });
+    var y = 326.0;
     for (var i = 0; i < 5; i++) {
       _text(canvas, 'Pass ${i + 1}', Offset(1536, y),
-          size: 17, weight: FontWeight.w600);
-      _text(canvas, ':', Offset(1666, y), size: 17, weight: FontWeight.w700);
+          size: 16.5, weight: FontWeight.w600);
+      _text(canvas, ':', Offset(1666, y), size: 16.5, weight: FontWeight.w700);
       _text(canvas, values[i], Offset(1704, y),
-          size: 17, weight: FontWeight.w800);
-      y += 38;
+          size: 16.5, weight: FontWeight.w900);
+      y += 34;
     }
   }
 
@@ -437,9 +462,9 @@ class DetasselingIsoExportService {
 
   static void _drawInspectionSummary(Canvas canvas, _FieldSnapshot f) {
     const left = 18.0;
-    const top = 724.0;
+    const top = 722.0;
     const width = 1764.0;
-    const height = 210.0;
+    const height = 252.0;
     _drawBorder(
         canvas, const Rect.fromLTWH(left, top, width, height), _line, 1);
     _drawSectionTitle(
@@ -457,15 +482,15 @@ class DetasselingIsoExportService {
     final metaW = width / 4;
     for (var i = 0; i < meta.length; i++) {
       final rect =
-          Rect.fromLTWH(left + 18 + (metaW - 9) * i, top + 48, metaW - 28, 45);
+          Rect.fromLTWH(left + 18 + (metaW - 9) * i, top + 48, metaW - 28, 50);
       _drawBorder(canvas, rect, _line, 1);
       _text(canvas, meta[i].$1, Offset(rect.left + 16, rect.top + 14),
-          size: 14, weight: FontWeight.w800);
+          size: 13, weight: FontWeight.w800);
       _textCentered(
         canvas,
         meta[i].$2,
-        Rect.fromLTWH(rect.left + 160, rect.top + 13, rect.width - 172, 20),
-        size: 16,
+        Rect.fromLTWH(rect.left + 154, rect.top + 12, rect.width - 166, 24),
+        size: 15,
         weight: FontWeight.w800,
       );
     }
@@ -486,8 +511,8 @@ class DetasselingIsoExportService {
       ('Flagging', _dash(f.flagging)),
     ];
 
-    _drawSummaryRow(canvas, firstRow, top + 104, 6);
-    _drawSummaryRow(canvas, secondRow, top + 166, 5);
+    _drawSummaryRow(canvas, firstRow, top + 116, 6);
+    _drawSummaryRow(canvas, secondRow, top + 184, 5);
   }
 
   static void _drawSummaryRow(
@@ -500,20 +525,47 @@ class DetasselingIsoExportService {
     const totalW = 1720.0;
     final cellW = totalW / count;
     for (var i = 0; i < items.length; i++) {
-      final rect = Rect.fromLTWH(left + cellW * i, top, cellW, 48);
+      final rect = Rect.fromLTWH(left + cellW * i, top, cellW, 56);
+      final isFlagging = items[i].$1 == 'Flagging';
+      if (isFlagging) {
+        final flagColor = _flaggingColor(items[i].$2);
+        _drawFilledRect(canvas, rect, flagColor.withAlpha(24));
+        _drawBorder(canvas, rect, flagColor, 2);
+        _textCentered(
+          canvas,
+          items[i].$1.toUpperCase(),
+          Rect.fromLTWH(rect.left + 6, rect.top + 7, rect.width - 12, 15),
+          size: 12,
+          weight: FontWeight.w900,
+          color: flagColor,
+        );
+        _drawFlagIcon(canvas, Offset(rect.left + 72, rect.top + 23), flagColor);
+        final badge = Rect.fromLTWH(rect.left + 118, rect.top + 22, 108, 28);
+        _drawRoundedFill(canvas, badge, flagColor, 6);
+        _textCentered(
+          canvas,
+          items[i].$2,
+          badge.deflate(4),
+          size: 19,
+          weight: FontWeight.w900,
+          color: _flaggingTextColor(items[i].$2),
+        );
+        continue;
+      }
+
       _drawBorder(canvas, rect, _line, 1);
       _textCentered(
         canvas,
         items[i].$1,
-        Rect.fromLTWH(rect.left + 4, rect.top + 7, rect.width - 8, 16),
-        size: 13,
+        Rect.fromLTWH(rect.left + 6, rect.top + 8, rect.width - 12, 17),
+        size: 12.5,
         weight: FontWeight.w800,
       );
       _textCentered(
         canvas,
         items[i].$2,
-        Rect.fromLTWH(rect.left + 4, rect.top + 25, rect.width - 8, 18),
-        size: 17,
+        Rect.fromLTWH(rect.left + 6, rect.top + 30, rect.width - 12, 18),
+        size: 15.5,
         weight: FontWeight.w900,
         color: _green,
       );
@@ -521,51 +573,50 @@ class DetasselingIsoExportService {
   }
 
   static void _drawFlaggingLegend(Canvas canvas) {
-    const rect = Rect.fromLTWH(40, 950, 1720, 54);
+    const rect = Rect.fromLTWH(40, 990, 1720, 62);
     _drawBorder(canvas, rect, _line, 1);
     _textCentered(
       canvas,
       'FLAGGING LEGEND',
-      const Rect.fromLTWH(40, 955, 1720, 18),
+      const Rect.fromLTWH(40, 996, 1720, 16),
       size: 13,
       weight: FontWeight.w900,
     );
     final items = [
-      ('⚑', 'GF', 'Green Flag', const Color(0xFF2E7D32)),
-      ('⚑', 'RFI', 'Red Flag Isolation', const Color(0xFFE53935)),
-      ('⚑', 'RFD', 'Red Flag Detasseling', const Color(0xFFE53935)),
-      ('⚑', 'BF', 'Black Flag', Colors.black),
-      ('⚑', 'PLD', 'Discard area', const Color(0xFFF5C400)),
+      ('GF', 'Green Flag', const Color(0xFF2E7D32)),
+      ('RFI', 'Red Flag Isolation', const Color(0xFFE53935)),
+      ('RFD', 'Red Flag Detasseling', const Color(0xFFE53935)),
+      ('BF', 'Black Flag', Colors.black),
+      ('PLD', 'Discard area', const Color(0xFFF5C400)),
     ];
     var x = 58.0;
     for (final item in items) {
-      _text(canvas, item.$1, Offset(x, 978),
-          size: 25, weight: FontWeight.w900, color: item.$4);
+      _drawFlagIcon(canvas, Offset(x, 1020), item.$3);
       _drawFilledRect(
         canvas,
-        Rect.fromLTWH(x + 44, 977, 50, 28),
-        item.$4 == const Color(0xFFF5C400) ? const Color(0xFFFFEB3B) : item.$4,
+        Rect.fromLTWH(x + 44, 1018, 50, 28),
+        item.$3 == const Color(0xFFF5C400) ? const Color(0xFFFFEB3B) : item.$3,
       );
       _textCentered(
         canvas,
-        item.$2,
-        Rect.fromLTWH(x + 44, 982, 50, 15),
+        item.$1,
+        Rect.fromLTWH(x + 44, 1023, 50, 15),
         size: 13,
         weight: FontWeight.w900,
-        color: item.$2 == 'PLD' ? Colors.black : Colors.white,
+        color: item.$1 == 'PLD' ? Colors.black : Colors.white,
       );
-      _text(canvas, '= ${item.$3}', Offset(x + 110, 983),
+      _text(canvas, '= ${item.$2}', Offset(x + 110, 1024),
           size: 15, weight: FontWeight.w600);
-      x += 332;
+      x += 340;
       if (item != items.last) {
-        _drawGridLine(canvas, Offset(x - 22, 968), Offset(x - 22, 1004));
+        _drawGridLine(canvas, Offset(x - 24, 1015), Offset(x - 24, 1045));
       }
     }
   }
 
   static void _drawSignatures(Canvas canvas) {
-    const top = 1017.0;
-    const h = 106.0;
+    const top = 1068.0;
+    const h = 130.0;
     const gap = 18.0;
     final w = (1764 - gap) / 2;
     _signatureBox(canvas, Rect.fromLTWH(18, top, w, h), 'FA');
@@ -577,7 +628,7 @@ class DetasselingIsoExportService {
     _drawSectionTitle(
         canvas, Rect.fromLTWH(rect.left, rect.top, rect.width, 28), title);
     final rows = ['Signature', 'Nama', 'Tanggal'];
-    var y = rect.top + 45;
+    var y = rect.top + 52;
     for (final row in rows) {
       _text(canvas, row, Offset(rect.left + 28, y),
           size: 14, weight: FontWeight.w700);
@@ -586,63 +637,40 @@ class DetasselingIsoExportService {
       _drawGridLine(
         canvas,
         Offset(rect.left + 230, y + 17),
-        Offset(rect.right - 150, y + 17),
+        Offset(rect.right - 110, y + 17),
       );
-      y += 28;
+      y += 32;
     }
   }
 
   static void _drawFooter(Canvas canvas, _FieldSnapshot f, int passNumber) {
-    const y = 1138.0;
-    _drawGridLine(canvas, const Offset(18, 1128), const Offset(1782, 1128));
-    _text(canvas, 'Generated by ', const Offset(34, y),
-        size: 14, weight: FontWeight.w600);
-    _text(canvas, 'KROSCEK', const Offset(128, y),
-        size: 14, weight: FontWeight.w900, color: _green);
-    _textCentered(
-      canvas,
+    const rect = Rect.fromLTWH(18, 1214, 1764, 42);
+    _drawBorder(canvas, rect, _line, 1);
+    final widths = [240.0, 500.0, 250.0, 150.0, 340.0, 120.0, 164.0];
+    final labels = [
+      'Generated by KROSCEK',
       'Field Inspection Output Form - Detasselling & Isolation Audit',
-      const Rect.fromLTWH(312, y, 420, 20),
-      size: 14,
-      weight: FontWeight.w700,
-    );
-    _textCentered(
-      canvas,
       'Form ID   ${f.fieldNumber}',
-      const Rect.fromLTWH(770, y, 230, 20),
-      size: 14,
-      weight: FontWeight.w800,
-      color: _green,
-    );
-    _textCentered(
-      canvas,
       'Pass   P$passNumber',
-      const Rect.fromLTWH(1036, y, 140, 20),
-      size: 14,
-      weight: FontWeight.w800,
-      color: _green,
-    );
-    _textCentered(
-      canvas,
       'Doc Code   KC-QA-FRM-DET-01',
-      const Rect.fromLTWH(1200, y, 310, 20),
-      size: 14,
-      weight: FontWeight.w700,
-    );
-    _textCentered(
-      canvas,
       'Rev.   00',
-      const Rect.fromLTWH(1532, y, 110, 20),
-      size: 14,
-      weight: FontWeight.w700,
-    );
-    _textCentered(
-      canvas,
       'Page  1 of 1',
-      const Rect.fromLTWH(1658, y, 112, 20),
-      size: 14,
-      weight: FontWeight.w800,
-    );
+    ];
+    var x = rect.left;
+    for (var i = 0; i < widths.length; i++) {
+      if (i > 0) {
+        _drawGridLine(canvas, Offset(x, rect.top), Offset(x, rect.bottom));
+      }
+      _textCentered(
+        canvas,
+        labels[i],
+        Rect.fromLTWH(x + 8, rect.top + 12, widths[i] - 16, 16),
+        size: 13.5,
+        weight: i == 0 || i == 2 || i == 3 ? FontWeight.w900 : FontWeight.w700,
+        color: i == 0 || i == 2 || i == 3 ? _green : _ink,
+      );
+      x += widths[i];
+    }
   }
 
   static Future<String> _saveBytes({
@@ -700,6 +728,17 @@ class DetasselingIsoExportService {
     final downloads = await getDownloadsDirectory();
     if (downloads != null) return downloads;
     return getApplicationDocumentsDirectory();
+  }
+
+  static Future<ui.Image?> _loadUiImage(String assetPath) async {
+    try {
+      final data = await rootBundle.load(assetPath);
+      final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+      final frame = await codec.getNextFrame();
+      return frame.image;
+    } catch (_) {
+      return null;
+    }
   }
 
   static String _fileName(DetasselingIsoFormData data, String extension) {
@@ -786,6 +825,57 @@ class DetasselingIsoExportService {
         Offset(origin.dx + 42, origin.dy + 8), stroke);
   }
 
+  static void _drawImageContain(Canvas canvas, ui.Image image, Rect rect) {
+    final imageRatio = image.width / image.height;
+    final rectRatio = rect.width / rect.height;
+    late final Rect dst;
+    if (imageRatio > rectRatio) {
+      final height = rect.width / imageRatio;
+      dst = Rect.fromLTWH(
+        rect.left,
+        rect.top + (rect.height - height) / 2,
+        rect.width,
+        height,
+      );
+    } else {
+      final width = rect.height * imageRatio;
+      dst = Rect.fromLTWH(
+        rect.left + (rect.width - width) / 2,
+        rect.top,
+        width,
+        rect.height,
+      );
+    }
+
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      dst,
+      Paint()..filterQuality = FilterQuality.high,
+    );
+  }
+
+  static void _drawFlagIcon(Canvas canvas, Offset origin, Color color) {
+    final pole = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.8
+      ..color = Colors.black.withAlpha(190);
+    canvas.drawLine(origin, Offset(origin.dx, origin.dy + 28), pole);
+
+    final flag = Path()
+      ..moveTo(origin.dx + 1, origin.dy + 1)
+      ..lineTo(origin.dx + 28, origin.dy + 5)
+      ..lineTo(origin.dx + 28, origin.dy + 19)
+      ..lineTo(origin.dx + 1, origin.dy + 15)
+      ..close();
+    canvas.drawPath(
+      flag,
+      Paint()
+        ..style = PaintingStyle.fill
+        ..color = color,
+    );
+  }
+
   static void _drawSectionTitle(Canvas canvas, Rect rect, String text) {
     _drawFilledRect(canvas, rect, _green);
     _textCentered(
@@ -801,6 +891,15 @@ class DetasselingIsoExportService {
   static void _drawFilledRect(Canvas canvas, Rect rect, Color color) {
     final paint = Paint()..color = color;
     canvas.drawRect(rect, paint);
+  }
+
+  static void _drawRoundedFill(
+      Canvas canvas, Rect rect, Color color, double radius) {
+    final paint = Paint()..color = color;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, Radius.circular(radius)),
+      paint,
+    );
   }
 
   static void _drawBorder(Canvas canvas, Rect rect, Color color, double width) {
@@ -894,6 +993,55 @@ class DetasselingIsoExportService {
   static String _formatHa(double value) {
     final fixed = value.toStringAsFixed(2);
     return fixed.endsWith('.00') ? fixed.substring(0, fixed.length - 3) : fixed;
+  }
+
+  static List<int> _allocateTkdByPass(double areaHa, List<int> passTkdPerHa) {
+    if (areaHa <= 0) return List.filled(passTkdPerHa.length, 0);
+
+    final exact = passTkdPerHa.map((value) => areaHa * value).toList();
+    final floors = exact.map((value) => value.floor()).toList();
+    final targetTotal =
+        exact.fold<double>(0, (total, value) => total + value).round();
+    var remainder = targetTotal - floors.fold<int>(0, (a, b) => a + b);
+    if (remainder <= 0) return floors;
+
+    final order = List<int>.generate(exact.length, (index) => index);
+    order.sort((a, b) {
+      final aFraction = exact[a] - floors[a];
+      final bFraction = exact[b] - floors[b];
+      final byFraction = bFraction.compareTo(aFraction);
+      if (byFraction != 0) return byFraction;
+      return a.compareTo(b);
+    });
+
+    var cursor = 0;
+    while (remainder > 0 && order.isNotEmpty) {
+      floors[order[cursor % order.length]] += 1;
+      cursor++;
+      remainder--;
+    }
+    return floors;
+  }
+
+  static Color _flaggingColor(String value) {
+    switch (value.trim().toUpperCase()) {
+      case 'GF':
+        return const Color(0xFF2E7D32);
+      case 'RFI':
+      case 'RFD':
+        return const Color(0xFFE53935);
+      case 'BF':
+        return Colors.black;
+      case 'PLD':
+        return const Color(0xFFF5C400);
+      default:
+        return _green;
+    }
+  }
+
+  static Color _flaggingTextColor(String value) {
+    final normalized = value.trim().toUpperCase();
+    return normalized == 'PLD' ? Colors.black : Colors.white;
   }
 
   static String _weekLabel(DateTime date) {
