@@ -947,12 +947,12 @@ class MenuScreen extends StatelessWidget {
                   ElevatedButton.icon(
                     onPressed: onAuditDashboard,
                     icon: const Icon(
-                      Icons.dashboard_outlined,
+                      Icons.storage_outlined,
                       size: 20,
                       color: Colors.green,
                     ),
                     label: const Text(
-                      'Audit Dashboard',
+                      'Database Export/Import',
                       style: TextStyle(
                         color: Colors.green,
                         fontWeight: FontWeight.bold,

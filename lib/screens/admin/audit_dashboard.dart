@@ -1,16 +1,15 @@
-// ignore_for_file: curly_braces_in_flow_control_structures, use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously
 
-import 'dart:async';
-import 'dart:convert'; // Wajib untuk utf8 & jsonEncode
-import 'package:archive/archive.dart'; // Wajib untuk GZIP
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:csv/csv.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:syncfusion_flutter_charts/charts.dart';
-
-import '../services/config_manager.dart';
-import '../services/google_sheets_api.dart';
 
 class AuditDashboard extends StatefulWidget {
   const AuditDashboard({super.key});
@@ -20,815 +19,937 @@ class AuditDashboard extends StatefulWidget {
 }
 
 class _AuditDashboardState extends State<AuditDashboard> {
-  // === STATE MANAGEMENT ===
+  static const _datasetName = 'psp_vegetative_audit';
+  static const _datasetVersion = 1;
+  static const _tableName = 'audit_vegetative';
+  static const _pageSize = 1000;
+
+  static const List<String> _masterCsvColumns = [
+    'field_number',
+    'region',
+    'territory',
+    'sub_region',
+    'area',
+    'season',
+    'hybrid',
+    'farmer',
+    'village_desa',
+    'sub_district_kec',
+    'district_kab',
+    'effective_area_ha',
+    'planting_date_pdn',
+    'qa_fi',
+    'qa_spv',
+  ];
+
+  static const List<String> _auditColumns = [
+    'field_number',
+    'date_of_audit',
+    'audit_date_user',
+    'audit_week',
+    'qa_fi',
+    'qa_spv',
+    'correction_tagging',
+    'co_detasseling',
+    'field_size_by_audit_ha',
+    'previous_crop_by_audit',
+    'type_seed',
+    'isolation_problem_by_audit',
+    'rev_planting_date',
+    'crop_health',
+    'crop_uniformity',
+    'roguing_status',
+    'offtype_in_male',
+    'offtype_in_female',
+    'lsv_status',
+    'decision',
+    'pld_reason',
+    'flagging',
+    'remarks',
+    'fase',
+    'recommendation_pld_ha',
+    'is_mass_submit',
+    'updated_at',
+    'date_of_inspeksi_roguing_1',
+    'audit_offtype_roguing_1',
+    'audit_volunteer_roguing_1',
+    'crop_health_roguing_1',
+    'crop_uniformity_roguing_1',
+    'isolation_audit_roguing_1',
+    'isolation_type_roguing_1',
+    'isolation_distance_roguing_1',
+    'date_of_inspeksi_roguing_2',
+    'audit_offtype_roguing_2',
+    'audit_volunteer_roguing_2',
+    'audit_lsv_roguing_2',
+    'crop_health_roguing_2',
+    'crop_uniformity_roguing_2',
+    'date_of_inspeksi_roguing_3',
+    'audit_offtype_roguing_3',
+    'audit_volunteer_roguing_3',
+    'audit_lsv_roguing_3',
+    'crop_health_roguing_3',
+    'crop_uniformity_roguing_3',
+    'date_of_inspeksi_roguing_4',
+    'audit_offtype_roguing_4',
+    'audit_volunteer_roguing_4',
+    'audit_lsv_roguing_4',
+    'crop_health_roguing_4',
+    'crop_uniformity_roguing_4',
+    'isolation_audit_roguing_4',
+    'isolation_type_roguing_4',
+    'isolation_distance_roguing_4',
+  ];
+
+  final _supabase = Supabase.instance.client;
+  final _dateFormatter = DateFormat('yyyyMMdd_HHmmss');
+
   bool _isLoading = false;
   String? _loadingStatus;
   String? _error;
-
-  // Data
-  List<List<String>> _allCombinedData = [];
-  Map<String, List<String>> _qaActivityMap = {};
-
-  List<List<String>> _filteredData = [];
-  List<_AuditMonthlyData> _chartData = [];
-
-  // Statistik Total
-  double _totalSampunArea = 0;
-  double _totalDerengJangkepArea = 0;
-  double _totalDerengBlasArea = 0;
-  double _totalDerengArea = 0;
-  double _totalVisitedArea = 0;
-  double _totalNotVisitedArea = 0;
-
-  // Filter Controls
-  String? _selectedRegionGroup;
-  static const String _allRegionsSentinel = "Semua Region";
-
-  String? _selectedQaSpv;
-  String? _selectedDistrictFilter;
-  String _selectedWorksheetTitle = 'Generative';
-
-  final List<String> _worksheetTitles = ['Generative', 'Vegetative', 'Pre Harvest', 'Harvest'];
-  List<String> _regionGroupOptions = [];
-  List<String> _qaSpvOptions = [];
-  List<String> _districtFilterOptions = [];
-
-  static const List<String> _excludedRegions = [
-    'PSP', 'PSP QA', 'SWC', 'HSP SWC', 'QA Plant Inspection'
-  ];
-
-  // Supabase Client Access
-  final _supabase = Supabase.instance.client;
+  String? _lastAction;
+  int _pspFieldCount = 0;
+  int _pspAuditCount = 0;
+  DateTime? _lastUpdatedAt;
+  Set<String> _knownPspFieldNumbers = {};
 
   @override
   void initState() {
     super.initState();
-    _initializeApp();
+    _refreshDatabaseSummary();
   }
 
-  Future<void> _initializeApp() async {
-    setState(() => _isLoading = true);
-    try {
-      await ConfigManager.loadConfig();
-      _initRegionGroups();
-    } catch (e) {
-      if (mounted) _showErrorMessage("Gagal memuat konfigurasi: $e");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  // --- HELPER KOMPRESI & DEKOMPRESI ---
-
-  // Mengubah Data Object -> JSON String -> GZIP Bytes
-  List<int>? _compressData(dynamic data) {
-    if (data == null) return null;
-    try {
-      final jsonString = jsonEncode(data);
-      final List<int> bytes = utf8.encode(jsonString);
-      return GZipEncoder().encode(bytes);
-    } catch (e) {
-      debugPrint("Gagal kompresi: $e");
-      return null;
-    }
-  }
-
-  // Mengubah Raw Response (Hex String/Bytes) -> GZIP Decode -> JSON -> Data Object
-  dynamic _decompressData(dynamic rawData) {
-    if (rawData == null) return null;
-    try {
-      List<int> compressedBytes;
-
-      // Handle jika Supabase mengembalikan Hex String (format Postgres bytea)
-      if (rawData is String) {
-        String cleanHex = rawData;
-        if (cleanHex.startsWith(r'\x')) {
-          cleanHex = cleanHex.substring(2);
-        }
-        // Convert Hex String ke List<int>
-        compressedBytes = [];
-        for (int i = 0; i < cleanHex.length; i += 2) {
-          compressedBytes.add(int.parse(cleanHex.substring(i, i + 2), radix: 16));
-        }
-      } else if (rawData is List) {
-        compressedBytes = List<int>.from(rawData);
-      } else {
-        return null;
-      }
-
-      // Decompress GZIP
-      final List<int> decompressedBytes = GZipDecoder().decodeBytes(compressedBytes);
-      final String jsonString = utf8.decode(decompressedBytes);
-      return jsonDecode(jsonString);
-    } catch (e) {
-      debugPrint("Gagal dekompresi: $e");
-      return null;
-    }
-  }
-
-  // --- SUPABASE CACHE MANAGERS ---
-
-  Future<bool> _loadDataFromSupabase(String region, String worksheet) async {
-    try {
-      setState(() => _loadingStatus = "Mengambil ringkasan data...");
-
-      // 1. Ambil RINGKASAN dulu (Sangat Cepat, JSONB biasa)
-      final responseSummary = await _supabase
-          .from('audit_cache')
-          .select('chart_summary, updated_at')
-          .eq('region', region)
-          .eq('worksheet', worksheet)
-          .maybeSingle();
-
-      if (responseSummary == null) return false;
-
-      // 2. Jika ada summary, langsung tampilkan CHART!
-      if (responseSummary['chart_summary'] != null) {
-        final List<dynamic> rawSummary = responseSummary['chart_summary'];
-        final summaryData = rawSummary.map((e) => _AuditMonthlyData.fromJson(e)).toList();
-
-        if (mounted) {
-          setState(() {
-            _chartData = summaryData;
-            _recalculateTotalsFromSummary(summaryData);
-            _isLoading = false;
-          });
-        }
-      }
-
-      // 3. (BACKGROUND) Sekarang ambil Data Mentah (BINARY COMPRESSED)
-      _loadHeavyDataInBackground(region, worksheet);
-
-      return true;
-    } catch (e) {
-      debugPrint("Error reading cache: $e");
-      return false;
-    }
-  }
-
-  void _recalculateTotalsFromSummary(List<_AuditMonthlyData> summary) {
-    double s = 0, dj = 0, db = 0, v = 0, nv = 0;
-    for (var item in summary) {
-      s += item.sampunHa;
-      dj += item.derengJangkepHa;
-      db += item.derengBlasHa;
-      v += item.visitedHa;
-      nv += item.notVisitedHa;
-    }
+  Future<void> _refreshDatabaseSummary() async {
     setState(() {
-      _totalSampunArea = s;
-      _totalDerengJangkepArea = dj;
-      _totalDerengBlasArea = db;
-      _totalDerengArea = dj + db;
-      _totalVisitedArea = v;
-      _totalNotVisitedArea = nv;
-    });
-  }
-
-  Future<void> _loadHeavyDataInBackground(String region, String worksheet) async {
-    try {
-      // Ambil kolom bytea (binary)
-      final response = await _supabase
-          .from('audit_cache')
-          .select('data, activity_map')
-          .eq('region', region)
-          .eq('worksheet', worksheet)
-          .maybeSingle();
-
-      if (response == null) return;
-
-      // DEKOMPRESI DATA (Level 1 Optimization)
-      final List<dynamic> rawMainData = _decompressData(response['data']) ?? [];
-      final List<List<String>> mainData = rawMainData
-          .map((row) => (row as List).map((e) => e.toString()).toList())
-          .toList();
-
-      final Map<String, dynamic> rawActivity = _decompressData(response['activity_map']) ?? {};
-      final Map<String, List<String>> activityMap = rawActivity.map(
-            (k, v) => MapEntry(k, (v as List).map((e) => e.toString()).toList()),
-      );
-
-      if (mounted) {
-        setState(() {
-          _allCombinedData = mainData;
-          _qaActivityMap = activityMap;
-          _extractFilterOptions();
-        });
-      }
-    } catch (e) {
-      debugPrint("Background load error: $e");
-    }
-  }
-
-  Future<void> _saveDataToSupabase(String region, String worksheet) async {
-    try {
-      // 1. KOMPRESI DATA (Level 1 Optimization)
-      final List<int>? compressedData = _compressData(_allCombinedData);
-      final List<int>? compressedActivityMap = _compressData(_qaActivityMap);
-
-      // 2. Pre-Calc Summary (Tetap JSONB agar bisa dibaca cepat)
-      final summaryJson = _chartData.map((e) => e.toJson()).toList();
-
-      // 3. Simpan Binary ke Supabase
-      if (compressedData != null) {
-        await _supabase.from('audit_cache').upsert({
-          'region': region,
-          'worksheet': worksheet,
-          'data': compressedData, // Kirim Bytes
-          'activity_map': compressedActivityMap, // Kirim Bytes
-          'chart_summary': summaryJson,
-          'updated_at': DateTime.now().toIso8601String(),
-        }, onConflict: 'region, worksheet');
-
-        debugPrint("Compressed Data synced to Supabase for $region");
-      }
-    } catch (e) {
-      debugPrint("Error saving to Supabase: $e");
-    }
-  }
-
-  // --- DATA FETCHING ---
-
-  Future<void> _onRegionGroupChanged(String? newGroup, {bool forceRefresh = false}) async {
-    if (newGroup == null) return;
-
-    setState(() {
-      _selectedRegionGroup = newGroup;
       _isLoading = true;
+      _loadingStatus = 'Membaca ringkasan database PS/PSP...';
       _error = null;
-      _selectedQaSpv = null;
-      _selectedDistrictFilter = null;
-    });
-
-    if (!forceRefresh) {
-      setState(() => _loadingStatus = "Mengecek database...");
-      final count = await _supabase
-          .from('audit_cache')
-          .count(CountOption.exact)
-          .eq('region', newGroup)
-          .eq('worksheet', _selectedWorksheetTitle);
-
-      if (count > 0) {
-        setState(() => _loadingStatus = "Cache ditemukan! Mengunduh data...");
-        bool loadedFromDb = await _loadDataFromSupabase(newGroup, _selectedWorksheetTitle);
-        if (loadedFromDb) {
-          if (mounted) setState(() => _isLoading = false);
-          return;
-        }
-      }
-    }
-
-    await _fetchFromApi(newGroup);
-  }
-
-  Future<void> _fetchFromApi(String groupName) async {
-    setState(() {
-      _allCombinedData.clear();
-      _qaActivityMap.clear();
-      _filteredData.clear();
-      _chartData.clear();
-      _loadingStatus = "Mempersiapkan data...";
     });
 
     try {
-      final allKeys = ConfigManager.getAllRegionNames()
-          .where((r) => !_excludedRegions.contains(r))
-          .where((r) => r.startsWith('Region'))
-          .toList();
+      final records = await _fetchPspVegetativeRecords(includeEmptyAudit: true);
+      final audited = records.where((record) => record.audit.isNotEmpty).length;
+      DateTime? lastUpdated;
 
-      List<String> targetKeys = [];
-      if (groupName == _allRegionsSentinel) {
-        targetKeys = allKeys;
-      } else {
-        targetKeys = allKeys.where((key) {
-          String keyGroup = key.contains(" - ") ? key.split(" - ")[0].trim() : key.trim();
-          return keyGroup == groupName;
-        }).toList();
-      }
-
-      if (targetKeys.isEmpty) throw Exception("Tidak ada data spreadsheet.");
-
-      List<List<String>> combinedMainData = [];
-      List<String> headers = [];
-      Map<String, List<String>> combinedActivityMap = {};
-
-      int totalRegions = targetKeys.length;
-      int processedCount = 0;
-
-      for (String regionKey in targetKeys) {
-        processedCount++;
-        setState(() => _loadingStatus = "Memproses $regionKey ($processedCount/$totalRegions)...");
-
-        // 1. COBA AMBIL DARI SUPABASE (DEKOMPRESI)
-        var (localData, localActivity) = await _getRegionDataFromSupabase(regionKey, _selectedWorksheetTitle);
-
-        if (localData != null && localData.isNotEmpty) {
-          debugPrint("✅ $regionKey diambil dari Cache Supabase");
-
-          if (headers.isEmpty && localData.isNotEmpty) headers = localData[0];
-
-          if (headers.isNotEmpty && localData[0].join() == headers.join()) {
-            combinedMainData.addAll(localData.sublist(1));
-          } else {
-            combinedMainData.addAll(localData);
-          }
-
-          if (localActivity != null) combinedActivityMap.addAll(localActivity);
-
-        } else {
-          // 2. DOWNLOAD DARI API
-          debugPrint("⬇️ $regionKey tidak ada di cache, download dari Sheets API...");
-          final sheetId = ConfigManager.getSpreadsheetId(regionKey);
-
-          if (sheetId != null) {
-            try {
-              final gSheets = GoogleSheetsApi(sheetId);
-              await gSheets.init();
-              final results = await Future.wait([
-                gSheets.getSpreadsheetData(_selectedWorksheetTitle),
-                gSheets.getSpreadsheetData('Aktivitas')
-              ]);
-
-              final mainRows = results[0];
-              if (mainRows.isNotEmpty) {
-                if (headers.isEmpty) headers = mainRows[0];
-                if (mainRows.length > 1) combinedMainData.addAll(mainRows.sublist(1));
-              }
-
-              final activityRows = results[1];
-              if (activityRows.length > 1) {
-                for (var row in activityRows.skip(1)) {
-                  final qaName = _safeGet(row, 1);
-                  final fieldNumber = _safeGet(row, 6);
-                  if (qaName.isNotEmpty && fieldNumber.isNotEmpty) {
-                    combinedActivityMap.putIfAbsent(qaName, () => []).add(fieldNumber);
-                  }
-                }
-              }
-            } catch (e) {
-              debugPrint("Gagal download $regionKey: $e");
-            }
-          }
-          await Future.delayed(const Duration(milliseconds: 500));
+      for (final record in records) {
+        final raw = record.audit['updated_at'];
+        if (raw == null) continue;
+        final parsed = DateTime.tryParse(raw.toString());
+        if (parsed == null) continue;
+        if (lastUpdated == null || parsed.isAfter(lastUpdated)) {
+          lastUpdated = parsed;
         }
       }
 
+      if (!mounted) return;
+      setState(() {
+        _pspFieldCount = records.length;
+        _pspAuditCount = audited;
+        _lastUpdatedAt = lastUpdated;
+        _knownPspFieldNumbers =
+            records.map((record) => record.fieldNumber).toSet();
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Gagal membaca database: $e');
+    } finally {
       if (mounted) {
-        setState(() {
-          _allCombinedData = combinedMainData;
-          _qaActivityMap = combinedActivityMap;
-          _loadingStatus = "Menghitung Total...";
-        });
-
-        await Future.delayed(const Duration(milliseconds: 100));
-
-        setState(() {
-          _extractFilterOptions();
-          _applyFilters();
-          _loadingStatus = "Mengompres & Menyimpan Cache...";
-        });
-
-        // Simpan versi terkompresi
-        await _saveDataToSupabase(groupName, _selectedWorksheetTitle);
-
         setState(() {
           _isLoading = false;
           _loadingStatus = null;
         });
       }
-
-    } catch (e) {
-      if (mounted) setState(() { _error = "Terjadi kesalahan: $e"; _isLoading = false; });
     }
   }
 
-  // --- HELPER UNTUK MENGAMBIL DATA CACHE PER REGION (DEKOMPRESI) ---
-  Future<(List<List<String>>?, Map<String, List<String>>?)> _getRegionDataFromSupabase(String region, String worksheet) async {
-    try {
-      final response = await _supabase
-          .from('audit_cache')
-          .select('data, activity_map')
-          .eq('region', region)
-          .eq('worksheet', worksheet)
-          .maybeSingle();
-
-      if (response == null) return (null, null);
-
-      // DEKOMPRESI GZIP
-      final List<dynamic> rawMainData = _decompressData(response['data']) ?? [];
-      final List<List<String>> mainData = rawMainData
-          .map((row) => (row as List).map((e) => e.toString()).toList())
-          .toList();
-
-      final Map<String, dynamic> rawActivity = _decompressData(response['activity_map']) ?? {};
-      final Map<String, List<String>> activityMap = rawActivity.map(
-            (k, v) => MapEntry(k, (v as List).map((e) => e.toString()).toList()),
-      );
-
-      return (mainData, activityMap);
-    } catch (e) {
-      return (null, null);
-    }
-  }
-
-  // --- HELPERS LAINNYA ---
-  String _safeGet(List<String> row, int index) {
-    if (index < 0 || index >= row.length) return "";
-    return row[index].trim();
-  }
-
-  double _parseArea(String val) {
-    if (val.isEmpty) return 0.0;
-    val = val.replaceAll(',', '.');
-    return double.tryParse(val) ?? 0.0;
-  }
-
-  Map<String, dynamic> _getMonthFromWeek(String weekVal) {
-    String cleanVal = weekVal.replaceAll(RegExp(r'[^0-9]'), '');
-    int weekNum = int.tryParse(cleanVal) ?? 0;
-    if (weekNum <= 0) return {'index': 99, 'name': 'Unset'};
-    DateTime date = DateTime(DateTime.now().year, 1, 1).add(Duration(days: (weekNum - 1) * 7));
-    int monthIndex = date.month;
-    const List<String> manualMonths = [
-      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-      "Juli", "Agustus", "September", "Oktober", "November", "Desember"
-    ];
-    String monthName = (monthIndex >= 1 && monthIndex <= 12) ? manualMonths[monthIndex - 1] : 'Unknown';
-    return {'index': monthIndex, 'name': monthName};
-  }
-
-  void _initRegionGroups() {
-    final allKeys = ConfigManager.getAllRegionNames()
-        .where((r) => !_excludedRegions.contains(r))
-        .where((r) => r.startsWith('Region'))
-        .toList();
-    final Set<String> groups = {};
-    for (var key in allKeys) {
-      if (key.contains(" - ")) {
-        groups.add(key.split(" - ")[0].trim());
-      } else {
-        groups.add(key.trim());
-      }
-    }
-    setState(() {
-      _regionGroupOptions = [_allRegionsSentinel, ...groups.toList()..sort()];
-    });
-  }
-
-  void _extractFilterOptions() {
-    Set<String> uniqueSpv = {};
-    Set<String> uniqueDistricts = {};
-    if (_allCombinedData.isNotEmpty) {
-      for (var row in _allCombinedData) {
-        int spvIndex = (_selectedWorksheetTitle == 'Vegetative' || _selectedWorksheetTitle == 'Generative') ? 30 : 28;
-        final qaSpv = _safeGet(row, spvIndex);
-        if (qaSpv.isNotEmpty && qaSpv != "-" && qaSpv != "0") uniqueSpv.add(qaSpv);
-        final districtVal = _safeGet(row, 13);
-        if (districtVal.isNotEmpty && districtVal != "-" && districtVal != "0") uniqueDistricts.add(districtVal);
-      }
-    }
-    setState(() {
-      _qaSpvOptions = uniqueSpv.toList()..sort();
-      _districtFilterOptions = uniqueDistricts.toList()..sort();
-      if (_selectedQaSpv != null && !_qaSpvOptions.contains(_selectedQaSpv)) _selectedQaSpv = null;
-      if (_selectedDistrictFilter != null && !_districtFilterOptions.contains(_selectedDistrictFilter)) _selectedDistrictFilter = null;
-    });
-  }
-
-  void _applyFilters() {
-    if (_allCombinedData.isEmpty) {
-      setState(() => _filteredData = []);
-      return;
-    }
-    final filtered = _allCombinedData.where((row) {
-      int spvIndex = (_selectedWorksheetTitle == 'Vegetative' || _selectedWorksheetTitle == 'Generative') ? 30 : 28;
-      final qaSpv = _safeGet(row, spvIndex);
-      final spvMatch = _selectedQaSpv == null || _selectedQaSpv == "Semua SPV" || qaSpv == _selectedQaSpv;
-      final districtVal = _safeGet(row, 13);
-      final districtMatch = _selectedDistrictFilter == null || _selectedDistrictFilter == "Semua District" || districtVal == _selectedDistrictFilter;
-      return spvMatch && districtMatch;
-    }).toList();
-    setState(() {
-      _filteredData = filtered;
-      _calculateChartData();
-    });
-  }
-
-  void _calculateChartData() {
-    Map<int, _AuditMonthlyData> groupedData = {};
-    double tempSampun = 0;
-    double tempDerengJangkep = 0;
-    double tempDerengBlas = 0;
-    double tempDereng = 0;
-    double tempVisited = 0;
-    double tempNotVisited = 0;
-
-    int weekIdx = _selectedWorksheetTitle == 'Vegetative' ? 10 : 28;
-    int areaIdx = 8;
-
-    for (var row in _filteredData) {
-      final fieldNumber = _safeGet(row, 2);
-      final areaVal = _parseArea(_safeGet(row, areaIdx));
-      final auditStatus = _getAuditStatus(row);
-      bool visited = false;
-      for (var listFn in _qaActivityMap.values) {
-        if (listFn.contains(fieldNumber)) {
-          visited = true;
-          break;
+  Future<void> _exportPspVegetativeJson() async {
+    await _runOperation(
+      status: 'Menyiapkan backup JSON PS/PSP Vegetative...',
+      action: () async {
+        final records = await _fetchPspVegetativeRecords();
+        if (records.isEmpty) {
+          throw Exception('Belum ada audit PS/PSP vegetative untuk diexport.');
         }
-      }
-      if (auditStatus == "Sampun") tempSampun += areaVal;
-      else if (auditStatus == "Dereng Jangkep") tempDerengJangkep += areaVal;
-      else if (auditStatus == "Dereng Blas") tempDerengBlas += areaVal;
-      else tempDereng += areaVal;
 
-      if (visited) tempVisited += areaVal;
-      else tempNotVisited += areaVal;
+        final payload = {
+          'dataset': _datasetName,
+          'schema_version': _datasetVersion,
+          'table': _tableName,
+          'exported_at': DateTime.now().toIso8601String(),
+          'record_count': records.length,
+          'records': records
+              .map((record) => {
+                    'field_number': record.fieldNumber,
+                    'master': record.master,
+                    'audit': _compactAudit(record.audit),
+                  })
+              .toList(),
+        };
 
-      String weekRaw = _safeGet(row, weekIdx);
-      Map<String, dynamic> monthInfo = _getMonthFromWeek(weekRaw);
-      int monthIdx = monthInfo['index'];
-      String monthName = monthInfo['name'];
-      if (monthIdx == 99) continue;
-      if (!groupedData.containsKey(monthIdx)) {
-        groupedData[monthIdx] = _AuditMonthlyData(monthIdx, monthName);
+        final fileName =
+            'psp_vegetative_audit_${_dateFormatter.format(DateTime.now())}.json';
+        final jsonText = const JsonEncoder.withIndent('  ').convert(payload);
+        final saved = await _saveBytes(
+          fileName: fileName,
+          bytes: utf8.encode(jsonText),
+          allowedExtensions: const ['json'],
+        );
+
+        if (saved) {
+          setState(() {
+            _lastAction = 'Export JSON: ${records.length} record';
+          });
+          _showSnack('Export JSON selesai: ${records.length} record.');
+        }
+      },
+    );
+  }
+
+  Future<void> _exportPspVegetativeCsv() async {
+    await _runOperation(
+      status: 'Menyiapkan file CSV PS/PSP Vegetative...',
+      action: () async {
+        final records = await _fetchPspVegetativeRecords();
+        if (records.isEmpty) {
+          throw Exception('Belum ada audit PS/PSP vegetative untuk diexport.');
+        }
+
+        final headers = <String>[
+          ..._masterCsvColumns.map((column) => 'master_$column'),
+          ..._auditColumns.map((column) => 'audit_$column'),
+        ];
+        final rows = <List<dynamic>>[
+          headers,
+          ...records.map((record) {
+            final audit = _compactAudit(record.audit);
+            return [
+              ..._masterCsvColumns
+                  .map((column) => _csvValue(record.master[column])),
+              ..._auditColumns.map((column) => _csvValue(audit[column])),
+            ];
+          }),
+        ];
+
+        final csvText = const ListToCsvConverter().convert(rows);
+        final fileName =
+            'psp_vegetative_audit_${_dateFormatter.format(DateTime.now())}.csv';
+        final saved = await _saveBytes(
+          fileName: fileName,
+          bytes: utf8.encode(csvText),
+          allowedExtensions: const ['csv'],
+        );
+
+        if (saved) {
+          setState(() {
+            _lastAction = 'Export CSV: ${records.length} record';
+          });
+          _showSnack('Export CSV selesai: ${records.length} record.');
+        }
+      },
+    );
+  }
+
+  Future<void> _importPspVegetativeJson() async {
+    await _runOperation(
+      status: 'Membaca file JSON import...',
+      action: () async {
+        final result = await FilePicker.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: const ['json'],
+          withData: true,
+        );
+        if (result == null || result.files.isEmpty) return;
+
+        final bytes = result.files.first.bytes;
+        if (bytes == null) {
+          throw Exception('File tidak dapat dibaca. Pilih ulang file JSON.');
+        }
+
+        final parsed = jsonDecode(utf8.decode(bytes));
+        final importPayload = await _extractImportRows(parsed);
+        if (importPayload.rows.isEmpty) {
+          throw Exception('Tidak ada record audit valid di file JSON.');
+        }
+
+        final confirmed = await _confirmImport(importPayload.rows.length);
+        if (!confirmed) return;
+
+        setState(() => _loadingStatus = 'Mengirim data ke audit_vegetative...');
+        final imported = await _upsertVegetativeRows(importPayload.rows);
+        final resultSummary = _ImportSummary(
+          imported: imported,
+          skipped: importPayload.skipped,
+        );
+
+        await _refreshDatabaseSummary();
+        if (!mounted) return;
+        setState(() {
+          _lastAction =
+              'Import JSON: ${resultSummary.imported} masuk, ${resultSummary.skipped} dilewati';
+        });
+        _showSnack(
+          'Import selesai: ${resultSummary.imported} record masuk, '
+          '${resultSummary.skipped} dilewati.',
+        );
+      },
+    );
+  }
+
+  Future<List<_PspVegetativeExportRecord>> _fetchPspVegetativeRecords({
+    bool includeEmptyAudit = false,
+  }) async {
+    final records = <_PspVegetativeExportRecord>[];
+    var from = 0;
+
+    while (true) {
+      final response = await _supabase
+          .from('master_fields')
+          .select('*, audit_vegetative(*)')
+          .eq('is_active', true)
+          .ilike('hybrid', 'ASF%')
+          .order('field_number', ascending: true)
+          .range(from, from + _pageSize - 1);
+
+      final rows = List<Map<String, dynamic>>.from(response);
+      for (final row in rows) {
+        final audit = _firstAudit(row['audit_vegetative']);
+        if (!includeEmptyAudit && audit == null) continue;
+
+        final master = Map<String, dynamic>.from(row);
+        master.remove('audit_vegetative');
+        records.add(
+          _PspVegetativeExportRecord(
+            fieldNumber: master['field_number']?.toString() ?? '',
+            master: _jsonSafeMap(master),
+            audit: audit == null ? {} : _jsonSafeMap(audit),
+          ),
+        );
       }
-      if (auditStatus == "Sampun") groupedData[monthIdx]!.sampunHa += areaVal;
-      else if (auditStatus == "Dereng Jangkep") groupedData[monthIdx]!.derengJangkepHa += areaVal;
-      else groupedData[monthIdx]!.derengBlasHa += areaVal;
-      if (visited) groupedData[monthIdx]!.visitedHa += areaVal;
-      else groupedData[monthIdx]!.notVisitedHa += areaVal;
-      groupedData[monthIdx]!.totalHa += areaVal;
+
+      if (rows.length < _pageSize) break;
+      from += _pageSize;
     }
-    List<_AuditMonthlyData> result = groupedData.values.toList();
-    result.sort((a, b) => a.monthIndex.compareTo(b.monthIndex));
+
+    return records
+        .where((record) => record.fieldNumber.trim().isNotEmpty)
+        .toList();
+  }
+
+  Map<String, dynamic>? _firstAudit(dynamic raw) {
+    if (raw is List && raw.isNotEmpty && raw.first is Map) {
+      return Map<String, dynamic>.from(raw.first as Map);
+    }
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
+  Map<String, dynamic> _compactAudit(Map<String, dynamic> audit) {
+    final compact = <String, dynamic>{};
+    for (final column in _auditColumns) {
+      if (audit.containsKey(column)) {
+        compact[column] = _jsonSafe(audit[column]);
+      }
+    }
+    return compact;
+  }
+
+  Map<String, dynamic> _jsonSafeMap(Map<String, dynamic> raw) {
+    return raw.map((key, value) => MapEntry(key, _jsonSafe(value)));
+  }
+
+  dynamic _jsonSafe(dynamic value) {
+    if (value is DateTime) return value.toIso8601String();
+    if (value is Map) {
+      return value
+          .map((key, inner) => MapEntry(key.toString(), _jsonSafe(inner)));
+    }
+    if (value is List) return value.map(_jsonSafe).toList();
+    return value;
+  }
+
+  String _csvValue(dynamic value) {
+    if (value == null) return '';
+    if (value is Map || value is List) return jsonEncode(value);
+    return value.toString();
+  }
+
+  Future<_ImportExtractResult> _extractImportRows(dynamic parsed) async {
+    final rawRecords = <dynamic>[];
+    if (parsed is Map<String, dynamic>) {
+      final dataset = parsed['dataset']?.toString();
+      if (dataset != null && dataset != _datasetName) {
+        throw Exception('Dataset JSON bukan $_datasetName.');
+      }
+      final records = parsed['records'];
+      if (records is List) rawRecords.addAll(records);
+    } else if (parsed is List) {
+      rawRecords.addAll(parsed);
+    }
+
+    if (_knownPspFieldNumbers.isEmpty) {
+      final records = await _fetchPspVegetativeRecords(includeEmptyAudit: true);
+      _knownPspFieldNumbers =
+          records.map((record) => record.fieldNumber).toSet();
+    }
+
+    final rows = <Map<String, dynamic>>[];
+    var skipped = 0;
+    for (final rawRecord in rawRecords) {
+      if (rawRecord is! Map) {
+        skipped++;
+        continue;
+      }
+      final rawMap = Map<String, dynamic>.from(rawRecord);
+      final rawAudit = rawMap['audit'] is Map
+          ? Map<String, dynamic>.from(rawMap['audit'] as Map)
+          : rawMap;
+      final audit = _compactAudit(rawAudit);
+      final fieldNumber =
+          (audit['field_number'] ?? rawMap['field_number'])?.toString().trim();
+      if (fieldNumber == null || fieldNumber.isEmpty) {
+        skipped++;
+        continue;
+      }
+      if (!_knownPspFieldNumbers.contains(fieldNumber)) {
+        skipped++;
+        continue;
+      }
+
+      audit['field_number'] = fieldNumber;
+      audit['updated_at'] = DateTime.now().toIso8601String();
+      rows.add(audit);
+    }
+
+    return _ImportExtractResult(rows: rows, skipped: skipped);
+  }
+
+  Future<int> _upsertVegetativeRows(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    var imported = 0;
+    const chunkSize = 200;
+
+    for (var i = 0; i < rows.length; i += chunkSize) {
+      final end = (i + chunkSize > rows.length) ? rows.length : i + chunkSize;
+      final chunk = rows.sublist(i, end);
+      await _supabase
+          .from(_tableName)
+          .upsert(chunk, onConflict: 'field_number');
+      imported += chunk.length;
+    }
+
+    return imported;
+  }
+
+  Future<bool> _saveBytes({
+    required String fileName,
+    required List<int> bytes,
+    required List<String> allowedExtensions,
+  }) async {
+    final path = await FilePicker.saveFile(
+      dialogTitle: 'Simpan $fileName',
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: allowedExtensions,
+      bytes: Uint8List.fromList(bytes),
+    );
+    return path != null;
+  }
+
+  Future<void> _runOperation({
+    required String status,
+    required Future<void> Function() action,
+  }) async {
     setState(() {
-      _chartData = result;
-      _totalSampunArea = tempSampun;
-      _totalDerengJangkepArea = tempDerengJangkep;
-      _totalDerengBlasArea = tempDerengBlas;
-      _totalDerengArea = tempDereng;
-      _totalVisitedArea = tempVisited;
-      _totalNotVisitedArea = tempNotVisited;
+      _isLoading = true;
+      _loadingStatus = status;
+      _error = null;
     });
-  }
 
-  String _getAuditStatus(List<String> row) {
-    switch (_selectedWorksheetTitle) {
-      case 'Vegetative':
-        return _safeGet(row, 55).toLowerCase() == "audited" ? "Sampun" : "Dereng";
-      case 'Generative':
-        final r = _safeGet(row, 72).toLowerCase();
-        final p = _safeGet(row, 73).toLowerCase();
-        if (r == "audited" && p == "audited") return "Sampun";
-        if (r == "audited" || p == "audited") return "Dereng Jangkep";
-        return "Dereng Blas";
-      case 'Pre Harvest':
-        return _safeGet(row, 39).toLowerCase() == "audited" ? "Sampun" : "Dereng";
-      case 'Harvest':
-        return _safeGet(row, 43).toLowerCase() == "audited" ? "Sampun" : "Dereng";
-      default:
-        return "Dereng";
+    try {
+      await action();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = e.toString());
+        _showSnack(e.toString(), isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadingStatus = null;
+        });
+      }
     }
   }
 
-  // === UI WIDGETS ===
+  Future<bool> _confirmImport(int count) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Konfirmasi Import'),
+        content: Text(
+          'Import akan upsert $count record ke tabel audit_vegetative untuk '
+          'PS/PSP vegetative. Data dengan field_number yang sama akan diperbarui.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.upload_file_rounded),
+            label: const Text('Import'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  void _showSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor:
+              isError ? Colors.red.shade700 : Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final lastUpdatedText = _lastUpdatedAt == null
+        ? '-'
+        : DateFormat('dd MMM yyyy HH:mm').format(_lastUpdatedAt!.toLocal());
+
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: const Color(0xFFF5F7FA),
       body: Column(
         children: [
           _buildHeader(),
-          _buildFilterBar(),
           Expanded(
-            child: _isLoading
-                ? _buildLoadingState()
-                : _error != null
-                ? _buildEmptyState(_error!, Icons.error_outline, isError: true)
-                : _selectedRegionGroup == null
-                ? _buildInitialState()
-                : _filteredData.isEmpty
-                ? _buildEmptyState("Data tidak ditemukan untuk filter ini", Icons.search_off)
-                : _buildDashboardContent(),
+            child: RefreshIndicator(
+              onRefresh: _refreshDatabaseSummary,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_isLoading) _buildLoadingBanner(),
+                    if (_error != null) _buildErrorBanner(_error!),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isWide = constraints.maxWidth >= 760;
+                        return Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            _buildMetricCard(
+                              width: isWide ? 220 : constraints.maxWidth,
+                              title: 'PS/PSP Fields',
+                              value: _pspFieldCount.toString(),
+                              icon: Icons.inventory_2_outlined,
+                              color: const Color(0xFF00796B),
+                            ),
+                            _buildMetricCard(
+                              width: isWide ? 220 : constraints.maxWidth,
+                              title: 'Vegetative Audits',
+                              value: _pspAuditCount.toString(),
+                              icon: Icons.fact_check_outlined,
+                              color: const Color(0xFF1565C0),
+                            ),
+                            _buildMetricCard(
+                              width: isWide ? 260 : constraints.maxWidth,
+                              title: 'Last DB Update',
+                              value: lastUpdatedText,
+                              icon: Icons.update_rounded,
+                              color: const Color(0xFF6A1B9A),
+                              compactText: true,
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 18),
+                    _buildDatasetPanel(),
+                    const SizedBox(height: 18),
+                    _buildImportRulesPanel(),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDashboardContent() {
-    return RefreshIndicator(
-      onRefresh: () async {
-        if (_selectedRegionGroup != null) {
-          await _onRegionGroupChanged(_selectedRegionGroup, forceRefresh: true);
-        }
-      },
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionTitle("Graph 1: Ringkasan Audit (Total Ha)"),
-            const SizedBox(height: 16),
-            _buildAuditStatusChart(),
-            const SizedBox(height: 16),
-            _buildGraph1Summary(),
-            const SizedBox(height: 32),
-            _buildSectionTitle("Graph 2: Analisis Area (Visited vs Not Visited)"),
-            const SizedBox(height: 16),
-            _buildVisitedAreaChart(),
-            const SizedBox(height: 16),
-            _buildGraph2Summary(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGraph1Summary() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildSummaryItem("Sampun", _totalSampunArea, const Color(0xFFA5D6A7)),
-          if (_selectedWorksheetTitle == 'Generative') ...[
-            _buildSummaryItem("Dereng Jangkep", _totalDerengJangkepArea, const Color(0xFFFFB74D)),
-            _buildSummaryItem("Dereng Blas", _totalDerengBlasArea, const Color(0xFFD94545)),
-          ] else
-            _buildSummaryItem("Dereng", _totalDerengArea, const Color(0xFFD94545)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGraph2Summary() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildSummaryItem("Visited", _totalVisitedArea, const Color(0xFF64B5F6)),
-          _buildSummaryItem("Not Visited", _totalNotVisitedArea, Colors.grey.shade400),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryItem(String label, double value, Color color) {
-    return Column(children: [Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600)), const SizedBox(height: 4), Text("${value.toStringAsFixed(1)} Ha", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color))]);
-  }
-
-  Widget _buildAuditStatusChart() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SfCartesianChart(
-          primaryXAxis: CategoryAxis(title: AxisTitle(text: 'Bulan'), majorGridLines: const MajorGridLines(width: 0), labelStyle: const TextStyle(fontWeight: FontWeight.bold)),
-          primaryYAxis: NumericAxis(title: AxisTitle(text: 'Luasan (Ha)')),
-          legend: Legend(isVisible: true, position: LegendPosition.bottom),
-          tooltipBehavior: TooltipBehavior(enable: true),
-          series: <CartesianSeries>[
-            StackedColumnSeries<_AuditMonthlyData, String>(name: _selectedWorksheetTitle == 'Generative' ? 'Dereng Blas' : 'Dereng', dataSource: _chartData, xValueMapper: (data, _) => data.monthName, yValueMapper: (data, _) => data.derengBlasHa, color: const Color(0xFFD94545), animationDuration: 1500, dataLabelSettings: const DataLabelSettings(isVisible: false)),
-            if (_selectedWorksheetTitle == 'Generative') StackedColumnSeries<_AuditMonthlyData, String>(name: 'Dereng Jangkep', dataSource: _chartData, xValueMapper: (data, _) => data.monthName, yValueMapper: (data, _) => data.derengJangkepHa, color: const Color(0xFFFFB74D), animationDuration: 1500, dataLabelSettings: const DataLabelSettings(isVisible: false)),
-            StackedColumnSeries<_AuditMonthlyData, String>(name: 'Sampun', dataSource: _chartData, xValueMapper: (data, _) => data.monthName, yValueMapper: (data, _) => data.sampunHa, color: const Color(0xFFA5D6A7), borderRadius: const BorderRadius.vertical(top: Radius.circular(6)), animationDuration: 1500, dataLabelSettings: const DataLabelSettings(isVisible: false)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVisitedAreaChart() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SfCartesianChart(
-          primaryXAxis: CategoryAxis(title: AxisTitle(text: 'Bulan'), majorGridLines: const MajorGridLines(width: 0), labelStyle: const TextStyle(fontWeight: FontWeight.bold)),
-          primaryYAxis: NumericAxis(title: AxisTitle(text: 'Luasan (Ha)')),
-          legend: Legend(isVisible: true, position: LegendPosition.bottom),
-          tooltipBehavior: TooltipBehavior(enable: true),
-          series: <CartesianSeries>[
-            StackedColumnSeries<_AuditMonthlyData, String>(name: 'Not Visited', dataSource: _chartData, xValueMapper: (data, _) => data.monthName, yValueMapper: (data, _) => data.notVisitedHa, color: Colors.grey.shade400, animationDuration: 1500, dataLabelSettings: const DataLabelSettings(isVisible: false)),
-            StackedColumnSeries<_AuditMonthlyData, String>(name: 'Visited Area', dataSource: _chartData, xValueMapper: (data, _) => data.monthName, yValueMapper: (data, _) => data.visitedHa, color: const Color(0xFF64B5F6), borderRadius: const BorderRadius.vertical(top: Radius.circular(6)), animationDuration: 1500, dataLabelSettings: const DataLabelSettings(isVisible: false)),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-      decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.green.shade700, Colors.green.shade900]), boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8, offset: const Offset(0, 3))]),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.green.shade800, const Color(0xFF00695C)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(35),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
       child: SafeArea(
         bottom: false,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            IconButton(icon: const Icon(Icons.arrow_back_rounded, color: Colors.white), onPressed: () { if (kIsWeb) Navigator.of(context).pop(); else context.go('/admin'); }),
-            const SizedBox(width: 16),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Audit Dashboard', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)), Text(_selectedRegionGroup ?? 'Data Gabungan Seluruh Region', style: const TextStyle(color: Colors.white70, fontSize: 13))]))
-          ]),
-          const SizedBox(height: 16),
-          _buildRegionSelector(),
-        ]),
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              onPressed: () {
+                if (kIsWeb) {
+                  Navigator.of(context).pop();
+                } else {
+                  context.go('/admin');
+                }
+              },
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Database Export/Import',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Audit Analysis difokuskan untuk backup dan restore database audit.',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Refresh',
+              onPressed: _isLoading ? null : _refreshDatabaseSummary,
+              icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildRegionSelector() {
-    return Row(children: [
-      Expanded(child: Container(height: 45, padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)), child: DropdownButtonHideUnderline(child: DropdownButton<String>(value: _selectedRegionGroup, hint: const Text("Pilih Region", style: TextStyle(fontSize: 13, color: Colors.grey)), isExpanded: true, items: _regionGroupOptions.map((String value) => DropdownMenuItem<String>(value: value, child: Text(value, style: TextStyle(color: Colors.green.shade900, fontWeight: FontWeight.bold)))).toList(), onChanged: _isLoading ? null : (val) => _onRegionGroupChanged(val))))),
-      const SizedBox(width: 8),
-      if (_selectedRegionGroup != null) InkWell(onTap: _isLoading ? null : () => _onRegionGroupChanged(_selectedRegionGroup, forceRefresh: true), child: Container(height: 45, width: 45, decoration: BoxDecoration(color: Colors.white.withAlpha(51), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white54)), child: _isLoading ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.refresh_rounded, color: Colors.white)))
-    ]);
+  Widget _buildLoadingBanner() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.green.shade100),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.green.shade700,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _loadingStatus ?? 'Memproses database...',
+              style: TextStyle(color: Colors.grey.shade800),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  Widget _buildFilterBar() {
+  Widget _buildErrorBanner(String message) {
     return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red.shade100),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline_rounded, color: Colors.red.shade700),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(color: Colors.red.shade800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricCard({
+    required double width,
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+    bool compactText = false,
+  }) {
+    return Container(
+      width: width,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
-      child: Column(children: [
-        Row(children: [
-          Expanded(flex: 3, child: _buildModernDropdown(label: "Worksheet", value: _selectedWorksheetTitle, items: _worksheetTitles, icon: Icons.table_chart_rounded, onChanged: (val) { if (val != null && val != _selectedWorksheetTitle) { setState(() => _selectedWorksheetTitle = val); if (_selectedRegionGroup != null) _onRegionGroupChanged(_selectedRegionGroup); } })),
-          const SizedBox(width: 8),
-          Expanded(flex: 4, child: _buildModernDropdown(label: "QA SPV", value: _selectedQaSpv, items: ["Semua SPV", ..._qaSpvOptions], icon: Icons.supervisor_account_rounded, onChanged: (val) { setState(() { _selectedQaSpv = (val == "Semua SPV") ? null : val; _applyFilters(); }); })),
-          const SizedBox(width: 8),
-          Expanded(flex: 4, child: _buildModernDropdown(label: "District", value: _selectedDistrictFilter, items: ["Semua District", ..._districtFilterOptions], icon: Icons.location_city_rounded, onChanged: (val) { setState(() { _selectedDistrictFilter = (val == "Semua District") ? null : val; _applyFilters(); }); })),
-        ]),
-      ]),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.black.withAlpha(12)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color.withAlpha(22),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 21),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  maxLines: compactText ? 2 : 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade900,
+                    fontSize: compactText ? 14 : 24,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildModernDropdown({required String label, required String? value, required List<String> items, required IconData icon, required Function(String?) onChanged}) {
+  Widget _buildDatasetPanel() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)),
-      child: DropdownButtonHideUnderline(child: DropdownButton<String>(value: value ?? items.first, isExpanded: true, icon: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Colors.grey.shade600), style: TextStyle(fontSize: 13, color: Colors.grey.shade800, fontWeight: FontWeight.w600), items: items.map((String item) => DropdownMenuItem<String>(value: item, child: Row(children: [Icon(icon, size: 16, color: Colors.blue.shade700), const SizedBox(width: 8), Expanded(child: Text(item, overflow: TextOverflow.ellipsis))]))).toList(), onChanged: onChanged)),
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.black.withAlpha(12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00796B).withAlpha(22),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.table_view_rounded,
+                  color: Color(0xFF00796B),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'PS/PSP Vegetative Audit',
+                      style: TextStyle(
+                        color: Colors.grey.shade900,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Sumber: master_fields hybrid ASF* dan relasi audit_vegetative.',
+                      style:
+                          TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _buildActionButton(
+                label: 'Export JSON',
+                icon: Icons.file_download_outlined,
+                color: const Color(0xFF00796B),
+                onPressed: _isLoading ? null : _exportPspVegetativeJson,
+              ),
+              _buildActionButton(
+                label: 'Export CSV',
+                icon: Icons.grid_on_rounded,
+                color: const Color(0xFF1565C0),
+                onPressed: _isLoading ? null : _exportPspVegetativeCsv,
+              ),
+              _buildActionButton(
+                label: 'Import JSON',
+                icon: Icons.upload_file_rounded,
+                color: const Color(0xFFEF6C00),
+                onPressed: _isLoading ? null : _importPspVegetativeJson,
+              ),
+            ],
+          ),
+          if (_lastAction != null) ...[
+            const SizedBox(height: 14),
+            Text(
+              _lastAction!,
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Row(children: [Container(width: 4, height: 18, color: Colors.green.shade700, margin: const EdgeInsets.only(right: 8)), Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800))]);
+  Widget _buildActionButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback? onPressed,
+  }) {
+    return SizedBox(
+      height: 42,
+      child: FilledButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        style: FilledButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+    );
   }
 
-  Widget _buildLoadingState() {
-    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const CircularProgressIndicator(color: Colors.green), const SizedBox(height: 16), Text(_loadingStatus ?? "Memuat data...", style: const TextStyle(color: Colors.grey))]));
-  }
-
-  Widget _buildInitialState() {
-    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.touch_app, size: 60, color: Colors.grey.shade300), const SizedBox(height: 20), Text("Pilih Region untuk memulai.", style: TextStyle(fontSize: 16, color: Colors.grey.shade500))]));
-  }
-
-  Widget _buildEmptyState(String message, IconData icon, {bool isError = false}) {
-    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, size: 60, color: isError ? Colors.red.shade200 : Colors.grey.shade300), const SizedBox(height: 20), Text(message, style: TextStyle(fontSize: 16, color: isError ? Colors.red.shade400 : Colors.grey.shade500))]));
-  }
-
-  void _showErrorMessage(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+  Widget _buildImportRulesPanel() {
+    final columnsText = _auditColumns.take(12).join(', ');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.black.withAlpha(10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Format database',
+            style: TextStyle(
+              color: Colors.grey.shade900,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'JSON adalah backup yang bisa diimport kembali. CSV dibuat untuk '
+            'review dan olah data di spreadsheet.',
+            style: TextStyle(color: Colors.grey.shade700, height: 1.4),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Kolom audit utama: $columnsText, dan detail roguing 1 sampai 4.',
+            style: TextStyle(
+                color: Colors.grey.shade600, fontSize: 12, height: 1.4),
+          ),
+        ],
+      ),
+    );
   }
 }
 
-// Model Class (Tetap sama, karena Summary tetap disimpan sebagai JSONB)
-class _AuditMonthlyData {
-  final int monthIndex;
-  final String monthName;
-  double sampunHa = 0;
-  double derengJangkepHa = 0;
-  double derengBlasHa = 0;
-  double visitedHa = 0;
-  double notVisitedHa = 0;
-  double totalHa = 0;
+class _PspVegetativeExportRecord {
+  final String fieldNumber;
+  final Map<String, dynamic> master;
+  final Map<String, dynamic> audit;
 
-  _AuditMonthlyData(this.monthIndex, this.monthName);
+  const _PspVegetativeExportRecord({
+    required this.fieldNumber,
+    required this.master,
+    required this.audit,
+  });
+}
 
-  Map<String, dynamic> toJson() => {
-    'mi': monthIndex,
-    'mn': monthName,
-    's': sampunHa,
-    'dj': derengJangkepHa,
-    'db': derengBlasHa,
-    'v': visitedHa,
-    'nv': notVisitedHa,
-    't': totalHa,
-  };
+class _ImportSummary {
+  final int imported;
+  final int skipped;
 
-  factory _AuditMonthlyData.fromJson(Map<String, dynamic> json) {
-    var data = _AuditMonthlyData(json['mi'], json['mn']);
-    data.sampunHa = (json['s'] as num).toDouble();
-    data.derengJangkepHa = (json['dj'] as num).toDouble();
-    data.derengBlasHa = (json['db'] as num).toDouble();
-    data.visitedHa = (json['v'] as num).toDouble();
-    data.notVisitedHa = (json['nv'] as num).toDouble();
-    data.totalHa = (json['t'] as num).toDouble();
-    return data;
-  }
+  const _ImportSummary({
+    required this.imported,
+    required this.skipped,
+  });
+}
+
+class _ImportExtractResult {
+  final List<Map<String, dynamic>> rows;
+  final int skipped;
+
+  const _ImportExtractResult({
+    required this.rows,
+    required this.skipped,
+  });
 }
