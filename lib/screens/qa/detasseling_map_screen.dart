@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:io' as io;
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -630,16 +630,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     if (_isExportingPicture) return;
     setState(() => _isExportingPicture = true);
     try {
-      await WidgetsBinding.instance.endOfFrame;
-      final boundary = _planningCardKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
-      if (boundary == null) {
-        throw Exception('Planning card belum siap untuk dicapture.');
-      }
-      final image = await boundary.toImage(pixelRatio: 3);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      final bytes = byteData?.buffer.asUint8List();
-      if (bytes == null) throw Exception('Gagal membuat file gambar.');
+      final bytes = await _buildWeeklySummaryPng(plan);
       final destination = await _saveBytes(
         bytes: bytes,
         fileName: _exportFileName(plan, 'png'),
@@ -657,63 +648,18 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     if (_isExportingPdf) return;
     setState(() => _isExportingPdf = true);
     try {
+      final reportImage = await _buildWeeklySummaryPng(plan);
       final doc = pw.Document();
       doc.addPage(
-        pw.MultiPage(
+        pw.Page(
           pageFormat: PdfPageFormat.a4.landscape,
-          margin: const pw.EdgeInsets.all(24),
-          build: (_) => [
-            pw.Text(
-              'Detasseling Weekly Planning',
-              style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+          margin: pw.EdgeInsets.zero,
+          build: (_) => pw.Center(
+            child: pw.Image(
+              pw.MemoryImage(reportImage),
+              fit: pw.BoxFit.contain,
             ),
-            pw.SizedBox(height: 4),
-            pw.Text('${plan.week.label} • ${plan.week.rangeLabel}'),
-            pw.Text('Scope: ${plan.roleScope.displayLabel}'),
-            pw.SizedBox(height: 12),
-            pw.Row(
-              children: [
-                _pdfMetric('Codet', plan.codetCount.toString()),
-                _pdfMetric('FN', plan.plannedFieldCount.toString()),
-                _pdfMetric('Total Ha', _formatHa(plan.totalAreaHa)),
-                _pdfMetric('Pending', plan.pendingGroupCount.toString()),
-              ],
-            ),
-            pw.SizedBox(height: 14),
-            pw.TableHelper.fromTextArray(
-              border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.4),
-              headerDecoration:
-                  const pw.BoxDecoration(color: PdfColors.green800),
-              headerStyle: pw.TextStyle(
-                color: PdfColors.white,
-                fontWeight: pw.FontWeight.bold,
-                fontSize: 9,
-              ),
-              cellStyle: const pw.TextStyle(fontSize: 8),
-              cellAlignment: pw.Alignment.centerLeft,
-              headerAlignment: pw.Alignment.centerLeft,
-              headers: const [
-                'Codet',
-                'Desa',
-                'Hybrid',
-                'Crop',
-                'FN',
-                'Total Ha',
-                'Status',
-              ],
-              data: plan.groups.map((group) {
-                return [
-                  group.codet,
-                  group.village,
-                  group.hybrid,
-                  group.cropLabel,
-                  group.fieldCount.toString(),
-                  _formatHa(group.totalAreaHa),
-                  group.statusLabel,
-                ];
-              }).toList(),
-            ),
-          ],
+          ),
         ),
       );
       final destination = await _saveBytes(
@@ -729,25 +675,900 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     }
   }
 
-  pw.Widget _pdfMetric(String label, String value) {
-    return pw.Container(
-      margin: const pw.EdgeInsets.only(right: 8),
-      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
-        borderRadius: pw.BorderRadius.circular(6),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(label, style: const pw.TextStyle(fontSize: 7)),
-          pw.Text(
-            value,
-            style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+  Future<Uint8List> _buildWeeklySummaryPng(
+    DetasselingPlanningData plan,
+  ) async {
+    const width = 1600.0;
+    const height = 1120.0;
+    const margin = 46.0;
+    const deep = Color(0xFF003B24);
+    const green = Color(0xFF006B3E);
+    const softGreen = Color(0xFFEAF4EC);
+    const line = Color(0xFFDCE3DD);
+    const ink = Color(0xFF092817);
+
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+
+    void drawRound(
+      Rect rect,
+      Color color, {
+      double radius = 12,
+      Color? border,
+      double borderWidth = 1,
+    }) {
+      final rrect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
+      canvas.drawRRect(rrect, Paint()..color = color);
+      if (border != null) {
+        canvas.drawRRect(
+          rrect,
+          Paint()
+            ..color = border
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = borderWidth,
+        );
+      }
+    }
+
+    Size drawText(
+      String text,
+      Offset offset, {
+      required double maxWidth,
+      double fontSize = 18,
+      Color color = ink,
+      FontWeight weight = FontWeight.w600,
+      TextAlign align = TextAlign.left,
+      int maxLines = 1,
+      double height = 1.2,
+    }) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: TextStyle(
+            color: color,
+            fontFamily: 'Nunito',
+            fontSize: fontSize,
+            fontWeight: weight,
+            height: height,
           ),
-        ],
-      ),
+        ),
+        textAlign: align,
+        textDirection: ui.TextDirection.ltr,
+        maxLines: maxLines,
+        ellipsis: maxLines == 1 ? '...' : null,
+      )..layout(maxWidth: maxWidth);
+      painter.paint(canvas, offset);
+      return painter.size;
+    }
+
+    void drawCenteredText(
+      String text,
+      Rect rect, {
+      double fontSize = 18,
+      Color color = ink,
+      FontWeight weight = FontWeight.w700,
+      int maxLines = 1,
+    }) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: TextStyle(
+            color: color,
+            fontFamily: 'Nunito',
+            fontSize: fontSize,
+            fontWeight: weight,
+            height: 1.15,
+          ),
+        ),
+        textAlign: TextAlign.center,
+        textDirection: ui.TextDirection.ltr,
+        maxLines: maxLines,
+        ellipsis: maxLines == 1 ? '...' : null,
+      )..layout(maxWidth: rect.width);
+      painter.paint(
+        canvas,
+        Offset(
+          rect.left + (rect.width - painter.width) / 2,
+          rect.top + (rect.height - painter.height) / 2,
+        ),
+      );
+    }
+
+    void drawIcon(IconData icon, Rect rect, Color color) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: String.fromCharCode(icon.codePoint),
+          style: TextStyle(
+            color: color,
+            fontFamily: icon.fontFamily,
+            package: icon.fontPackage,
+            fontSize: rect.height,
+          ),
+        ),
+        textDirection: ui.TextDirection.ltr,
+      )..layout();
+      painter.paint(
+        canvas,
+        Offset(
+          rect.left + (rect.width - painter.width) / 2,
+          rect.top + (rect.height - painter.height) / 2,
+        ),
+      );
+    }
+
+    void drawPanelTitle(Rect rect, String title) {
+      drawRound(
+        Rect.fromLTWH(rect.left, rect.top, rect.width, 42),
+        deep,
+        radius: 8,
+      );
+      drawCenteredText(
+        title,
+        Rect.fromLTWH(rect.left + 12, rect.top, rect.width - 24, 42),
+        fontSize: 18,
+        color: Colors.white,
+        weight: FontWeight.w900,
+      );
+    }
+
+    void drawBadge(
+      Rect rect,
+      String label, {
+      Color fill = softGreen,
+      Color color = green,
+    }) {
+      drawRound(rect, fill, radius: 7, border: color.withAlpha(80));
+      drawCenteredText(
+        label,
+        rect,
+        fontSize: 16,
+        color: color,
+        weight: FontWeight.w900,
+      );
+    }
+
+    final season = _reportSingleValue(
+      plan,
+      const ['season', 'season_code', 'planting_season'],
+      fallback: '-',
     );
+    final region = _selectedRegion ??
+        _reportSingleValue(plan, const ['region'], fallback: 'All Region');
+    final generatedAt =
+        DateFormat('d MMM yyyy | HH:mm', 'id_ID').format(DateTime.now());
+    final reportRange = _reportRangeLabel(plan.week);
+
+    canvas.drawRect(
+      const Rect.fromLTWH(0, 0, width, height),
+      Paint()..color = Colors.white,
+    );
+
+    final logo = Rect.fromLTWH(margin, 28, 88, 88);
+    drawRound(logo, deep, radius: 12);
+    drawIcon(Icons.yard_rounded, logo.deflate(17), AdvantaColors.goldLight);
+    drawBadge(
+      Rect.fromLTWH(logo.left + 50, logo.top + 58, 30, 22),
+      'FC',
+      fill: green,
+      color: Colors.white,
+    );
+    drawText(
+      'WEEKLY DETASSELLING PLANNING SUMMARY',
+      const Offset(150, 35),
+      maxWidth: 1180,
+      fontSize: 34,
+      color: ink,
+      weight: FontWeight.w900,
+    );
+    drawText(
+      'Kroscek - Planning Week ${plan.week.label}',
+      const Offset(152, 82),
+      maxWidth: 820,
+      fontSize: 20,
+      color: const Color(0xFF2F3C34),
+      weight: FontWeight.w600,
+    );
+    drawText(
+      plan.roleScope.displayLabel,
+      const Offset(1220, 84),
+      maxWidth: 330,
+      fontSize: 15,
+      color: green,
+      weight: FontWeight.w800,
+      align: TextAlign.right,
+    );
+
+    final kpiRect = Rect.fromLTWH(margin, 132, width - margin * 2, 106);
+    drawRound(kpiRect, Colors.white, radius: 10, border: line);
+    final kpiW = kpiRect.width / 6;
+    final kpis = [
+      (Icons.calendar_month_rounded, 'Week', plan.week.label, null),
+      (Icons.grass_rounded, 'Season', season, null),
+      (Icons.location_on_rounded, 'Region', region, null),
+      (
+        Icons.description_outlined,
+        'Total Plan',
+        '${_formatHa(plan.totalAreaHa)} Ha',
+        green
+      ),
+      (Icons.eco_rounded, 'FC Pass Rule', 'P1-P3', green),
+      (Icons.eco_rounded, 'SC Pass Rule', 'P1-P5', const Color(0xFF175CFF)),
+    ];
+    for (var i = 0; i < kpis.length; i++) {
+      final left = kpiRect.left + kpiW * i;
+      if (i > 0) {
+        canvas.drawLine(
+          Offset(left, kpiRect.top + 18),
+          Offset(left, kpiRect.bottom - 18),
+          Paint()
+            ..color = line
+            ..strokeWidth = 1.5,
+        );
+      }
+      final icon = kpis[i].$1;
+      final label = kpis[i].$2;
+      final value = kpis[i].$3;
+      final accent = kpis[i].$4;
+      drawIcon(
+        icon,
+        Rect.fromLTWH(left + 36, kpiRect.top + 30, 42, 42),
+        deep,
+      );
+      drawText(
+        label,
+        Offset(left + 92, kpiRect.top + 28),
+        maxWidth: kpiW - 110,
+        fontSize: 13,
+        color: const Color(0xFF4B5B50),
+        weight: FontWeight.w800,
+      );
+      if (i >= 4) {
+        drawBadge(
+          Rect.fromLTWH(left + 92, kpiRect.top + 58, 112, 36),
+          value,
+          fill: i == 4 ? const Color(0xFFDDEEE3) : const Color(0xFFE2E9FF),
+          color: accent ?? green,
+        );
+      } else {
+        drawText(
+          value,
+          Offset(left + 92, kpiRect.top + 50),
+          maxWidth: kpiW - 110,
+          fontSize: 22,
+          color: accent ?? ink,
+          weight: FontWeight.w900,
+        );
+      }
+    }
+
+    final weeklyRect = Rect.fromLTWH(margin, 258, 1000, 304);
+    drawRound(weeklyRect, Colors.white, radius: 10, border: line);
+    drawPanelTitle(weeklyRect, 'WEEKLY DETASSELLING PLAN ($reportRange)');
+    final dayTop = weeklyRect.top + 60;
+    final dayW = (weeklyRect.width - 26) / 7;
+    for (var i = 0; i < plan.dailySummaries.length; i++) {
+      final day = plan.dailySummaries[i];
+      final rect = Rect.fromLTWH(
+        weeklyRect.left + 13 + dayW * i,
+        dayTop,
+        dayW,
+        weeklyRect.height - 74,
+      );
+      final active = i == 0;
+      if (active) {
+        drawRound(rect.deflate(2), deep, radius: 12);
+      }
+      if (i > 0) {
+        canvas.drawLine(
+          Offset(rect.left, rect.top + 24),
+          Offset(rect.left, rect.bottom - 18),
+          Paint()
+            ..color = line
+            ..strokeWidth = 1,
+        );
+      }
+      final textColor = active ? Colors.white : ink;
+      drawCenteredText(
+        DateFormat('d', 'id_ID').format(day.date),
+        Rect.fromLTWH(rect.left + 8, rect.top + 12, rect.width - 16, 34),
+        fontSize: 26,
+        color: textColor,
+        weight: FontWeight.w900,
+      );
+      drawCenteredText(
+        DateFormat('MMM', 'id_ID').format(day.date),
+        Rect.fromLTWH(rect.left + 8, rect.top + 48, rect.width - 16, 24),
+        fontSize: 17,
+        color: active ? Colors.white.withAlpha(230) : ink,
+        weight: FontWeight.w600,
+      );
+      drawIcon(
+        Icons.yard_rounded,
+        Rect.fromLTWH(rect.left + 28, rect.top + 112, 22, 22),
+        active ? Colors.white : deep,
+      );
+      drawText(
+        '${day.codetCount} Codet',
+        Offset(rect.left + 58, rect.top + 111),
+        maxWidth: rect.width - 66,
+        fontSize: 16,
+        color: textColor,
+        weight: FontWeight.w700,
+      );
+      drawIcon(
+        Icons.eco_rounded,
+        Rect.fromLTWH(rect.left + 28, rect.top + 164, 22, 22),
+        active ? Colors.white : deep,
+      );
+      drawText(
+        '${_formatHa(day.areaHa)} Ha',
+        Offset(rect.left + 58, rect.top + 163),
+        maxWidth: rect.width - 66,
+        fontSize: 16,
+        color: textColor,
+        weight: FontWeight.w700,
+      );
+    }
+
+    final mapRect = Rect.fromLTWH(1070, 258, 484, 400);
+    _drawExportMapSnapshot(
+      canvas,
+      mapRect,
+      plan,
+      drawRound: drawRound,
+      drawText: drawText,
+      drawCenteredText: drawCenteredText,
+      drawPanelTitle: drawPanelTitle,
+    );
+
+    final tableRect = Rect.fromLTWH(margin, 586, 1000, 310);
+    _drawExportCodetTable(
+      canvas,
+      tableRect,
+      plan,
+      drawRound: drawRound,
+      drawText: drawText,
+      drawCenteredText: drawCenteredText,
+      drawPanelTitle: drawPanelTitle,
+      drawBadge: drawBadge,
+    );
+
+    final noteRect = Rect.fromLTWH(1070, 682, 484, 214);
+    drawRound(noteRect, Colors.white, radius: 10, border: line);
+    drawText(
+      'KETERANGAN',
+      Offset(noteRect.left + 22, noteRect.top + 22),
+      maxWidth: noteRect.width - 44,
+      fontSize: 18,
+      color: ink,
+      weight: FontWeight.w900,
+    );
+    drawText(
+      'Plan berdasarkan akumulasi Total DT berikutnya per Codet sesuai pass rule.',
+      Offset(noteRect.left + 22, noteRect.top + 58),
+      maxWidth: noteRect.width - 44,
+      fontSize: 14,
+      color: const Color(0xFF2D3C34),
+      weight: FontWeight.w600,
+      maxLines: 2,
+      height: 1.35,
+    );
+    drawText(
+      '• FC : Pass P1, P2, P3\n• SC : Pass P1, P2, P3, P4, P5',
+      Offset(noteRect.left + 30, noteRect.top + 116),
+      maxWidth: noteRect.width - 60,
+      fontSize: 15,
+      color: ink,
+      weight: FontWeight.w700,
+      maxLines: 3,
+      height: 1.5,
+    );
+
+    final exportRect = Rect.fromLTWH(margin, 918, width - margin * 2, 96);
+    drawRound(exportRect, const Color(0xFFF0F5F1), radius: 10, border: line);
+    final iconCircle =
+        Rect.fromLTWH(exportRect.left + 36, exportRect.top + 19, 58, 58);
+    canvas.drawCircle(
+      iconCircle.center,
+      29,
+      Paint()
+        ..color = const Color(0xFFE1F0E6)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      iconCircle.center,
+      29,
+      Paint()
+        ..color = green
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+    drawIcon(Icons.download_rounded, iconCircle.deflate(13), green);
+    drawText(
+      'Export your weekly plan anytime',
+      Offset(exportRect.left + 118, exportRect.top + 26),
+      maxWidth: 530,
+      fontSize: 20,
+      color: ink,
+      weight: FontWeight.w900,
+    );
+    drawText(
+      'Download this weekly DT planning summary as an image or PDF for sharing and reporting.',
+      Offset(exportRect.left + 118, exportRect.top + 58),
+      maxWidth: 650,
+      fontSize: 13,
+      color: const Color(0xFF516158),
+      weight: FontWeight.w600,
+    );
+    void drawExportButton(Rect rect, IconData icon, String title, String sub) {
+      drawRound(rect, deep, radius: 8, border: const Color(0xFF0D7A4E));
+      drawIcon(icon, Rect.fromLTWH(rect.left + 24, rect.top + 24, 34, 34),
+          Colors.white);
+      drawText(
+        title,
+        Offset(rect.left + 74, rect.top + 24),
+        maxWidth: rect.width - 90,
+        fontSize: 16,
+        color: Colors.white,
+        weight: FontWeight.w900,
+      );
+      drawText(
+        sub,
+        Offset(rect.left + 74, rect.top + 50),
+        maxWidth: rect.width - 90,
+        fontSize: 12,
+        color: Colors.white.withAlpha(205),
+        weight: FontWeight.w600,
+      );
+    }
+
+    drawExportButton(
+      Rect.fromLTWH(exportRect.right - 670, exportRect.top + 14, 315, 68),
+      Icons.image_outlined,
+      'Download Picture (PNG)',
+      'Export as image',
+    );
+    drawExportButton(
+      Rect.fromLTWH(exportRect.right - 340, exportRect.top + 14, 315, 68),
+      Icons.picture_as_pdf_outlined,
+      'Download PDF',
+      'Export as PDF document',
+    );
+
+    final footerRect = Rect.fromLTWH(0, 1042, width, 78);
+    canvas.drawRect(footerRect, Paint()..color = deep);
+    drawText(
+      'Generated by KROSCEK',
+      Offset(margin, footerRect.top + 28),
+      maxWidth: 360,
+      fontSize: 15,
+      color: Colors.white,
+      weight: FontWeight.w700,
+    );
+    drawText(
+      'Generated on:  $generatedAt WIB',
+      Offset(545, footerRect.top + 28),
+      maxWidth: 430,
+      fontSize: 15,
+      color: Colors.white,
+      weight: FontWeight.w600,
+    );
+    drawText(
+      'This is a system-generated report. No signature required.',
+      Offset(1070, footerRect.top + 28),
+      maxWidth: 480,
+      fontSize: 15,
+      color: Colors.white,
+      weight: FontWeight.w600,
+      align: TextAlign.right,
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(width.toInt(), height.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    final bytes = byteData?.buffer.asUint8List();
+    if (bytes == null) throw Exception('Gagal membuat report PNG.');
+    return bytes;
+  }
+
+  void _drawExportCodetTable(
+    ui.Canvas canvas,
+    Rect rect,
+    DetasselingPlanningData plan, {
+    required void Function(
+      Rect rect,
+      Color color, {
+      double radius,
+      Color? border,
+      double borderWidth,
+    }) drawRound,
+    required Size Function(
+      String text,
+      Offset offset, {
+      required double maxWidth,
+      double fontSize,
+      Color color,
+      FontWeight weight,
+      TextAlign align,
+      int maxLines,
+      double height,
+    }) drawText,
+    required void Function(
+      String text,
+      Rect rect, {
+      double fontSize,
+      Color color,
+      FontWeight weight,
+      int maxLines,
+    }) drawCenteredText,
+    required void Function(Rect rect, String title) drawPanelTitle,
+    required void Function(
+      Rect rect,
+      String label, {
+      Color fill,
+      Color color,
+    }) drawBadge,
+  }) {
+    const green = Color(0xFF006B3E);
+    const line = Color(0xFFDCE3DD);
+    const ink = Color(0xFF092817);
+
+    drawRound(rect, Colors.white, radius: 10, border: line);
+    drawPanelTitle(rect, 'DETASSELLING PLAN BY CODET');
+    final headerTop = rect.top + 54;
+    final tableLeft = rect.left + 18;
+    final colWidths = [128.0, 150.0, 96.0, 156.0, 206.0, 120.0, 104.0];
+    final headers = [
+      'Codet',
+      'Desa',
+      'Crop',
+      'Hybrid',
+      'Total DT Next Week (Ha)',
+      'Pass Rule',
+      'Status',
+    ];
+
+    var x = tableLeft;
+    for (var i = 0; i < headers.length; i++) {
+      drawText(
+        headers[i],
+        Offset(x + 6, headerTop),
+        maxWidth: colWidths[i] - 12,
+        fontSize: 12,
+        color: ink,
+        weight: FontWeight.w900,
+        align: i >= 4 ? TextAlign.center : TextAlign.left,
+      );
+      if (i > 0) {
+        canvas.drawLine(
+          Offset(x, rect.top + 52),
+          Offset(x, rect.bottom - 16),
+          Paint()
+            ..color = line
+            ..strokeWidth = 1,
+        );
+      }
+      x += colWidths[i];
+    }
+
+    final rows = plan.groups.take(5).toList();
+    const rowHeight = 42.0;
+    for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      final group = rows[rowIndex];
+      final top = headerTop + 28 + rowHeight * rowIndex;
+      canvas.drawLine(
+        Offset(rect.left + 18, top - 8),
+        Offset(rect.right - 18, top - 8),
+        Paint()
+          ..color = line
+          ..strokeWidth = 1,
+      );
+
+      x = tableLeft;
+      drawText(
+        group.codet,
+        Offset(x + 6, top + 3),
+        maxWidth: colWidths[0] - 44,
+        fontSize: 13,
+        color: ink,
+        weight: FontWeight.w800,
+      );
+      drawBadge(
+        Rect.fromLTWH(x + colWidths[0] - 38, top, 32, 22),
+        group.cropLabel,
+        fill: group.crop == DetasselingCropFilter.sc
+            ? const Color(0xFFE2E9FF)
+            : const Color(0xFFDDEEE3),
+        color: group.crop == DetasselingCropFilter.sc
+            ? const Color(0xFF175CFF)
+            : green,
+      );
+      x += colWidths[0];
+      drawText(
+        group.village,
+        Offset(x + 8, top + 3),
+        maxWidth: colWidths[1] - 16,
+        fontSize: 13,
+        color: ink,
+        weight: FontWeight.w700,
+      );
+      x += colWidths[1];
+      drawBadge(
+        Rect.fromLTWH(x + 28, top, 44, 24),
+        group.cropLabel,
+        fill: group.crop == DetasselingCropFilter.sc
+            ? const Color(0xFFE2E9FF)
+            : const Color(0xFFDDEEE3),
+        color: group.crop == DetasselingCropFilter.sc
+            ? const Color(0xFF175CFF)
+            : green,
+      );
+      x += colWidths[2];
+      drawText(
+        group.hybrid,
+        Offset(x + 8, top + 3),
+        maxWidth: colWidths[3] - 16,
+        fontSize: 13,
+        color: ink,
+        weight: FontWeight.w700,
+      );
+      x += colWidths[3];
+      drawCenteredText(
+        '${_formatHa(group.totalAreaHa)} Ha',
+        Rect.fromLTWH(x, top - 2, colWidths[4], 30),
+        fontSize: 16,
+        color: green,
+        weight: FontWeight.w900,
+      );
+      x += colWidths[4];
+      drawBadge(
+        Rect.fromLTWH(x + 12, top - 1, 86, 26),
+        _groupPassRule(group),
+        fill: group.crop == DetasselingCropFilter.sc
+            ? const Color(0xFFE2E9FF)
+            : const Color(0xFFDDEEE3),
+        color: group.crop == DetasselingCropFilter.sc
+            ? const Color(0xFF175CFF)
+            : green,
+      );
+      x += colWidths[5];
+      final status = _exportStatusLabel(group.status);
+      canvas.drawCircle(
+        Offset(x + 18, top + 12),
+        5,
+        Paint()..color = green,
+      );
+      drawText(
+        status,
+        Offset(x + 32, top + 3),
+        maxWidth: colWidths[6] - 38,
+        fontSize: 13,
+        color: ink,
+        weight: FontWeight.w800,
+      );
+    }
+
+    if (plan.groups.length > rows.length) {
+      drawCenteredText(
+        '+${plan.groups.length - rows.length} Codet lainnya',
+        Rect.fromLTWH(rect.left + 20, rect.bottom - 34, rect.width - 40, 22),
+        fontSize: 12,
+        color: const Color(0xFF5E6A62),
+        weight: FontWeight.w800,
+      );
+    }
+  }
+
+  void _drawExportMapSnapshot(
+    ui.Canvas canvas,
+    Rect rect,
+    DetasselingPlanningData plan, {
+    required void Function(
+      Rect rect,
+      Color color, {
+      double radius,
+      Color? border,
+      double borderWidth,
+    }) drawRound,
+    required Size Function(
+      String text,
+      Offset offset, {
+      required double maxWidth,
+      double fontSize,
+      Color color,
+      FontWeight weight,
+      TextAlign align,
+      int maxLines,
+      double height,
+    }) drawText,
+    required void Function(
+      String text,
+      Rect rect, {
+      double fontSize,
+      Color color,
+      FontWeight weight,
+      int maxLines,
+    }) drawCenteredText,
+    required void Function(Rect rect, String title) drawPanelTitle,
+  }) {
+    const green = Color(0xFF0E8F57);
+    const line = Color(0xFFDCE3DD);
+
+    drawRound(rect, Colors.white, radius: 10, border: line);
+    drawPanelTitle(rect, 'PLANNING AREA SNAPSHOT');
+    final map =
+        Rect.fromLTWH(rect.left, rect.top + 42, rect.width, rect.height - 42);
+    final clip = RRect.fromRectAndRadius(map, const Radius.circular(8));
+    canvas.save();
+    canvas.clipRRect(clip);
+    canvas.drawRect(map, Paint()..color = const Color(0xFF174B22));
+
+    for (var i = 0; i < 22; i++) {
+      final y = map.top + i * (map.height / 21);
+      canvas.drawLine(
+        Offset(map.left, y),
+        Offset(map.right, y + 28),
+        Paint()
+          ..color = Colors.white.withAlpha(18)
+          ..strokeWidth = 1,
+      );
+    }
+    for (var i = 0; i < 16; i++) {
+      final x = map.left + i * (map.width / 15);
+      canvas.drawLine(
+        Offset(x, map.top),
+        Offset(x - 30, map.bottom),
+        Paint()
+          ..color = const Color(0xFF9DC16E).withAlpha(36)
+          ..strokeWidth = 1,
+      );
+    }
+    canvas.drawPath(
+      ui.Path()
+        ..moveTo(map.right - 92, map.top)
+        ..quadraticBezierTo(
+            map.right - 35, map.top + 94, map.right - 88, map.bottom)
+        ..lineTo(map.right, map.bottom)
+        ..lineTo(map.right, map.top)
+        ..close(),
+      Paint()..color = const Color(0xFF1E88B6).withAlpha(205),
+    );
+
+    final groups = plan.groups;
+    if (groups.isNotEmpty) {
+      var minLat = groups.first.center.latitude;
+      var maxLat = minLat;
+      var minLng = groups.first.center.longitude;
+      var maxLng = minLng;
+      for (final group in groups) {
+        minLat = math.min(minLat, group.center.latitude);
+        maxLat = math.max(maxLat, group.center.latitude);
+        minLng = math.min(minLng, group.center.longitude);
+        maxLng = math.max(maxLng, group.center.longitude);
+      }
+      final latRange = (maxLat - minLat).abs() < 0.0001 ? 1.0 : maxLat - minLat;
+      final lngRange = (maxLng - minLng).abs() < 0.0001 ? 1.0 : maxLng - minLng;
+      final insetMap = map.deflate(52);
+
+      final largest = groups.reduce(
+        (a, b) => a.fieldCount >= b.fieldCount ? a : b,
+      );
+      final largestX = insetMap.left +
+          ((largest.center.longitude - minLng) / lngRange).clamp(0.12, 0.88) *
+              insetMap.width;
+      final largestY = insetMap.bottom -
+          ((largest.center.latitude - minLat) / latRange).clamp(0.12, 0.88) *
+              insetMap.height;
+      canvas.drawPath(
+        ui.Path()
+          ..moveTo(largestX - 48, largestY - 8)
+          ..lineTo(largestX - 4, largestY - 52)
+          ..lineTo(largestX + 58, largestY - 18)
+          ..lineTo(largestX + 40, largestY + 54)
+          ..lineTo(largestX - 36, largestY + 34)
+          ..close(),
+        Paint()
+          ..color = Colors.white.withAlpha(48)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawPath(
+        ui.Path()
+          ..moveTo(largestX - 48, largestY - 8)
+          ..lineTo(largestX - 4, largestY - 52)
+          ..lineTo(largestX + 58, largestY - 18)
+          ..lineTo(largestX + 40, largestY + 54)
+          ..lineTo(largestX - 36, largestY + 34)
+          ..close(),
+        Paint()
+          ..color = Colors.white.withAlpha(190)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+
+      for (var i = 0; i < math.min(groups.length, 8); i++) {
+        final group = groups[i];
+        final x = insetMap.left +
+            ((group.center.longitude - minLng) / lngRange).clamp(0.08, 0.92) *
+                insetMap.width;
+        final y = insetMap.bottom -
+            ((group.center.latitude - minLat) / latRange).clamp(0.08, 0.92) *
+                insetMap.height;
+        final markerColor = i == 0
+            ? green
+            : i % 4 == 0
+                ? AdvantaColors.gold
+                : i % 3 == 0
+                    ? const Color(0xFFFF7D1C)
+                    : const Color(0xFF155E37);
+        canvas.drawCircle(
+          Offset(x, y),
+          20,
+          Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.fill,
+        );
+        canvas.drawCircle(
+          Offset(x, y),
+          17,
+          Paint()
+            ..color = markerColor
+            ..style = PaintingStyle.fill,
+        );
+        drawCenteredText(
+          group.fieldCount.toString(),
+          Rect.fromCenter(center: Offset(x, y), width: 34, height: 24),
+          fontSize: 14,
+          color: Colors.white,
+          weight: FontWeight.w900,
+        );
+      }
+    } else {
+      drawCenteredText(
+        'No planning area',
+        map,
+        fontSize: 18,
+        color: Colors.white,
+        weight: FontWeight.w800,
+      );
+    }
+    canvas.restore();
+  }
+
+  String _reportSingleValue(
+    DetasselingPlanningData plan,
+    List<String> keys, {
+    String fallback = '-',
+    String multipleLabel = 'Multiple',
+  }) {
+    final values = <String>{};
+    for (final group in plan.groups) {
+      for (final field in group.fields) {
+        for (final key in keys) {
+          final value = field.parsed.raw[key]?.toString().trim() ?? '';
+          if (value.isNotEmpty) values.add(value);
+        }
+      }
+    }
+    if (values.isEmpty) return fallback;
+    if (values.length == 1) return values.first;
+    return multipleLabel;
+  }
+
+  String _reportRangeLabel(DetasselingWeekOption week) {
+    if (week.startDate.month == week.endDate.month) {
+      return '${week.startDate.day}-${DateFormat('d MMM yyyy', 'id_ID').format(week.endDate)}'
+          .toUpperCase();
+    }
+    return '${DateFormat('d MMM', 'id_ID').format(week.startDate)}-${DateFormat('d MMM yyyy', 'id_ID').format(week.endDate)}'
+        .toUpperCase();
+  }
+
+  String _groupPassRule(DetasselingPlanGroup group) {
+    return group.crop == DetasselingCropFilter.sc ? 'P1-P5' : 'P1-P3';
+  }
+
+  String _exportStatusLabel(DetasselingGroupStatus status) {
+    return status == DetasselingGroupStatus.done ? 'Done' : 'Planned';
   }
 
   Future<String> _saveBytes({
@@ -808,7 +1629,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
 
   String _exportFileName(DetasselingPlanningData plan, String extension) {
     final stamp = DateFormat('yyyyMMdd').format(plan.week.startDate);
-    return 'detasseling_${plan.week.label}_$stamp.$extension';
+    return 'weekly_dt_summary_${plan.week.label}_$stamp.$extension';
   }
 
   void _showGroupDetail(

@@ -298,7 +298,6 @@ DetasselingPlanningData buildDetasselingPlanningData(
           .toList(growable: false)
       : const <ParsedFieldData>[];
   final today = normalizeDate(DateTime.now());
-  final startDelta = weekStart.difference(today).inDays;
   final selectedRegion = params.region?.trim().toLowerCase();
   final search = params.searchQuery.trim().toLowerCase();
   final fields = <DetasselingPlanField>[];
@@ -328,14 +327,22 @@ DetasselingPlanningData buildDetasselingPlanningData(
       continue;
     }
 
+    final plantingDate = _readPlanningPlantingDate(raw);
+    if (plantingDate == null) continue;
+
     final firstPlannedOffset = _firstOffsetAtOrAbove50Dap(
-      currentDap: parsed.dap,
-      startDelta: startDelta,
+      plantingDate: plantingDate,
+      weekStart: weekStart,
     );
     if (firstPlannedOffset == null) continue;
 
     final plannedDate = weekStart.add(Duration(days: firstPlannedOffset));
-    final weekEndDap = parsed.dap + startDelta + 6;
+    final currentDap = _detasselingDapOnDate(plantingDate, today);
+    final plannedDap = _detasselingDapOnDate(plantingDate, plannedDate);
+    final weekEndDap = _detasselingDapOnDate(
+      plantingDate,
+      weekStart.add(const Duration(days: 6)),
+    );
     final codet = _readCodet(raw);
     final village = _readText(raw['village_desa'], fallback: 'Unknown Desa');
     fields.add(
@@ -348,8 +355,8 @@ DetasselingPlanningData buildDetasselingPlanningData(
         hybrid: hybrid,
         crop: crop,
         areaHa: _readArea(raw),
-        currentDap: parsed.dap,
-        plannedDap: parsed.dap + startDelta + firstPlannedOffset,
+        currentDap: currentDap,
+        plannedDap: plannedDap,
         dtEndDap: weekEndDap,
         plannedDate: plannedDate,
         isAssessmentDone: _hasDetasselingAssessment(raw),
@@ -491,13 +498,66 @@ bool _isFieldAllowedForScope(
 }
 
 int? _firstOffsetAtOrAbove50Dap({
-  required int currentDap,
-  required int startDelta,
+  required DateTime plantingDate,
+  required DateTime weekStart,
 }) {
   for (var offset = 0; offset < 7; offset++) {
-    if (currentDap + startDelta + offset >= 50) return offset;
+    final date = weekStart.add(Duration(days: offset));
+    if (_detasselingDapOnDate(plantingDate, date) >= 50) return offset;
   }
   return null;
+}
+
+DateTime? _readPlanningPlantingDate(Map<String, dynamic> raw) {
+  final veg = _firstRow(raw['audit_vegetative']);
+  final revPlantingDate = _parsePlanningDate(
+    _readText(veg?['rev_planting_date']),
+  );
+  if (revPlantingDate != null) return revPlantingDate;
+
+  return _parsePlanningDate(_readText(raw['planting_date_pdn']));
+}
+
+DateTime? _parsePlanningDate(String value) {
+  final text = value.trim();
+  if (text.isEmpty) return null;
+
+  try {
+    if (text.contains('/')) {
+      final parts = text.split('/');
+      if (parts.length != 3) return null;
+      final day = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      var year = int.parse(parts[2]);
+      if (year < 100) year += 2000;
+      return DateTime(year, month, day);
+    }
+
+    final parsed = DateTime.tryParse(text);
+    if (parsed != null) {
+      return DateTime(parsed.year, parsed.month, parsed.day);
+    }
+
+    if (text.contains('-')) {
+      final parts = text.split('-');
+      if (parts.length != 3 || parts.first.length > 2) return null;
+      final day = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      var year = int.parse(parts[2]);
+      if (year < 100) year += 2000;
+      return DateTime(year, month, day);
+    }
+
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+int _detasselingDapOnDate(DateTime plantingDate, DateTime targetDate) {
+  final planting = normalizeDate(plantingDate);
+  final target = normalizeDate(targetDate);
+  return target.difference(planting).inDays + 1;
 }
 
 LatLng _calculateCenter(List<DetasselingPlanField> fields) {
