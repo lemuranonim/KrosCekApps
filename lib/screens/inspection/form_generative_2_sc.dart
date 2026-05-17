@@ -12,6 +12,7 @@ import '../../providers/audit_generative_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart'; // ← NEW
+import '../../services/detasseling_iso_export_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/guest_guard.dart'; // ← NEW
 import 'sc_form_widgets.dart';
@@ -27,6 +28,7 @@ class FormGenerative2SC extends ConsumerStatefulWidget {
 class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
   final _formKey = GlobalKey<FormState>();
   bool _isSaving = false;
+  bool _isExportingIso = false;
   bool _dataLoaded = false;
 
   // ── NEW: session untuk GuestGuard ────────────────────────
@@ -189,6 +191,57 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
     }
   }
 
+  Map<String, dynamic> _isoAuditPayload(Map<String, dynamic> audit) {
+    return {
+      ...audit,
+      'field_number': widget.fieldNumber,
+      'date_of_audit_2': DateFormat('yyyy-MM-dd').format(_auditDate),
+      'week_of_audit_2': calcAuditWeek(_auditDate),
+      'nst_2': _nst,
+      'female_shedding_2': _femaleShed,
+      'offtype_m_2': _offtypeM,
+      'offtype_f_2': _offtypeF,
+      'roguing_status_2': _roguingStatus,
+      'lsv_status_2': _lsv,
+      'crop_uniformity_2': _cropUniformity,
+      'crop_health_2': _cropHealth,
+      'action_needed_2': _actionNeeded,
+      'remarks_2': _remarksCtrl.text.trim(),
+      'qa_fi_2': _qaFiCtrl.text.trim(),
+      'qa_spv': _qaSpvCtrl.text.trim(),
+    };
+  }
+
+  Future<void> _downloadIsoForm(
+    Map<String, dynamic> fieldData,
+    Map<String, dynamic> audit, {
+    required bool asPdf,
+  }) async {
+    if (GuestGuard.blockIfGuest(context, _session)) return;
+    if (fieldData.isEmpty) {
+      _snack('Data lahan belum tersedia untuk ISO Form', err: true);
+      return;
+    }
+
+    setState(() => _isExportingIso = true);
+    try {
+      final payload = DetasselingIsoFormData(
+        fieldData: fieldData,
+        auditData: _isoAuditPayload(audit),
+        passNumber: 2,
+        cropLabel: 'SC',
+      );
+      final path = asPdf
+          ? await DetasselingIsoExportService.downloadPdf(payload)
+          : await DetasselingIsoExportService.downloadPicture(payload);
+      if (mounted) _snack('ISO Form tersimpan: $path');
+    } catch (e) {
+      if (mounted) _snack('Gagal generate ISO Form: $e', err: true);
+    } finally {
+      if (mounted) setState(() => _isExportingIso = false);
+    }
+  }
+
   void _snack(String msg, {bool err = false}) {
     final theme = Theme.of(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -228,13 +281,14 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
                     .copyWith(color: Theme.of(context).colorScheme.error))),
         data: (audit) {
           if (audit != null) _loadAudit(audit);
-          return _buildBody(fieldData, isDiscard);
+          return _buildBody(fieldData, isDiscard, audit ?? const {});
         },
       ),
     );
   }
 
-  Widget _buildBody(Map<String, dynamic> fd, bool isDiscard) {
+  Widget _buildBody(
+      Map<String, dynamic> fd, bool isDiscard, Map<String, dynamic> audit) {
     return Form(
       key: _formKey,
       child: Column(
@@ -481,6 +535,41 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+
+                  GenSection(
+                    title: 'ISO Output',
+                    icon: Icons.description_outlined,
+                    color: AdvantaColors.primaryGreen,
+                    children: [
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          _IsoExportButton(
+                            icon: Icons.image_outlined,
+                            label: 'Generate ISO Picture',
+                            busy: _isExportingIso,
+                            onTap: () => _downloadIsoForm(
+                              fd,
+                              audit,
+                              asPdf: false,
+                            ),
+                          ),
+                          _IsoExportButton(
+                            icon: Icons.picture_as_pdf_outlined,
+                            label: 'Generate ISO PDF',
+                            busy: _isExportingIso,
+                            onTap: () => _downloadIsoForm(
+                              fd,
+                              audit,
+                              asPdf: true,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -498,6 +587,52 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
                 : _save,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _IsoExportButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool busy;
+  final VoidCallback onTap;
+
+  const _IsoExportButton({
+    required this.icon,
+    required this.label,
+    required this.busy,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 190,
+      height: 46,
+      child: OutlinedButton.icon(
+        onPressed: busy ? null : onTap,
+        icon: busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(icon, size: 18),
+        label: Text(
+          label,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AdvantaColors.primaryGreen,
+          side: BorderSide(color: AdvantaColors.primaryGreen.withAlpha(130)),
+          textStyle: AdvantaText.button.copyWith(fontSize: 12),
+          shape: const RoundedRectangleBorder(
+            borderRadius: AdvantaRadius.buttonRadius,
+          ),
+        ),
       ),
     );
   }

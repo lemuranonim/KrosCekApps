@@ -38,8 +38,6 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   final _corrTaggingCtrl = TextEditingController();
   final _coRoguingCtrl = TextEditingController();
   final _fieldSizeCtrl = TextEditingController();
-  final _recommendationPldCtrl = TextEditingController();
-  final _remarksCtrl = TextEditingController();
   final _manualLatCtrl = TextEditingController();
   final _manualLngCtrl = TextEditingController();
   late final List<_PspRoguingDraft> _roguings;
@@ -58,13 +56,10 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   String? _pendingGeometryWkt;
   DateTime? _revTglTanam;
   String? _previousCrop;
-  String? _recommendation;
-  String? _flagging;
   String? _typeSeed;
   String? _corrTaggingSource;
 
   bool get _isGuest => GuestGuard.isGuest(_session);
-  bool get _isPld => pspIsDiscardDecision(_recommendation);
   _PspRoguingDraft get _selectedRoguing => _roguings[_selectedRoguingIndex];
 
   @override
@@ -83,8 +78,6 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     _corrTaggingCtrl.dispose();
     _coRoguingCtrl.dispose();
     _fieldSizeCtrl.dispose();
-    _recommendationPldCtrl.dispose();
-    _remarksCtrl.dispose();
     _manualLatCtrl.dispose();
     _manualLngCtrl.dispose();
     for (final roguing in _roguings) {
@@ -217,17 +210,12 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         '';
     _coRoguingCtrl.text = audit?['co_detasseling']?.toString() ?? '';
     _fieldSizeCtrl.text = audit?['field_size_by_audit_ha']?.toString() ?? '';
-    _recommendationPldCtrl.text =
-        audit?['recommendation_pld_ha']?.toString() ?? '';
-    _remarksCtrl.text = audit?['remarks']?.toString() ?? '';
 
     _revTglTanam = _parseDate(
         audit?['rev_planting_date'] ?? fieldData['planting_date_pdn']);
 
     setState(() {
       _previousCrop = audit?['previous_crop_by_audit']?.toString();
-      _recommendation = audit?['decision']?.toString();
-      _flagging = audit?['flagging']?.toString();
       _typeSeed = audit?['type_seed']?.toString();
       for (final roguing in _roguings) {
         roguing.load(audit);
@@ -549,15 +537,6 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       _snack('Tanggal Roguing ${activeRoguing.number} wajib diisi', err: true);
       return false;
     }
-
-    final hasLaterIncomplete = _recommendation != null ||
-        _flagging != null ||
-        _recommendationPldCtrl.text.trim().isNotEmpty;
-    if (hasLaterIncomplete && _roguings[3].date == null) {
-      _snack('Isi tanggal Roguing 4 untuk recommendation/flagging final',
-          err: true);
-      return false;
-    }
     return true;
   }
 
@@ -604,20 +583,20 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         'field_size_by_audit_ha': _parseDouble(_fieldSizeCtrl),
         'previous_crop_by_audit': _previousCrop,
         'type_seed': _typeSeed,
-        'isolation_problem_by_audit': r4.isolationAudit ?? r1.isolationAudit,
+        'isolation_problem_by_audit': r1.isolationAudit,
         'crop_health': r4.cropHealth ?? r1.cropHealth,
         'crop_uniformity': r4.cropUniformity ?? r1.cropUniformity,
         'roguing_status': inferredRoguingStatus,
         'offtype_in_male': r4.offtype ?? r1.offtype,
         'offtype_in_female': r4.offtype ?? r1.offtype,
         'lsv_status': r4.lsv,
-        'decision': _recommendation,
-        'pld_reason': _isPld ? 'PSP Recommendation Discard' : null,
-        'flagging': _flagging,
-        'remarks': _remarksCtrl.text.trim(),
+        'decision': null,
+        'pld_reason': null,
+        'flagging': null,
+        'remarks': null,
         'fase': 'vegetative',
         'updated_at': now.toIso8601String(),
-        'recommendation_pld_ha': _parseDouble(_recommendationPldCtrl),
+        'recommendation_pld_ha': null,
       };
 
       for (final roguing in _roguings) {
@@ -717,7 +696,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       appBar: PspAppBar(
         checkpointLabel: 'Vegetative PSP/PS',
         fieldNumber: widget.fieldNumber,
-        isDiscard: _isPld,
+        isDiscard: false,
         accentColor: _kPspVeg,
         onBack: () => Navigator.pop(context),
       ),
@@ -743,8 +722,6 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     switch (number) {
       case 1:
         return const Color(0xFF26A69A);
-      case 4:
-        return AdvantaColors.error;
       default:
         return const Color(0xFFFFCA28);
     }
@@ -754,8 +731,6 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     switch (number) {
       case 1:
         return Icons.eco_outlined;
-      case 4:
-        return Icons.gavel_outlined;
       default:
         return Icons.fact_check_outlined;
     }
@@ -791,12 +766,10 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           ),
           PspSaveBar(
             isSaving: _isSaving,
-            isDiscard: _isPld && !_isGuest,
+            isDiscard: false,
             saveLabel: _isGuest
                 ? 'READ-ONLY - TIDAK DAPAT MENYIMPAN'
-                : (_isPld
-                    ? 'SIMPAN $activeSaveLabel - PLD'
-                    : 'SIMPAN $activeSaveLabel'),
+                : 'SIMPAN $activeSaveLabel',
             onSave: _isGuest
                 ? () => GuestGuard.blockIfGuest(context, _session)
                 : _saveAudit,
@@ -904,8 +877,6 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     switch (_selectedRoguing.number) {
       case 1:
         return _buildRoguing1Section();
-      case 4:
-        return _buildRoguing4Section();
       default:
         return _buildRoguingSection(_selectedRoguing);
     }
@@ -938,65 +909,6 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         _dateTile('Date Of Inspeksi Roguing ${roguing.number}', roguing),
         const SizedBox(height: 14),
         _coreRoguingFields(roguing, color, includeLsv: true),
-      ],
-    );
-  }
-
-  Widget _buildRoguing4Section() {
-    final roguing = _roguings[3];
-    const color = AdvantaColors.error;
-    return PspSection(
-      title: 'Roguing 4 Final',
-      icon: Icons.gavel_outlined,
-      color: color,
-      children: [
-        _dateTile('Date Of Inspeksi Roguing 4', roguing),
-        const SizedBox(height: 14),
-        _coreRoguingFields(roguing, color, includeLsv: true),
-        const SizedBox(height: 14),
-        _isolationFields(roguing, color),
-        const SizedBox(height: 14),
-        PspOptionPicker(
-          label: 'Flagging',
-          required: !_isGuest,
-          options: pspRoguingFlaggingOpts,
-          value: _flagging,
-          onChanged: (v) => _setValue(() => _flagging = v),
-          accentColor: color,
-        ),
-        const SizedBox(height: 14),
-        PspOptionPicker(
-          label: 'Recommendation',
-          required: !_isGuest,
-          options: pspRecommendationOpts,
-          value: _recommendation,
-          onChanged: (v) => _setValue(() => _recommendation = v),
-          accentColor: color,
-        ),
-        if (_isPld) ...[
-          const SizedBox(height: 12),
-          const PspDiscardBanner(
-            message: 'Recommendation Discard aktif - isi luas PLD bila ada.',
-          ),
-        ],
-        const SizedBox(height: 14),
-        PspTextField(
-          controller: _recommendationPldCtrl,
-          label: 'Recommendation PLD (Ha)',
-          keyboardType: TextInputType.number,
-          icon: Icons.square_foot_outlined,
-          required: _isPld && !_isGuest,
-          accentColor: color,
-        ),
-        const SizedBox(height: 14),
-        PspTextField(
-          controller: _remarksCtrl,
-          label: 'Remarks',
-          hint: 'Catatan tambahan PSP/PS...',
-          maxLines: 4,
-          icon: Icons.edit_note_outlined,
-          accentColor: color,
-        ),
       ],
     );
   }
@@ -2058,11 +1970,17 @@ class _PspRoguingDraft {
     if (number != 1) {
       payload['audit_lsv_roguing_$number'] = lsv;
     }
-    if (number == 1 || number == 4) {
+    if (number == 1) {
       payload.addAll({
         'isolation_audit_roguing_$number': isolationAudit,
         'isolation_type_roguing_$number': isolationType,
         'isolation_distance_roguing_$number': isolationDistance,
+      });
+    } else if (number == 4) {
+      payload.addAll({
+        'isolation_audit_roguing_4': null,
+        'isolation_type_roguing_4': null,
+        'isolation_distance_roguing_4': null,
       });
     }
     return payload;

@@ -1,0 +1,1249 @@
+import 'dart:io' as io;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:media_store_plus/media_store_plus.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+
+class DetasselingIsoFormData {
+  final Map<String, dynamic> fieldData;
+  final Map<String, dynamic> auditData;
+  final int passNumber;
+  final String cropLabel;
+
+  const DetasselingIsoFormData({
+    required this.fieldData,
+    required this.auditData,
+    required this.passNumber,
+    required this.cropLabel,
+  });
+}
+
+class DetasselingIsoExportService {
+  static const _green = Color(0xFF004822);
+  static const _line = Color(0xFF8E9892);
+  static const _ink = Color(0xFF101915);
+
+  static Future<String> downloadPicture(DetasselingIsoFormData data) async {
+    final bytes = await buildPng(data);
+    return _saveBytes(
+      bytes: bytes,
+      fileName: _fileName(data, 'png'),
+      mimeType: 'image/png',
+    );
+  }
+
+  static Future<String> downloadPdf(DetasselingIsoFormData data) async {
+    final png = await buildPng(data);
+    final doc = pw.Document();
+    final image = pw.MemoryImage(png);
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.all(12),
+        build: (_) => pw.Center(
+          child: pw.Image(image, fit: pw.BoxFit.contain),
+        ),
+      ),
+    );
+
+    return _saveBytes(
+      bytes: await doc.save(),
+      fileName: _fileName(data, 'pdf'),
+      mimeType: 'application/pdf',
+    );
+  }
+
+  static Future<Uint8List> buildPng(DetasselingIsoFormData data) async {
+    const width = 1800.0;
+    const height = 1180.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    final paint = Paint()..color = Colors.white;
+    canvas.drawRect(const Rect.fromLTWH(0, 0, width, height), paint);
+
+    _drawBorder(
+        canvas, const Rect.fromLTWH(8, 8, width - 16, height - 16), _line, 1.2);
+
+    final f = _FieldSnapshot.from(data);
+    final passCount = f.isSweetCorn ? 5 : 3;
+    final planDates = _planDates(f.plantingDate, passCount);
+    final actualDates = _actualDates(data, passCount);
+
+    _drawHeader(canvas, f);
+    _drawFieldInfo(canvas, f);
+    _drawPlanSchedule(canvas, f, planDates, actualDates);
+    _drawLaborBox(canvas, f.isSweetCorn);
+    _drawFnSchedule(canvas, f, planDates, actualDates, data.passNumber);
+    _drawInspectionSummary(canvas, f);
+    _drawFlaggingLegend(canvas);
+    _drawSignatures(canvas);
+    _drawFooter(canvas, f, data.passNumber);
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(width.toInt(), height.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
+
+  static void _drawHeader(Canvas canvas, _FieldSnapshot f) {
+    _text(
+      canvas,
+      'KROSCEK',
+      const Offset(78, 36),
+      size: 31,
+      weight: FontWeight.w800,
+      color: _green,
+    );
+    _text(
+      canvas,
+      'TRUST - VERIFY - IMPROVE',
+      const Offset(80, 77),
+      size: 12,
+      weight: FontWeight.w600,
+      color: _green,
+    );
+    _drawLeafLogo(canvas, const Offset(34, 26));
+    _text(
+      canvas,
+      'QUALITY PROCESS: DETASSELLING (PLAN VS ACTUAL & INSPECTION OUTPUT)',
+      const Offset(370, 30),
+      size: 34,
+      weight: FontWeight.w900,
+      color: Colors.black,
+    );
+    _drawFilledRect(canvas, const Rect.fromLTWH(18, 96, 1764, 4), _green);
+  }
+
+  static void _drawFieldInfo(Canvas canvas, _FieldSnapshot f) {
+    final rows = [
+      ('Season', f.season),
+      ('Week', f.week),
+      ('Region', f.region),
+      ('Codet', f.codet),
+      ('Crop', f.crop),
+      ('Village', f.village),
+      ('Hybrid', f.hybrid),
+      ('Farmer', f.farmer),
+      ('FN', f.fieldNumber),
+      ('Total Ha Detasselling', '${_formatHa(f.totalAreaHa)} Ha'),
+      ('Ha Plant', '${_formatHa(f.areaHa)} Ha'),
+      ('Planting Date', _formatDate(f.plantingDate)),
+      ('Est DT', '${f.estimatedDap} HST'),
+    ];
+
+    var y = 125.0;
+    for (final row in rows) {
+      _text(canvas, row.$1, Offset(22, y), size: 18, weight: FontWeight.w600);
+      _text(canvas, ':', Offset(188, y), size: 18, weight: FontWeight.w700);
+      _text(canvas, row.$2, Offset(218, y), size: 18, weight: FontWeight.w700);
+      y += row.$1 == 'FN' ? 37 : 25;
+    }
+  }
+
+  static void _drawPlanSchedule(
+    Canvas canvas,
+    _FieldSnapshot f,
+    List<DateTime> planDates,
+    Map<int, DateTime> actualDates,
+  ) {
+    const left = 405.0;
+    const top = 122.0;
+    const width = 1090.0;
+    const height = 372.0;
+    _drawBorder(
+        canvas, const Rect.fromLTWH(left, top, width, height), _line, 1);
+    _drawSectionTitle(
+      canvas,
+      const Rect.fromLTWH(left, top, width, 38),
+      'PLAN VS ACTUAL DETASSELLING SCHEDULE (${f.crop})',
+    );
+
+    final dates = _dateWindow(planDates, actualDates.values.toList());
+    const labelW = 78.0;
+    final colW = (width - labelW) / dates.length;
+    final rowTop = top + 38;
+    const dowH = 38.0;
+    const dateH = 76.0;
+    const planH = 82.0;
+    const actualH = 62.0;
+
+    _drawGridLine(canvas, Offset(left + labelW, rowTop),
+        Offset(left + labelW, rowTop + dowH + dateH + planH + actualH));
+    var x = left + labelW;
+    for (var i = 0; i < dates.length; i++) {
+      final date = dates[i];
+      final colRect = Rect.fromLTWH(x, rowTop, colW, dowH + dateH);
+      if (_isSameDay(date, f.auditDate)) {
+        _drawFilledRect(canvas, colRect, const Color(0xFFEAF7EF));
+      }
+      _drawGridLine(canvas, Offset(x, rowTop), Offset(x, rowTop + 258));
+      _textCentered(
+        canvas,
+        DateFormat('E', 'id_ID').format(date).substring(0, 1).toUpperCase(),
+        Rect.fromLTWH(x, rowTop + 8, colW, 20),
+        size: 16,
+        weight: FontWeight.w800,
+      );
+      _textCentered(
+        canvas,
+        '${date.day}\n${DateFormat('MMM', 'id_ID').format(date)}',
+        Rect.fromLTWH(x, rowTop + dowH + 10, colW, 48),
+        size: 16,
+        weight: FontWeight.w700,
+      );
+
+      final planned = _passForDate(planDates, date);
+      if (planned != null) {
+        _textCentered(
+          canvas,
+          'P$planned',
+          Rect.fromLTWH(x, rowTop + dowH + dateH + 25, colW, 28),
+          size: 18,
+          weight: FontWeight.w800,
+        );
+      } else {
+        _textCentered(
+          canvas,
+          '-',
+          Rect.fromLTWH(x, rowTop + dowH + dateH + 25, colW, 28),
+          size: 19,
+          weight: FontWeight.w700,
+        );
+      }
+
+      final actual = _actualPassForDate(actualDates, date);
+      if (actual != null) {
+        _textCentered(
+          canvas,
+          '✓',
+          Rect.fromLTWH(x, rowTop + dowH + dateH + planH + 13, colW, 34),
+          size: 34,
+          weight: FontWeight.w900,
+          color: const Color(0xFF1B6E1F),
+        );
+      } else {
+        _textCentered(
+          canvas,
+          '-',
+          Rect.fromLTWH(x, rowTop + dowH + dateH + planH + 16, colW, 28),
+          size: 18,
+          weight: FontWeight.w700,
+        );
+      }
+      x += colW;
+    }
+
+    _drawGridLine(canvas, Offset(left, rowTop + dowH),
+        Offset(left + width, rowTop + dowH));
+    _drawGridLine(canvas, Offset(left, rowTop + dowH + dateH),
+        Offset(left + width, rowTop + dowH + dateH));
+    _drawGridLine(canvas, Offset(left, rowTop + dowH + dateH + planH),
+        Offset(left + width, rowTop + dowH + dateH + planH));
+    _drawGridLine(canvas, Offset(left, rowTop + dowH + dateH + planH + actualH),
+        Offset(left + width, rowTop + dowH + dateH + planH + actualH));
+
+    _textCentered(
+      canvas,
+      'PLAN\n(Pass)',
+      Rect.fromLTWH(left, rowTop + dowH + dateH + 18, labelW, 50),
+      size: 17,
+      weight: FontWeight.w800,
+    );
+    _textCentered(
+      canvas,
+      'AKTUAL',
+      Rect.fromLTWH(left, rowTop + dowH + dateH + planH + 18, labelW, 30),
+      size: 17,
+      weight: FontWeight.w800,
+    );
+
+    _text(
+      canvas,
+      '❖  Untuk SC (sweet corn), detasselling dapat berlanjut hingga P4 dan P5 dengan interval +2 hari yang sama.',
+      const Offset(left + 16, top + height - 36),
+      size: 16,
+      weight: FontWeight.w500,
+    );
+  }
+
+  static void _drawLaborBox(Canvas canvas, bool isSweetCorn) {
+    const rect = Rect.fromLTWH(1514, 122, 268, 372);
+    _drawBorder(canvas, rect, _line, 1);
+    _textCentered(
+      canvas,
+      'Perkiraan mulai detasseling:',
+      const Rect.fromLTWH(1525, 146, 246, 24),
+      size: 15,
+      weight: FontWeight.w700,
+    );
+    _textCentered(
+      canvas,
+      '50 HST',
+      const Rect.fromLTWH(1525, 177, 246, 34),
+      size: 27,
+      weight: FontWeight.w900,
+      color: _green,
+    );
+    _drawGridLine(canvas, const Offset(1514, 230), const Offset(1782, 230));
+    _textCentered(
+      canvas,
+      'Akumulasi jumlah TK detasselling\nper petak-hari',
+      const Rect.fromLTWH(1530, 249, 236, 46),
+      size: 16,
+      weight: FontWeight.w800,
+    );
+
+    final values = isSweetCorn
+        ? const ['6', '6', '3', '3', '3']
+        : const ['6', '6', '3', '-', '-'];
+    var y = 320.0;
+    for (var i = 0; i < 5; i++) {
+      _text(canvas, 'Pass ${i + 1}', Offset(1536, y),
+          size: 17, weight: FontWeight.w600);
+      _text(canvas, ':', Offset(1666, y), size: 17, weight: FontWeight.w700);
+      _text(canvas, values[i], Offset(1704, y),
+          size: 17, weight: FontWeight.w800);
+      y += 38;
+    }
+  }
+
+  static void _drawFnSchedule(
+    Canvas canvas,
+    _FieldSnapshot f,
+    List<DateTime> planDates,
+    Map<int, DateTime> actualDates,
+    int currentPass,
+  ) {
+    const left = 18.0;
+    const top = 510.0;
+    const width = 1764.0;
+    const height = 196.0;
+    _drawBorder(
+        canvas, const Rect.fromLTWH(left, top, width, height), _line, 1);
+    _drawSectionTitle(
+      canvas,
+      const Rect.fromLTWH(left, top, width, 34),
+      'FN SCHEDULE DETAIL (PLAN VS ACTUAL)',
+    );
+
+    final passCount = f.isSweetCorn ? 5 : 3;
+    const headTop = top + 34;
+    const bodyTop = top + 124;
+    final cols = [
+      155.0,
+      160.0,
+      150.0,
+      128.0,
+      132.0,
+      116.0,
+      104.0,
+      116.0,
+      116.0,
+      116.0,
+      if (passCount == 5) 116.0,
+      if (passCount == 5) 116.0,
+    ];
+    final used = cols.fold<double>(0, (a, b) => a + b);
+    final remarkW = width - used;
+    final allCols = [...cols, remarkW];
+    final labels = [
+      'FN',
+      'Farmer',
+      'Village',
+      'Ha Plant\n(Ha)',
+      'Planting\nDate',
+      'Hybrid',
+      'Est DT\n(HST)',
+      'P1\n(${_dayMonth(planDates[0])})',
+      'P2\n(${_dayMonth(planDates[1])})',
+      'P3\n(${_dayMonth(planDates[2])})',
+      if (passCount == 5) 'P4\n(${_dayMonth(planDates[3])})',
+      if (passCount == 5) 'P5\n(${_dayMonth(planDates[4])})',
+      'Action / Remarks',
+    ];
+
+    var x = left;
+    for (var i = 0; i < allCols.length; i++) {
+      _drawGridLine(canvas, Offset(x, headTop), Offset(x, top + height));
+      _textCentered(
+        canvas,
+        labels[i],
+        Rect.fromLTWH(x + 4, headTop + 18, allCols[i] - 8, 54),
+        size: 15,
+        weight: FontWeight.w800,
+      );
+      x += allCols[i];
+    }
+    _drawGridLine(canvas, Offset(left + width, headTop),
+        Offset(left + width, top + height));
+    _drawGridLine(canvas, const Offset(left, bodyTop),
+        const Offset(left + width, bodyTop));
+
+    final values = [
+      f.fieldNumber,
+      f.farmer,
+      f.village,
+      '${_formatHa(f.areaHa)} Ha',
+      _formatDate(f.plantingDate),
+      f.hybrid,
+      '${f.estimatedDap}',
+    ];
+
+    x = left;
+    for (var i = 0; i < values.length; i++) {
+      _textCentered(
+        canvas,
+        values[i],
+        Rect.fromLTWH(x + 6, bodyTop + 34, allCols[i] - 12, 32),
+        size: 17,
+        weight: FontWeight.w800,
+      );
+      x += allCols[i];
+    }
+
+    for (var pass = 1; pass <= passCount; pass++) {
+      final actual = actualDates[pass];
+      final mark = actual == null ? '-' : '✓\n${_dayMonth(actual)}';
+      _textCentered(
+        canvas,
+        mark,
+        Rect.fromLTWH(x + 6, bodyTop + 20, allCols[6 + pass] - 12, 56),
+        size: actual == null ? 17 : 23,
+        weight: FontWeight.w900,
+        color: actual == null ? _ink : const Color(0xFF1B6E1F),
+      );
+      x += allCols[6 + pass];
+    }
+
+    final action = f.actionRemarks.isEmpty ? '-' : f.actionRemarks;
+    _text(
+      canvas,
+      action,
+      Offset(x + 14, bodyTop + 28),
+      size: 15,
+      weight: FontWeight.w700,
+      maxWidth: remarkW - 24,
+      maxLines: 3,
+    );
+  }
+
+  static void _drawInspectionSummary(Canvas canvas, _FieldSnapshot f) {
+    const left = 18.0;
+    const top = 724.0;
+    const width = 1764.0;
+    const height = 210.0;
+    _drawBorder(
+        canvas, const Rect.fromLTWH(left, top, width, height), _line, 1);
+    _drawSectionTitle(
+      canvas,
+      const Rect.fromLTWH(left, top, width, 34),
+      'INSPECTION RESULTS SUMMARY',
+    );
+
+    final meta = [
+      ('Audit Date:', _longDate(f.auditDate)),
+      ('Week:', f.week),
+      ('Auditor (QA FI):', f.qaFi),
+      ('QA SPV:', f.qaSpv),
+    ];
+    final metaW = width / 4;
+    for (var i = 0; i < meta.length; i++) {
+      final rect =
+          Rect.fromLTWH(left + 18 + (metaW - 9) * i, top + 48, metaW - 28, 45);
+      _drawBorder(canvas, rect, _line, 1);
+      _text(canvas, meta[i].$1, Offset(rect.left + 16, rect.top + 14),
+          size: 14, weight: FontWeight.w800);
+      _textCentered(
+        canvas,
+        meta[i].$2,
+        Rect.fromLTWH(rect.left + 160, rect.top + 13, rect.width - 172, 20),
+        size: 16,
+        weight: FontWeight.w800,
+      );
+    }
+
+    final firstRow = [
+      ('Female Shedding', _femaleShedding(f.femaleShedding)),
+      ('Offtype M', _offtype(f.offtypeM)),
+      ('Offtype F', _offtype(f.offtypeF)),
+      ('LSV Status', _lsv(f.lsvStatus)),
+      ('Crop Uniformity', _score(f.cropUniformity)),
+      ('Crop Health', _score(f.cropHealth)),
+    ];
+    final secondRow = [
+      ('Detasseling Assessment', _detasseling(f.detasselingAssessment)),
+      ('Isolation Status', _yesNo(f.isolationStatus)),
+      ('Affected Other Field', _yesNo(f.affectedOtherField)),
+      ('Action Needed', _action(f.actionNeeded)),
+      ('Flagging', _dash(f.flagging)),
+    ];
+
+    _drawSummaryRow(canvas, firstRow, top + 104, 6);
+    _drawSummaryRow(canvas, secondRow, top + 166, 5);
+  }
+
+  static void _drawSummaryRow(
+    Canvas canvas,
+    List<(String, String)> items,
+    double top,
+    int count,
+  ) {
+    const left = 40.0;
+    const totalW = 1720.0;
+    final cellW = totalW / count;
+    for (var i = 0; i < items.length; i++) {
+      final rect = Rect.fromLTWH(left + cellW * i, top, cellW, 48);
+      _drawBorder(canvas, rect, _line, 1);
+      _textCentered(
+        canvas,
+        items[i].$1,
+        Rect.fromLTWH(rect.left + 4, rect.top + 7, rect.width - 8, 16),
+        size: 13,
+        weight: FontWeight.w800,
+      );
+      _textCentered(
+        canvas,
+        items[i].$2,
+        Rect.fromLTWH(rect.left + 4, rect.top + 25, rect.width - 8, 18),
+        size: 17,
+        weight: FontWeight.w900,
+        color: _green,
+      );
+    }
+  }
+
+  static void _drawFlaggingLegend(Canvas canvas) {
+    const rect = Rect.fromLTWH(40, 950, 1720, 54);
+    _drawBorder(canvas, rect, _line, 1);
+    _textCentered(
+      canvas,
+      'FLAGGING LEGEND',
+      const Rect.fromLTWH(40, 955, 1720, 18),
+      size: 13,
+      weight: FontWeight.w900,
+    );
+    final items = [
+      ('⚑', 'GF', 'Green Flag', const Color(0xFF2E7D32)),
+      ('⚑', 'RFI', 'Red Flag Isolation', const Color(0xFFE53935)),
+      ('⚑', 'RFD', 'Red Flag Detasseling', const Color(0xFFE53935)),
+      ('⚑', 'BF', 'Black Flag', Colors.black),
+      ('⚑', 'PLD', 'Discard area', const Color(0xFFF5C400)),
+    ];
+    var x = 58.0;
+    for (final item in items) {
+      _text(canvas, item.$1, Offset(x, 978),
+          size: 25, weight: FontWeight.w900, color: item.$4);
+      _drawFilledRect(
+        canvas,
+        Rect.fromLTWH(x + 44, 977, 50, 28),
+        item.$4 == const Color(0xFFF5C400) ? const Color(0xFFFFEB3B) : item.$4,
+      );
+      _textCentered(
+        canvas,
+        item.$2,
+        Rect.fromLTWH(x + 44, 982, 50, 15),
+        size: 13,
+        weight: FontWeight.w900,
+        color: item.$2 == 'PLD' ? Colors.black : Colors.white,
+      );
+      _text(canvas, '= ${item.$3}', Offset(x + 110, 983),
+          size: 15, weight: FontWeight.w600);
+      x += 332;
+      if (item != items.last) {
+        _drawGridLine(canvas, Offset(x - 22, 968), Offset(x - 22, 1004));
+      }
+    }
+  }
+
+  static void _drawSignatures(Canvas canvas) {
+    const top = 1017.0;
+    const h = 106.0;
+    const gap = 18.0;
+    final w = (1764 - gap) / 2;
+    _signatureBox(canvas, Rect.fromLTWH(18, top, w, h), 'FA');
+    _signatureBox(canvas, Rect.fromLTWH(18 + w + gap, top, w, h), 'FI');
+  }
+
+  static void _signatureBox(Canvas canvas, Rect rect, String title) {
+    _drawBorder(canvas, rect, _line, 1);
+    _drawSectionTitle(
+        canvas, Rect.fromLTWH(rect.left, rect.top, rect.width, 28), title);
+    final rows = ['Signature', 'Nama', 'Tanggal'];
+    var y = rect.top + 45;
+    for (final row in rows) {
+      _text(canvas, row, Offset(rect.left + 28, y),
+          size: 14, weight: FontWeight.w700);
+      _text(canvas, ':', Offset(rect.left + 188, y),
+          size: 14, weight: FontWeight.w700);
+      _drawGridLine(
+        canvas,
+        Offset(rect.left + 230, y + 17),
+        Offset(rect.right - 150, y + 17),
+      );
+      y += 28;
+    }
+  }
+
+  static void _drawFooter(Canvas canvas, _FieldSnapshot f, int passNumber) {
+    const y = 1138.0;
+    _drawGridLine(canvas, const Offset(18, 1128), const Offset(1782, 1128));
+    _text(canvas, 'Generated by ', const Offset(34, y),
+        size: 14, weight: FontWeight.w600);
+    _text(canvas, 'KROSCEK', const Offset(128, y),
+        size: 14, weight: FontWeight.w900, color: _green);
+    _textCentered(
+      canvas,
+      'Field Inspection Output Form - Detasselling & Isolation Audit',
+      const Rect.fromLTWH(312, y, 420, 20),
+      size: 14,
+      weight: FontWeight.w700,
+    );
+    _textCentered(
+      canvas,
+      'Form ID   ${f.fieldNumber}',
+      const Rect.fromLTWH(770, y, 230, 20),
+      size: 14,
+      weight: FontWeight.w800,
+      color: _green,
+    );
+    _textCentered(
+      canvas,
+      'Pass   P$passNumber',
+      const Rect.fromLTWH(1036, y, 140, 20),
+      size: 14,
+      weight: FontWeight.w800,
+      color: _green,
+    );
+    _textCentered(
+      canvas,
+      'Doc Code   KC-QA-FRM-DET-01',
+      const Rect.fromLTWH(1200, y, 310, 20),
+      size: 14,
+      weight: FontWeight.w700,
+    );
+    _textCentered(
+      canvas,
+      'Rev.   00',
+      const Rect.fromLTWH(1532, y, 110, 20),
+      size: 14,
+      weight: FontWeight.w700,
+    );
+    _textCentered(
+      canvas,
+      'Page  1 of 1',
+      const Rect.fromLTWH(1658, y, 112, 20),
+      size: 14,
+      weight: FontWeight.w800,
+    );
+  }
+
+  static Future<String> _saveBytes({
+    required Uint8List bytes,
+    required String fileName,
+    required String mimeType,
+  }) async {
+    final tempDir = await getTemporaryDirectory();
+    final tempFile = io.File(p.join(tempDir.path, fileName));
+    await tempFile.writeAsBytes(bytes, flush: true);
+
+    if (io.Platform.isAndroid) {
+      try {
+        MediaStore.appFolder = 'Kroscek';
+        await MediaStore.ensureInitialized();
+        final saved = await MediaStore().saveFile(
+          tempFilePath: tempFile.path,
+          dirType: DirType.download,
+          dirName: DirName.download,
+        );
+        if (saved == null) {
+          throw Exception('MediaStore tidak mengembalikan lokasi file.');
+        }
+        return 'Download/Kroscek/$fileName';
+      } catch (_) {
+        final fallback = await _saveToAppDocuments(bytes, fileName);
+        await OpenFile.open(fallback.path);
+        return 'Documents/${fallback.uri.pathSegments.last} ($mimeType)';
+      }
+    }
+
+    final downloadDir = await _downloadDirectory();
+    final outputFile = io.File(p.join(downloadDir.path, fileName));
+    await outputFile.writeAsBytes(bytes, flush: true);
+    await OpenFile.open(outputFile.path);
+    return outputFile.path;
+  }
+
+  static Future<io.File> _saveToAppDocuments(
+      Uint8List bytes, String fileName) async {
+    final directory = await getApplicationDocumentsDirectory();
+    final outputDir = io.Directory(p.join(directory.path, 'exports'));
+    if (!await outputDir.exists()) {
+      await outputDir.create(recursive: true);
+    }
+    final outputFile = io.File(p.join(outputDir.path, fileName));
+    await outputFile.writeAsBytes(bytes, flush: true);
+    return outputFile;
+  }
+
+  static Future<io.Directory> _downloadDirectory() async {
+    if (io.Platform.isIOS) {
+      return getApplicationDocumentsDirectory();
+    }
+    final downloads = await getDownloadsDirectory();
+    if (downloads != null) return downloads;
+    return getApplicationDocumentsDirectory();
+  }
+
+  static String _fileName(DetasselingIsoFormData data, String extension) {
+    final f = _FieldSnapshot.from(data);
+    final pass = 'P${data.passNumber}';
+    final stamp = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+    final fn = _safePart(f.fieldNumber);
+    return 'iso_detasselling_${fn}_${pass}_$stamp.$extension';
+  }
+
+  static List<DateTime> _planDates(DateTime plantingDate, int passCount) {
+    final p1 = DateTime(plantingDate.year, plantingDate.month, plantingDate.day)
+        .add(const Duration(days: 49));
+    return List.generate(passCount, (i) => p1.add(Duration(days: i * 2)));
+  }
+
+  static Map<int, DateTime> _actualDates(
+    DetasselingIsoFormData data,
+    int passCount,
+  ) {
+    final result = <int, DateTime>{};
+    for (var pass = 1; pass <= passCount; pass++) {
+      final parsed = _parseDate(data.auditData['date_of_audit_$pass']);
+      if (parsed != null) result[pass] = parsed;
+    }
+    return result;
+  }
+
+  static List<DateTime> _dateWindow(
+    List<DateTime> planDates,
+    List<DateTime> actualDates,
+  ) {
+    final all = [...planDates, ...actualDates];
+    all.sort();
+    final first = all.isEmpty ? DateTime.now() : all.first;
+    final last = all.isEmpty ? DateTime.now() : all.last;
+    var start = DateTime(first.year, first.month, first.day)
+        .subtract(const Duration(days: 8));
+    var days = last.difference(start).inDays + 3;
+    if (days < 17) days = 17;
+    if (days > 19) {
+      start = DateTime(first.year, first.month, first.day)
+          .subtract(const Duration(days: 6));
+      days = 19;
+    }
+    return List.generate(days, (i) => start.add(Duration(days: i)));
+  }
+
+  static int? _passForDate(List<DateTime> planDates, DateTime date) {
+    for (var i = 0; i < planDates.length; i++) {
+      if (_isSameDay(planDates[i], date)) return i + 1;
+    }
+    return null;
+  }
+
+  static int? _actualPassForDate(
+      Map<int, DateTime> actualDates, DateTime date) {
+    for (final entry in actualDates.entries) {
+      if (_isSameDay(entry.value, date)) return entry.key;
+    }
+    return null;
+  }
+
+  static bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  static void _drawLeafLogo(Canvas canvas, Offset origin) {
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..color = _green;
+    final fill = Paint()
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFFE9F6EC);
+    final path = Path()
+      ..moveTo(origin.dx + 18, origin.dy + 44)
+      ..quadraticBezierTo(
+          origin.dx + 10, origin.dy + 10, origin.dx + 44, origin.dy + 0)
+      ..quadraticBezierTo(
+          origin.dx + 60, origin.dy + 30, origin.dx + 18, origin.dy + 44);
+    canvas.drawPath(path, fill);
+    canvas.drawPath(path, stroke);
+    canvas.drawLine(Offset(origin.dx + 25, origin.dy + 40),
+        Offset(origin.dx + 42, origin.dy + 8), stroke);
+  }
+
+  static void _drawSectionTitle(Canvas canvas, Rect rect, String text) {
+    _drawFilledRect(canvas, rect, _green);
+    _textCentered(
+      canvas,
+      text,
+      Rect.fromLTWH(rect.left, rect.top + 8, rect.width, rect.height - 12),
+      size: 18,
+      weight: FontWeight.w900,
+      color: Colors.white,
+    );
+  }
+
+  static void _drawFilledRect(Canvas canvas, Rect rect, Color color) {
+    final paint = Paint()..color = color;
+    canvas.drawRect(rect, paint);
+  }
+
+  static void _drawBorder(Canvas canvas, Rect rect, Color color, double width) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width
+      ..color = color;
+    canvas.drawRect(rect, paint);
+  }
+
+  static void _drawGridLine(Canvas canvas, Offset start, Offset end) {
+    final paint = Paint()
+      ..strokeWidth = 1
+      ..color = _line;
+    canvas.drawLine(start, end, paint);
+  }
+
+  static void _text(
+    Canvas canvas,
+    String text,
+    Offset offset, {
+    double size = 14,
+    FontWeight weight = FontWeight.w500,
+    Color color = _ink,
+    double? maxWidth,
+    int? maxLines,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: size,
+          fontWeight: weight,
+          height: 1.15,
+        ),
+      ),
+      textDirection: ui.TextDirection.ltr,
+      maxLines: maxLines,
+      ellipsis: maxLines == null ? null : '...',
+    );
+    painter.layout(maxWidth: maxWidth ?? double.infinity);
+    painter.paint(canvas, offset);
+  }
+
+  static void _textCentered(
+    Canvas canvas,
+    String text,
+    Rect rect, {
+    double size = 14,
+    FontWeight weight = FontWeight.w500,
+    Color color = _ink,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: size,
+          fontWeight: weight,
+          height: 1.1,
+        ),
+      ),
+      textAlign: TextAlign.center,
+      textDirection: ui.TextDirection.ltr,
+    );
+    painter.layout(maxWidth: rect.width);
+    painter.paint(
+      canvas,
+      Offset(
+        rect.left + (rect.width - painter.width) / 2,
+        rect.top + (rect.height - painter.height) / 2,
+      ),
+    );
+  }
+
+  static String _formatDate(DateTime? date) {
+    if (date == null) return '-';
+    return DateFormat('dd-MM-yyyy', 'id_ID').format(date);
+  }
+
+  static String _longDate(DateTime? date) {
+    if (date == null) return '-';
+    return DateFormat('d MMMM yyyy', 'id_ID').format(date);
+  }
+
+  static String _dayMonth(DateTime date) {
+    return DateFormat('d MMM', 'id_ID').format(date);
+  }
+
+  static String _formatHa(double value) {
+    final fixed = value.toStringAsFixed(2);
+    return fixed.endsWith('.00') ? fixed.substring(0, fixed.length - 3) : fixed;
+  }
+
+  static String _weekLabel(DateTime date) {
+    final start = DateTime(date.year, 1, 1);
+    final week = (date.difference(start).inDays / 7).ceil();
+    return 'W${week.toString().padLeft(2, '0')}';
+  }
+
+  static String _femaleShedding(String value) {
+    final v = _norm(value);
+    if (v == '0' || v == 'a') return 'A (0)';
+    if (v.contains('>0') && v.contains('<2') || v == 'b') return 'B (>0 <2)';
+    if (v.contains('2') && v.contains('5') || v == 'c') return 'C (2-5)';
+    if (v.contains('>=5') || v.contains('≥5') || v == 'd') return 'D (>=5)';
+    return _dash(value);
+  }
+
+  static String _offtype(String value) {
+    final v = _norm(value);
+    if (v == '0' || v == 'a') return 'A';
+    if (v.contains('>0') || v == 'b') return 'B';
+    return _dash(value);
+  }
+
+  static String _lsv(String value) {
+    final v = _norm(value);
+    if (v == 'none' || v == 'a') return 'A (None)';
+    if (v == 'low' || v == 'b') return 'B (Low)';
+    if (v == 'moderate' || v == 'c') return 'C (Moderate)';
+    if (v == 'high' || v == 'd') return 'D (High)';
+    return _dash(value);
+  }
+
+  static String _score(String value) {
+    final v = _norm(value);
+    const map = {
+      'very poor': '1 (Very Poor)',
+      'poor': '2 (Poor)',
+      'fair': '3 (Fair)',
+      'good': '4 (Good)',
+      'best': '5 (Best)',
+      '1': '1 (Very Poor)',
+      '2': '2 (Poor)',
+      '3': '3 (Fair)',
+      '4': '4 (Good)',
+      '5': '5 (Best)',
+    };
+    return map[v] ?? _dash(value);
+  }
+
+  static String _detasseling(String value) {
+    final v = _norm(value);
+    const map = {
+      'best': 'A (Best)',
+      'good': 'B (Good)',
+      'fair': 'C (Fair)',
+      'poor': 'D (Poor)',
+      'very poor': 'E (Very Poor)',
+      'a': 'A (Best)',
+      'b': 'B (Good)',
+      'c': 'C (Fair)',
+      'd': 'D (Poor)',
+      'e': 'E (Very Poor)',
+    };
+    return map[v] ?? _dash(value);
+  }
+
+  static String _yesNo(String value) {
+    final v = _norm(value);
+    if (v == 'yes' || v == 'found' || v == 'a') return 'A (Yes)';
+    if (v == 'no' || v == 'not found' || v == 'b') return 'B (No)';
+    return _dash(value);
+  }
+
+  static String _action(String value) {
+    final v = _norm(value);
+    const map = {
+      'none': 'A (None)',
+      'roguing': 'B (Roguing)',
+      're-detasseling': 'C (Re-Detasseling)',
+      'monitor': 'D (Monitor)',
+      'hold': 'E (Hold)',
+      'discard partial': 'F (Discard Partial)',
+      'discard full': 'G (Discard Full)',
+      'a': 'A (None)',
+      'b': 'B (Roguing)',
+      'c': 'C (Re-Detasseling)',
+      'd': 'D (Monitor)',
+      'e': 'E (Hold)',
+      'f': 'F (Discard Partial)',
+      'g': 'G (Discard Full)',
+    };
+    return map[v] ?? _dash(value);
+  }
+
+  static String _dash(String value) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? '-' : trimmed;
+  }
+
+  static String _norm(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll('–', '-')
+        .replaceAll(RegExp(r'^[a-z0-9]{1,4}\s*-\s*'), '');
+  }
+
+  static String _readText(dynamic value, {String fallback = '-'}) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  static double _readArea(Map<String, dynamic> raw) {
+    for (final value in [
+      raw['effective_area_ha'],
+      raw['effective_area'],
+      raw['area_ha'],
+      raw['ha'],
+    ]) {
+      if (value == null) continue;
+      if (value is num) return value.toDouble();
+      final parsed = double.tryParse(value.toString().replaceAll(',', '.'));
+      if (parsed != null) return parsed;
+    }
+    return 0;
+  }
+
+  static Map<String, dynamic>? _firstRow(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is List && value.isNotEmpty) {
+      final first = value.first;
+      if (first is Map) return Map<String, dynamic>.from(first);
+    }
+    return null;
+  }
+
+  static DateTime? _parseDate(dynamic value) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty) return null;
+
+    try {
+      final parsed = DateTime.tryParse(text);
+      if (parsed != null) {
+        return DateTime(parsed.year, parsed.month, parsed.day);
+      }
+      if (text.contains('/')) {
+        final parts = text.split('/');
+        if (parts.length != 3) return null;
+        final day = int.parse(parts[0]);
+        final month = int.parse(parts[1]);
+        var year = int.parse(parts[2]);
+        if (year < 100) year += 2000;
+        return DateTime(year, month, day);
+      }
+      if (text.contains('-')) {
+        final parts = text.split('-');
+        if (parts.length != 3 || parts.first.length > 2) return null;
+        final day = int.parse(parts[0]);
+        final month = int.parse(parts[1]);
+        var year = int.parse(parts[2]);
+        if (year < 100) year += 2000;
+        return DateTime(year, month, day);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static int _dapOnDate(DateTime plantingDate, DateTime targetDate) {
+    final planting =
+        DateTime(plantingDate.year, plantingDate.month, plantingDate.day);
+    final target = DateTime(targetDate.year, targetDate.month, targetDate.day);
+    return target.difference(planting).inDays + 1;
+  }
+
+  static String _safePart(String value) {
+    final safe = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    return safe.isEmpty ? 'fn' : safe;
+  }
+}
+
+class _FieldSnapshot {
+  final String fieldNumber;
+  final String farmer;
+  final String codet;
+  final String village;
+  final String hybrid;
+  final String season;
+  final String region;
+  final String crop;
+  final String week;
+  final DateTime auditDate;
+  final DateTime plantingDate;
+  final double areaHa;
+  final double totalAreaHa;
+  final int estimatedDap;
+  final String qaFi;
+  final String qaSpv;
+  final String femaleShedding;
+  final String offtypeM;
+  final String offtypeF;
+  final String lsvStatus;
+  final String cropUniformity;
+  final String cropHealth;
+  final String detasselingAssessment;
+  final String isolationStatus;
+  final String affectedOtherField;
+  final String actionNeeded;
+  final String remarks;
+  final String flagging;
+
+  const _FieldSnapshot({
+    required this.fieldNumber,
+    required this.farmer,
+    required this.codet,
+    required this.village,
+    required this.hybrid,
+    required this.season,
+    required this.region,
+    required this.crop,
+    required this.week,
+    required this.auditDate,
+    required this.plantingDate,
+    required this.areaHa,
+    required this.totalAreaHa,
+    required this.estimatedDap,
+    required this.qaFi,
+    required this.qaSpv,
+    required this.femaleShedding,
+    required this.offtypeM,
+    required this.offtypeF,
+    required this.lsvStatus,
+    required this.cropUniformity,
+    required this.cropHealth,
+    required this.detasselingAssessment,
+    required this.isolationStatus,
+    required this.affectedOtherField,
+    required this.actionNeeded,
+    required this.remarks,
+    required this.flagging,
+  });
+
+  bool get isSweetCorn => crop.toUpperCase() == 'SC';
+
+  String get actionRemarks {
+    final action = DetasselingIsoExportService._action(actionNeeded);
+    final note = remarks.trim();
+    if (action == '-' && note.isEmpty) return '';
+    if (action == '-') return note;
+    if (note.isEmpty) return action;
+    return '$action | $note';
+  }
+
+  factory _FieldSnapshot.from(DetasselingIsoFormData data) {
+    final raw = data.fieldData;
+    final audit = data.auditData;
+    final veg = DetasselingIsoExportService._firstRow(raw['audit_vegetative']);
+    final plantingDate =
+        DetasselingIsoExportService._parseDate(veg?['rev_planting_date']) ??
+            DetasselingIsoExportService._parseDate(raw['planting_date_pdn']) ??
+            DateTime.now();
+    final auditDate = DetasselingIsoExportService._parseDate(
+            audit['date_of_audit_${data.passNumber}']) ??
+        DateTime.now();
+    final passOne =
+        DateTime(plantingDate.year, plantingDate.month, plantingDate.day)
+            .add(const Duration(days: 49));
+    final cropLabel = data.cropLabel.trim().toUpperCase().isEmpty
+        ? 'FC'
+        : data.cropLabel.trim().toUpperCase();
+
+    return _FieldSnapshot(
+      fieldNumber: DetasselingIsoExportService._readText(raw['field_number']),
+      farmer: DetasselingIsoExportService._readText(raw['farmer_name']),
+      codet: DetasselingIsoExportService._readText(
+        veg?['co_detasseling'],
+        fallback: 'Belum ada Codet',
+      ),
+      village: DetasselingIsoExportService._readText(raw['village_desa']),
+      hybrid: DetasselingIsoExportService._readText(raw['hybrid']),
+      season: DetasselingIsoExportService._readText(raw['season']),
+      region: DetasselingIsoExportService._readText(raw['region']),
+      crop: cropLabel,
+      week: DetasselingIsoExportService._weekLabel(auditDate),
+      auditDate: auditDate,
+      plantingDate: plantingDate,
+      areaHa: DetasselingIsoExportService._readArea(raw),
+      totalAreaHa: DetasselingIsoExportService._readArea(raw),
+      estimatedDap:
+          DetasselingIsoExportService._dapOnDate(plantingDate, passOne),
+      qaFi: DetasselingIsoExportService._readText(
+        audit['qa_fi_${data.passNumber}'] ?? audit['qa_fi'],
+      ),
+      qaSpv: DetasselingIsoExportService._readText(audit['qa_spv']),
+      femaleShedding: DetasselingIsoExportService._readText(
+        audit['female_shedding_${data.passNumber}'],
+        fallback: '',
+      ),
+      offtypeM: DetasselingIsoExportService._readText(
+        audit['offtype_m_${data.passNumber}'],
+        fallback: '',
+      ),
+      offtypeF: DetasselingIsoExportService._readText(
+        audit['offtype_f_${data.passNumber}'],
+        fallback: '',
+      ),
+      lsvStatus: DetasselingIsoExportService._readText(
+        audit['lsv_status_${data.passNumber}'],
+        fallback: '',
+      ),
+      cropUniformity: DetasselingIsoExportService._readText(
+        audit['crop_uniformity_${data.passNumber}'],
+        fallback: '',
+      ),
+      cropHealth: DetasselingIsoExportService._readText(
+        audit['crop_health_${data.passNumber}'],
+        fallback: '',
+      ),
+      detasselingAssessment: DetasselingIsoExportService._readText(
+        audit['detasseling_assesment_${data.passNumber}'],
+        fallback: '',
+      ),
+      isolationStatus: DetasselingIsoExportService._readText(
+        audit['isolation_status_${data.passNumber}'] ??
+            audit['isolation_problem_${data.passNumber}'],
+        fallback: '',
+      ),
+      affectedOtherField: DetasselingIsoExportService._readText(
+        audit['affected_other_field_${data.passNumber}'],
+        fallback: '',
+      ),
+      actionNeeded: DetasselingIsoExportService._readText(
+        audit['action_needed_${data.passNumber}'] ??
+            audit['final_decision_${data.passNumber}'],
+        fallback: '',
+      ),
+      remarks: DetasselingIsoExportService._readText(
+        audit['remarks_${data.passNumber}'],
+        fallback: '',
+      ),
+      flagging: DetasselingIsoExportService._readText(
+        audit['flagging'] ?? audit['final_flagging_${data.passNumber}'],
+        fallback: '',
+      ),
+    );
+  }
+}
