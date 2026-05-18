@@ -181,8 +181,46 @@ class DapHelper {
     ),
   ];
 
+  static String? _nonEmptyString(Object? value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  static String? _readVegetativeValue(
+    Map<String, dynamic> field,
+    String key,
+  ) {
+    final vegRow = field['audit_vegetative'];
+    if (vegRow is Map) return _nonEmptyString(vegRow[key]);
+    if (vegRow is List) {
+      for (final row in vegRow) {
+        if (row is Map) {
+          final value = _nonEmptyString(row[key]);
+          if (value != null) return value;
+        }
+      }
+    }
+    return null;
+  }
+
+  static String? getRevisedPlantingDate(Map<String, dynamic> field) {
+    return _readVegetativeValue(field, 'rev_planting_date');
+  }
+
+  static String? getEffectivePlantingDate(Map<String, dynamic> field) {
+    return getRevisedPlantingDate(field) ??
+        _nonEmptyString(field['planting_date_pdn']);
+  }
+
+  static int calculateFieldDAP(Map<String, dynamic> field) {
+    return calculateDAP(getEffectivePlantingDate(field));
+  }
+
   /// Menghitung DAP (Days After Planting) dari string tanggal tanam.
-  static int calculateDAP(String? plantingDateString) {
+  static int calculateDAP(
+    String? plantingDateString, {
+    DateTime? referenceDate,
+  }) {
     if (plantingDateString == null || plantingDateString.trim().isEmpty) {
       return 0;
     }
@@ -204,7 +242,7 @@ class DapHelper {
       } else {
         return 0;
       }
-      final now = DateTime.now();
+      final now = referenceDate ?? DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final plantingDateOnly =
           DateTime(plantingDate.year, plantingDate.month, plantingDate.day);

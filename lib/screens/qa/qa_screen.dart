@@ -171,6 +171,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
         context,
         freshField ?? fieldData,
         onInspectDone: _handleInspectDone,
+        dapReferenceDate: _getWeekReferenceDate(),
       );
     } catch (_) {
       if (!mounted) return;
@@ -178,6 +179,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
         context,
         fieldData,
         onInspectDone: _handleInspectDone,
+        dapReferenceDate: _getWeekReferenceDate(),
       );
     }
   }
@@ -188,12 +190,20 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   int _getWeekProjectionDeltaDays() {
+    final today = DateTime.now();
+    final normalizedToday = DateTime(today.year, today.month, today.day);
+    return _getWeekReferenceDate().difference(normalizedToday).inDays;
+  }
+
+  DateTime _getWeekReferenceDate() {
+    final today = DateTime.now();
+    final normalizedToday = DateTime(today.year, today.month, today.day);
+
     if (_selectedWeek.isEmpty || _selectedWeek['startDate'] == null) {
-      return 0; // Jika "Semua Minggu" dipilih, gunakan DAP asli
+      return normalizedToday; // Jika "Semua Minggu" dipilih, gunakan hari ini
     }
 
     final weekStart = _selectedWeek['startDate'] as DateTime;
-    final today = DateTime.now();
 
     // Normalisasi jam agar hitungan hari presisi
     final normalizedWeekStart =
@@ -203,9 +213,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
     );
     final normalizedTarget =
         DateTime(targetDate.year, targetDate.month, targetDate.day);
-    final normalizedToday = DateTime(today.year, today.month, today.day);
 
-    return normalizedTarget.difference(normalizedToday).inDays;
+    return normalizedTarget;
   }
 
   // FUNGSI BARU: Mengecek apakah lahan masuk jendela operasional pada minggu yang dipilih
@@ -785,6 +794,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
             context,
             f,
             onInspectDone: _handleInspectDone,
+            dapReferenceDate: _getWeekReferenceDate(),
           );
         },
       ),
@@ -1433,25 +1443,38 @@ class _QAScreenState extends ConsumerState<QAScreen>
         ? fieldsData.where((f) => !f.isDefault).toList()
         : fieldsData;
     final selectedKey = _selectedFieldNumbers.toList()..sort();
-    final markerCoordinateHash = Object.hashAll(dataToMark.map((f) {
+    final projectionDeltaDays = _getWeekProjectionDeltaDays();
+    final markerDataHash = Object.hashAll(dataToMark.map((f) {
+      final raw = f.raw;
       return Object.hash(
-        f.raw['field_number']?.toString() ?? '',
+        raw['field_number']?.toString() ?? '',
         f.lat,
         f.lng,
         f.isDefault,
         f.isCorrected,
         f.isFromPolygon,
+        f.dap,
+        f.dap + projectionDeltaDays,
+        raw['hybrid']?.toString() ?? '',
+        DapHelper.getEffectivePlantingDate(raw) ?? '',
+        raw['correction_tagging']?.toString() ?? '',
+        raw['audit_vegetative']?.toString() ?? '',
+        raw['audit_generative']?.toString() ?? '',
+        raw['audit_pre_harvest']?.toString() ?? '',
+        raw['audit_harvest']?.toString() ?? '',
       );
     }));
 
-    // Buat key untuk cache marker
+    // Buat key cache dari semua data yang memengaruhi tampilan marker.
     final markerKey = [
       fieldsData.length,
       dataToMark.length,
-      markerCoordinateHash,
+      markerDataHash,
       selectedKey.join(','),
       _workMode,
       _activePhaseView,
+      _selectedWeek['label'],
+      projectionDeltaDays,
       stackDefaultMarkers,
     ].join('|');
 
@@ -1626,6 +1649,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   context,
                   f.raw,
                   onInspectDone: _handleInspectDone,
+                  dapReferenceDate: _getWeekReferenceDate(),
                 );
               }
             },
@@ -1931,6 +1955,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                           context,
                           raw,
                           onInspectDone: _handleInspectDone,
+                          dapReferenceDate: _getWeekReferenceDate(),
                         );
                       },
                       icon: const Icon(Icons.article_outlined, size: 18),
@@ -2863,6 +2888,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                         context,
                         f.raw,
                         onInspectDone: _handleInspectDone,
+                        dapReferenceDate: _getWeekReferenceDate(),
                       );
                     }
                   },

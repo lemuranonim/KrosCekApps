@@ -13,18 +13,21 @@ import 'phase_asset_icon.dart';
 class FieldDetailBottomSheet extends ConsumerStatefulWidget {
   final Map<String, dynamic> field;
   final void Function(Map<String, dynamic>)? onInspectDone;
+  final DateTime? dapReferenceDate;
   static bool _isShowing = false;
 
   const FieldDetailBottomSheet({
     super.key,
     required this.field,
     this.onInspectDone,
+    this.dapReferenceDate,
   });
 
   static void show(
     BuildContext context,
     Map<String, dynamic> field, {
     void Function(Map<String, dynamic>)? onInspectDone,
+    DateTime? dapReferenceDate,
   }) {
     if (_isShowing) return;
     _isShowing = true;
@@ -41,6 +44,7 @@ class FieldDetailBottomSheet extends ConsumerStatefulWidget {
       builder: (_) => FieldDetailBottomSheet(
         field: field,
         onInspectDone: onInspectDone,
+        dapReferenceDate: dapReferenceDate,
       ),
     ).whenComplete(() => _isShowing = false);
   }
@@ -58,6 +62,7 @@ class _FieldDetailBottomSheetState
   late int _dap;
   late String _recommendedPhase;
   late String? _finalPlantingDate; // Menyimpan tanggal yang fix dipakai
+  late DateTime _dapReferenceDate;
   late bool
       _isPlantingDateRevisied; // Penanda untuk UI (Warna emas jika revisi)
 
@@ -81,28 +86,21 @@ class _FieldDetailBottomSheetState
   void initState() {
     super.initState();
 
-    // 1. Cari rev_planting_date dari riwayat audit_vegetative
-    final vegRow = widget.field['audit_vegetative'];
-    String? revDate;
-    if (vegRow != null) {
-      if (vegRow is List && vegRow.isNotEmpty) {
-        revDate = vegRow[0]['rev_planting_date']?.toString();
-      } else if (vegRow is Map) {
-        revDate = vegRow['rev_planting_date']?.toString();
-      }
-    }
-
-    // 2. Tentukan tanggal final yang akan digunakan
-    if (revDate != null && revDate.trim().isNotEmpty) {
-      _finalPlantingDate = revDate;
-      _isPlantingDateRevisied = true;
-    } else {
-      _finalPlantingDate = widget.field['planting_date_pdn']?.toString();
-      _isPlantingDateRevisied = false;
-    }
+    final revDate = DapHelper.getRevisedPlantingDate(widget.field);
+    _finalPlantingDate = DapHelper.getEffectivePlantingDate(widget.field);
+    _isPlantingDateRevisied = revDate != null;
+    final referenceDate = widget.dapReferenceDate ?? DateTime.now();
+    _dapReferenceDate = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+    );
 
     // 3. Hitung DAP dan Rekomendasi Fase
-    _dap = DapHelper.calculateDAP(_finalPlantingDate);
+    _dap = DapHelper.calculateDAP(
+      _finalPlantingDate,
+      referenceDate: _dapReferenceDate,
+    );
     _recommendedPhase = DapHelper.getRecommendedPhase(_dap,
         hybrid: widget.field['hybrid']?.toString());
   }
@@ -581,6 +579,7 @@ class _FieldDetailBottomSheetState
               hybrid: hybrid,
               isAudited: isRecPhaseAudited,
               isDark: isDark,
+              referenceDate: _dapReferenceDate,
               isRevisied: _isPlantingDateRevisied, // <-- Kirim penanda revisi
             );
           }),
@@ -2025,6 +2024,7 @@ class _DapCalculationBox extends StatelessWidget {
   final String? hybrid;
   final bool isAudited;
   final bool isDark;
+  final DateTime referenceDate;
   final bool isRevisied; // <-- Tambahan
 
   const _DapCalculationBox({
@@ -2034,6 +2034,7 @@ class _DapCalculationBox extends StatelessWidget {
     this.hybrid,
     required this.isAudited,
     required this.isDark,
+    required this.referenceDate,
     this.isRevisied = false, // <-- Tambahan (Default false)
   });
 
@@ -2067,7 +2068,14 @@ class _DapCalculationBox extends StatelessWidget {
     }
 
     final dateStr = _formatDate(plantingDate);
-    final todayStr = DateFormat('dd MMM yyyy', 'id_ID').format(DateTime.now());
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final referenceOnly =
+        DateTime(referenceDate.year, referenceDate.month, referenceDate.day);
+    final referenceStr =
+        DateFormat('dd MMM yyyy', 'id_ID').format(referenceOnly);
+    final referenceLabel =
+        referenceOnly == today ? 'Hari Ini' : 'Tanggal Acuan';
 
     String translatedBadge;
     Color badgeColor;
@@ -2147,7 +2155,8 @@ class _DapCalculationBox extends StatelessWidget {
                       ? AdvantaColors.gold
                       : (isDark ? Colors.white : Colors.black87)),
               _buildMath('+ $dap Hari', badgeColor),
-              _buildNode(Icons.event_available_rounded, 'Hari Ini', todayStr,
+              _buildNode(
+                  Icons.event_available_rounded, referenceLabel, referenceStr,
                   themeColor: isDark ? Colors.white : Colors.black87),
             ],
           ),

@@ -298,20 +298,6 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(
       isDef = false;
     }
 
-    // ── Hitung DAP ────────────────────────────────────────────
-    String? finalPlantingDate;
-    final vegRow = f['audit_vegetative'];
-    if (vegRow != null) {
-      if (vegRow is List && vegRow.isNotEmpty) {
-        finalPlantingDate = vegRow[0]['rev_planting_date']?.toString();
-      } else if (vegRow is Map) {
-        finalPlantingDate = vegRow['rev_planting_date']?.toString();
-      }
-    }
-    if (finalPlantingDate == null || finalPlantingDate.trim().isEmpty) {
-      finalPlantingDate = f['planting_date_pdn']?.toString();
-    }
-
     final validPolygon = (parsedPolygon != null && parsedPolygon.length >= 3)
         ? parsedPolygon
         : null;
@@ -323,7 +309,7 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(
       isDefault: isDef,
       isCorrected: isCorrected,
       isFromPolygon: isFromPolygon,
-      dap: DapHelper.calculateDAP(finalPlantingDate),
+      dap: DapHelper.calculateFieldDAP(normalizedRaw),
       geometryWkt: geometryWkt,
       polygonPoints: validPolygon,
       polygonBounds:
