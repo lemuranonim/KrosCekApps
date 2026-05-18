@@ -927,8 +927,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       }
 
       if (mounted) {
-        ref.invalidate(masterFieldsProvider);
-        ref.invalidate(parsedMapFieldsProvider);
+        ref.invalidate(masterFieldDetailProvider(widget.fieldNumber));
         ref.invalidate(vegetativeAuditProvider(widget.fieldNumber));
         _snack('Vegetative audit berhasil disimpan ✓');
         await Future.delayed(const Duration(milliseconds: 600));
@@ -956,11 +955,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   @override
   Widget build(BuildContext context) {
     final auditAsync = ref.watch(vegetativeAuditProvider(widget.fieldNumber));
-    final fields = ref.watch(masterFieldsProvider).value ?? [];
-    final fieldData = fields.firstWhere(
-      (f) => f['field_number'] == widget.fieldNumber,
-      orElse: () => {},
-    );
+    final fieldData =
+        ref.watch(masterFieldDetailProvider(widget.fieldNumber)).value ??
+            const <String, dynamic>{};
 
     final resolvedCoord = _resolveFieldCoordinate(fieldData);
     if (resolvedCoord != null) {

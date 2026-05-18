@@ -212,7 +212,7 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
       }
 
       if (mounted) {
-        ref.invalidate(masterFieldsProvider);
+        ref.invalidate(masterFieldDetailProvider(widget.fieldNumber));
         ref.invalidate(preharvestAuditProvider(widget.fieldNumber));
         _snack('Pre-Harvest Audit berhasil disimpan ✓');
         await Future.delayed(const Duration(milliseconds: 600));
@@ -241,9 +241,8 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
   @override
   Widget build(BuildContext context) {
     final auditAsync = ref.watch(preharvestAuditProvider(widget.fieldNumber));
-    final fields = ref.watch(masterFieldsProvider).value ?? [];
-    final fd = fields.firstWhere((f) => f['field_number'] == widget.fieldNumber,
-        orElse: () => {});
+    final fd = ref.watch(masterFieldDetailProvider(widget.fieldNumber)).value ??
+        const <String, dynamic>{};
 
     return Scaffold(
       appBar: GenAppBar(

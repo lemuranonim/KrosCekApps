@@ -233,7 +233,7 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
       }
 
       if (mounted) {
-        ref.invalidate(masterFieldsProvider);
+        ref.invalidate(masterFieldDetailProvider(widget.fieldNumber));
         ref.invalidate(generativeAuditProvider(widget.fieldNumber));
         _snack('Generative Audit 3 (Final) berhasil disimpan ✓');
         await Future.delayed(const Duration(milliseconds: 600));
@@ -315,10 +315,9 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
   @override
   Widget build(BuildContext context) {
     final auditAsync = ref.watch(generativeAuditProvider(widget.fieldNumber));
-    final fields = ref.watch(masterFieldsProvider).value ?? [];
-    final fieldData = fields.firstWhere(
-        (f) => f['field_number'] == widget.fieldNumber,
-        orElse: () => {});
+    final fieldData =
+        ref.watch(masterFieldDetailProvider(widget.fieldNumber)).value ??
+            const <String, dynamic>{};
 
     return Scaffold(
       appBar: GenAppBar(

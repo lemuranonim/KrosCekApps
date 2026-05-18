@@ -110,6 +110,100 @@ final masterFieldsProvider =
   return allFields;
 });
 
+final masterFieldDetailProvider =
+    FutureProvider.family<Map<String, dynamic>?, String>(
+        (ref, fieldNumber) async {
+  final supabaseService = ref.watch(supabaseServiceProvider);
+  final user = await ref.watch(currentUserProvider.future);
+  final trimmedFieldNumber = fieldNumber.trim();
+
+  if (user == null || trimmedFieldNumber.isEmpty) return null;
+
+  final detail =
+      await supabaseService.getMasterFieldWithAllAudits(trimmedFieldNumber);
+  if (detail == null) return null;
+
+  final resolved = _withResolvedCorrectionTagging(detail);
+  final action = user.action.toLowerCase();
+  final role = user.role.toUpperCase();
+  final userName = user.name.trim().toLowerCase();
+
+  if (action == 'all') return resolved;
+  if (action == 'audit') {
+    if (role == 'FI') {
+      return QaNameHelper.fieldHasFi(resolved, userName) ? resolved : null;
+    }
+    if (role == 'SPV') {
+      return QaNameHelper.fieldHasSpv(resolved, userName) ? resolved : null;
+    }
+  }
+
+  return resolved;
+});
+
+class MasterFieldNumbersScope {
+  final List<String> fieldNumbers;
+
+  MasterFieldNumbersScope(Iterable<String> fieldNumbers)
+      : fieldNumbers = (fieldNumbers
+            .map((fieldNumber) => fieldNumber.trim())
+            .where((fieldNumber) => fieldNumber.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort());
+
+  @override
+  bool operator ==(Object other) =>
+      other is MasterFieldNumbersScope &&
+      _listEquals(other.fieldNumbers, fieldNumbers);
+
+  @override
+  int get hashCode => Object.hashAll(fieldNumbers);
+}
+
+bool _listEquals(List<String> a, List<String> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+final masterFieldsByFieldNumbersProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, MasterFieldNumbersScope>(
+        (ref, scope) async {
+  final supabaseService = ref.watch(supabaseServiceProvider);
+  final user = await ref.watch(currentUserProvider.future);
+
+  if (user == null || scope.fieldNumbers.isEmpty) return [];
+
+  final action = user.action.toLowerCase();
+  final role = user.role.toUpperCase();
+  final userName = user.name.trim().toLowerCase();
+
+  final fields =
+      (await supabaseService.getMasterFieldsByFieldNumbers(scope.fieldNumbers))
+          .map(_withResolvedCorrectionTagging)
+          .toList();
+
+  if (action == 'all') return fields;
+
+  if (action == 'audit') {
+    if (role == 'FI') {
+      return fields.where((field) {
+        return QaNameHelper.fieldHasFi(field, userName);
+      }).toList();
+    } else if (role == 'SPV') {
+      return fields.where((field) {
+        return QaNameHelper.fieldHasSpv(field, userName);
+      }).toList();
+    }
+  }
+
+  return fields;
+});
+
 // ============================================================
 // 3b. MASTER FIELD MAP PROVIDER (Data Ringan Untuk Peta)
 // ============================================================

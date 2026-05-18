@@ -192,7 +192,7 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
       }
 
       if (!mounted) return;
-      ref.invalidate(masterFieldsProvider);
+      ref.invalidate(masterFieldDetailProvider(widget.fieldNumber));
       ref.invalidate(harvestAuditProvider(widget.fieldNumber));
       _snack('Harvest PSP audit berhasil disimpan');
       await Future.delayed(const Duration(milliseconds: 600));
@@ -221,11 +221,9 @@ class _FormHarvestPSPState extends ConsumerState<FormHarvestPSP> {
   @override
   Widget build(BuildContext context) {
     final auditAsync = ref.watch(harvestAuditProvider(widget.fieldNumber));
-    final fields = ref.watch(masterFieldsProvider).value ?? [];
-    final fieldData = fields.firstWhere(
-      (f) => f['field_number'] == widget.fieldNumber,
-      orElse: () => {},
-    );
+    final fieldData =
+        ref.watch(masterFieldDetailProvider(widget.fieldNumber)).value ??
+            const <String, dynamic>{};
 
     return Scaffold(
       appBar: PspAppBar(

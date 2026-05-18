@@ -221,6 +221,44 @@ class SupabaseService {
     }
   }
 
+  /// Mengambil field tertentu saja untuk form batch/mass inspection.
+  Future<List<Map<String, dynamic>>> getMasterFieldsByFieldNumbers(
+    List<String> fieldNumbers,
+  ) async {
+    try {
+      final normalized = fieldNumbers
+          .map((fieldNumber) => fieldNumber.trim())
+          .where((fieldNumber) => fieldNumber.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+      if (normalized.isEmpty) return const [];
+
+      final allData = <Map<String, dynamic>>[];
+      const chunkSize = 100;
+
+      for (var i = 0; i < normalized.length; i += chunkSize) {
+        final end = i + chunkSize > normalized.length
+            ? normalized.length
+            : i + chunkSize;
+        final chunk = normalized.sublist(i, end);
+
+        final response = await _supabase
+            .from('master_fields')
+            .select(_masterFieldMapSelect)
+            .eq('is_active', true)
+            .inFilter('field_number', chunk)
+            .order('field_number', ascending: true);
+
+        allData.addAll(List<Map<String, dynamic>>.from(response));
+      }
+
+      debugPrint('Total selected field records fetched: ${allData.length}');
+      return allData;
+    } catch (e) {
+      throw Exception('Gagal mengambil data field terpilih Supabase: $e');
+    }
+  }
+
   Future<String?> getLatestActiveMasterFieldSeason() async {
     try {
       final response = await _supabase

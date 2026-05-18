@@ -1075,7 +1075,11 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
 
       if (mounted) {
         _snack('Bulk Submit ${records.length} field berhasil ✓');
-        ref.invalidate(masterFieldsProvider);
+        ref.invalidate(
+          masterFieldsByFieldNumbersProvider(
+            MasterFieldNumbersScope(widget.fieldNumbers),
+          ),
+        );
         await Future.delayed(const Duration(milliseconds: 600));
         if (mounted) Navigator.pop(context);
       }
@@ -1090,19 +1094,16 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final masterAsync = ref.watch(masterFieldsProvider);
+    final fieldScope = MasterFieldNumbersScope(widget.fieldNumbers);
+    final masterAsync =
+        ref.watch(masterFieldsByFieldNumbersProvider(fieldScope));
 
     return Scaffold(
       backgroundColor:
           isDark ? AdvantaColors.deepForest : AdvantaColors.softGrey,
       appBar: _buildAppBar(context),
       body: masterAsync.when(
-        data: (allFields) {
-          final selected = allFields
-              .where((f) => widget.fieldNumbers.contains(f['field_number']))
-              .toList();
-          return _buildForm(context, selected);
-        },
+        data: (selected) => _buildForm(context, selected),
         loading: () =>
             Center(child: CircularProgressIndicator(color: _phaseColor)),
         error: (e, _) => Center(
