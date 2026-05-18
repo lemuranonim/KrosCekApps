@@ -113,8 +113,70 @@ final masterFieldsProvider =
 // ============================================================
 // 3b. MASTER FIELD MAP PROVIDER (Data Ringan Untuk Peta)
 // ============================================================
+final activeMasterFieldSeasonsProvider = FutureProvider<List<String>>((ref) {
+  final supabaseService = ref.watch(supabaseServiceProvider);
+  return supabaseService.getActiveMasterFieldSeasons();
+});
+
+final latestActiveMasterFieldSeasonProvider = FutureProvider<String?>((ref) {
+  final supabaseService = ref.watch(supabaseServiceProvider);
+  return supabaseService.getLatestActiveMasterFieldSeason();
+});
+
+class MasterFieldMapScope {
+  final String? season;
+  final String? region;
+  final String? district;
+  final bool allSeasons;
+
+  const MasterFieldMapScope({
+    this.season,
+    this.region,
+    this.district,
+    this.allSeasons = true,
+  });
+
+  const MasterFieldMapScope.all()
+      : season = null,
+        region = null,
+        district = null,
+        allSeasons = true;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MasterFieldMapScope &&
+      other.season == season &&
+      other.region == region &&
+      other.district == district &&
+      other.allSeasons == allSeasons;
+
+  @override
+  int get hashCode => Object.hash(season, region, district, allSeasons);
+}
+
+final activeMasterFieldRegionsProvider =
+    FutureProvider.family<List<String>, MasterFieldMapScope>(
+        (ref, scope) async {
+  final supabaseService = ref.watch(supabaseServiceProvider);
+  final resolvedSeason = scope.allSeasons
+      ? null
+      : (scope.season?.trim().isNotEmpty == true
+          ? scope.season!.trim()
+          : await ref.watch(latestActiveMasterFieldSeasonProvider.future));
+
+  return supabaseService.getActiveMasterFieldRegions(season: resolvedSeason);
+});
+
 final masterFieldMapProvider =
     FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  return ref.watch(
+    masterFieldMapScopedProvider(const MasterFieldMapScope.all()).future,
+  );
+});
+
+final masterFieldMapScopedProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, MasterFieldMapScope>(
+        (ref, scope) async {
   final supabaseService = ref.watch(supabaseServiceProvider);
   final user = await ref.watch(currentUserProvider.future);
 
@@ -123,10 +185,18 @@ final masterFieldMapProvider =
   final action = user.action.toLowerCase();
   final role = user.role.toUpperCase();
   final userName = user.name.trim().toLowerCase();
+  final resolvedSeason = scope.allSeasons
+      ? null
+      : (scope.season?.trim().isNotEmpty == true
+          ? scope.season!.trim()
+          : await ref.watch(latestActiveMasterFieldSeasonProvider.future));
 
   final mapFields = (await supabaseService.getMasterFieldsForMap(
     qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
     qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
+    season: resolvedSeason,
+    region: scope.region,
+    district: scope.district,
   ))
       .map(_withResolvedCorrectionTagging)
       .toList();
@@ -372,6 +442,16 @@ final parsedMapFieldsProvider =
 final parsedMasterFieldMapProvider =
     FutureProvider<List<ParsedFieldData>>((ref) async {
   final rawFields = await ref.watch(masterFieldMapProvider.future);
+
+  if (rawFields.isEmpty) return [];
+
+  return await compute(_parseMapFieldsInIsolate, rawFields);
+});
+
+final parsedMasterFieldMapScopedProvider =
+    FutureProvider.family<List<ParsedFieldData>, MasterFieldMapScope>(
+        (ref, scope) async {
+  final rawFields = await ref.watch(masterFieldMapScopedProvider(scope).future);
 
   if (rawFields.isEmpty) return [];
 

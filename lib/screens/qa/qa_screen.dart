@@ -27,7 +27,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/detasseling_plan_provider.dart';
 import '../../providers/master_fields_provider.dart';
-import '../../providers/filter_data_provider.dart';
 import '../../providers/attendance_provider.dart';
 import '../../widgets/field_detail_bottom_sheet.dart';
 import '../../services/supabase_auth_service.dart';
@@ -77,6 +76,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
   // Region / District quick-filter (tetap dipertahankan)
   String? _selectedRegion;
   String? _selectedDistrict;
+  String? _selectedSeason;
+  bool _showAllSeasons = false;
+  bool _showAllRegions = false;
 
   // Modes
   _WorkMode _workMode = _WorkMode.single;
@@ -138,10 +140,21 @@ class _QAScreenState extends ConsumerState<QAScreen>
     _lastMarkerKey = null;
   }
 
+  MasterFieldMapScope get _currentMapScope => MasterFieldMapScope(
+        season: _selectedSeason,
+        region: _showAllRegions ? null : _selectedRegion,
+        district: _showAllRegions ? null : _selectedDistrict,
+        allSeasons: _showAllSeasons,
+      );
+
   void _refreshMapProviders() {
     _clearMapCaches();
-    ref.invalidate(masterFieldMapProvider);
-    ref.invalidate(parsedMasterFieldMapProvider);
+    final scope = _currentMapScope;
+    ref.invalidate(activeMasterFieldSeasonsProvider);
+    ref.invalidate(latestActiveMasterFieldSeasonProvider);
+    ref.invalidate(activeMasterFieldRegionsProvider(scope));
+    ref.invalidate(masterFieldMapScopedProvider(scope));
+    ref.invalidate(parsedMasterFieldMapScopedProvider(scope));
   }
 
   void _handleInspectDone(Map<String, dynamic> fieldData) {
@@ -782,6 +795,82 @@ class _QAScreenState extends ConsumerState<QAScreen>
     });
   }
 
+  List<String> _uniqueValues(
+    List<ParsedFieldData> fields,
+    String fieldKey, {
+    bool Function(Map<String, dynamic> raw)? where,
+  }) {
+    final values = <String>{};
+    for (final field in fields) {
+      final raw = field.raw;
+      if (where != null && !where(raw)) continue;
+      final value = raw[fieldKey]?.toString().trim() ?? '';
+      if (value.isNotEmpty) values.add(value);
+    }
+    return values.toList()..sort();
+  }
+
+  List<String> _uniqueQaValues(
+    List<ParsedFieldData> fields, {
+    String? region,
+    String? district,
+  }) {
+    final qas = <String>{};
+    for (final field in fields) {
+      final raw = field.raw;
+      final dbRegion = raw['region']?.toString().trim() ?? '';
+      final dbDistrict = raw['district_kab']?.toString().trim() ?? '';
+      if (region != null && dbRegion.toLowerCase() != region.toLowerCase()) {
+        continue;
+      }
+      if (district != null &&
+          dbDistrict.toLowerCase() != district.toLowerCase()) {
+        continue;
+      }
+
+      qas.addAll(QaNameHelper.splitNames(raw['qa_fi']));
+      qas.addAll(QaNameHelper.splitNames(raw['qa_fi_list']));
+      qas.addAll(QaNameHelper.splitNames(raw['qa_spv']));
+    }
+    return qas.toList()..sort();
+  }
+
+  String _seasonScopeLabel(List<String> seasons) {
+    if (_showAllSeasons) return 'Semua Season';
+    final season = _selectedSeason ?? (seasons.isNotEmpty ? seasons.first : '');
+    return season.isEmpty ? 'Season Terbaru' : season;
+  }
+
+  void _setSeasonScope({
+    required bool allSeasons,
+    String? season,
+  }) {
+    setState(() {
+      _showAllSeasons = allSeasons;
+      _selectedSeason = allSeasons ? null : season;
+      _selectedRegion = null;
+      _selectedDistrict = null;
+      _showAllRegions = false;
+      _clearMapCaches();
+    });
+  }
+
+  bool _shouldAutoScopeByRegion(AppUser? user) {
+    final role = user?.role.toUpperCase().trim() ?? '';
+    final action = user?.action.toLowerCase().trim() ?? '';
+    return action == 'all' &&
+        (role == 'ADMIN' || role == 'DEV' || role == 'MANAGER');
+  }
+
+  void _setRegionScope(String? region) {
+    setState(() {
+      _showAllRegions = region == null;
+      _selectedRegion = region;
+      _selectedDistrict = null;
+      _clearMapCaches();
+    });
+  }
+
   void _fitBounds(List<ParsedFieldData> fields) {
     if (fields.isEmpty) return;
     // Menggunakan f.lat dan f.lng dari Provider
@@ -813,12 +902,59 @@ class _QAScreenState extends ConsumerState<QAScreen>
   @override
   Widget build(BuildContext context) {
     _measureTopOverlay();
-    final parsedMapAsync = ref.watch(parsedMasterFieldMapProvider);
+    final userAsync = ref.watch(currentUserProvider);
+    final user = userAsync.value;
+    final regionScopeForOptions = MasterFieldMapScope(
+      season: _selectedSeason,
+      allSeasons: _showAllSeasons,
+    );
+    final regionOptionsAsync = ref.watch(
+      activeMasterFieldRegionsProvider(regionScopeForOptions),
+    );
+    final regionOptions = regionOptionsAsync.value ?? const <String>[];
+    final needsRegionScope = _shouldAutoScopeByRegion(user) &&
+        !_showAllRegions &&
+        _selectedRegion == null;
+
+    if (needsRegionScope && regionOptions.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _selectedRegion != null || _showAllRegions) return;
+        setState(() {
+          _selectedRegion = regionOptions.first;
+          _clearMapCaches();
+        });
+      });
+    }
+
+    final waitForRegionScope = needsRegionScope &&
+        (regionOptionsAsync is AsyncLoading || regionOptions.isNotEmpty);
+    final mapScope = _currentMapScope;
+    final AsyncValue<List<ParsedFieldData>> parsedMapAsync =
+        userAsync is AsyncLoading || waitForRegionScope
+            ? const AsyncValue<List<ParsedFieldData>>.loading()
+            : ref.watch(parsedMasterFieldMapScopedProvider(
+                mapScope,
+              ));
+    final seasonsAsync = ref.watch(activeMasterFieldSeasonsProvider);
+    final seasonOptions = seasonsAsync.value ?? const <String>[];
+    final mapFieldsForFilters =
+        parsedMapAsync.value ?? const <ParsedFieldData>[];
+    final districts = _uniqueValues(
+      mapFieldsForFilters,
+      'district_kab',
+      where: (raw) {
+        if (_selectedRegion == null) return true;
+        final region = raw['region']?.toString().trim().toLowerCase() ?? '';
+        return region == _selectedRegion!.toLowerCase();
+      },
+    );
+    final qaList = _uniqueQaValues(
+      mapFieldsForFilters,
+      region: _selectedRegion,
+      district: _selectedDistrict,
+    );
 
     final attendance = ref.watch(attendanceProvider);
-    final regions = ref.watch(uniqueRegionsProvider);
-    final districts = ref.watch(uniqueDistrictsProvider(_selectedRegion));
-    final user = ref.watch(currentUserProvider).value;
 
     // Matikan overlay refresh saat data baru sudah masuk
     if (_isRefreshing && parsedMapAsync is AsyncData) {
@@ -841,9 +977,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final bool canUseMassInspect =
         user != null && user.role.toLowerCase() != 'guest';
 
-    if (_selectedRegion != null && !regions.contains(_selectedRegion)) {
+    if (_selectedRegion != null && !regionOptions.contains(_selectedRegion)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || regions.contains(_selectedRegion)) return;
+        if (!mounted || regionOptions.contains(_selectedRegion)) return;
         setState(() {
           _selectedRegion = null;
           _selectedDistrict = null;
@@ -909,12 +1045,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     // BARIS 2: Gabungan Semua Filter (Region, District, QA, Status, Fase)
                     if (parsedMapAsync is AsyncData)
                       _buildUnifiedFilters(
-                        regions: regions,
+                        seasons: seasonOptions,
+                        regions: regionOptions,
                         districts: districts,
-                        qaList: ref.watch(uniqueQAProvider(QAFilterParams(
-                          region: _selectedRegion,
-                          district: _selectedDistrict,
-                        ))),
+                        qaList: qaList,
                         userRole: user?.role, // <── TAMBAHKAN BARIS INI
                       ),
 
@@ -1068,6 +1202,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   // 2. Filter Bar (Peringkas: 3 Baris Terpisah)
   Widget _buildUnifiedFilters({
+    required List<String> seasons,
     required List<String> regions,
     required List<String> districts,
     required List<String> qaList,
@@ -1114,6 +1249,31 @@ class _QAScreenState extends ConsumerState<QAScreen>
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Row(
             children: [
+              _NewQuickFilterChip(
+                icon: Icons.calendar_today_rounded,
+                label: _seasonScopeLabel(seasons),
+                hasDropdown: true,
+                isActive: !_showAllSeasons,
+                onTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    backgroundColor: Colors.transparent,
+                    isScrollControlled: true,
+                    builder: (_) => _SeasonScopeSheet(
+                      seasons: seasons,
+                      selectedSeason: _selectedSeason,
+                      showAllSeasons: _showAllSeasons,
+                      onSelected: (allSeasons, season) {
+                        _setSeasonScope(
+                          allSeasons: allSeasons,
+                          season: season,
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
               _FilterPopupChip<String>(
                 // Hilangkan kurung kurawal menjadi:
                 key: ValueKey('reg_$_selectedRegion'),
@@ -1123,13 +1283,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 currentValue: _selectedRegion,
                 items: regions,
                 itemLabel: (s) => s,
-                isActive: _selectedRegion != null,
-                onSelected: (val) {
-                  setState(() {
-                    _selectedRegion = val; // val akan null jika pilih "Semua"
-                    _selectedDistrict = null;
-                  });
-                },
+                isActive: _selectedRegion != null || _showAllRegions,
+                onSelected: _setRegionScope,
               ),
               const SizedBox(width: 8),
               if (districts.isNotEmpty) ...[
@@ -1143,7 +1298,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   itemLabel: (s) => s,
                   enabled: true,
                   isActive: _selectedDistrict != null,
-                  onSelected: (val) => setState(() => _selectedDistrict = val),
+                  onSelected: (val) => setState(() {
+                    _selectedDistrict = val;
+                    _clearMapCaches();
+                  }),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -2703,7 +2861,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return GestureDetector(
       onTap: () {
         // Ambil semua data lahan saat ini untuk fitur Autocomplete (Saran Teks)
-        final allFields = ref.read(parsedMasterFieldMapProvider).value ?? [];
+        final allFields = ref
+                .read(parsedMasterFieldMapScopedProvider(_currentMapScope))
+                .value ??
+            [];
 
         showGeneralDialog(
           context: context,
@@ -2853,7 +3014,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
               final deltaDays = _getWeekProjectionDeltaDays();
 
               // Ambil data lahan dan tampilkan Bottom Sheet
-              ref.read(parsedMasterFieldMapProvider).whenData((allFields) {
+              ref
+                  .read(parsedMasterFieldMapScopedProvider(_currentMapScope))
+                  .whenData((allFields) {
                 final filtered = _filterFields(allFields);
                 FieldListView.showSheet(
                   context,
@@ -2898,7 +3061,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
             color: AdvantaColors.midGreen,
             active: false,
             onTap: () {
-              ref.read(parsedMasterFieldMapProvider).whenData(
+              ref
+                  .read(parsedMasterFieldMapScopedProvider(_currentMapScope))
+                  .whenData(
                     (all) => _fitBounds(_filterFields(all)),
                   );
               setState(() => _isSpeedDialOpen = false);
@@ -3543,7 +3708,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   // ─── PHASE SELECTION SHEET (mass only) ──────────────────────
   bool _selectedFieldsAreSweetCornOnly() {
-    final parsedFields = ref.read(parsedMasterFieldMapProvider).value;
+    final parsedFields =
+        ref.read(parsedMasterFieldMapScopedProvider(_currentMapScope)).value;
     if (parsedFields == null) return false;
 
     final selectedFields = parsedFields
@@ -3558,7 +3724,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   bool _selectedFieldsArePspOnly() {
-    final parsedFields = ref.read(parsedMasterFieldMapProvider).value;
+    final parsedFields =
+        ref.read(parsedMasterFieldMapScopedProvider(_currentMapScope)).value;
     if (parsedFields == null) return false;
 
     final selectedFields = parsedFields
@@ -3595,7 +3762,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   void _showSelectedFieldsSheet() {
     // 1. Ambil data yang sudah di-parse (dimana DAP sudah dihitung)
-    final parsedAsync = ref.read(parsedMasterFieldMapProvider);
+    final parsedAsync =
+        ref.read(parsedMasterFieldMapScopedProvider(_currentMapScope));
     if (parsedAsync.value == null) return;
 
     // 2. Filter data berdasarkan field number yang dipilih
@@ -4221,6 +4389,128 @@ class _AuditStatusSheet extends StatelessWidget {
               },
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SeasonScopeSheet extends StatelessWidget {
+  final List<String> seasons;
+  final String? selectedSeason;
+  final bool showAllSeasons;
+  final void Function(bool allSeasons, String? season) onSelected;
+
+  const _SeasonScopeSheet({
+    required this.seasons,
+    required this.selectedSeason,
+    required this.showAllSeasons,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final latestSeason = seasons.isNotEmpty ? seasons.first : null;
+
+    Widget buildTile({
+      required IconData icon,
+      required String title,
+      required String subtitle,
+      required bool selected,
+      required VoidCallback onTap,
+      Color iconColor = AdvantaColors.lightGreen,
+    }) {
+      return ListTile(
+        leading: Icon(icon, color: iconColor),
+        title: Text(
+          title,
+          style: AdvantaText.body1.copyWith(color: Colors.white),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: AdvantaText.caption.copyWith(color: Colors.white54),
+        ),
+        trailing: selected
+            ? const Icon(Icons.check_circle, color: AdvantaColors.lightGreen)
+            : null,
+        onTap: onTap,
+      );
+    }
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.78,
+      ),
+      padding: const EdgeInsets.only(bottom: 24),
+      decoration: const BoxDecoration(
+        color: AdvantaColors.deepForest,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 16),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(50),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Text(
+            'Pilih Season',
+            style: AdvantaText.heading3.copyWith(color: Colors.white),
+          ),
+          const SizedBox(height: 16),
+          Divider(color: Colors.white.withAlpha(20), height: 1),
+          buildTile(
+            icon: Icons.auto_awesome_rounded,
+            title: latestSeason == null
+                ? 'Season Terbaru'
+                : 'Season Terbaru ($latestSeason)',
+            subtitle: 'Default cepat untuk peta awal',
+            selected: !showAllSeasons && selectedSeason == null,
+            onTap: () {
+              onSelected(false, null);
+              Navigator.pop(context);
+            },
+          ),
+          buildTile(
+            icon: Icons.all_inclusive_rounded,
+            title: 'Semua Season',
+            subtitle: 'Memuat semua data aktif',
+            selected: showAllSeasons,
+            iconColor: AdvantaColors.goldLight,
+            onTap: () {
+              onSelected(true, null);
+              Navigator.pop(context);
+            },
+          ),
+          if (seasons.isNotEmpty) ...[
+            Divider(color: Colors.white.withAlpha(20), height: 1),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: seasons.length,
+                separatorBuilder: (_, __) =>
+                    Divider(color: Colors.white.withAlpha(10), height: 1),
+                itemBuilder: (context, index) {
+                  final season = seasons[index];
+                  return buildTile(
+                    icon: Icons.calendar_today_rounded,
+                    title: season,
+                    subtitle: 'Tampilkan season ini saja',
+                    selected: !showAllSeasons && selectedSeason == season,
+                    onTap: () {
+                      onSelected(false, season);
+                      Navigator.pop(context);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );

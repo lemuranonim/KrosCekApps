@@ -70,6 +70,9 @@ class SupabaseService {
   Future<List<Map<String, dynamic>>> getMasterFieldsForMap({
     String? qaFi,
     String? qaSpv,
+    String? season,
+    String? region,
+    String? district,
   }) async {
     try {
       final List<Map<String, dynamic>> allData = [];
@@ -90,6 +93,15 @@ class SupabaseService {
           final spv = qaSpv.trim();
           query = query.ilike('qa_spv', '%$spv%');
         }
+        if (season != null && season.trim().isNotEmpty) {
+          query = query.eq('season', season.trim());
+        }
+        if (region != null && region.trim().isNotEmpty) {
+          query = query.eq('region', region.trim());
+        }
+        if (district != null && district.trim().isNotEmpty) {
+          query = query.eq('district_kab', district.trim());
+        }
 
         final response = await query
             .order('field_number', ascending: true)
@@ -105,6 +117,127 @@ class SupabaseService {
       return allData;
     } catch (e) {
       throw Exception('Gagal mengambil data peta master Supabase: $e');
+    }
+  }
+
+  Future<String?> getLatestActiveMasterFieldSeason() async {
+    try {
+      final response = await _supabase
+          .from('master_fields')
+          .select('season')
+          .eq('is_active', true)
+          .not('season', 'is', null)
+          .neq('season', '')
+          .order('season', ascending: false)
+          .limit(1);
+
+      if (response.isEmpty) return null;
+      final season = response.first['season']?.toString().trim();
+      return season == null || season.isEmpty ? null : season;
+    } catch (e) {
+      debugPrint('Gagal mengambil season terbaru: $e');
+      return null;
+    }
+  }
+
+  Future<List<String>> getActiveMasterFieldSeasons() async {
+    try {
+      final response = await _supabase.rpc('get_active_master_field_seasons');
+      return List<Map<String, dynamic>>.from(response)
+          .map((row) => row['season']?.toString().trim() ?? '')
+          .where((season) => season.isNotEmpty)
+          .toList(growable: false);
+    } catch (_) {
+      return _getActiveMasterFieldSeasonsFallback();
+    }
+  }
+
+  Future<List<String>> _getActiveMasterFieldSeasonsFallback() async {
+    try {
+      final seasons = <String>{};
+      const int pageSize = 1000;
+      int from = 0;
+
+      while (true) {
+        final response = await _supabase
+            .from('master_fields')
+            .select('season')
+            .eq('is_active', true)
+            .not('season', 'is', null)
+            .neq('season', '')
+            .order('season', ascending: false)
+            .range(from, from + pageSize - 1);
+
+        for (final row in response) {
+          final season = row['season']?.toString().trim();
+          if (season != null && season.isNotEmpty) seasons.add(season);
+        }
+
+        if (response.length < pageSize) break;
+        from += pageSize;
+      }
+
+      final result = seasons.toList()..sort((a, b) => b.compareTo(a));
+      return result;
+    } catch (e) {
+      debugPrint('Gagal mengambil daftar season: $e');
+      return const [];
+    }
+  }
+
+  Future<List<String>> getActiveMasterFieldRegions({String? season}) async {
+    try {
+      final response = await _supabase.rpc(
+        'get_active_master_field_regions',
+        params: {'p_season': season?.trim().isEmpty == true ? null : season},
+      );
+      return List<Map<String, dynamic>>.from(response)
+          .map((row) => row['region']?.toString().trim() ?? '')
+          .where((region) => region.isNotEmpty)
+          .toList(growable: false);
+    } catch (_) {
+      return _getActiveMasterFieldRegionsFallback(season: season);
+    }
+  }
+
+  Future<List<String>> _getActiveMasterFieldRegionsFallback({
+    String? season,
+  }) async {
+    try {
+      final regions = <String>{};
+      const int pageSize = 1000;
+      int from = 0;
+
+      while (true) {
+        var query = _supabase
+            .from('master_fields')
+            .select('region')
+            .eq('is_active', true)
+            .not('region', 'is', null)
+            .neq('region', '');
+
+        if (season != null && season.trim().isNotEmpty) {
+          query = query.eq('season', season.trim());
+        }
+
+        final response = await query
+            .order('region', ascending: true)
+            .range(from, from + pageSize - 1);
+
+        for (final row in response) {
+          final region = row['region']?.toString().trim();
+          if (region != null && region.isNotEmpty) regions.add(region);
+        }
+
+        if (response.length < pageSize) break;
+        from += pageSize;
+      }
+
+      final result = regions.toList()..sort();
+      return result;
+    } catch (e) {
+      debugPrint('Gagal mengambil daftar region: $e');
+      return const [];
     }
   }
 
