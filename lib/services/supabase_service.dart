@@ -42,6 +42,8 @@ class SupabaseService {
     geometry_wkt,
     audit_vegetative(
       date_of_audit,
+      rev_planting_date,
+      co_detasseling,
       correction_tagging,
       date_of_inspeksi_roguing_1,
       date_of_inspeksi_roguing_2,
@@ -53,10 +55,109 @@ class SupabaseService {
       date_of_audit_2,
       date_of_audit_3,
       date_of_audit_4,
-      date_of_audit_5
+      date_of_audit_5,
+      detasseling_assesment_3,
+      detasseling_assesment_5
     ),
     audit_pre_harvest(audit_date),
     audit_harvest(date_of_audit)
+  ''';
+
+  static const String _masterFieldCoverageSelect = '''
+    field_number,
+    season,
+    farmer_name,
+    grower,
+    hybrid,
+    total_area_planted_ha,
+    discard_area_ha,
+    effective_area_ha,
+    planting_date_pdn,
+    hamlet_dusun,
+    village_desa,
+    sub_district_kec,
+    district_kab,
+    fa,
+    field_spv,
+    coordinate,
+    correction_tagging,
+    region,
+    area_manager,
+    harvested_area_ha,
+    harvested_qty_kg,
+    previous_crop_data_a_b,
+    standing_crops,
+    type,
+    prov,
+    planting_date_rev,
+    is_active,
+    qa_fi,
+    qa_spv,
+    planting_ratio,
+    planting_space,
+    flagging_final,
+    target_dt_date,
+    season_id,
+    geometry_wkt,
+    audit_vegetative(
+      date_of_audit,
+      audit_date_user,
+      audit_week,
+      qa_fi,
+      rev_planting_date,
+      field_size_by_audit_ha,
+      correction_tagging,
+      decision,
+      action_needed,
+      flagging,
+      co_detasseling,
+      date_of_inspeksi_roguing_1,
+      date_of_inspeksi_roguing_2,
+      date_of_inspeksi_roguing_3,
+      date_of_inspeksi_roguing_4
+    ),
+    audit_generative(
+      date_of_audit_1,
+      date_of_audit_2,
+      date_of_audit_3,
+      date_of_audit_4,
+      date_of_audit_5,
+      week_of_audit_1,
+      week_of_audit_2,
+      week_of_audit_3,
+      week_of_audit_4,
+      week_of_audit_5,
+      qa_fi_1,
+      qa_fi_2,
+      qa_fi_3,
+      qa_fi_4,
+      qa_fi_5,
+      action_needed_1,
+      action_needed_2,
+      action_needed_3,
+      action_needed_4,
+      final_decision_3,
+      final_decision_5,
+      flagging,
+      final_flagging_5,
+      detasseling_assesment_3,
+      detasseling_assesment_5
+    ),
+    audit_pre_harvest(
+      audit_date,
+      audit_week,
+      qa_fi,
+      final_decision,
+      final_flagging
+    ),
+    audit_harvest(
+      date_of_audit,
+      audit_week,
+      qa_fi,
+      final_flagging,
+      status_downgrade,
+      downgrade_flagging
+    )
   ''';
 
   // ============================================================
@@ -185,23 +286,37 @@ class SupabaseService {
     }
   }
 
-  Future<List<String>> getActiveMasterFieldRegions({String? season}) async {
+  Future<List<String>> getActiveMasterFieldRegions({
+    String? season,
+    String? qaFi,
+    String? qaSpv,
+  }) async {
     try {
       final response = await _supabase.rpc(
         'get_active_master_field_regions',
-        params: {'p_season': season?.trim().isEmpty == true ? null : season},
+        params: {
+          'p_season': season?.trim().isEmpty == true ? null : season,
+          'p_qa_fi': qaFi?.trim().isEmpty == true ? null : qaFi,
+          'p_qa_spv': qaSpv?.trim().isEmpty == true ? null : qaSpv,
+        },
       );
       return List<Map<String, dynamic>>.from(response)
           .map((row) => row['region']?.toString().trim() ?? '')
           .where((region) => region.isNotEmpty)
           .toList(growable: false);
     } catch (_) {
-      return _getActiveMasterFieldRegionsFallback(season: season);
+      return _getActiveMasterFieldRegionsFallback(
+        season: season,
+        qaFi: qaFi,
+        qaSpv: qaSpv,
+      );
     }
   }
 
   Future<List<String>> _getActiveMasterFieldRegionsFallback({
     String? season,
+    String? qaFi,
+    String? qaSpv,
   }) async {
     try {
       final regions = <String>{};
@@ -218,6 +333,12 @@ class SupabaseService {
 
         if (season != null && season.trim().isNotEmpty) {
           query = query.eq('season', season.trim());
+        }
+        if (qaFi != null && qaFi.trim().isNotEmpty) {
+          query = query.ilike('qa_fi', '%${qaFi.trim()}%');
+        }
+        if (qaSpv != null && qaSpv.trim().isNotEmpty) {
+          query = query.ilike('qa_spv', '%${qaSpv.trim()}%');
         }
 
         final response = await query
@@ -238,6 +359,63 @@ class SupabaseService {
     } catch (e) {
       debugPrint('Gagal mengambil daftar region: $e');
       return const [];
+    }
+  }
+
+  /// Mengambil data ringkas untuk coverage monitoring.
+  ///
+  /// Coverage butuh status audit dan action flags, tapi tidak perlu semua kolom
+  /// audit lengkap untuk setiap field saat layar pertama dibuka.
+  Future<List<Map<String, dynamic>>> getMasterFieldsForCoverage({
+    String? qaFi,
+    String? qaSpv,
+    String? season,
+    String? region,
+    String? district,
+  }) async {
+    try {
+      final List<Map<String, dynamic>> allData = [];
+      const int pageSize = 1000;
+      int from = 0;
+
+      while (true) {
+        var query = _supabase
+            .from('master_fields')
+            .select(_masterFieldCoverageSelect)
+            .eq('is_active', true);
+
+        if (qaFi != null && qaFi.trim().isNotEmpty) {
+          final fi = qaFi.trim();
+          query = query.ilike('qa_fi', '%$fi%');
+        }
+        if (qaSpv != null && qaSpv.trim().isNotEmpty) {
+          final spv = qaSpv.trim();
+          query = query.ilike('qa_spv', '%$spv%');
+        }
+        if (season != null && season.trim().isNotEmpty) {
+          query = query.eq('season', season.trim());
+        }
+        if (region != null && region.trim().isNotEmpty) {
+          query = query.eq('region', region.trim());
+        }
+        if (district != null && district.trim().isNotEmpty) {
+          query = query.eq('district_kab', district.trim());
+        }
+
+        final response = await query
+            .order('field_number', ascending: true)
+            .range(from, from + pageSize - 1);
+
+        allData.addAll(List<Map<String, dynamic>>.from(response));
+
+        if (response.length < pageSize) break;
+        from += pageSize;
+      }
+
+      debugPrint('Total coverage records fetched: ${allData.length}');
+      return allData;
+    } catch (e) {
+      throw Exception('Gagal mengambil data coverage Supabase: $e');
     }
   }
 

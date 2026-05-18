@@ -7,7 +7,7 @@
 //   • QA SPV   → Supervisory: FI Tim Rating + Coverage Structure area tim
 //   • QA FI    → Operational: Village Coverage List + Route Planning
 //
-// Data source: masterFieldsProvider (master_fields + semua audit join)
+// Data source: masterFieldCoverageScopedProvider (kolom coverage ringkas)
 // ──────────────────────────────────────────────────────────
 
 // ignore_for_file: avoid_print
@@ -707,7 +707,16 @@ PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields,
 
 final coverageStatusListProvider =
     FutureProvider<List<FieldCoverageStatus>>((ref) async {
-  final rawFields = await ref.watch(masterFieldsProvider.future);
+  return ref.watch(
+    coverageStatusListScopedProvider(const MasterFieldMapScope.all()).future,
+  );
+});
+
+final coverageStatusListScopedProvider =
+    FutureProvider.family<List<FieldCoverageStatus>, MasterFieldMapScope>(
+        (ref, scope) async {
+  final rawFields =
+      await ref.watch(masterFieldCoverageScopedProvider(scope).future);
 
   if (kDebugMode) {
     print('=== COVERAGE DEBUG ===');
@@ -774,12 +783,16 @@ final fiCoverageListProvider = FutureProvider<List<FICoverage>>((ref) async {
   return buildFiCoverageList(fields);
 });
 
-Future<void> _refreshCoverage(WidgetRef ref) async {
-  ref.invalidate(masterFieldsProvider);
+Future<void> _refreshCoverage(
+  WidgetRef ref, [
+  MasterFieldMapScope scope = const MasterFieldMapScope.all(),
+]) async {
+  ref.invalidate(masterFieldCoverageScopedProvider(scope));
+  ref.invalidate(coverageStatusListScopedProvider(scope));
   ref.invalidate(coverageStatusListProvider);
   ref.invalidate(phaseSummaryProvider);
   ref.invalidate(fiCoverageListProvider);
-  await ref.read(coverageStatusListProvider.future);
+  await ref.read(coverageStatusListScopedProvider(scope).future);
 }
 
 // ============================================================
@@ -940,6 +953,7 @@ class _ManagerView extends ConsumerStatefulWidget {
 
 class _ManagerViewState extends ConsumerState<_ManagerView> {
   String? _selectedRegion;
+  bool _showAllRegions = false;
   String? _selectedDistrict; // cascade dari region
   String? _selectedSpv;
   int _expandedAreaIndex = -1;
@@ -947,19 +961,65 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
 
   @override
   Widget build(BuildContext context) {
-    final fieldsAsync = ref.watch(coverageStatusListProvider);
+    final regionOptionsAsync = ref.watch(
+      activeMasterFieldRegionsProvider(const MasterFieldMapScope.all()),
+    );
+    final regionOptions = regionOptionsAsync.value ?? const <String>[];
+    final needsRegionScope =
+        !_showAllRegions && _selectedRegion == null && regionOptions.isNotEmpty;
+
+    if (!_showAllRegions &&
+        _selectedRegion != null &&
+        regionOptions.isNotEmpty &&
+        !regionOptions.contains(_selectedRegion)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            _showAllRegions ||
+            _selectedRegion == null ||
+            regionOptions.contains(_selectedRegion)) {
+          return;
+        }
+        setState(() {
+          _selectedRegion = null;
+          _selectedDistrict = null;
+          _selectedSpv = null;
+        });
+      });
+    }
+    if (needsRegionScope) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _showAllRegions || _selectedRegion != null) return;
+        setState(() {
+          _selectedRegion = regionOptions.first;
+          _selectedDistrict = null;
+          _selectedSpv = null;
+        });
+      });
+    }
+
+    final coverageScope = MasterFieldMapScope(
+      region: _showAllRegions ? null : _selectedRegion,
+    );
+    final waitingForRegionScope =
+        regionOptionsAsync is AsyncLoading || needsRegionScope;
+    final AsyncValue<List<FieldCoverageStatus>> fieldsAsync =
+        waitingForRegionScope
+            ? const AsyncValue.loading()
+            : ref.watch(coverageStatusListScopedProvider(coverageScope));
 
     return fieldsAsync.when(
       loading: () => const _SkeletonLoader(),
       error: (e, _) => _CoverageErrorWidget(error: e.toString()),
       data: (allFields) {
         // CASCADING LOGIC — Region → District → SPV
-        final regions = allFields
-            .map((f) => f.region)
-            .where((r) => r.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
+        final regions = regionOptions.isNotEmpty
+            ? regionOptions
+            : (allFields
+                .map((f) => f.region)
+                .where((r) => r.isNotEmpty)
+                .toSet()
+                .toList()
+              ..sort());
         final districtOptions = allFields
             .where(
                 (f) => _selectedRegion == null || f.region == _selectedRegion)
@@ -1037,11 +1097,14 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
               child: _FilterBar(
                 filters: [
                   PremiumFilterChip(
-                    label: _selectedRegion ?? 'All Region',
+                    label: _showAllRegions
+                        ? 'All Region'
+                        : _selectedRegion ?? 'Region',
                     options: ['All Region', ...regions],
-                    selected: _selectedRegion,
+                    selected: _showAllRegions ? 'All Region' : _selectedRegion,
                     icon: Icons.map_rounded,
                     onSelected: (v) => setState(() {
+                      _showAllRegions = v == 'All Region';
                       _selectedRegion = v == 'All Region' ? null : v;
                       _selectedDistrict = null;
                       _selectedSpv = null;
@@ -1079,7 +1142,7 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                         () => _showAllRegisteredFields = v == 'Semua Lahan'),
                   ),
                 ],
-                onRefresh: () => _refreshCoverage(ref),
+                onRefresh: () => _refreshCoverage(ref, coverageScope),
               ),
             ),
             SliverToBoxAdapter(

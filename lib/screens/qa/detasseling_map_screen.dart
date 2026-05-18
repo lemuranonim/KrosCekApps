@@ -19,7 +19,6 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../providers/detasseling_plan_provider.dart';
-import '../../providers/filter_data_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/audit_status_helper.dart';
@@ -42,6 +41,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
   late DetasselingWeekOption _selectedWeek;
 
   String? _selectedRegion;
+  bool _showAllRegions = false;
   DetasselingCropFilter _selectedCrop = DetasselingCropFilter.all;
   DetasselingStatusFilter _selectedStatus = DetasselingStatusFilter.all;
   String _searchQuery = '';
@@ -73,24 +73,56 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final regions = ref.watch(uniqueRegionsProvider);
-    if (_selectedRegion != null && !regions.contains(_selectedRegion)) {
+    final userAsync = ref.watch(currentUserProvider);
+    final regionsAsync = ref.watch(
+      activeMasterFieldRegionsProvider(const MasterFieldMapScope.all()),
+    );
+    final regions = regionsAsync.value ?? const <String>[];
+    final roleScope = detasselingRoleScopeFor(userAsync.value);
+    final needsRegionScope = roleScope.type == DetasselingScopeType.all &&
+        !_showAllRegions &&
+        _selectedRegion == null;
+
+    if (!_showAllRegions &&
+        _selectedRegion != null &&
+        regions.isNotEmpty &&
+        !regions.contains(_selectedRegion)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || regions.contains(_selectedRegion)) return;
+        if (!mounted ||
+            _showAllRegions ||
+            _selectedRegion == null ||
+            regions.contains(_selectedRegion)) {
+          return;
+        }
         setState(() {
           _selectedRegion = null;
           _selectedGroupKey = null;
         });
       });
     }
+    if (needsRegionScope && regions.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _showAllRegions || _selectedRegion != null) return;
+        setState(() {
+          _selectedRegion = regions.first;
+          _selectedGroupKey = null;
+        });
+      });
+    }
+
+    final waitingForRegionScope = userAsync is AsyncLoading ||
+        regionsAsync is AsyncLoading ||
+        (needsRegionScope && regions.isNotEmpty);
     final params = DetasselingPlanningParams(
       weekStart: _selectedWeek.startDate,
-      region: _selectedRegion,
+      region: _showAllRegions ? null : _selectedRegion,
       crop: _selectedCrop,
       status: _selectedStatus,
       searchQuery: _searchQuery,
     );
-    final planAsync = ref.watch(detasselingPlanningProvider(params));
+    final AsyncValue<DetasselingPlanningData> planAsync = waitingForRegionScope
+        ? const AsyncValue.loading()
+        : ref.watch(detasselingPlanningProvider(params));
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -345,6 +377,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       color: AdvantaColors.deepForest,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       onSelected: (value) => setState(() {
+        _showAllRegions = value == '__all__';
         _selectedRegion = value == '__all__' ? null : value;
         _selectedGroupKey = null;
       }),
@@ -352,7 +385,9 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         PopupMenuItem(
           value: '__all__',
           child: _PopupRow(
-              label: 'Semua Region', selected: _selectedRegion == null),
+            label: 'Semua Region',
+            selected: _showAllRegions,
+          ),
         ),
         ...regions.map(
           (region) => PopupMenuItem(
@@ -364,8 +399,8 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       ],
       child: _FilterChip(
         icon: Icons.map_outlined,
-        label: _selectedRegion ?? 'Region',
-        isActive: _selectedRegion != null,
+        label: _showAllRegions ? 'Semua Region' : _selectedRegion ?? 'Region',
+        isActive: _showAllRegions || _selectedRegion != null,
       ),
     );
   }
@@ -2567,8 +2602,20 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
   }
 
   void _handleInspectDone(Map<String, dynamic> fieldData) {
-    ref.invalidate(masterFieldsProvider);
-    ref.invalidate(parsedMapFieldsProvider);
+    final scope = MasterFieldMapScope(
+      region: _showAllRegions ? null : _selectedRegion,
+    );
+    ref.invalidate(
+        activeMasterFieldRegionsProvider(const MasterFieldMapScope.all()));
+    ref.invalidate(masterFieldMapScopedProvider(scope));
+    ref.invalidate(parsedMasterFieldMapScopedProvider(scope));
+    ref.invalidate(detasselingPlanningProvider(DetasselingPlanningParams(
+      weekStart: _selectedWeek.startDate,
+      region: _showAllRegions ? null : _selectedRegion,
+      crop: _selectedCrop,
+      status: _selectedStatus,
+      searchQuery: _searchQuery,
+    )));
     setState(() {});
   }
 

@@ -238,7 +238,11 @@ class DetasselingPlanningData {
 final detasselingPlanningProvider =
     FutureProvider.family<DetasselingPlanningData, DetasselingPlanningParams>(
         (ref, params) async {
-  final parsedFields = await ref.watch(parsedMapFieldsProvider.future);
+  final parsedFields = await ref.watch(
+    parsedMasterFieldMapScopedProvider(
+      MasterFieldMapScope(region: params.region),
+    ).future,
+  );
   final user = await ref.watch(currentUserProvider.future);
   return buildDetasselingPlanningData(parsedFields, params, user: user);
 });
