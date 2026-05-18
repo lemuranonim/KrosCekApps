@@ -7,6 +7,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 import 'package:latlong2/latlong.dart';
 import '../../providers/master_fields_provider.dart';
 
@@ -783,7 +784,12 @@ class _WorkloadMapScreenState extends ConsumerState<WorkloadMapScreen> {
         actions: [IconButton(icon: const Icon(Icons.refresh_rounded, color: Colors.white), onPressed: () => ref.refresh(masterFieldsProvider))],
       ),
       body: masterFieldsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const AdvantaLoadingState(
+          title: 'Memuat workload map',
+          subtitle: 'Menyusun sebaran lahan',
+          accentColor: AppTheme.primary,
+          icon: Icons.map_rounded,
+        ),
         error: (err, stack) => Center(child: Text('Error: $err')),
         data: (fields) {
           if (_currentSupabaseData.isEmpty) {

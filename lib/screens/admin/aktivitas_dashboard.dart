@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 
 import '../services/config_manager.dart';
 import '../services/google_sheets_api.dart';
@@ -335,7 +336,12 @@ class _AktivitasDashboardState extends State<AktivitasDashboard> {
             const SizedBox(height: 10),
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const AdvantaLoadingState(
+                      title: 'Memuat aktivitas',
+                      subtitle: 'Mengambil log dari cache dan sheet',
+                      accentColor: Colors.green,
+                      icon: Icons.history_rounded,
+                    )
                   : _buildDataTable(),
             ),
           ],
@@ -707,7 +713,11 @@ class _AktivitasDashboardState extends State<AktivitasDashboard> {
     }
 
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AdvantaLoadingState.compact(
+        title: 'Memuat aktivitas',
+        subtitle: 'Sinkronisasi data',
+        accentColor: Colors.green,
+      );
     }
 
     if (_filteredData.isEmpty) {

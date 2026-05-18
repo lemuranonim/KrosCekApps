@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -147,7 +148,11 @@ class _UserSettingsScreenState extends ConsumerState<UserSettingsScreen> {
         centerTitle: false,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AdvantaLoadingState(
+              title: 'Memuat pengaturan',
+              subtitle: 'Mengambil sesi dan preferensi',
+              icon: Icons.manage_accounts_rounded,
+            )
           : ListView(
               children: [
                 // ── Guest banner ──────────────────────────────
@@ -495,7 +500,11 @@ class _ProfileSheetContentState extends ConsumerState<_ProfileSheetContent> {
           // Guest: sembunyikan seluruh section rename
           if (!widget.isGuest)
             renameAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const AdvantaLoadingState.compact(
+                title: 'Memuat profil',
+                subtitle: 'Mengecek data nama',
+                icon: Icons.person_search_rounded,
+              ),
               error: (e, _) => _InfoBanner(
                 icon: Icons.error_outline,
                 color: AdvantaColors.error,

@@ -16,6 +16,7 @@ import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/advanta_loading_state.dart';
 import '../../utils/guest_guard.dart';
 import 'sc_form_widgets.dart';
 
@@ -253,8 +254,7 @@ class _FormPreHarvestSCState extends ConsumerState<FormPreHarvestSC> {
         onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () =>
-            const Center(child: CircularProgressIndicator(color: _kPhase)),
+        loading: () => AdvantaLoadingState(title: 'Memuat form audit', subtitle: 'Mengambil data inspeksi', accentColor: _kPhase, icon: Icons.assignment_rounded),
         error: (e, _) => Center(
             child: Text('Error: $e',
                 style: AdvantaText.body2

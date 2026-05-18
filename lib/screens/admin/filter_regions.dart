@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 
 class FilterRegionsScreen extends StatefulWidget {
   final Function(List<String>)? onRegionsSelected;
@@ -391,7 +392,12 @@ class _FilterRegionsScreenState extends State<FilterRegionsScreen> {
           ],
         ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.green))
+            ? const AdvantaLoadingState(
+                title: 'Memuat filter region',
+                subtitle: 'Mengambil preferensi area',
+                accentColor: Colors.green,
+                icon: Icons.filter_alt_rounded,
+              )
             : Column(
           children: [
             // Search bar

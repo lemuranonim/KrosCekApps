@@ -4,6 +4,7 @@ import '../../models/region_model.dart';
 import '../../services/region_data_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 
 class RegionsDashboard extends StatefulWidget {
   const RegionsDashboard({super.key});
@@ -100,7 +101,12 @@ class _RegionsDashboardState extends State<RegionsDashboard> {
           ],
         ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.green))
+            ? const AdvantaLoadingState(
+                title: 'Memuat region',
+                subtitle: 'Mengambil struktur area',
+                accentColor: Colors.green,
+                icon: Icons.account_tree_rounded,
+              )
             : _buildMainContent(),
         floatingActionButton: _selectedQaSpvName != null
             ? FloatingActionButton(

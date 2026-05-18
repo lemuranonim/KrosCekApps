@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:weather_icons/weather_icons.dart';
 import 'package:flip_card/flip_card.dart';
@@ -191,31 +192,11 @@ class _WeatherWidgetState extends State<WeatherWidget> {
   }
 
   Widget _buildLoadingState() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 32,
-            height: 32,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Colors.green.shade700,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Loading weather...',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.green.shade700,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
+    return AdvantaLoadingState.compact(
+      title: 'Memuat cuaca',
+      subtitle: 'Mencari lokasi terkini',
+      accentColor: Colors.green.shade700,
+      icon: Icons.cloud_sync_rounded,
     );
   }
 

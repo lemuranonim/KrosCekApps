@@ -4,6 +4,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
@@ -596,21 +597,14 @@ class _AbsensiDashboardState extends State<AbsensiDashboard> {
             const SizedBox(height: 10),
             Expanded(
               child: _isLoading
-                  ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const CircularProgressIndicator(color: Colors.green),
-                    const SizedBox(height: 16),
-                    Text(
-                      _selectedRegionGroup == _allRegionsSentinel
-                          ? 'Memuat data dari semua region...'
-                          : 'Memuat data absensi...',
-                      style: TextStyle(color: Colors.grey.shade700),
-                    ),
-                  ],
-                ),
-              )
+                  ? AdvantaLoadingState(
+                      title: 'Memuat absensi',
+                      subtitle: _selectedRegionGroup == _allRegionsSentinel
+                          ? 'Mengambil data semua region'
+                          : 'Mengambil data region terpilih',
+                      accentColor: Colors.green,
+                      icon: Icons.fact_check_rounded,
+                    )
                   : _buildContent(),
             ),
           ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -825,7 +826,7 @@ class SplashScreenState extends State<SplashScreen>
                     const Spacer(),
                     Opacity(
                       opacity: _footerFade.value,
-                      child: _buildLoadingSection(accentLineColor, mainTextColor),
+                      child: _buildLoadingSection(accentLineColor, mainTextColor, isDark),
                     ),
                     SizedBox(height: size.height * 0.07),
                     Opacity(
@@ -878,9 +879,9 @@ class SplashScreenState extends State<SplashScreen>
           ),
         ),
         const SizedBox(height: 28),
-        Text('KROSCEK', style: TextStyle(color: mainText, fontSize: 34, fontWeight: FontWeight.w900, letterSpacing: 6)),
+        Text('KROSCEK', style: TextStyle(color: mainText, fontSize: 34, fontWeight: FontWeight.w900, letterSpacing: 0)),
         const SizedBox(height: 8),
-        Text('Crop Inspection and Check Result', style: TextStyle(color: subText, fontSize: 13, letterSpacing: 2.5)),
+        Text('Crop Inspection and Check Result', style: TextStyle(color: subText, fontSize: 13, letterSpacing: 0)),
       ],
     );
   }
@@ -940,7 +941,7 @@ class SplashScreenState extends State<SplashScreen>
             children: [
               Container(width: 6, height: 6, decoration: BoxDecoration(color: badgeColor, shape: BoxShape.circle)),
               const SizedBox(width: 10),
-              Text('INSPECTIONS APP', style: TextStyle(color: badgeColor, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 2.0)),
+              Text('INSPECTIONS APP', style: TextStyle(color: badgeColor, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0)),
               const SizedBox(width: 10),
               Container(width: 6, height: 6, decoration: BoxDecoration(color: badgeColor, shape: BoxShape.circle)),
             ],
@@ -956,30 +957,153 @@ class SplashScreenState extends State<SplashScreen>
     );
   }
 
-  Widget _buildLoadingSection(Color accentColor, Color textColor) {
+  Widget _buildLoadingSection(Color accentColor, Color textColor, bool isDark) {
+    final surfaceColor = isDark ? Colors.white.withAlpha(18) : Colors.white.withAlpha(190);
+    final borderColor = isDark ? AdvantaColors.gold.withAlpha(58) : AdvantaColors.primaryGreen.withAlpha(40);
+    final mutedTextColor = isDark ? Colors.white.withAlpha(150) : AdvantaColors.midGreen.withAlpha(190);
+
     return AnimatedBuilder(
-      animation: _pulseController,
+      animation: Listenable.merge([_shimmerController, _pulseController]),
       builder: (_, __) {
-        return Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(3, (i) {
-                final delay = i * 0.33;
-                final t = ((_pulseController.value - delay) % 1.0).abs();
-                final opacity = Curves.easeInOut.transform((t < 0.5 ? t * 2 : (1 - t) * 2).clamp(0.3, 1.0));
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 5),
-                  width: 8, height: 8,
-                  decoration: BoxDecoration(color: accentColor.withAlpha((opacity * 255).round()), shape: BoxShape.circle),
-                );
-              }),
-            ),
-            const SizedBox(height: 14),
-            Text('Memuat sistem...', style: TextStyle(color: textColor.withAlpha(120), fontSize: 12, letterSpacing: 1.5)),
-          ],
+        final pulse = Curves.easeInOut.transform(_pulseController.value);
+        final panelWidth = (MediaQuery.sizeOf(context).width - 48).clamp(248.0, 340.0).toDouble();
+
+        return Container(
+          width: panelWidth,
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 13),
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: borderColor),
+            boxShadow: [
+              BoxShadow(
+                color: AdvantaColors.deepForest.withAlpha(isDark ? 70 : 20),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: accentColor.withAlpha(isDark ? 36 : 24),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: accentColor.withAlpha(70)),
+                    ),
+                    child: Icon(Icons.radar_rounded, color: accentColor, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Memuat Kroscek',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: textColor, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Menyiapkan modul audit lapangan',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: mutedTextColor, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Transform.scale(
+                    scale: 0.88 + (pulse * 0.12),
+                    child: Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: accentColor,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: accentColor.withAlpha(120),
+                            blurRadius: 12 + (pulse * 8),
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                height: 42,
+                child: CustomPaint(
+                  painter: _PremiumLoadingRailPainter(
+                    progress: _shimmerController.value,
+                    pulse: pulse,
+                    accentColor: accentColor,
+                    isDark: isDark,
+                  ),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(child: _buildLoadingSignal('Database', accentColor, textColor, isDark, 0)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _buildLoadingSignal('Maps', accentColor, textColor, isDark, 1)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _buildLoadingSignal('Audit', accentColor, textColor, isDark, 2)),
+                ],
+              ),
+            ],
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildLoadingSignal(String label, Color accentColor, Color textColor, bool isDark, int index) {
+    final offset = index * 0.22;
+    final wave = ((_shimmerController.value + offset) % 1.0);
+    final glow = Curves.easeInOut.transform(wave < 0.5 ? wave * 2 : (1 - wave) * 2);
+
+    return Container(
+      height: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withAlpha(10) : AdvantaColors.primaryGreen.withAlpha(10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: accentColor.withAlpha(24 + (glow * 42).round())),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 5,
+            height: 5,
+            decoration: BoxDecoration(
+              color: accentColor.withAlpha(120 + (glow * 120).round()),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: textColor.withAlpha(isDark ? 180 : 170), fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -994,6 +1118,105 @@ class SplashScreenState extends State<SplashScreen>
           Text('v$_version', style: TextStyle(color: accentColor, fontSize: 11, fontWeight: FontWeight.w700)),
       ],
     );
+  }
+}
+
+class _PremiumLoadingRailPainter extends CustomPainter {
+  final double progress;
+  final double pulse;
+  final Color accentColor;
+  final bool isDark;
+
+  _PremiumLoadingRailPainter({
+    required this.progress,
+    required this.pulse,
+    required this.accentColor,
+    required this.isDark,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final railTop = size.height * 0.54;
+    final railHeight = 8.0;
+    final railRect = Rect.fromLTWH(0, railTop, size.width, railHeight);
+    final railRadius = Radius.circular(railHeight);
+    final railRRect = RRect.fromRectAndRadius(railRect, railRadius);
+
+    final trackPaint = Paint()
+      ..color = isDark ? Colors.white.withAlpha(18) : AdvantaColors.deepForest.withAlpha(18);
+    canvas.drawRRect(railRRect, trackPaint);
+
+    final fieldPath = Path();
+    for (double x = 0; x <= size.width; x += 4) {
+      final wave = math.sin((x / size.width * math.pi * 2) + progress * math.pi * 2);
+      final y = 11 + wave * 3;
+      if (x == 0) {
+        fieldPath.moveTo(x, y);
+      } else {
+        fieldPath.lineTo(x, y);
+      }
+    }
+
+    final fieldPaint = Paint()
+      ..color = accentColor.withAlpha(isDark ? 68 : 48)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPath(fieldPath, fieldPaint);
+
+    final tickPaint = Paint()
+      ..color = accentColor.withAlpha(isDark ? 48 : 36)
+      ..strokeWidth = 1;
+    for (int i = 0; i <= 12; i++) {
+      final x = size.width * (i / 12);
+      final tickHeight = i % 3 == 0 ? 14.0 : 9.0;
+      canvas.drawLine(Offset(x, railTop - tickHeight), Offset(x, railTop - 3), tickPaint);
+    }
+
+    final segmentWidth = size.width * 0.34;
+    final leading = (size.width + segmentWidth) * progress - segmentWidth;
+    final movingRect = Rect.fromLTWH(leading, railTop, segmentWidth, railHeight).intersect(railRect);
+
+    if (!movingRect.isEmpty) {
+      final activePaint = Paint()
+        ..shader = LinearGradient(
+          colors: [
+            accentColor.withAlpha(0),
+            accentColor.withAlpha(isDark ? 155 : 130),
+            AdvantaColors.goldLight.withAlpha(isDark ? 230 : 190),
+            accentColor.withAlpha(0),
+          ],
+        ).createShader(movingRect.inflate(12));
+      canvas.drawRRect(RRect.fromRectAndRadius(movingRect, railRadius), activePaint);
+    }
+
+    final headX = leading + segmentWidth * 0.66;
+    if (headX >= 0 && headX <= size.width) {
+      final glowPaint = Paint()
+        ..color = AdvantaColors.goldLight.withAlpha((70 + pulse * 70).round())
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+      canvas.drawCircle(Offset(headX, railTop + railHeight / 2), 8 + pulse * 3, glowPaint);
+
+      final headPaint = Paint()..color = AdvantaColors.goldLight;
+      canvas.drawCircle(Offset(headX, railTop + railHeight / 2), 3.2, headPaint);
+    }
+
+    final baselinePaint = Paint()
+      ..color = isDark ? Colors.white.withAlpha(38) : Colors.white.withAlpha(130)
+      ..strokeWidth = 1;
+    canvas.drawLine(
+      Offset(0, railTop + railHeight + 7),
+      Offset(size.width, railTop + railHeight + 7),
+      baselinePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _PremiumLoadingRailPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.pulse != pulse ||
+        oldDelegate.accentColor != accentColor ||
+        oldDelegate.isDark != isDark;
   }
 }
 

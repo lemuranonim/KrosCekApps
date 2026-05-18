@@ -16,6 +16,7 @@ import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/advanta_loading_state.dart';
 import '../../utils/coord_helper.dart';
 import '../../utils/guest_guard.dart';
 import 'psp_form_widgets.dart';
@@ -698,8 +699,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () =>
-            const Center(child: CircularProgressIndicator(color: _kPspVeg)),
+        loading: () => AdvantaLoadingState(title: 'Memuat form audit', subtitle: 'Mengambil data inspeksi', accentColor: _kPspVeg, icon: Icons.assignment_rounded),
         error: (e, _) => Center(
           child: Text(
             'Error: $e',

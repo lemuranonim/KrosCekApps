@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 
 class AccountManagement extends StatefulWidget {
   const AccountManagement({super.key});
@@ -63,7 +64,12 @@ class _AccountManagementState extends State<AccountManagement> {
           ],
         ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.green))
+            ? const AdvantaLoadingState(
+                title: 'Memuat role akun',
+                subtitle: 'Mengambil daftar akses',
+                accentColor: Colors.green,
+                icon: Icons.admin_panel_settings_rounded,
+              )
             : _buildMainContent(),
       ),
     );

@@ -14,6 +14,7 @@ import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart'; // ← NEW
 import '../../services/detasseling_iso_export_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/advanta_loading_state.dart';
 import '../../utils/guest_guard.dart'; // ← NEW
 import 'sc_form_widgets.dart';
 
@@ -262,8 +263,7 @@ class _FormGenerative1SCState extends ConsumerState<FormGenerative1SC> {
         onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () =>
-            Center(child: CircularProgressIndicator(color: kGen1Color)),
+        loading: () => AdvantaLoadingState(title: 'Memuat form audit', subtitle: 'Mengambil data inspeksi', accentColor: kGen1Color, icon: Icons.assignment_rounded),
         error: (e, _) => Center(
             child: Text('Error: $e',
                 style: AdvantaText.body2

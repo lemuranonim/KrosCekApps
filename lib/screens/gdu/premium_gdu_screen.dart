@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'heat_unit_service.dart';
 import 'package:intl/intl.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 
 /// GDU Monitoring Page dengan loading state
 class GDUMonitoringPage extends StatefulWidget {
@@ -163,27 +164,11 @@ class _GDUMonitoringPageState extends State<GDUMonitoringPage> {
             colors: [Color(0xFF1a1a2e), Color(0xFF16213e), Color(0xFF0f3460)],
           ),
         ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha((0.1 * 255).toInt()),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation(Colors.green),
-                  strokeWidth: 3,
-                ),
-              ),
-              SizedBox(height: 24),
-              Text('Mengambil Data Cuaca...', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-              SizedBox(height: 8),
-              Text('Menghitung GDU & CHU', style: TextStyle(color: Colors.white.withAlpha((0.6 * 255).toInt()), fontSize: 14)),
-            ],
-          ),
+        child: const AdvantaLoadingState(
+          title: 'Mengambil data cuaca',
+          subtitle: 'Menghitung GDU dan CHU',
+          accentColor: Colors.green,
+          icon: Icons.cloud_sync_rounded,
         ),
       ),
     );

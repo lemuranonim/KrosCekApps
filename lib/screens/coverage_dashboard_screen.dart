@@ -7,6 +7,7 @@
 //   QA FI    → Village Coverage List (full panel, operasional)
 //
 import 'package:flutter/material.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../providers/master_fields_provider.dart';
@@ -1994,14 +1995,12 @@ class _Empty extends StatelessWidget {
 class _Loading extends StatelessWidget {
   const _Loading();
   @override
-  Widget build(BuildContext context) => const Center(child: Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      CircularProgressIndicator(strokeWidth: 2, color: _kGreen),
-      SizedBox(height: 14),
-      Text('Memuat data coverage…', style: TextStyle(color: _kTextSec, fontSize: 13)),
-    ],
-  ));
+  Widget build(BuildContext context) => const AdvantaLoadingState(
+    title: 'Memuat coverage',
+    subtitle: 'Mengambil data lahan dan audit',
+    accentColor: _kGreen,
+    icon: Icons.map_rounded,
+  );
 }
 
 class _Error extends StatelessWidget {

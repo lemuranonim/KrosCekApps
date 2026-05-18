@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
@@ -174,7 +175,12 @@ class AbsenLogScreenState extends State<AbsenLogScreen> with TickerProviderState
         foregroundColor: Colors.black,
       ),
       body: _isLoading
-          ? Center(child: Lottie.asset('assets/loading.json', width: 150))
+          ? const AdvantaLoadingState(
+              title: 'Menyiapkan absensi',
+              subtitle: 'Memeriksa status dan lokasi',
+              accentColor: Colors.green,
+              icon: Icons.location_searching_rounded,
+            )
           : SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(

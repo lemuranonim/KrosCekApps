@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuditDashboard extends StatefulWidget {
@@ -653,34 +654,12 @@ class _AuditDashboardState extends State<AuditDashboard> {
   }
 
   Widget _buildLoadingBanner() {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.green.shade100),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: Colors.green.shade700,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _loadingStatus ?? 'Memproses database...',
-              style: TextStyle(color: Colors.grey.shade800),
-            ),
-          ),
-        ],
-      ),
+    return AdvantaLoadingState.compact(
+      title: 'Memproses database',
+      subtitle: _loadingStatus ?? 'Menyiapkan ringkasan audit',
+      accentColor: Colors.green.shade700,
+      icon: Icons.storage_rounded,
+      padding: const EdgeInsets.only(bottom: 14),
     );
   }
 

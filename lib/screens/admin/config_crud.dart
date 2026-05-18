@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 
 class CrudPage extends StatefulWidget {
   const CrudPage({super.key});
@@ -40,7 +41,12 @@ class CrudPageState extends State<CrudPage> {
           iconTheme: const IconThemeData(color: Colors.white),
         ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.green))
+            ? const AdvantaLoadingState(
+                title: 'Memuat konfigurasi',
+                subtitle: 'Menyiapkan data region',
+                accentColor: Colors.green,
+                icon: Icons.tune_rounded,
+              )
             : _buildMainContent(),
         floatingActionButton: FloatingActionButton(
           backgroundColor: Colors.green,
@@ -57,7 +63,11 @@ class CrudPageState extends State<CrudPage> {
       stream: _firestore.collection('config').doc('regions').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
+          return const AdvantaLoadingState.compact(
+            title: 'Sinkronisasi region',
+            subtitle: 'Membaca Firestore',
+            accentColor: Colors.green,
+          );
         }
 
         Map<String, dynamic>? data = snapshot.data!.data() as Map<String, dynamic>?;

@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/advanta_loading_state.dart';
 
 class FieldsScreen extends StatefulWidget {
   const FieldsScreen({super.key});
@@ -186,7 +187,11 @@ class _FieldsScreenState extends State<FieldsScreen> {
           // List
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AdvantaLoadingState(
+                    title: 'Memuat data lahan',
+                    subtitle: 'Menyiapkan daftar field',
+                    icon: Icons.grass_rounded,
+                  )
                 : filtered.isEmpty
                 ? _buildEmpty()
                 : ListView.builder(

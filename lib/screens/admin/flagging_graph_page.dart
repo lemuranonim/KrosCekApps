@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
 
@@ -790,15 +791,11 @@ class _FlaggingGraphPageState extends State<FlaggingGraphPage> {
   }
 
   Widget _buildLoadingState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const CircularProgressIndicator(color: Colors.green),
-          const SizedBox(height: 16),
-          Text(_loadingStatus ?? "Memuat data...", style: TextStyle(color: Colors.grey.shade600)),
-        ],
-      ),
+    return AdvantaLoadingState(
+      title: 'Memuat data flagging',
+      subtitle: _loadingStatus ?? 'Mengidentifikasi area',
+      accentColor: Colors.green,
+      icon: Icons.flag_rounded,
     );
   }
 

@@ -28,6 +28,7 @@ import '../../utils/dap_helper.dart';
 
 // PENTING: Sesuaikan path import ini dengan struktur project-mu
 import '../../widgets/field_detail_bottom_sheet.dart';
+import '../../widgets/advanta_loading_state.dart';
 import '../../theme/app_theme.dart';
 
 // ============================================================
@@ -881,7 +882,11 @@ class _CoverageScreenState extends ConsumerState<CoverageScreen>
     if (!_sessionLoaded) {
       return const Scaffold(
         backgroundColor: AdvantaColors.softGrey,
-        body: Center(child: CircularProgressIndicator()),
+        body: AdvantaLoadingState(
+          title: 'Memuat coverage',
+          subtitle: 'Membaca sesi pengguna',
+          icon: Icons.verified_user_rounded,
+        ),
       );
     }
     return Scaffold(
@@ -4821,7 +4826,12 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
                 _buildHeader(recommendedRoute),
                 if (_isLoadingGps)
                   const Expanded(
-                      child: Center(child: CircularProgressIndicator()))
+                    child: AdvantaLoadingState.compact(
+                      title: 'Mencari GPS',
+                      subtitle: 'Mengurutkan rute terdekat',
+                      icon: Icons.my_location_rounded,
+                    ),
+                  )
                 else if (recommendedRoute.isEmpty)
                   _buildEmptyState()
                 else

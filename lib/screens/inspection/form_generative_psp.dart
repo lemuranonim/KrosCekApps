@@ -8,6 +8,7 @@ import '../../providers/attendance_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/advanta_loading_state.dart';
 import '../../utils/guest_guard.dart';
 import 'psp_form_widgets.dart';
 
@@ -251,8 +252,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
         onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () =>
-            const Center(child: CircularProgressIndicator(color: _kPspGen)),
+        loading: () => AdvantaLoadingState(title: 'Memuat form audit', subtitle: 'Mengambil data inspeksi', accentColor: _kPspGen, icon: Icons.assignment_rounded),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (audit) {
           _loadAudit(audit, fieldData);

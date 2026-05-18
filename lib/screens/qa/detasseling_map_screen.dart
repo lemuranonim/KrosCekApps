@@ -22,6 +22,7 @@ import '../../providers/detasseling_plan_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/audit_status_helper.dart';
+import '../../widgets/advanta_loading_state.dart';
 import '../../widgets/field_detail_bottom_sheet.dart';
 
 class DetasselingMapScreen extends ConsumerStatefulWidget {
@@ -536,8 +537,11 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
           color: const Color(0xFFF7FAF7),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Center(
-          child: CircularProgressIndicator(color: AdvantaColors.primaryGreen),
+        child: const AdvantaLoadingState.compact(
+          title: 'Memuat detasseling',
+          subtitle: 'Menyiapkan rencana peta',
+          accentColor: AdvantaColors.primaryGreen,
+          icon: Icons.map_rounded,
         ),
       ),
     );

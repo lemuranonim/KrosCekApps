@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 import 'package:data_table_2/data_table_2.dart';
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart' as excel_lib;
@@ -948,15 +949,11 @@ class _DashboardVisitScreenState extends State<DashboardVisitScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text("Memuat data...", style: TextStyle(color: AppTheme.textSecondary)),
-          ],
-        ),
+      return const AdvantaLoadingState(
+        title: 'Memuat kunjungan',
+        subtitle: 'Mengambil data visit dan filter',
+        accentColor: AppTheme.primary,
+        icon: Icons.route_rounded,
       );
     }
 

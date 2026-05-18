@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -662,32 +663,11 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
           if (_isLoading)
             Container(
               color: Colors.black.withAlpha(76),
-              child: Center(
-                child: Card(
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Memuat data...',
-                          style: TextStyle(
-                            color: Colors.green.shade800,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              child: const AdvantaLoadingState(
+                title: 'Memuat dashboard',
+                subtitle: 'Mengambil data region terbaru',
+                accentColor: Colors.green,
+                icon: Icons.dashboard_rounded,
               ),
             ),
         ],

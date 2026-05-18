@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 
 import '../../providers/qa_mapping_provider.dart';
 import '../../services/session_manager.dart';
@@ -602,7 +603,11 @@ class _QaMappingScreenState extends ConsumerState<QaMappingScreen> {
         ],
       ),
       body: mappingState.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const AdvantaLoadingState(
+          title: 'Memuat mapping QA',
+          subtitle: 'Menyusun cakupan area',
+          icon: Icons.account_tree_rounded,
+        ),
         error: (err, _) => Padding(
           padding: const EdgeInsets.all(16.0),
           child: AdvantaBanner.error(message: 'Terjadi kesalahan: $err'),
@@ -1844,7 +1849,11 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
     return sessionAsync.when(
       loading: () => const Padding(
         padding: EdgeInsets.all(24),
-        child: Center(child: CircularProgressIndicator()),
+        child: AdvantaLoadingState.compact(
+          title: 'Membaca session',
+          subtitle: 'Menyiapkan filter wilayah',
+          icon: Icons.tune_rounded,
+        ),
       ),
       error: (error, _) => Padding(
         padding: const EdgeInsets.all(20),

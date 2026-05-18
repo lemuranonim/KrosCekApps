@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 import 'package:shimmer/shimmer.dart';
 
 class AppTheme {
@@ -535,25 +536,11 @@ class LoadingIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primary),
-          ),
-          if (message != null) ...[
-            const SizedBox(height: 16),
-            Text(
-              message!,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: AppTheme.textMedium,
-              ),
-            ),
-          ],
-        ],
-      ),
+    return AdvantaLoadingState(
+      title: 'Memuat dashboard',
+      subtitle: message ?? 'Menyiapkan ringkasan data',
+      accentColor: AppTheme.primary,
+      icon: Icons.dashboard_customize_rounded,
     );
   }
 }

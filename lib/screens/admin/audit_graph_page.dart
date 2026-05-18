@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:collection/collection.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter/material.dart';
+import 'package:kroscek/widgets/advanta_loading_state.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:go_router/go_router.dart';
 
@@ -177,7 +178,12 @@ class _AuditGraphPageState extends State<AuditGraphPage> {
             _buildRegionSelector(),
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const AdvantaLoadingState(
+                      title: 'Memuat audit graph',
+                      subtitle: 'Mengambil data sheet region',
+                      accentColor: Colors.green,
+                      icon: Icons.bar_chart_rounded,
+                    )
                   : _error != null
                   ? Center(child: Padding(
                 padding: const EdgeInsets.all(16.0),
