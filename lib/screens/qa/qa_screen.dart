@@ -892,7 +892,16 @@ class _QAScreenState extends ConsumerState<QAScreen>
                         userRole: user?.role, // <── TAMBAHKAN BARIS INI
                       ),
 
-                    // BARIS 3: Uncoord Banner (Dibuat lebih tipis/compact)
+                    // BARIS 3: Coordinate Quality Summary
+                    if (masterAsync is AsyncData)
+                      parsedMapAsync.whenData((parsedFields) {
+                            final visibleFields =
+                                _getFilteredFields(parsedFields);
+                            return _buildCoordinateQualityStrip(visibleFields);
+                          }).value ??
+                          const SizedBox.shrink(),
+
+                    // BARIS 4: Uncoord Banner (Dibuat lebih tipis/compact)
                     if (masterAsync is AsyncData)
                       parsedMapAsync.whenData((parsedFields) {
                             final uncoordFields = _filterFields(parsedFields)
@@ -3590,6 +3599,181 @@ class _QAScreenState extends ConsumerState<QAScreen>
 // ─────────────────────────────────────────────────────────────
 // SUB-WIDGETS
 // ─────────────────────────────────────────────────────────────
+
+Widget _buildCoordinateQualityStrip(List<ParsedFieldData> fields) {
+  if (fields.isEmpty) return const SizedBox.shrink();
+  final stats = _coordinateQualityStats(fields);
+
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white.withAlpha(12),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withAlpha(18)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: [
+            _CoordinateQualityPill(
+              icon: Icons.edit_location_alt_outlined,
+              label: 'Corr. Tag',
+              value: stats.correctedCount,
+              total: stats.total,
+              color: AdvantaColors.lightGreen,
+            ),
+            const SizedBox(width: 8),
+            _CoordinateQualityPill(
+              icon: Icons.area_chart_rounded,
+              label: 'Geometry',
+              value: stats.geometryCount,
+              total: stats.total,
+              color: AdvantaColors.goldLight,
+            ),
+            const SizedBox(width: 8),
+            _CoordinateQualityPill(
+              icon: Icons.location_searching_rounded,
+              label: 'Koord Lama',
+              value: stats.legacyCoordinateCount,
+              total: stats.total,
+              color: stats.legacyCoordinateCount > 0
+                  ? AdvantaColors.error
+                  : AdvantaColors.lightGreen,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+_CoordinateQualityStats _coordinateQualityStats(
+  List<ParsedFieldData> fields,
+) {
+  var correctedCount = 0;
+  var geometryCount = 0;
+  var legacyCoordinateCount = 0;
+
+  for (final field in fields) {
+    final hasGeometry =
+        field.isFromPolygon || (field.polygonPoints?.length ?? 0) >= 3;
+    if (field.isCorrected) correctedCount++;
+    if (hasGeometry) geometryCount++;
+    if (!field.isCorrected && !hasGeometry && !field.isDefault) {
+      legacyCoordinateCount++;
+    }
+  }
+
+  return _CoordinateQualityStats(
+    total: fields.length,
+    correctedCount: correctedCount,
+    geometryCount: geometryCount,
+    legacyCoordinateCount: legacyCoordinateCount,
+  );
+}
+
+class _CoordinateQualityStats {
+  final int total;
+  final int correctedCount;
+  final int geometryCount;
+  final int legacyCoordinateCount;
+
+  const _CoordinateQualityStats({
+    required this.total,
+    required this.correctedCount,
+    required this.geometryCount,
+    required this.legacyCoordinateCount,
+  });
+}
+
+class _CoordinateQualityPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final int value;
+  final int total;
+  final Color color;
+
+  const _CoordinateQualityPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.total,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = total <= 0 ? 0.0 : (value / total) * 100;
+    final valueLabel = NumberFormat('#,##0', 'id_ID').format(value);
+    final percentLabel = NumberFormat('0.#', 'id_ID').format(percent);
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 112),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withAlpha(34),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withAlpha(95)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: color.withAlpha(32),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AdvantaText.caption.copyWith(
+                  color: Colors.white70,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    valueLabel,
+                    style: AdvantaText.bodyBold.copyWith(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$percentLabel%',
+                    style: AdvantaText.caption.copyWith(
+                      color: color,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _CompactAttendanceDot extends StatelessWidget {
   final AttendanceState attendance;
