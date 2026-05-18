@@ -20,23 +20,21 @@ class SupabaseService {
       int from = 0;
 
       while (true) {
-        var query = _supabase
-            .from('master_fields')
-            .select('''
+        var query = _supabase.from('master_fields').select('''
             *,
             audit_vegetative(*),
             audit_generative(*),
             audit_pre_harvest(*),
             audit_harvest(*)
-          ''')
-            .eq('is_active', true);
+          ''').eq('is_active', true);
 
         if (qaFi != null && qaFi.trim().isNotEmpty) {
           final fi = qaFi.trim();
           query = query.ilike('qa_fi', '%$fi%');
         }
         if (qaSpv != null && qaSpv.trim().isNotEmpty) {
-          query = query.ilike('qa_spv', qaSpv.trim());
+          final spv = qaSpv.trim();
+          query = query.ilike('qa_spv', '%$spv%');
         }
 
         final response = await query
@@ -57,9 +55,12 @@ class SupabaseService {
         debugPrint('Sample effective_area_ha: ${first['effective_area_ha']}');
         debugPrint('Sample qa_fi: ${first['qa_fi']}');
         debugPrint('Sample planting_date_pdn: ${first['planting_date_pdn']}');
-        debugPrint('audit_vegetative type: ${first['audit_vegetative'].runtimeType}');
-        debugPrint('audit_generative type: ${first['audit_generative'].runtimeType}');
-        debugPrint('audit_pre_harvest type: ${first['audit_pre_harvest'].runtimeType}');
+        debugPrint(
+            'audit_vegetative type: ${first['audit_vegetative'].runtimeType}');
+        debugPrint(
+            'audit_generative type: ${first['audit_generative'].runtimeType}');
+        debugPrint(
+            'audit_pre_harvest type: ${first['audit_pre_harvest'].runtimeType}');
         debugPrint('audit_harvest type: ${first['audit_harvest'].runtimeType}');
       }
       return allData;
@@ -73,10 +74,8 @@ class SupabaseService {
     required String geometryWkt,
   }) async {
     try {
-      await _supabase
-          .from('master_fields')
-          .update({'geometry_wkt': geometryWkt})
-          .eq('field_number', fieldNumber);
+      await _supabase.from('master_fields').update(
+          {'geometry_wkt': geometryWkt}).eq('field_number', fieldNumber);
     } catch (e) {
       throw Exception('Gagal menyimpan polygon lahan: $e');
     }
@@ -127,7 +126,11 @@ class SupabaseService {
   // ==========================================
   Future<Map<String, dynamic>?> getVegetativeAudit(String fieldNumber) async {
     try {
-      return await _supabase.from('audit_vegetative').select().eq('field_number', fieldNumber).maybeSingle();
+      return await _supabase
+          .from('audit_vegetative')
+          .select()
+          .eq('field_number', fieldNumber)
+          .maybeSingle();
     } catch (e) {
       throw Exception('Gagal mengambil data audit vegetative: $e');
     }
@@ -136,7 +139,9 @@ class SupabaseService {
   Future<void> upsertVegetativeAudit(Map<String, dynamic> data) async {
     try {
       data['updated_at'] = DateTime.now().toIso8601String();
-      await _supabase.from('audit_vegetative').upsert(data, onConflict: 'field_number');
+      await _supabase
+          .from('audit_vegetative')
+          .upsert(data, onConflict: 'field_number');
     } catch (e) {
       throw Exception('Gagal menyimpan audit vegetative: $e');
     }
@@ -180,13 +185,16 @@ class SupabaseService {
 
   // Backward compatibility atau jika masih butuh function spesifik
   Future<void> upsertGenerative1Audit(Map<String, dynamic> data) async =>
-      upsertGenerativeCheckpoint(fieldNumber: data['field_number'], checkpoint: 1, data: data);
+      upsertGenerativeCheckpoint(
+          fieldNumber: data['field_number'], checkpoint: 1, data: data);
 
   Future<void> upsertGenerative2Audit(Map<String, dynamic> data) async =>
-      upsertGenerativeCheckpoint(fieldNumber: data['field_number'], checkpoint: 2, data: data);
+      upsertGenerativeCheckpoint(
+          fieldNumber: data['field_number'], checkpoint: 2, data: data);
 
   Future<void> upsertGenerative3Audit(Map<String, dynamic> data) async =>
-      upsertGenerativeCheckpoint(fieldNumber: data['field_number'], checkpoint: 3, data: data);
+      upsertGenerativeCheckpoint(
+          fieldNumber: data['field_number'], checkpoint: 3, data: data);
 
   // ============================================================
   // MASS INSPECTION — Bulk upsert
@@ -207,8 +215,7 @@ class SupabaseService {
           await upsertGenerativeCheckpoint(
               fieldNumber: record['field_number'],
               checkpoint: checkpoint,
-              data: record
-          );
+              data: record);
         } else {
           final tableName = _phaseToTable(phase);
           record['updated_at'] = DateTime.now().toIso8601String();
@@ -225,11 +232,16 @@ class SupabaseService {
 
   String _phaseToTable(String phase) {
     switch (phase) {
-      case 'vegetative': return 'audit_vegetative';
-      case 'generative': return 'audit_generative';
-      case 'pre_harvest': return 'audit_pre_harvest';
-      case 'harvest': return 'audit_harvest';
-      default: throw Exception('Unknown phase: $phase');
+      case 'vegetative':
+        return 'audit_vegetative';
+      case 'generative':
+        return 'audit_generative';
+      case 'pre_harvest':
+        return 'audit_pre_harvest';
+      case 'harvest':
+        return 'audit_harvest';
+      default:
+        throw Exception('Unknown phase: $phase');
     }
   }
 
@@ -262,14 +274,14 @@ class SupabaseService {
       final result = await _supabase
           .from('attendance_header')
           .upsert({
-        'user_id': userId,
-        'attendance_date': today,
-        'check_in_time': DateTime.now().toIso8601String(),
-        'check_in_lat': lat,
-        'check_in_lng': lng,
-        'check_in_photo': photoUrl,
-        'status': 'open',
-      }, onConflict: 'user_id,attendance_date')
+            'user_id': userId,
+            'attendance_date': today,
+            'check_in_time': DateTime.now().toIso8601String(),
+            'check_in_lat': lat,
+            'check_in_lng': lng,
+            'check_in_photo': photoUrl,
+            'status': 'open',
+          }, onConflict: 'user_id,attendance_date')
           .select('attendance_id')
           .single();
       return result['attendance_id'];
@@ -289,12 +301,12 @@ class SupabaseService {
       await _supabase
           .from('attendance_header')
           .update({
-        'check_out_time': DateTime.now().toIso8601String(),
-        'check_out_lat': lat,
-        'check_out_lng': lng,
-        'notes': notes,
-        'status': 'closed',
-      })
+            'check_out_time': DateTime.now().toIso8601String(),
+            'check_out_lat': lat,
+            'check_out_lng': lng,
+            'notes': notes,
+            'status': 'closed',
+          })
           .eq('user_id', userId)
           .eq('attendance_date', today);
     } catch (e) {
@@ -331,7 +343,8 @@ class SupabaseService {
   }
 
   // [BARU DITAMBAHKAN] Fungsi untuk mengambil data aktivitas hari ini
-  Future<List<Map<String, dynamic>>> getTodayActivities(String attendanceId) async {
+  Future<List<Map<String, dynamic>>> getTodayActivities(
+      String attendanceId) async {
     try {
       final response = await _supabase
           .from('attendance_activity')
@@ -351,7 +364,11 @@ class SupabaseService {
   // ==========================================
   Future<Map<String, dynamic>?> getPreHarvestAudit(String fieldNumber) async {
     try {
-      return await _supabase.from('audit_pre_harvest').select().eq('field_number', fieldNumber).maybeSingle();
+      return await _supabase
+          .from('audit_pre_harvest')
+          .select()
+          .eq('field_number', fieldNumber)
+          .maybeSingle();
     } catch (e) {
       throw Exception('Gagal mengambil data audit pre-harvest: $e');
     }
@@ -360,7 +377,9 @@ class SupabaseService {
   Future<void> upsertPreHarvestAudit(Map<String, dynamic> data) async {
     try {
       data['updated_at'] = DateTime.now().toIso8601String();
-      await _supabase.from('audit_pre_harvest').upsert(data, onConflict: 'field_number');
+      await _supabase
+          .from('audit_pre_harvest')
+          .upsert(data, onConflict: 'field_number');
     } catch (e) {
       throw Exception('Gagal menyimpan audit pre-harvest: $e');
     }
@@ -371,7 +390,11 @@ class SupabaseService {
   // ==========================================
   Future<Map<String, dynamic>?> getHarvestAudit(String fieldNumber) async {
     try {
-      return await _supabase.from('audit_harvest').select().eq('field_number', fieldNumber).maybeSingle();
+      return await _supabase
+          .from('audit_harvest')
+          .select()
+          .eq('field_number', fieldNumber)
+          .maybeSingle();
     } catch (e) {
       throw Exception('Gagal mengambil data audit harvest: $e');
     }
@@ -380,7 +403,9 @@ class SupabaseService {
   Future<void> upsertHarvestAudit(Map<String, dynamic> data) async {
     try {
       data['updated_at'] = DateTime.now().toIso8601String();
-      await _supabase.from('audit_harvest').upsert(data, onConflict: 'field_number');
+      await _supabase
+          .from('audit_harvest')
+          .upsert(data, onConflict: 'field_number');
     } catch (e) {
       throw Exception('Gagal menyimpan audit harvest: $e');
     }

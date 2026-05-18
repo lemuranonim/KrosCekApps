@@ -13,8 +13,8 @@ class QaNameHelper {
     if (raw.isEmpty) return const [];
 
     return raw
-        .split(
-            RegExp(r'\s*(?:,|;|\||/|\b(?:dan|and)\b)\s*', caseSensitive: false))
+        .split(RegExp(r'\s*(?:,|;|\||/|&|\b(?:dan|and)\b)\s*',
+            caseSensitive: false))
         .map((name) => name.trim())
         .where((name) => name.isNotEmpty)
         .toList(growable: false);
@@ -30,6 +30,10 @@ class QaNameHelper {
   static bool fieldHasFi(Map<String, dynamic> field, String name) {
     return containsExactName(field['qa_fi'], name) ||
         containsExactName(field['qa_fi_list'], name);
+  }
+
+  static bool fieldHasSpv(Map<String, dynamic> field, String name) {
+    return containsExactName(field['qa_spv'], name);
   }
 
   static bool fieldMatchesFiSearch(Map<String, dynamic> field, String query) {

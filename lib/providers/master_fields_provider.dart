@@ -23,10 +23,10 @@ final currentUserProvider = FutureProvider<AppUser?>((ref) async {
   if (session == null) return null;
 
   return AppUser(
-    id    : session.userId,
-    email : session.email,
-    name  : session.name,
-    role  : session.role,
+    id: session.userId,
+    email: session.email,
+    name: session.name,
+    role: session.role,
     action: session.action,
   );
 });
@@ -67,7 +67,8 @@ Map<String, dynamic> _withResolvedCorrectionTagging(
 // ============================================================
 // 3. MASTER FIELDS PROVIDER (Data Mentah)
 // ============================================================
-final masterFieldsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final masterFieldsProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final supabaseService = ref.watch(supabaseServiceProvider);
   final user = await ref.watch(currentUserProvider.future);
 
@@ -81,8 +82,8 @@ final masterFieldsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) as
 
   if (user == null) return [];
 
-  final action   = user.action.toLowerCase();
-  final role     = user.role.toUpperCase();
+  final action = user.action.toLowerCase();
+  final role = user.role.toUpperCase();
   final userName = user.name.trim().toLowerCase();
 
   final allFields = (await supabaseService.getMasterFieldsWithAllAudits(
@@ -101,8 +102,7 @@ final masterFieldsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) as
       }).toList();
     } else if (role == 'SPV') {
       return allFields.where((field) {
-        final qaSpv = field['qa_spv']?.toString().trim().toLowerCase() ?? '';
-        return qaSpv == userName;
+        return QaNameHelper.fieldHasSpv(field, userName);
       }).toList();
     }
   }
@@ -148,12 +148,14 @@ class ParsedFieldData {
 // 5. FUNGSI TOP-LEVEL UNTUK ISOLATE
 // (Syarat Isolate: fungsi harus di luar class atau berupa static)
 // ============================================================
-List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFields) {
-
+List<ParsedFieldData> _parseMapFieldsInIsolate(
+    List<Map<String, dynamic>> rawFields) {
   // ── Helper: validasi koordinat wilayah Indonesia ──────────
   bool isValidIndonesiaCoord(double lat, double lng) {
-    return lat >= -11.0 && lat <= 6.0 &&
-        lng >= 95.0  && lng <= 141.0 &&
+    return lat >= -11.0 &&
+        lat <= 6.0 &&
+        lng >= 95.0 &&
+        lng <= 141.0 &&
         !(lat == 0.0 && lng == 0.0);
   }
 
@@ -248,20 +250,20 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
   return rawFields.map((f) {
     final normalizedRaw = _withResolvedCorrectionTagging(f);
     final correctionCoord = _readVegetativeCorrection(normalizedRaw);
-    final geometryWkt     = f['geometry_wkt']?.toString();
-    final rawCoord        = f['coordinate']?.toString();
+    final geometryWkt = f['geometry_wkt']?.toString();
+    final rawCoord = f['coordinate']?.toString();
 
     // Parse Polygon Points
     List<LatLng>? parsedPolygon;
     if (geometryWkt != null && geometryWkt.isNotEmpty) {
       parsedPolygon = parseWktToLatLngs(geometryWkt);
     }
-    
+
     // Inisialisasi langsung non-nullable dengan nilai default (PRIORITAS 4).
-    double finalLat    = -7.637017;
-    double finalLng    = 112.8272303;
-    bool isDef         = true;
-    bool isCorrected   = false;
+    double finalLat = -7.637017;
+    double finalLng = 112.8272303;
+    bool isDef = true;
+    bool isCorrected = false;
     bool isFromPolygon = false;
 
     // ── PRIORITAS 1: centroid polygon WKT ──────────
@@ -270,10 +272,10 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
       final wlat = centroid['lat']!;
       final wlng = centroid['lng']!;
       if (isValidIndonesiaCoord(wlat, wlng)) {
-        finalLat      = wlat;
-        finalLng      = wlng;
+        finalLat = wlat;
+        finalLng = wlng;
         isFromPolygon = true;
-        isDef         = false;
+        isDef = false;
       }
     }
 
@@ -284,7 +286,7 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
       if (!isFromPolygon) {
         finalLat = correction.lat;
         finalLng = correction.lng;
-        isDef    = false;
+        isDef = false;
       }
     }
 
@@ -293,7 +295,7 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
     if (!isCorrected && !isFromPolygon && coordinate != null) {
       finalLat = coordinate.lat;
       finalLng = coordinate.lng;
-      isDef    = false;
+      isDef = false;
     }
 
     // ── Hitung DAP ────────────────────────────────────────────
@@ -315,16 +317,17 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
         : null;
 
     return ParsedFieldData(
-      raw          : normalizedRaw,
-      lat          : finalLat,
-      lng          : finalLng,
-      isDefault    : isDef,
-      isCorrected  : isCorrected,
+      raw: normalizedRaw,
+      lat: finalLat,
+      lng: finalLng,
+      isDefault: isDef,
+      isCorrected: isCorrected,
       isFromPolygon: isFromPolygon,
-      dap          : DapHelper.calculateDAP(finalPlantingDate),
-      geometryWkt  : geometryWkt,
+      dap: DapHelper.calculateDAP(finalPlantingDate),
+      geometryWkt: geometryWkt,
       polygonPoints: validPolygon,
-      polygonBounds: validPolygon == null ? null : LatLngBounds.fromPoints(validPolygon),
+      polygonBounds:
+          validPolygon == null ? null : LatLngBounds.fromPoints(validPolygon),
     );
   }).toList();
 }
@@ -332,7 +335,8 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(List<Map<String, dynamic>> rawFie
 // ============================================================
 // 6. PROVIDER PETA (Menjalankan Isolate)
 // ============================================================
-final parsedMapFieldsProvider = FutureProvider<List<ParsedFieldData>>((ref) async {
+final parsedMapFieldsProvider =
+    FutureProvider<List<ParsedFieldData>>((ref) async {
   final rawFields = await ref.watch(masterFieldsProvider.future);
 
   if (rawFields.isEmpty) return [];

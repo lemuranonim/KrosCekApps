@@ -22,6 +22,7 @@ import '../../providers/detasseling_plan_provider.dart';
 import '../../providers/filter_data_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/audit_status_helper.dart';
 import '../../widgets/field_detail_bottom_sheet.dart';
 
 class DetasselingMapScreen extends ConsumerStatefulWidget {
@@ -73,6 +74,15 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
   @override
   Widget build(BuildContext context) {
     final regions = ref.watch(uniqueRegionsProvider);
+    if (_selectedRegion != null && !regions.contains(_selectedRegion)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || regions.contains(_selectedRegion)) return;
+        setState(() {
+          _selectedRegion = null;
+          _selectedGroupKey = null;
+        });
+      });
+    }
     final params = DetasselingPlanningParams(
       weekStart: _selectedWeek.startDate,
       region: _selectedRegion,
@@ -1336,7 +1346,16 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         DateFormat('d MMM', 'id_ID').format(field.plannedDate),
         field.dtDapRangeLabel.replaceFirst('DT ', ''),
         _passLabelForDate(plan.week.startDate, field.plannedDate, group.crop),
-        field.isAssessmentDone ? 'Done' : 'Planned',
+        _isDetasselingPhaseDone(
+          field,
+          _detasselingPhaseForField(
+            plan.week.startDate,
+            group.crop,
+            field,
+          ),
+        )
+            ? 'Done'
+            : 'Planned',
       ];
       x = tableLeft;
       for (var i = 0; i < values.length; i++) {
@@ -2459,6 +2478,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         initialDate: _selectedPlanningDate,
         onFieldTap: _openFieldDetail,
         onOpenInspection: (fields) => _openCodetMassInspection(
+          plan.week,
           group,
           fieldsOverride: fields,
         ),
@@ -2477,11 +2497,41 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
   }
 
   void _openCodetMassInspection(
+    DetasselingWeekOption week,
     DetasselingPlanGroup group, {
     List<DetasselingPlanField>? fieldsOverride,
   }) {
-    final fields = fieldsOverride ?? group.fields;
-    final fieldNumbers = fields
+    final selectedFields = fieldsOverride ?? group.fields;
+    if (selectedFields.isEmpty) {
+      _snack('Tidak ada FN valid untuk mass inspection.', isError: true);
+      return;
+    }
+
+    final pendingFields = _pendingDetasselingMassInspectionFields(
+      weekStart: week.startDate,
+      crop: group.crop,
+      fields: selectedFields,
+    );
+    if (pendingFields.isEmpty) {
+      _snack('Semua FN pada pass ini sudah diaudit.', isError: true);
+      return;
+    }
+
+    final phases = _detasselingPhaseKeysForFields(
+      weekStart: week.startDate,
+      crop: group.crop,
+      fields: pendingFields,
+    );
+    if (phases.length > 1) {
+      _snack(
+        'Pilih satu tanggal/pass dulu sebelum Mass Inspection.',
+        isError: true,
+      );
+      return;
+    }
+
+    final phase = phases.single;
+    final fieldNumbers = pendingFields
         .map((field) => field.fieldNumber.trim())
         .where((fieldNumber) => fieldNumber.isNotEmpty)
         .toSet()
@@ -2498,16 +2548,10 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         '/inspect/mass',
         extra: {
           'fieldNumbers': fieldNumbers,
-          'phase': _massInspectionPhaseForCodet(group),
+          'phase': phase,
         },
       );
     });
-  }
-
-  String _massInspectionPhaseForCodet(DetasselingPlanGroup group) {
-    return group.crop == DetasselingCropFilter.sc
-        ? 'generative_5'
-        : 'generative_3';
   }
 
   void _openFieldDetail(DetasselingPlanField field) {
@@ -3543,6 +3587,25 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
         final compact = constraints.maxWidth < 520;
         final halfWidth = (constraints.maxWidth - 8) / 2;
         final hasFields = selectedFields.isNotEmpty;
+        final pendingFields = _pendingDetasselingMassInspectionFields(
+          weekStart: widget.week.startDate,
+          crop: widget.group.crop,
+          fields: selectedFields,
+        );
+        final pendingPhases = _detasselingPhaseKeysForFields(
+          weekStart: widget.week.startDate,
+          crop: widget.group.crop,
+          fields: pendingFields,
+        );
+        final canInspect =
+            pendingFields.isNotEmpty && pendingPhases.length == 1;
+        final inspectionSubtitle = !hasFields
+            ? '0 FN'
+            : pendingFields.isEmpty
+                ? 'Sudah audit'
+                : pendingPhases.length > 1
+                    ? 'Pilih hari/pass'
+                    : '${pendingFields.length} FN ${_detasselingPhaseShortLabel(pendingPhases.single)}';
         final picture = SizedBox(
           width: compact ? halfWidth : (constraints.maxWidth - 16) * 0.34,
           child: _DetailActionButton(
@@ -3574,10 +3637,10 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
           child: _DetailActionButton(
             icon: Icons.assignment_turned_in_outlined,
             title: 'Mass Inspection',
-            subtitle: '${selectedFields.length} FN',
+            subtitle: inspectionSubtitle,
             filled: true,
-            onTap: hasFields
-                ? () => widget.onOpenInspection(selectedFields)
+            onTap: canInspect
+                ? () => widget.onOpenInspection(pendingFields)
                 : null,
           ),
         );
@@ -4077,7 +4140,8 @@ class _DetailFnRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final done = field.isAssessmentDone;
+    final done =
+        _isDetasselingPhaseDone(field, _phaseForDetasselingPass(passLabel));
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -4583,6 +4647,80 @@ String _passLabelForDate(
   final pass = (offset ~/ 2) + 1;
   final maxPass = crop == DetasselingCropFilter.sc ? 5 : 3;
   return 'P${pass.clamp(1, maxPass)}';
+}
+
+String _phaseForDetasselingPass(String passLabel) {
+  final pass = int.tryParse(passLabel.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1;
+  return 'generative_${pass.clamp(1, 5)}';
+}
+
+String _detasselingPhaseForField(
+  DateTime weekStart,
+  DetasselingCropFilter crop,
+  DetasselingPlanField field,
+) {
+  return _phaseForDetasselingPass(
+    _passLabelForDate(weekStart, field.plannedDate, crop),
+  );
+}
+
+bool _isDetasselingPhaseDone(
+  DetasselingPlanField field,
+  String phase,
+) {
+  final auditStatus = AuditStatusHelper.fromRaw(field.parsed.raw);
+  switch (phase) {
+    case 'generative_1':
+      return auditStatus.gen1Done;
+    case 'generative_2':
+      return auditStatus.gen2Done;
+    case 'generative_3':
+      return auditStatus.gen3Done;
+    case 'generative_4':
+      return auditStatus.gen4Done;
+    case 'generative_5':
+      return auditStatus.gen5Done;
+    default:
+      return false;
+  }
+}
+
+List<DetasselingPlanField> _pendingDetasselingMassInspectionFields({
+  required DateTime weekStart,
+  required DetasselingCropFilter crop,
+  required Iterable<DetasselingPlanField> fields,
+}) {
+  return fields.where((field) {
+    final phase = _detasselingPhaseForField(weekStart, crop, field);
+    return !_isDetasselingPhaseDone(field, phase);
+  }).toList(growable: false);
+}
+
+Set<String> _detasselingPhaseKeysForFields({
+  required DateTime weekStart,
+  required DetasselingCropFilter crop,
+  required Iterable<DetasselingPlanField> fields,
+}) {
+  return fields
+      .map((field) => _detasselingPhaseForField(weekStart, crop, field))
+      .toSet();
+}
+
+String _detasselingPhaseShortLabel(String phase) {
+  switch (phase) {
+    case 'generative_1':
+      return 'P1';
+    case 'generative_2':
+      return 'P2';
+    case 'generative_3':
+      return 'P3';
+    case 'generative_4':
+      return 'P4';
+    case 'generative_5':
+      return 'P5';
+    default:
+      return 'Pass';
+  }
 }
 
 String _formatHa(double value) {

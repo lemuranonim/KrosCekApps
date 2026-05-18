@@ -512,8 +512,7 @@ bool _isFieldAllowedForScope(
     case DetasselingScopeType.fi:
       return QaNameHelper.fieldHasFi(raw, scope.name);
     case DetasselingScopeType.spv:
-      return QaNameHelper.normalize(raw['qa_spv']) ==
-          QaNameHelper.normalize(scope.name);
+      return QaNameHelper.fieldHasSpv(raw, scope.name);
     case DetasselingScopeType.all:
       return true;
     case DetasselingScopeType.blocked:

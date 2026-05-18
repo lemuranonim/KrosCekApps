@@ -825,6 +825,16 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final bool canUseMassInspect =
         user != null && user.role.toLowerCase() != 'guest';
 
+    if (_selectedRegion != null && !regions.contains(_selectedRegion)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || regions.contains(_selectedRegion)) return;
+        setState(() {
+          _selectedRegion = null;
+          _selectedDistrict = null;
+        });
+      });
+    }
+
     if (!canUseMassInspect && _workMode == _WorkMode.mass) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _workMode != _WorkMode.mass) return;
