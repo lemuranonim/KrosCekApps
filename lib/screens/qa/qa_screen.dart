@@ -25,6 +25,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 // url_launcher
 import 'package:url_launcher/url_launcher.dart';
+import '../../providers/detasseling_plan_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../providers/filter_data_provider.dart';
 import '../../providers/attendance_provider.dart';
@@ -820,7 +821,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     // Hanya 'guest' yang dikecualikan karena read-only.
     final bool canSeeCoverage =
         user != null && user.role.toLowerCase() != 'guest';
-    final bool canSeeDetasseling = _canSeeDetasselingMap(user?.role);
+    final bool canSeeDetasseling = _canSeeDetasselingMap(user);
     final bool canUseMassInspect =
         user != null && user.role.toLowerCase() != 'guest';
 
@@ -1797,9 +1798,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return role != null && role != 'guest';
   }
 
-  bool _canSeeDetasselingMap(String? role) {
-    const allowedRoles = {'fi', 'spv', 'qa', 'manager', 'dev'};
-    return allowedRoles.contains(role?.toLowerCase());
+  bool _canSeeDetasselingMap(AppUser? user) {
+    return detasselingRoleScopeFor(user).canView;
   }
 
   void _showPolygonActionSheet(ParsedFieldData field) {

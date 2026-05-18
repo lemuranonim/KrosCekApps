@@ -431,53 +431,77 @@ DetasselingPlanningData buildDetasselingPlanningData(
 }
 
 DetasselingRoleScope detasselingRoleScopeFor(AppUser? user) {
-  final role = user?.role.trim().toUpperCase() ?? '';
-  final action = user?.action.trim().toLowerCase() ?? '';
-  final name = user?.name.trim() ?? '';
+  return detasselingRoleScopeForValues(
+    role: user?.role,
+    action: user?.action,
+    name: user?.name,
+  );
+}
 
-  if (user == null || role == 'GUEST') {
+DetasselingRoleScope detasselingRoleScopeForValues({
+  String? role,
+  String? action,
+  String? name,
+}) {
+  final normalizedRole = role?.trim().toUpperCase() ?? '';
+  final normalizedAction = action?.trim().toLowerCase() ?? '';
+  final normalizedName = name?.trim() ?? '';
+
+  if (normalizedRole.isEmpty || normalizedRole == 'GUEST') {
     return DetasselingRoleScope(
       type: DetasselingScopeType.blocked,
-      role: role,
-      name: name,
-      action: action,
+      role: normalizedRole,
+      name: normalizedName,
+      action: normalizedAction,
     );
   }
 
-  if (action == 'audit' && role == 'FI') {
+  if (normalizedAction == 'audit' && normalizedRole == 'FI') {
     return DetasselingRoleScope(
       type: DetasselingScopeType.fi,
-      role: role,
-      name: name,
-      action: action,
+      role: normalizedRole,
+      name: normalizedName,
+      action: normalizedAction,
     );
   }
 
-  if (action == 'audit' && role == 'SPV') {
+  if (normalizedAction == 'audit' && normalizedRole == 'SPV') {
     return DetasselingRoleScope(
       type: DetasselingScopeType.spv,
-      role: role,
-      name: name,
-      action: action,
+      role: normalizedRole,
+      name: normalizedName,
+      action: normalizedAction,
     );
   }
 
   const allAccessRoles = {'QA', 'MANAGER', 'DEV'};
-  if (action == 'all' || allAccessRoles.contains(role)) {
+  if (normalizedAction == 'all' || allAccessRoles.contains(normalizedRole)) {
     return DetasselingRoleScope(
       type: DetasselingScopeType.all,
-      role: role,
-      name: name,
-      action: action,
+      role: normalizedRole,
+      name: normalizedName,
+      action: normalizedAction,
     );
   }
 
   return DetasselingRoleScope(
     type: DetasselingScopeType.blocked,
-    role: role,
-    name: name,
-    action: action,
+    role: normalizedRole,
+    name: normalizedName,
+    action: normalizedAction,
   );
+}
+
+bool canAccessDetasselingMapForRole({
+  String? role,
+  String? action,
+  String? name,
+}) {
+  return detasselingRoleScopeForValues(
+    role: role,
+    action: action,
+    name: name,
+  ).canView;
 }
 
 bool _isFieldAllowedForScope(

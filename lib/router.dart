@@ -54,6 +54,8 @@ import 'screens/qa/detailed_map_screen.dart';
 import 'screens/settings/user_settings_screen.dart';
 import 'screens/settings/qa_mapping_screen.dart';
 import '../../services/session_manager.dart';
+import 'providers/detasseling_plan_provider.dart'
+    show canAccessDetasselingMapForRole;
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -323,6 +325,7 @@ final router = GoRouter(
 
     final isLoggedIn = supabaseUser != null && session != null;
     final userRole = session?.role;
+    final userAction = session?.action;
 
     if (!isLoggedIn && path != '/login') {
       return '/login';
@@ -346,11 +349,18 @@ final router = GoRouter(
       return _homeForRole(userRole);
     }
 
-    if ((path == '/coverage' ||
-            path == '/detasseling-map' ||
-            path == '/qa/settings/mapping') &&
+    if ((path == '/coverage' || path == '/qa/settings/mapping') &&
         _isGuestRole(userRole)) {
       return '/qa';
+    }
+
+    if (path == '/detasseling-map' &&
+        !canAccessDetasselingMapForRole(
+          role: userRole,
+          action: userAction,
+          name: session.name,
+        )) {
+      return _homeForRole(userRole);
     }
 
     return null;

@@ -152,8 +152,8 @@ class DetasselingIsoExportService {
     var y = 125.0;
     for (final row in rows) {
       _text(canvas, row.$1, Offset(22, y), size: 18, weight: FontWeight.w600);
-      _text(canvas, ':', Offset(188, y), size: 18, weight: FontWeight.w700);
-      _text(canvas, row.$2, Offset(218, y), size: 18, weight: FontWeight.w700);
+      _text(canvas, ':', Offset(230, y), size: 18, weight: FontWeight.w700);
+      _text(canvas, row.$2, Offset(260, y), size: 18, weight: FontWeight.w700);
       y += row.$1 == 'FN' ? 37 : 25;
     }
   }
@@ -573,15 +573,16 @@ class DetasselingIsoExportService {
   }
 
   static void _drawFlaggingLegend(Canvas canvas) {
-    const rect = Rect.fromLTWH(40, 990, 1720, 62);
-    _drawBorder(canvas, rect, _line, 1);
     _textCentered(
       canvas,
       'FLAGGING LEGEND',
-      const Rect.fromLTWH(40, 996, 1720, 16),
-      size: 13,
+      const Rect.fromLTWH(40, 984, 1720, 18),
+      size: 13.5,
       weight: FontWeight.w900,
     );
+
+    const rect = Rect.fromLTWH(40, 1008, 1720, 44);
+    _drawBorder(canvas, rect, _line, 1);
     final items = [
       ('GF', 'Green Flag', const Color(0xFF2E7D32)),
       ('RFI', 'Red Flag Isolation', const Color(0xFFE53935)),
@@ -591,32 +592,32 @@ class DetasselingIsoExportService {
     ];
     var x = 58.0;
     for (final item in items) {
-      _drawFlagIcon(canvas, Offset(x, 1020), item.$3);
+      _drawFlagIcon(canvas, Offset(x, 1016), item.$3);
       _drawFilledRect(
         canvas,
-        Rect.fromLTWH(x + 44, 1018, 50, 28),
+        Rect.fromLTWH(x + 44, 1016, 50, 28),
         item.$3 == const Color(0xFFF5C400) ? const Color(0xFFFFEB3B) : item.$3,
       );
       _textCentered(
         canvas,
         item.$1,
-        Rect.fromLTWH(x + 44, 1023, 50, 15),
+        Rect.fromLTWH(x + 44, 1021, 50, 15),
         size: 13,
         weight: FontWeight.w900,
         color: item.$1 == 'PLD' ? Colors.black : Colors.white,
       );
-      _text(canvas, '= ${item.$2}', Offset(x + 110, 1024),
+      _text(canvas, '= ${item.$2}', Offset(x + 110, 1022),
           size: 15, weight: FontWeight.w600);
       x += 340;
       if (item != items.last) {
-        _drawGridLine(canvas, Offset(x - 24, 1015), Offset(x - 24, 1045));
+        _drawGridLine(canvas, Offset(x - 24, 1014), Offset(x - 24, 1047));
       }
     }
   }
 
   static void _drawSignatures(Canvas canvas) {
     const top = 1068.0;
-    const h = 130.0;
+    const h = 138.0;
     const gap = 18.0;
     final w = (1764 - gap) / 2;
     _signatureBox(canvas, Rect.fromLTWH(18, top, w, h), 'FA');
@@ -628,7 +629,7 @@ class DetasselingIsoExportService {
     _drawSectionTitle(
         canvas, Rect.fromLTWH(rect.left, rect.top, rect.width, 28), title);
     final rows = ['Signature', 'Nama', 'Tanggal'];
-    var y = rect.top + 52;
+    var y = rect.top + 50;
     for (final row in rows) {
       _text(canvas, row, Offset(rect.left + 28, y),
           size: 14, weight: FontWeight.w700);
@@ -636,10 +637,10 @@ class DetasselingIsoExportService {
           size: 14, weight: FontWeight.w700);
       _drawGridLine(
         canvas,
-        Offset(rect.left + 230, y + 17),
-        Offset(rect.right - 110, y + 17),
+        Offset(rect.left + 230, y + 15),
+        Offset(rect.right - 80, y + 15),
       );
-      y += 32;
+      y += 30;
     }
   }
 

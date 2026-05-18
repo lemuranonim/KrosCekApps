@@ -44,6 +44,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
   DetasselingCropFilter _selectedCrop = DetasselingCropFilter.all;
   DetasselingStatusFilter _selectedStatus = DetasselingStatusFilter.all;
   String _searchQuery = '';
+  DateTime? _selectedPlanningDate;
   String? _selectedGroupKey;
   bool _isExportingPicture = false;
   bool _isExportingPdf = false;
@@ -102,7 +103,9 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
   }
 
   Widget _buildMap(DetasselingPlanningData? plan) {
-    final groups = plan?.groups ?? const <DetasselingPlanGroup>[];
+    final filteredPlan =
+        plan == null ? null : _planForDateFilter(plan, _selectedPlanningDate);
+    final groups = filteredPlan?.groups ?? const <DetasselingPlanGroup>[];
     final selectedGroup = _selectedGroup(plan);
 
     return FlutterMap(
@@ -306,6 +309,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       onSelected: (week) => setState(() {
         _selectedWeek = week;
+        _selectedPlanningDate = null;
         _selectedGroupKey = null;
       }),
       itemBuilder: (_) => _weeks.map((week) {
@@ -431,6 +435,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
   }
 
   Widget _buildBottomPlanningCard(DetasselingPlanningData plan) {
+    final visiblePlan = _planForDateFilter(plan, _selectedPlanningDate);
     return Positioned(
       left: 12,
       right: 12,
@@ -457,7 +462,8 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _PlanningHeader(
-                plan: plan,
+                plan: visiblePlan,
+                dateLabel: _dateFilterLabel(_selectedPlanningDate),
                 exportingPicture: _isExportingPicture,
                 exportingPdf: _isExportingPdf,
                 onPicture: () => unawaited(_downloadPicture(plan)),
@@ -466,7 +472,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
               _buildDailyStrip(plan),
               Divider(
                   height: 1, color: AdvantaColors.dividerGrey.withAlpha(180)),
-              Expanded(child: _buildGroupList(plan)),
+              Expanded(child: _buildGroupList(plan, visiblePlan)),
             ],
           ),
         ),
@@ -498,17 +504,37 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           const gap = 7.0;
+          const tileCount = 8;
           final tileWidth =
-              (constraints.maxWidth - (gap * 6)) / plan.dailySummaries.length;
-          final fitsSevenColumns = tileWidth >= 76;
+              (constraints.maxWidth - (gap * (tileCount - 1))) / tileCount;
+          final fitsColumns = tileWidth >= 72;
 
-          if (fitsSevenColumns) {
+          if (fitsColumns) {
             return SizedBox(
               height: 98,
               child: Row(
                 children: [
+                  Expanded(
+                    child: _AllDayTile(
+                      plan: plan,
+                      selected: _selectedPlanningDate == null,
+                      onTap: () => _setPlanningDateFilter(plan, null),
+                    ),
+                  ),
+                  const SizedBox(width: gap),
                   for (var i = 0; i < plan.dailySummaries.length; i++) ...[
-                    Expanded(child: _DayTile(summary: plan.dailySummaries[i])),
+                    Expanded(
+                      child: _DayTile(
+                        summary: plan.dailySummaries[i],
+                        selected: _isPlanningDateSelected(
+                          plan.dailySummaries[i].date,
+                        ),
+                        onTap: () => _setPlanningDateFilter(
+                          plan,
+                          plan.dailySummaries[i].date,
+                        ),
+                      ),
+                    ),
                     if (i != plan.dailySummaries.length - 1)
                       const SizedBox(width: gap),
                   ],
@@ -521,12 +547,27 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
             height: 98,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              itemCount: plan.dailySummaries.length,
+              itemCount: tileCount,
               separatorBuilder: (_, __) => const SizedBox(width: gap),
               itemBuilder: (context, index) {
+                if (index == 0) {
+                  return SizedBox(
+                    width: 84,
+                    child: _AllDayTile(
+                      plan: plan,
+                      selected: _selectedPlanningDate == null,
+                      onTap: () => _setPlanningDateFilter(plan, null),
+                    ),
+                  );
+                }
+                final summary = plan.dailySummaries[index - 1];
                 return SizedBox(
                   width: 84,
-                  child: _DayTile(summary: plan.dailySummaries[index]),
+                  child: _DayTile(
+                    summary: summary,
+                    selected: _isPlanningDateSelected(summary.date),
+                    onTap: () => _setPlanningDateFilter(plan, summary.date),
+                  ),
                 );
               },
             ),
@@ -536,13 +577,18 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     );
   }
 
-  Widget _buildGroupList(DetasselingPlanningData plan) {
-    if (plan.groups.isEmpty) {
+  Widget _buildGroupList(
+    DetasselingPlanningData sourcePlan,
+    DetasselingPlanningData visiblePlan,
+  ) {
+    if (visiblePlan.groups.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(22),
           child: Text(
-            'Tidak ada Codet yang masuk planning DT untuk filter ini.',
+            _selectedPlanningDate == null
+                ? 'Tidak ada Codet yang masuk planning DT untuk filter ini.'
+                : 'Tidak ada Codet pada ${_dateFilterLabel(_selectedPlanningDate)}.',
             textAlign: TextAlign.center,
             style: AdvantaText.body2.copyWith(color: AdvantaColors.mutedGrey),
           ),
@@ -552,10 +598,11 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
 
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
-      itemCount: plan.groups.length,
+      itemCount: visiblePlan.groups.length,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
-        final group = plan.groups[index];
+        final group = visiblePlan.groups[index];
+        final sourceGroup = _sourceGroupForKey(sourcePlan, group.key) ?? group;
         return _CodetSummaryRow(
           group: group,
           isSelected: group.key == _selectedGroupKey,
@@ -563,7 +610,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
             setState(() => _selectedGroupKey = group.key);
             _fitGroup(group);
           },
-          onDetail: () => _showGroupDetail(plan, group),
+          onDetail: () => _showGroupDetail(sourcePlan, sourceGroup),
         );
       },
     );
@@ -578,9 +625,144 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     );
   }
 
+  bool _isPlanningDateSelected(DateTime date) {
+    final selectedDate = _selectedPlanningDate;
+    return selectedDate != null &&
+        normalizeDate(date) == normalizeDate(selectedDate);
+  }
+
+  void _setPlanningDateFilter(
+    DetasselingPlanningData plan,
+    DateTime? date,
+  ) {
+    final selectedDate = date == null ? null : normalizeDate(date);
+    final visiblePlan = _planForDateFilter(plan, selectedDate);
+    setState(() {
+      _selectedPlanningDate = selectedDate;
+      if (_selectedGroupKey != null &&
+          !visiblePlan.groups.any((group) => group.key == _selectedGroupKey)) {
+        _selectedGroupKey = null;
+      }
+    });
+  }
+
+  DetasselingPlanningData _planForDateFilter(
+    DetasselingPlanningData plan,
+    DateTime? selectedDate,
+  ) {
+    if (selectedDate == null) return plan;
+    final date = normalizeDate(selectedDate);
+    final groups = <DetasselingPlanGroup>[];
+    var fieldCount = 0;
+
+    for (final group in plan.groups) {
+      final filteredGroup = _groupForDateFilter(group, date);
+      if (filteredGroup.fields.isEmpty) continue;
+      fieldCount += filteredGroup.fieldCount;
+      groups.add(filteredGroup);
+    }
+
+    return DetasselingPlanningData(
+      week: plan.week,
+      groups: List.unmodifiable(groups),
+      dailySummaries: List.unmodifiable(
+        _dailySummariesForGroups(plan.week, groups),
+      ),
+      sourceFieldCount: plan.sourceFieldCount,
+      plannedFieldCount: fieldCount,
+      roleScope: plan.roleScope,
+    );
+  }
+
+  DetasselingPlanGroup? _sourceGroupForKey(
+    DetasselingPlanningData plan,
+    String key,
+  ) {
+    for (final group in plan.groups) {
+      if (group.key == key) return group;
+    }
+    return null;
+  }
+
+  List<DetasselingPlanField> _fieldsForDate(
+    DetasselingPlanGroup group,
+    DateTime date,
+  ) {
+    final normalized = normalizeDate(date);
+    return group.fields
+        .where((field) => normalizeDate(field.plannedDate) == normalized)
+        .toList(growable: false);
+  }
+
+  DetasselingPlanGroup _groupForDateFilter(
+    DetasselingPlanGroup group,
+    DateTime? selectedDate,
+  ) {
+    if (selectedDate == null) return group;
+    final fields = _fieldsForDate(group, selectedDate);
+    return DetasselingPlanGroup(
+      key: group.key,
+      codet: group.codet,
+      village: group.village,
+      hybrid: group.hybrid,
+      crop: group.crop,
+      fields: List.unmodifiable(fields),
+      center: _centerForFields(fields, group.center),
+    );
+  }
+
+  List<DetasselingDailySummary> _dailySummariesForGroups(
+    DetasselingWeekOption week,
+    List<DetasselingPlanGroup> groups,
+  ) {
+    return List.generate(7, (index) {
+      final date = week.startDate.add(Duration(days: index));
+      final codets = <String>{};
+      double area = 0;
+      for (final group in groups) {
+        for (final field in group.fields) {
+          if (normalizeDate(field.plannedDate) == date) {
+            codets.add(group.key);
+            area += field.areaHa;
+          }
+        }
+      }
+      return DetasselingDailySummary(
+        date: date,
+        codetCount: codets.length,
+        areaHa: area,
+      );
+    });
+  }
+
+  LatLng _centerForFields(
+    List<DetasselingPlanField> fields,
+    LatLng fallback,
+  ) {
+    if (fields.isEmpty) return fallback;
+    var lat = 0.0;
+    var lng = 0.0;
+    for (final field in fields) {
+      lat += field.parsed.lat;
+      lng += field.parsed.lng;
+    }
+    return LatLng(lat / fields.length, lng / fields.length);
+  }
+
+  String _dateFilterLabel(DateTime? date) {
+    if (date == null) return 'All Date';
+    return DateFormat('d MMM yyyy', 'id_ID').format(date);
+  }
+
+  String _dateFilterSuffix(DateTime? date) {
+    if (date == null) return 'all_date';
+    return DateFormat('yyyyMMdd').format(date);
+  }
+
   DetasselingPlanGroup? _selectedGroup(DetasselingPlanningData? plan) {
     if (plan == null || _selectedGroupKey == null) return null;
-    for (final group in plan.groups) {
+    final visiblePlan = _planForDateFilter(plan, _selectedPlanningDate);
+    for (final group in visiblePlan.groups) {
       if (group.key == _selectedGroupKey) return group;
     }
     return null;
@@ -595,8 +777,10 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       searchQuery: _searchQuery,
     );
     final value = ref.read(detasselingPlanningProvider(params)).value;
-    if (value == null || value.groups.isEmpty) return;
-    _fitPoints(value.groups.map((group) => group.center).toList());
+    if (value == null) return;
+    final visiblePlan = _planForDateFilter(value, _selectedPlanningDate);
+    if (visiblePlan.groups.isEmpty) return;
+    _fitPoints(visiblePlan.groups.map((group) => group.center).toList());
   }
 
   void _fitGroup(DetasselingPlanGroup group) {
@@ -630,10 +814,17 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     if (_isExportingPicture) return;
     setState(() => _isExportingPicture = true);
     try {
-      final bytes = await _buildWeeklySummaryPng(plan);
+      final bytes = await _buildWeeklySummaryPng(
+        plan,
+        selectedDate: _selectedPlanningDate,
+      );
       final destination = await _saveBytes(
         bytes: bytes,
-        fileName: _exportFileName(plan, 'png'),
+        fileName: _exportFileName(
+          plan,
+          'png',
+          selectedDate: _selectedPlanningDate,
+        ),
         mimeType: 'image/png',
       );
       _snack('Picture weekly planning tersimpan di $destination.');
@@ -648,7 +839,10 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     if (_isExportingPdf) return;
     setState(() => _isExportingPdf = true);
     try {
-      final reportImage = await _buildWeeklySummaryPng(plan);
+      final reportImage = await _buildWeeklySummaryPng(
+        plan,
+        selectedDate: _selectedPlanningDate,
+      );
       final doc = pw.Document();
       doc.addPage(
         pw.Page(
@@ -664,7 +858,11 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       );
       final destination = await _saveBytes(
         bytes: await doc.save(),
-        fileName: _exportFileName(plan, 'pdf'),
+        fileName: _exportFileName(
+          plan,
+          'pdf',
+          selectedDate: _selectedPlanningDate,
+        ),
         mimeType: 'application/pdf',
       );
       _snack('PDF weekly planning tersimpan di $destination.');
@@ -677,15 +875,25 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
 
   Future<void> _downloadCodetPicture(
     DetasselingPlanningData plan,
-    DetasselingPlanGroup group,
-  ) async {
+    DetasselingPlanGroup group, {
+    DateTime? selectedDate,
+  }) async {
     if (_isExportingPicture) return;
     setState(() => _isExportingPicture = true);
     try {
-      final bytes = await _buildCodetDetailPng(plan, group);
+      final bytes = await _buildCodetDetailPng(
+        plan,
+        group,
+        selectedDate: selectedDate,
+      );
       final destination = await _saveBytes(
         bytes: bytes,
-        fileName: _exportCodetFileName(plan, group, 'png'),
+        fileName: _exportCodetFileName(
+          plan,
+          group,
+          'png',
+          selectedDate: selectedDate,
+        ),
         mimeType: 'image/png',
       );
       _snack('Picture detail Codet tersimpan di $destination.');
@@ -698,12 +906,17 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
 
   Future<void> _downloadCodetPdf(
     DetasselingPlanningData plan,
-    DetasselingPlanGroup group,
-  ) async {
+    DetasselingPlanGroup group, {
+    DateTime? selectedDate,
+  }) async {
     if (_isExportingPdf) return;
     setState(() => _isExportingPdf = true);
     try {
-      final reportImage = await _buildCodetDetailPng(plan, group);
+      final reportImage = await _buildCodetDetailPng(
+        plan,
+        group,
+        selectedDate: selectedDate,
+      );
       final doc = pw.Document();
       doc.addPage(
         pw.Page(
@@ -719,7 +932,12 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       );
       final destination = await _saveBytes(
         bytes: await doc.save(),
-        fileName: _exportCodetFileName(plan, group, 'pdf'),
+        fileName: _exportCodetFileName(
+          plan,
+          group,
+          'pdf',
+          selectedDate: selectedDate,
+        ),
         mimeType: 'application/pdf',
       );
       _snack('PDF detail Codet tersimpan di $destination.');
@@ -732,8 +950,9 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
 
   Future<Uint8List> _buildCodetDetailPng(
     DetasselingPlanningData plan,
-    DetasselingPlanGroup group,
-  ) async {
+    DetasselingPlanGroup group, {
+    DateTime? selectedDate,
+  }) async {
     const width = 1200.0;
     const height = 1600.0;
     const margin = 44.0;
@@ -742,6 +961,9 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     const softGreen = Color(0xFFEAF4EC);
     const line = Color(0xFFDCE3DD);
     const ink = Color(0xFF092817);
+    final reportGroup = _groupForDateFilter(group, selectedDate);
+    final reportFields = reportGroup.fields;
+    final dateScopeLabel = _dateFilterLabel(selectedDate);
 
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
@@ -915,7 +1137,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       weight: FontWeight.w900,
     );
     drawText(
-      'Kroscek - ${plan.week.label} - ${group.codet}',
+      'Kroscek - ${plan.week.label} - ${group.codet} - $dateScopeLabel',
       const Offset(152, 88),
       maxWidth: 760,
       fontSize: 20,
@@ -942,12 +1164,12 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       (
         Icons.area_chart_rounded,
         'Total DT Week',
-        '${_formatHa(group.totalAreaHa)} Ha',
+        '${_formatHa(reportGroup.totalAreaHa)} Ha',
         green
       ),
       (Icons.spa_rounded, 'Season', season, null),
       (Icons.location_on_rounded, 'Region', region, null),
-      (Icons.groups_2_rounded, 'FN', '${group.fieldCount} FN', null),
+      (Icons.groups_2_rounded, 'FN', '${reportGroup.fieldCount} FN', null),
       (Icons.calendar_month_rounded, 'Week', plan.week.label, null),
       (Icons.flag_rounded, 'Pass Rule', _groupPassRule(group), green),
     ];
@@ -988,11 +1210,16 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
 
     final dayRect = Rect.fromLTWH(margin, 350, width - margin * 2, 230);
     drawRound(dayRect, Colors.white, radius: 12, border: line);
-    drawPanelTitle(dayRect, 'FN BY DAY - ${plan.week.rangeLabel}');
+    drawPanelTitle(
+      dayRect,
+      selectedDate == null
+          ? 'FN BY DAY - ${plan.week.rangeLabel}'
+          : 'FN BY DAY - $dateScopeLabel',
+    );
     final dayW = (dayRect.width - 26) / 7;
     for (var i = 0; i < 7; i++) {
       final date = plan.week.startDate.add(Duration(days: i));
-      final fields = group.fields
+      final fields = reportFields
           .where((field) => normalizeDate(field.plannedDate) == date)
           .toList();
       final area = fields.fold(0.0, (sum, field) => sum + field.areaHa);
@@ -1090,7 +1317,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       x += widths[i];
     }
 
-    final rows = group.fields.take(13).toList();
+    final rows = reportFields.take(13).toList();
     const rowHeight = 42.0;
     for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
       final field = rows[rowIndex];
@@ -1149,9 +1376,9 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       }
     }
 
-    if (group.fields.length > rows.length) {
+    if (reportFields.length > rows.length) {
       drawCenteredText(
-        '+${group.fields.length - rows.length} FN lainnya',
+        '+${reportFields.length - rows.length} FN lainnya',
         Rect.fromLTWH(tableRect.left + 24, tableRect.bottom - 38,
             tableRect.width - 48, 24),
         fontSize: 13,
@@ -1168,7 +1395,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       green,
     );
     drawText(
-      'Detail export ini hanya untuk Codet ${group.codet}. Overview seluruh Codet tetap tersedia dari Weekly DT Planning card.',
+      'Detail export ini hanya untuk Codet ${group.codet} ($dateScopeLabel). Overview seluruh Codet tetap tersedia dari Weekly DT Planning card.',
       Offset(noteRect.left + 82, noteRect.top + 28),
       maxWidth: noteRect.width - 112,
       fontSize: 16,
@@ -1223,8 +1450,9 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
   }
 
   Future<Uint8List> _buildWeeklySummaryPng(
-    DetasselingPlanningData plan,
-  ) async {
+    DetasselingPlanningData plan, {
+    DateTime? selectedDate,
+  }) async {
     const width = 1600.0;
     const height = 1120.0;
     const margin = 46.0;
@@ -1233,6 +1461,8 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     const softGreen = Color(0xFFEAF4EC);
     const line = Color(0xFFDCE3DD);
     const ink = Color(0xFF092817);
+    final reportPlan = _planForDateFilter(plan, selectedDate);
+    final dateScopeLabel = _dateFilterLabel(selectedDate);
 
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
@@ -1375,15 +1605,23 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     }
 
     final season = _reportSingleValue(
-      plan,
+      reportPlan,
       const ['season', 'season_code', 'planting_season'],
       fallback: '-',
     );
     final region = _selectedRegion ??
-        _reportSingleValue(plan, const ['region'], fallback: 'All Region');
+        _reportSingleValue(
+          reportPlan,
+          const ['region'],
+          fallback: 'All Region',
+        );
     final generatedAt =
         DateFormat('d MMM yyyy | HH:mm', 'id_ID').format(DateTime.now());
-    final reportRange = _reportRangeLabel(plan.week);
+    final reportRange = selectedDate == null
+        ? _reportRangeLabel(plan.week)
+        : DateFormat('d MMM yyyy', 'id_ID')
+            .format(normalizeDate(selectedDate))
+            .toUpperCase();
 
     canvas.drawRect(
       const Rect.fromLTWH(0, 0, width, height),
@@ -1408,7 +1646,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       weight: FontWeight.w900,
     );
     drawText(
-      'Kroscek - Planning Week ${plan.week.label}',
+      'Kroscek - Planning Week ${plan.week.label} - $dateScopeLabel',
       const Offset(152, 82),
       maxWidth: 820,
       fontSize: 20,
@@ -1435,7 +1673,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       (
         Icons.description_outlined,
         'Total Plan',
-        '${_formatHa(plan.totalAreaHa)} Ha',
+        '${_formatHa(reportPlan.totalAreaHa)} Ha',
         green
       ),
       (Icons.eco_rounded, 'FC Pass Rule', 'P1-P3', green),
@@ -1493,15 +1731,17 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     drawPanelTitle(weeklyRect, 'WEEKLY DETASSELLING PLAN ($reportRange)');
     final dayTop = weeklyRect.top + 60;
     final dayW = (weeklyRect.width - 26) / 7;
-    for (var i = 0; i < plan.dailySummaries.length; i++) {
-      final day = plan.dailySummaries[i];
+    for (var i = 0; i < reportPlan.dailySummaries.length; i++) {
+      final day = reportPlan.dailySummaries[i];
       final rect = Rect.fromLTWH(
         weeklyRect.left + 13 + dayW * i,
         dayTop,
         dayW,
         weeklyRect.height - 74,
       );
-      final active = i == 0;
+      final active = selectedDate == null
+          ? i == 0
+          : normalizeDate(day.date) == normalizeDate(selectedDate);
       if (active) {
         drawRound(rect.deflate(2), deep, radius: 12);
       }
@@ -1561,7 +1801,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     _drawExportMapSnapshot(
       canvas,
       mapRect,
-      plan,
+      reportPlan,
       drawRound: drawRound,
       drawText: drawText,
       drawCenteredText: drawCenteredText,
@@ -1572,7 +1812,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     _drawExportCodetTable(
       canvas,
       tableRect,
-      plan,
+      reportPlan,
       drawRound: drawRound,
       drawText: drawText,
       drawCenteredText: drawCenteredText,
@@ -2174,17 +2414,22 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     return getApplicationDocumentsDirectory();
   }
 
-  String _exportFileName(DetasselingPlanningData plan, String extension) {
-    final stamp = DateFormat('yyyyMMdd').format(plan.week.startDate);
+  String _exportFileName(
+    DetasselingPlanningData plan,
+    String extension, {
+    DateTime? selectedDate,
+  }) {
+    final stamp = _dateFilterSuffix(selectedDate);
     return 'weekly_dt_summary_${plan.week.label}_$stamp.$extension';
   }
 
   String _exportCodetFileName(
     DetasselingPlanningData plan,
     DetasselingPlanGroup group,
-    String extension,
-  ) {
-    final stamp = DateFormat('yyyyMMdd').format(plan.week.startDate);
+    String extension, {
+    DateTime? selectedDate,
+  }) {
+    final stamp = _dateFilterSuffix(selectedDate);
     final codet = _safeFilePart(group.codet);
     return 'weekly_dt_codet_${plan.week.label}_${codet}_$stamp.$extension';
   }
@@ -2211,16 +2456,32 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       builder: (_) => _CodetDetailSheet(
         week: plan.week,
         group: group,
+        initialDate: _selectedPlanningDate,
         onFieldTap: _openFieldDetail,
-        onOpenInspection: () => _openCodetMassInspection(group),
-        onDownloadPicture: () => _downloadCodetPicture(plan, group),
-        onDownloadPdf: () => _downloadCodetPdf(plan, group),
+        onOpenInspection: (fields) => _openCodetMassInspection(
+          group,
+          fieldsOverride: fields,
+        ),
+        onDownloadPicture: (date) => _downloadCodetPicture(
+          plan,
+          group,
+          selectedDate: date,
+        ),
+        onDownloadPdf: (date) => _downloadCodetPdf(
+          plan,
+          group,
+          selectedDate: date,
+        ),
       ),
     );
   }
 
-  void _openCodetMassInspection(DetasselingPlanGroup group) {
-    final fieldNumbers = group.fields
+  void _openCodetMassInspection(
+    DetasselingPlanGroup group, {
+    List<DetasselingPlanField>? fieldsOverride,
+  }) {
+    final fields = fieldsOverride ?? group.fields;
+    final fieldNumbers = fields
         .map((field) => field.fieldNumber.trim())
         .where((fieldNumber) => fieldNumber.isNotEmpty)
         .toSet()
@@ -2283,6 +2544,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
 
 class _PlanningHeader extends StatelessWidget {
   final DetasselingPlanningData plan;
+  final String dateLabel;
   final bool exportingPicture;
   final bool exportingPdf;
   final VoidCallback onPicture;
@@ -2290,6 +2552,7 @@ class _PlanningHeader extends StatelessWidget {
 
   const _PlanningHeader({
     required this.plan,
+    required this.dateLabel,
     required this.exportingPicture,
     required this.exportingPdf,
     required this.onPicture,
@@ -2325,7 +2588,9 @@ class _PlanningHeader extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${plan.codetCount} Codet • ${plan.plannedFieldCount} FN • ${_formatHa(plan.totalAreaHa)} Ha',
+                  '$dateLabel • ${plan.codetCount} Codet • ${plan.plannedFieldCount} FN • ${_formatHa(plan.totalAreaHa)} Ha',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: AdvantaText.caption.copyWith(
                     color: AdvantaColors.mutedGrey,
                   ),
@@ -2363,113 +2628,241 @@ class _PlanningHeader extends StatelessWidget {
 
 class _DayTile extends StatelessWidget {
   final DetasselingDailySummary summary;
+  final bool selected;
+  final VoidCallback onTap;
 
-  const _DayTile({required this.summary});
+  const _DayTile({
+    required this.summary,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final hasPlan = summary.codetCount > 0;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(9, 8, 9, 8),
-      decoration: BoxDecoration(
-        gradient: hasPlan
-            ? const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFEAF7F0),
-                  Color(0xFFFFF8E1),
-                ],
-              )
-            : null,
-        color: hasPlan ? null : Colors.white,
+    final primaryText = selected
+        ? Colors.white
+        : hasPlan
+            ? AdvantaColors.primaryGreen
+            : AdvantaColors.mutedGrey;
+    final bodyText = selected ? Colors.white : AdvantaColors.deepForest;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(11),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(11),
-        border: Border.all(
-          color: hasPlan
-              ? AdvantaColors.primaryGreen.withAlpha(105)
-              : AdvantaColors.dividerGrey,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.fromLTRB(9, 8, 9, 8),
+          decoration: BoxDecoration(
+            gradient: selected
+                ? null
+                : hasPlan
+                    ? const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFFEAF7F0),
+                          Color(0xFFFFF8E1),
+                        ],
+                      )
+                    : null,
+            color: selected
+                ? AdvantaColors.primaryGreen
+                : (hasPlan ? null : Colors.white),
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(
+              color: selected
+                  ? AdvantaColors.goldLight
+                  : hasPlan
+                      ? AdvantaColors.primaryGreen.withAlpha(105)
+                      : AdvantaColors.dividerGrey,
+              width: selected ? 1.6 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      DateFormat('EEE', 'id_ID')
+                          .format(summary.date)
+                          .toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AdvantaText.caption.copyWith(
+                        color:
+                            selected ? Colors.white70 : AdvantaColors.mutedGrey,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? Colors.white.withAlpha(30)
+                          : hasPlan
+                              ? AdvantaColors.primaryGreen.withAlpha(22)
+                              : AdvantaColors.softGrey,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      DateFormat('d', 'id_ID').format(summary.date),
+                      style: AdvantaText.caption.copyWith(
+                        color: bodyText,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Center(
                 child: Text(
-                  DateFormat('EEE', 'id_ID').format(summary.date).toUpperCase(),
+                  summary.codetCount.toString(),
+                  style: TextStyle(
+                    color: primaryText,
+                    fontSize: 24,
+                    height: 0.95,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Codet',
+                textAlign: TextAlign.center,
+                style: AdvantaText.caption.copyWith(
+                  color: bodyText,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white
+                      .withAlpha(selected ? 34 : (hasPlan ? 180 : 120)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${_formatHa(summary.areaHa)} Ha',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                   style: AdvantaText.caption.copyWith(
-                    color: AdvantaColors.mutedGrey,
+                    color: selected ? Colors.white : AdvantaColors.charcoal,
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AllDayTile extends StatelessWidget {
+  final DetasselingPlanningData plan;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _AllDayTile({
+    required this.plan,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bodyText = selected ? Colors.white : AdvantaColors.deepForest;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(11),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(11),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.fromLTRB(9, 8, 9, 8),
+          decoration: BoxDecoration(
+            color: selected ? AdvantaColors.primaryGreen : Colors.white,
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(
+              color: selected
+                  ? AdvantaColors.goldLight
+                  : AdvantaColors.dividerGrey,
+              width: selected ? 1.6 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'ALL',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AdvantaText.caption.copyWith(
+                  color: selected ? Colors.white70 : AdvantaColors.mutedGrey,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const Spacer(),
+              Center(
+                child: Text(
+                  plan.codetCount.toString(),
+                  style: TextStyle(
+                    color: selected ? Colors.white : AdvantaColors.primaryGreen,
+                    fontSize: 24,
+                    height: 0.95,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Codet',
+                textAlign: TextAlign.center,
+                style: AdvantaText.caption.copyWith(
+                  color: bodyText,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                 decoration: BoxDecoration(
-                  color: hasPlan
-                      ? AdvantaColors.primaryGreen.withAlpha(22)
-                      : AdvantaColors.softGrey,
-                  borderRadius: BorderRadius.circular(999),
+                  color: Colors.white.withAlpha(selected ? 34 : 150),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  DateFormat('d', 'id_ID').format(summary.date),
+                  '${_formatHa(plan.totalAreaHa)} Ha',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                   style: AdvantaText.caption.copyWith(
-                    color: AdvantaColors.deepForest,
+                    color: selected ? Colors.white : AdvantaColors.charcoal,
                     fontSize: 10,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
             ],
           ),
-          const Spacer(),
-          Center(
-            child: Text(
-              summary.codetCount.toString(),
-              style: TextStyle(
-                color: hasPlan
-                    ? AdvantaColors.primaryGreen
-                    : AdvantaColors.mutedGrey,
-                fontSize: 24,
-                height: 0.95,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'Codet',
-            textAlign: TextAlign.center,
-            style: AdvantaText.caption.copyWith(
-              color: AdvantaColors.deepForest,
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withAlpha(hasPlan ? 180 : 120),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '${_formatHa(summary.areaHa)} Ha',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: AdvantaText.caption.copyWith(
-                color: AdvantaColors.charcoal,
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2584,14 +2977,16 @@ class _CodetSummaryRow extends StatelessWidget {
 class _CodetDetailSheet extends StatefulWidget {
   final DetasselingWeekOption week;
   final DetasselingPlanGroup group;
+  final DateTime? initialDate;
   final ValueChanged<DetasselingPlanField> onFieldTap;
-  final VoidCallback onOpenInspection;
-  final Future<void> Function()? onDownloadPicture;
-  final Future<void> Function()? onDownloadPdf;
+  final ValueChanged<List<DetasselingPlanField>> onOpenInspection;
+  final Future<void> Function(DateTime? selectedDate)? onDownloadPicture;
+  final Future<void> Function(DateTime? selectedDate)? onDownloadPdf;
 
   const _CodetDetailSheet({
     required this.week,
     required this.group,
+    required this.initialDate,
     required this.onFieldTap,
     required this.onOpenInspection,
     required this.onDownloadPicture,
@@ -2603,7 +2998,7 @@ class _CodetDetailSheet extends StatefulWidget {
 }
 
 class _CodetDetailSheetState extends State<_CodetDetailSheet> {
-  late DateTime _selectedDate;
+  DateTime? _selectedDate;
   bool _exportingPicture = false;
   bool _exportingPdf = false;
 
@@ -2622,9 +3017,14 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
     }
   }
 
-  DateTime _initialSelectedDate() {
-    if (widget.group.fields.isEmpty) return widget.week.startDate;
-    return normalizeDate(widget.group.fields.first.plannedDate);
+  DateTime? _initialSelectedDate() {
+    final initial = widget.initialDate;
+    if (initial == null) return null;
+    final normalized = normalizeDate(initial);
+    final start = normalizeDate(widget.week.startDate);
+    final end = normalizeDate(widget.week.endDate);
+    if (normalized.isBefore(start) || normalized.isAfter(end)) return null;
+    return normalized;
   }
 
   List<DateTime> get _weekDays => List.generate(
@@ -2632,11 +3032,23 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
         (index) => widget.week.startDate.add(Duration(days: index)),
       );
 
-  List<DetasselingPlanField> _fieldsFor(DateTime day) {
+  List<DetasselingPlanField> _fieldsFor(DateTime? day) {
+    if (day == null) return widget.group.fields;
     final date = normalizeDate(day);
     return widget.group.fields
         .where((field) => normalizeDate(field.plannedDate) == date)
         .toList();
+  }
+
+  bool _isSelectedDay(DateTime day) {
+    final selectedDate = _selectedDate;
+    return selectedDate != null && normalizeDate(day) == selectedDate;
+  }
+
+  String get _selectedDateLabel {
+    final selectedDate = _selectedDate;
+    if (selectedDate == null) return 'All Date';
+    return DateFormat('d MMM', 'id_ID').format(selectedDate);
   }
 
   double _areaFor(List<DetasselingPlanField> fields) =>
@@ -2647,7 +3059,7 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
     if (callback == null || _exportingPicture) return;
     setState(() => _exportingPicture = true);
     try {
-      await callback();
+      await callback(_selectedDate);
     } finally {
       if (mounted) setState(() => _exportingPicture = false);
     }
@@ -2658,7 +3070,7 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
     if (callback == null || _exportingPdf) return;
     setState(() => _exportingPdf = true);
     try {
-      await callback();
+      await callback(_selectedDate);
     } finally {
       if (mounted) setState(() => _exportingPdf = false);
     }
@@ -2719,7 +3131,7 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
                       const SizedBox(height: 12),
                       _buildInfoNote(),
                       const SizedBox(height: 16),
-                      _buildActions(),
+                      _buildActions(selectedFields),
                       const SizedBox(height: 18),
                     ],
                   ),
@@ -2966,23 +3378,35 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
               final useCompactCarousel = constraints.maxWidth < 560;
               final cardWidth = useCompactCarousel
                   ? 92.0
-                  : (constraints.maxWidth - gap * 6) / 7;
+                  : (constraints.maxWidth - gap * 7) / 8;
+              final allFields = _fieldsFor(null);
 
               return SizedBox(
                 height: 124,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
-                  itemCount: _weekDays.length,
+                  itemCount: _weekDays.length + 1,
                   separatorBuilder: (_, __) => const SizedBox(width: gap),
                   itemBuilder: (context, index) {
-                    final day = _weekDays[index];
+                    if (index == 0) {
+                      return SizedBox(
+                        width: cardWidth,
+                        child: _DetailAllDayChip(
+                          selected: _selectedDate == null,
+                          fnCount: allFields.length,
+                          areaHa: _areaFor(allFields),
+                          onTap: () => setState(() => _selectedDate = null),
+                        ),
+                      );
+                    }
+                    final day = _weekDays[index - 1];
                     final fields = _fieldsFor(day);
                     return SizedBox(
                       width: cardWidth,
                       child: _DetailDayChip(
                         date: day,
-                        selected: normalizeDate(day) == _selectedDate,
+                        selected: _isSelectedDay(day),
                         passLabel: fields.isEmpty
                             ? '-'
                             : _passLabelForDate(
@@ -2992,7 +3416,9 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
                               ),
                         fnCount: fields.length,
                         areaHa: _areaFor(fields),
-                        onTap: () => setState(() => _selectedDate = day),
+                        onTap: () => setState(
+                          () => _selectedDate = normalizeDate(day),
+                        ),
                       ),
                     );
                   },
@@ -3013,7 +3439,7 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
           Expanded(
             child: _DetailInlineStat(
               icon: Icons.calendar_month_rounded,
-              value: DateFormat('d MMM', 'id_ID').format(_selectedDate),
+              value: _selectedDateLabel,
             ),
           ),
           _DetailDivider(height: 30),
@@ -3043,7 +3469,7 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'FN List - ${DateFormat('d MMM', 'id_ID').format(_selectedDate)}',
+            'FN List - $_selectedDateLabel',
             style: AdvantaText.heading3.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.w900,
@@ -3111,19 +3537,20 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
     );
   }
 
-  Widget _buildActions() {
+  Widget _buildActions(List<DetasselingPlanField> selectedFields) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 520;
         final halfWidth = (constraints.maxWidth - 8) / 2;
+        final hasFields = selectedFields.isNotEmpty;
         final picture = SizedBox(
           width: compact ? halfWidth : (constraints.maxWidth - 16) * 0.34,
           child: _DetailActionButton(
             icon: Icons.image_outlined,
             title: 'Download Picture',
-            subtitle: 'Export PNG',
+            subtitle: _selectedDate == null ? 'Export all date' : 'Export PNG',
             busy: _exportingPicture,
-            onTap: widget.onDownloadPicture == null
+            onTap: widget.onDownloadPicture == null || !hasFields
                 ? null
                 : () => unawaited(_handlePictureExport()),
           ),
@@ -3133,9 +3560,9 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
           child: _DetailActionButton(
             icon: Icons.picture_as_pdf_outlined,
             title: 'Download PDF',
-            subtitle: 'Export PDF',
+            subtitle: _selectedDate == null ? 'Export all date' : 'Export PDF',
             busy: _exportingPdf,
-            onTap: widget.onDownloadPdf == null
+            onTap: widget.onDownloadPdf == null || !hasFields
                 ? null
                 : () => unawaited(_handlePdfExport()),
           ),
@@ -3147,9 +3574,11 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
           child: _DetailActionButton(
             icon: Icons.assignment_turned_in_outlined,
             title: 'Mass Inspection',
-            subtitle: '${widget.group.fieldCount} FN',
+            subtitle: '${selectedFields.length} FN',
             filled: true,
-            onTap: widget.group.fields.isEmpty ? null : widget.onOpenInspection,
+            onTap: hasFields
+                ? () => widget.onOpenInspection(selectedFields)
+                : null,
           ),
         );
 
@@ -3252,6 +3681,158 @@ class _DetailDivider extends StatelessWidget {
       height: height,
       margin: const EdgeInsets.symmetric(horizontal: 12),
       color: Colors.white.withAlpha(24),
+    );
+  }
+}
+
+class _DetailAllDayChip extends StatelessWidget {
+  final bool selected;
+  final int fnCount;
+  final double areaHa;
+  final VoidCallback onTap;
+
+  const _DetailAllDayChip({
+    required this.selected,
+    required this.fnCount,
+    required this.areaHa,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = selected ? AdvantaColors.deepForest : Colors.white;
+    final muted = selected
+        ? AdvantaColors.deepForest.withAlpha(170)
+        : Colors.white.withAlpha(178);
+    final badgeColor =
+        selected ? AdvantaColors.primaryGreen : AdvantaColors.lightGreen;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+          decoration: BoxDecoration(
+            color:
+                selected ? const Color(0xFFEAF7F0) : Colors.white.withAlpha(13),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? AdvantaColors.lightGreen
+                  : Colors.white.withAlpha(20),
+              width: selected ? 1.6 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'ALL DATE',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AdvantaText.caption.copyWith(
+                        color: muted,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    height: 20,
+                    constraints: const BoxConstraints(minWidth: 34),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    decoration: BoxDecoration(
+                      color: badgeColor.withAlpha(selected ? 36 : 80),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'All',
+                      style: AdvantaText.caption.copyWith(
+                        color: selected ? badgeColor : Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'All',
+                textAlign: TextAlign.center,
+                style: AdvantaText.heading2.copyWith(
+                  color: fg,
+                  fontSize: 23,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                'Date',
+                textAlign: TextAlign.center,
+                style: AdvantaText.caption.copyWith(
+                  color: muted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? Colors.white.withAlpha(175)
+                      : Colors.black.withAlpha(28),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.groups_2_rounded, size: 12, color: muted),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            '$fnCount FN',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AdvantaText.caption.copyWith(
+                              color: fg,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        '${_formatHa(areaHa)} Ha',
+                        maxLines: 1,
+                        style: AdvantaText.caption.copyWith(
+                          color: badgeColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
