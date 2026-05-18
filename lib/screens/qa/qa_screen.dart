@@ -140,8 +140,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   void _refreshMapProviders() {
     _clearMapCaches();
-    ref.invalidate(masterFieldsProvider);
-    ref.invalidate(parsedMapFieldsProvider);
+    ref.invalidate(masterFieldMapProvider);
+    ref.invalidate(parsedMasterFieldMapProvider);
   }
 
   void _handleInspectDone(Map<String, dynamic> fieldData) {
@@ -154,25 +154,38 @@ class _QAScreenState extends ConsumerState<QAScreen>
     _refreshMapProviders();
 
     if (fieldNumber == null || fieldNumber.isEmpty) return;
+    await _openFieldDetailSafely(fieldData);
+  }
 
-    try {
-      final parsedFields = await ref.read(parsedMapFieldsProvider.future);
-      if (!mounted) return;
+  Future<void> _openFieldDetail(
+    Map<String, dynamic> fieldData,
+  ) async {
+    final fieldNumber = fieldData['field_number']?.toString();
+    var detail = fieldData;
 
-      Map<String, dynamic>? freshField;
-      for (final f in parsedFields) {
-        if (f.raw['field_number']?.toString() == fieldNumber) {
-          freshField = f.raw;
-          break;
-        }
+    if (fieldNumber != null && fieldNumber.isNotEmpty) {
+      try {
+        final freshField = await ref
+            .read(supabaseServiceProvider)
+            .getMasterFieldWithAllAudits(fieldNumber);
+        if (freshField != null) detail = freshField;
+      } catch (e) {
+        debugPrint('Gagal memuat detail field $fieldNumber: $e');
       }
+    }
 
-      FieldDetailBottomSheet.show(
-        context,
-        freshField ?? fieldData,
-        onInspectDone: _handleInspectDone,
-        dapReferenceDate: _getWeekReferenceDate(),
-      );
+    if (!mounted) return;
+    FieldDetailBottomSheet.show(
+      context,
+      detail,
+      onInspectDone: _handleInspectDone,
+      dapReferenceDate: _getWeekReferenceDate(),
+    );
+  }
+
+  Future<void> _openFieldDetailSafely(Map<String, dynamic> fieldData) async {
+    try {
+      await _openFieldDetail(fieldData);
     } catch (_) {
       if (!mounted) return;
       FieldDetailBottomSheet.show(
@@ -790,12 +803,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
         fields: uncoordFields,
         onOpenField: (f) {
           Navigator.pop(context);
-          FieldDetailBottomSheet.show(
-            context,
-            f,
-            onInspectDone: _handleInspectDone,
-            dapReferenceDate: _getWeekReferenceDate(),
-          );
+          unawaited(_openFieldDetailSafely(f));
         },
       ),
     );
@@ -805,9 +813,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
   @override
   Widget build(BuildContext context) {
     _measureTopOverlay();
-    final masterAsync = ref.watch(masterFieldsProvider);
-    // 1. TAMBAHKAN BARIS INI: Mengambil data yang sudah di-parse oleh Isolate
-    final parsedMapAsync = ref.watch(parsedMapFieldsProvider);
+    final parsedMapAsync = ref.watch(parsedMasterFieldMapProvider);
 
     final attendance = ref.watch(attendanceProvider);
     final regions = ref.watch(uniqueRegionsProvider);
@@ -815,7 +821,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final user = ref.watch(currentUserProvider).value;
 
     // Matikan overlay refresh saat data baru sudah masuk
-    if (_isRefreshing && masterAsync is AsyncData) {
+    if (_isRefreshing && parsedMapAsync is AsyncData) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _isRefreshing) {
           setState(() => _isRefreshing = false);
@@ -870,7 +876,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
           ),
 
           // ── 1b. REFRESH OVERLAY ────────────────────────────
-          if (_isRefreshing && masterAsync is! AsyncLoading)
+          if (_isRefreshing && parsedMapAsync is! AsyncLoading)
             _buildRefreshOverlay(),
 
           // ── 2. NEW UNIFIED TOP OVERLAY (Minimalist) ────────
@@ -901,7 +907,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     _buildUnifiedTopBar(attendance),
 
                     // BARIS 2: Gabungan Semua Filter (Region, District, QA, Status, Fase)
-                    if (masterAsync is AsyncData)
+                    if (parsedMapAsync is AsyncData)
                       _buildUnifiedFilters(
                         regions: regions,
                         districts: districts,
@@ -913,7 +919,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       ),
 
                     // BARIS 3: Coordinate Quality Summary
-                    if (masterAsync is AsyncData)
+                    if (parsedMapAsync is AsyncData)
                       parsedMapAsync.whenData((parsedFields) {
                             final visibleFields =
                                 _getFilteredFields(parsedFields);
@@ -922,7 +928,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                           const SizedBox.shrink(),
 
                     // BARIS 4: Uncoord Banner (Dibuat lebih tipis/compact)
-                    if (masterAsync is AsyncData)
+                    if (parsedMapAsync is AsyncData)
                       parsedMapAsync.whenData((parsedFields) {
                             final uncoordFields = _filterFields(parsedFields)
                                 .where((f) => f.isDefault)
@@ -942,7 +948,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
           // ── 3. FLOATING WORK MODE TOGGLE ───────────────────
           // Dipindah ke bawah agar tidak menutupi map atas
-          if (masterAsync is AsyncData && _editingPolygonField == null)
+          if (parsedMapAsync is AsyncData && _editingPolygonField == null)
             Positioned(
               bottom: _workMode == _WorkMode.mass
                   ? 116
@@ -956,11 +962,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
             ),
 
           // ── 5. RIGHT FABs ──────────────────────────────────
-          if (masterAsync is AsyncData && _editingPolygonField == null)
+          if (parsedMapAsync is AsyncData && _editingPolygonField == null)
             Positioned(
               right: 12,
               bottom: _workMode == _WorkMode.mass ? 116 : 32,
-              child: _buildRightFabs(masterAsync),
+              child: _buildRightFabs(),
             ),
           // ── 5b. DISMISS BARRIER UNTUK LEGENDA ──
           // Jika legenda muncul, buat lapisan transparan di seluruh layar untuk menangkap tap
@@ -973,7 +979,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
             ),
 
           // ── 6. LEGEND ─────────────────────────────────────────────
-          if (_isLegendVisible && masterAsync is AsyncData)
+          if (_isLegendVisible && parsedMapAsync is AsyncData)
             Positioned(
               right: 62, // ← sebelumnya 68, sekarang sejajar tombol speed-dial
               bottom: _workMode == _WorkMode.mass ? 116 : 32,
@@ -982,7 +988,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
           // ── 7. MASS INSPECT BAR ───────────────────────────
           if (_workMode == _WorkMode.mass &&
-              masterAsync is AsyncData &&
+              parsedMapAsync is AsyncData &&
               _editingPolygonField == null)
             Positioned(
               bottom: 0,
@@ -1645,12 +1651,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   }
                 });
               } else {
-                FieldDetailBottomSheet.show(
-                  context,
-                  f.raw,
-                  onInspectDone: _handleInspectDone,
-                  dapReferenceDate: _getWeekReferenceDate(),
-                );
+                unawaited(_openFieldDetailSafely(f.raw));
               }
             },
             child: Stack(
@@ -1951,12 +1952,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     child: OutlinedButton.icon(
                       onPressed: () {
                         Navigator.pop(sheetContext);
-                        FieldDetailBottomSheet.show(
-                          context,
-                          raw,
-                          onInspectDone: _handleInspectDone,
-                          dapReferenceDate: _getWeekReferenceDate(),
-                        );
+                        unawaited(_openFieldDetailSafely(raw));
                       },
                       icon: const Icon(Icons.article_outlined, size: 18),
                       label: Text('Detail', style: AdvantaText.button),
@@ -2707,7 +2703,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return GestureDetector(
       onTap: () {
         // Ambil semua data lahan saat ini untuk fitur Autocomplete (Saran Teks)
-        final allFields = ref.read(parsedMapFieldsProvider).value ?? [];
+        final allFields = ref.read(parsedMasterFieldMapProvider).value ?? [];
 
         showGeneralDialog(
           context: context,
@@ -2826,7 +2822,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   // ─── SPEED-DIAL FAB ──────────────────────────────────────────
-  Widget _buildRightFabs(AsyncValue<List<Map<String, dynamic>>> masterAsync) {
+  Widget _buildRightFabs() {
     return AnimatedBuilder(
       animation: _speedDialCtrl,
       builder: (context, _) {
@@ -2857,7 +2853,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
               final deltaDays = _getWeekProjectionDeltaDays();
 
               // Ambil data lahan dan tampilkan Bottom Sheet
-              ref.read(parsedMapFieldsProvider).whenData((allFields) {
+              ref.read(parsedMasterFieldMapProvider).whenData((allFields) {
                 final filtered = _filterFields(allFields);
                 FieldListView.showSheet(
                   context,
@@ -2884,12 +2880,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       // Jika mode single, TUTUP list view dulu, baru buka detailnya
                       Navigator.pop(context);
 
-                      FieldDetailBottomSheet.show(
-                        context,
-                        f.raw,
-                        onInspectDone: _handleInspectDone,
-                        dapReferenceDate: _getWeekReferenceDate(),
-                      );
+                      unawaited(_openFieldDetailSafely(f.raw));
                     }
                   },
                   activePhase: _activePhaseView,
@@ -2907,7 +2898,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
             color: AdvantaColors.midGreen,
             active: false,
             onTap: () {
-              ref.read(parsedMapFieldsProvider).whenData(
+              ref.read(parsedMasterFieldMapProvider).whenData(
                     (all) => _fitBounds(_filterFields(all)),
                   );
               setState(() => _isSpeedDialOpen = false);
@@ -3552,7 +3543,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   // ─── PHASE SELECTION SHEET (mass only) ──────────────────────
   bool _selectedFieldsAreSweetCornOnly() {
-    final parsedFields = ref.read(parsedMapFieldsProvider).value;
+    final parsedFields = ref.read(parsedMasterFieldMapProvider).value;
     if (parsedFields == null) return false;
 
     final selectedFields = parsedFields
@@ -3567,7 +3558,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   bool _selectedFieldsArePspOnly() {
-    final parsedFields = ref.read(parsedMapFieldsProvider).value;
+    final parsedFields = ref.read(parsedMasterFieldMapProvider).value;
     if (parsedFields == null) return false;
 
     final selectedFields = parsedFields
@@ -3604,7 +3595,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   void _showSelectedFieldsSheet() {
     // 1. Ambil data yang sudah di-parse (dimana DAP sudah dihitung)
-    final parsedAsync = ref.read(parsedMapFieldsProvider);
+    final parsedAsync = ref.read(parsedMasterFieldMapProvider);
     if (parsedAsync.value == null) return;
 
     // 2. Filter data berdasarkan field number yang dipilih

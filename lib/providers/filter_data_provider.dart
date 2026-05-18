@@ -6,7 +6,7 @@ import '../utils/qa_name_helper.dart';
 // 1. REGIONS — semua region unik dari master fields
 // ============================================================================
 final uniqueRegionsProvider = Provider<List<String>>((ref) {
-  final allFields = ref.watch(masterFieldsProvider).value ?? [];
+  final allFields = ref.watch(masterFieldMapProvider).value ?? [];
   return allFields
       .map((e) => e['region']?.toString().trim() ?? '')
       .where((e) => e.isNotEmpty)
@@ -21,7 +21,7 @@ final uniqueRegionsProvider = Provider<List<String>>((ref) {
 // ============================================================================
 final uniqueDistrictsProvider =
     Provider.family<List<String>, String?>((ref, selectedRegion) {
-  final allFields = ref.watch(masterFieldsProvider).value ?? [];
+  final allFields = ref.watch(masterFieldMapProvider).value ?? [];
   return allFields
       .where((field) {
         if (selectedRegion == null || selectedRegion == 'All') return true;
@@ -55,7 +55,7 @@ class DistrictFilterParams {
 
 final uniqueSubDistrictsProvider =
     Provider.family<List<String>, DistrictFilterParams>((ref, params) {
-  final allFields = ref.watch(masterFieldsProvider).value ?? [];
+  final allFields = ref.watch(masterFieldMapProvider).value ?? [];
   return allFields
       .where((field) {
         final region = field['region']?.toString().trim() ?? '';
@@ -98,7 +98,7 @@ class VillageFilterParams {
 
 final uniqueVillagesProvider =
     Provider.family<List<String>, VillageFilterParams>((ref, params) {
-  final allFields = ref.watch(masterFieldsProvider).value ?? [];
+  final allFields = ref.watch(masterFieldMapProvider).value ?? [];
   return allFields
       .where((field) {
         final region = field['region']?.toString().trim() ?? '';
@@ -142,7 +142,7 @@ class QAFilterParams {
 
 final uniqueQAProvider =
     Provider.family<List<String>, QAFilterParams>((ref, filterParams) {
-  final allFields = ref.watch(masterFieldsProvider).value ?? [];
+  final allFields = ref.watch(masterFieldMapProvider).value ?? [];
   final qas = <String>{};
 
   for (final field in allFields) {
@@ -171,7 +171,7 @@ final uniqueQAProvider =
 // ============================================================================
 final uniqueFIProvider =
     Provider.family<List<String>, QAFilterParams>((ref, filterParams) {
-  final allFields = ref.watch(masterFieldsProvider).value ?? [];
+  final allFields = ref.watch(masterFieldMapProvider).value ?? [];
   final fis = <String>{};
 
   for (final field in allFields) {

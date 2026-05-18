@@ -4,9 +4,109 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class SupabaseService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
+  static const String _masterFieldMapSelect = '''
+    field_number,
+    season,
+    farmer_name,
+    grower,
+    hybrid,
+    total_area_planted_ha,
+    discard_area_ha,
+    effective_area_ha,
+    planting_date_pdn,
+    hamlet_dusun,
+    village_desa,
+    sub_district_kec,
+    district_kab,
+    fa,
+    field_spv,
+    coordinate,
+    correction_tagging,
+    region,
+    area_manager,
+    harvested_area_ha,
+    harvested_qty_kg,
+    previous_crop_data_a_b,
+    standing_crops,
+    type,
+    prov,
+    planting_date_rev,
+    is_active,
+    qa_fi,
+    qa_spv,
+    planting_ratio,
+    planting_space,
+    flagging_final,
+    target_dt_date,
+    season_id,
+    geometry_wkt,
+    audit_vegetative(
+      date_of_audit,
+      correction_tagging,
+      date_of_inspeksi_roguing_1,
+      date_of_inspeksi_roguing_2,
+      date_of_inspeksi_roguing_3,
+      date_of_inspeksi_roguing_4
+    ),
+    audit_generative(
+      date_of_audit_1,
+      date_of_audit_2,
+      date_of_audit_3,
+      date_of_audit_4,
+      date_of_audit_5
+    ),
+    audit_pre_harvest(audit_date),
+    audit_harvest(date_of_audit)
+  ''';
+
   // ============================================================
   // MASTER FIELDS — Update query untuk tarik semua audit sekaligus
   // ============================================================
+
+  /// Mengambil data ringan untuk peta/list awal.
+  ///
+  /// Query ini sengaja tidak memakai `*` untuk tabel audit, supaya halaman peta
+  /// tidak memuat payload audit lengkap dari semua lahan saat startup.
+  Future<List<Map<String, dynamic>>> getMasterFieldsForMap({
+    String? qaFi,
+    String? qaSpv,
+  }) async {
+    try {
+      final List<Map<String, dynamic>> allData = [];
+      const int pageSize = 1000;
+      int from = 0;
+
+      while (true) {
+        var query = _supabase
+            .from('master_fields')
+            .select(_masterFieldMapSelect)
+            .eq('is_active', true);
+
+        if (qaFi != null && qaFi.trim().isNotEmpty) {
+          final fi = qaFi.trim();
+          query = query.ilike('qa_fi', '%$fi%');
+        }
+        if (qaSpv != null && qaSpv.trim().isNotEmpty) {
+          final spv = qaSpv.trim();
+          query = query.ilike('qa_spv', '%$spv%');
+        }
+
+        final response = await query
+            .order('field_number', ascending: true)
+            .range(from, from + pageSize - 1);
+
+        allData.addAll(List<Map<String, dynamic>>.from(response));
+
+        if (response.length < pageSize) break;
+        from += pageSize;
+      }
+
+      debugPrint('Total map records fetched: ${allData.length}');
+      return allData;
+    } catch (e) {
+      throw Exception('Gagal mengambil data peta master Supabase: $e');
+    }
+  }
 
   /// Mengambil data master fields beserta semua data audit terkait.
   /// Generative sekarang menggunakan 1 tabel (audit_generative).
@@ -66,6 +166,26 @@ class SupabaseService {
       return allData;
     } catch (e) {
       throw Exception('Gagal mengambil data master Supabase: $e');
+    }
+  }
+
+  /// Mengambil satu field beserta audit lengkapnya untuk detail sheet/form.
+  Future<Map<String, dynamic>?> getMasterFieldWithAllAudits(
+    String fieldNumber,
+  ) async {
+    try {
+      final response = await _supabase.from('master_fields').select('''
+            *,
+            audit_vegetative(*),
+            audit_generative(*),
+            audit_pre_harvest(*),
+            audit_harvest(*)
+          ''').eq('field_number', fieldNumber).maybeSingle();
+
+      if (response == null) return null;
+      return Map<String, dynamic>.from(response);
+    } catch (e) {
+      throw Exception('Gagal mengambil detail field Supabase: $e');
     }
   }
 

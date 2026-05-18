@@ -111,6 +111,44 @@ final masterFieldsProvider =
 });
 
 // ============================================================
+// 3b. MASTER FIELD MAP PROVIDER (Data Ringan Untuk Peta)
+// ============================================================
+final masterFieldMapProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final supabaseService = ref.watch(supabaseServiceProvider);
+  final user = await ref.watch(currentUserProvider.future);
+
+  if (user == null) return [];
+
+  final action = user.action.toLowerCase();
+  final role = user.role.toUpperCase();
+  final userName = user.name.trim().toLowerCase();
+
+  final mapFields = (await supabaseService.getMasterFieldsForMap(
+    qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
+    qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
+  ))
+      .map(_withResolvedCorrectionTagging)
+      .toList();
+
+  if (action == 'all') return mapFields;
+
+  if (action == 'audit') {
+    if (role == 'FI') {
+      return mapFields.where((field) {
+        return QaNameHelper.fieldHasFi(field, userName);
+      }).toList();
+    } else if (role == 'SPV') {
+      return mapFields.where((field) {
+        return QaNameHelper.fieldHasSpv(field, userName);
+      }).toList();
+    }
+  }
+
+  return mapFields;
+});
+
+// ============================================================
 // 4. DATA MODEL KHUSUS PETA
 // ============================================================
 class ParsedFieldData {
@@ -328,5 +366,14 @@ final parsedMapFieldsProvider =
   if (rawFields.isEmpty) return [];
 
   // Lemparkan tugas parsing yang berat ke thread terpisah menggunakan compute
+  return await compute(_parseMapFieldsInIsolate, rawFields);
+});
+
+final parsedMasterFieldMapProvider =
+    FutureProvider<List<ParsedFieldData>>((ref) async {
+  final rawFields = await ref.watch(masterFieldMapProvider.future);
+
+  if (rawFields.isEmpty) return [];
+
   return await compute(_parseMapFieldsInIsolate, rawFields);
 });
