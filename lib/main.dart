@@ -1,4 +1,3 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -12,17 +11,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'router.dart';
 import 'services/notification_service.dart';
-import 'screens/services/config_manager.dart';
-import 'services/firebase_options.dart';
-import 'screens/services/region_mapper_service.dart';
-import 'screens/web_splash_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (kIsWeb) return;
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   final String title = message.data['title'] ?? 'Notifikasi Baru';
   final String body = message.data['body'] ?? 'Anda memiliki pesan baru.';
   await NotificationService().showNotification(title, body);
@@ -70,17 +64,6 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final currentThemeMode = ref.watch(themeProvider);
 
-    if (kIsWeb) {
-      return MaterialApp(
-        title: 'KroscekApp Web',
-        theme: AdvantaTheme.light(),
-        darkTheme: AdvantaTheme.dark(),
-        themeMode: currentThemeMode,
-        debugShowCheckedModeBanner: false,
-        home: const WebSplashScreen(),
-      );
-    }
-
     return MaterialApp.router(
       title: 'KroscekApp',
       theme: AdvantaTheme.light(),
@@ -103,8 +86,6 @@ void main() async {
   );
 
   try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
     await Hive.initFlutter();
     await Hive.openBox('vegetativeData');
     await Hive.openBox('generativeData');
@@ -112,17 +93,6 @@ void main() async {
     await Hive.openBox('harvestData');
     await Hive.openBox('pspVegetativeData');
     await Hive.openBox('pspGenerativeData');
-
-    await Future.wait([
-      ConfigManager.loadConfig(),
-      RegionMapperService.loadMappings(),
-    ]).timeout(
-      const Duration(seconds: 15),
-      onTimeout: () {
-        throw Exception('Timeout: Gagal memuat konfigurasi dalam 15 detik');
-      },
-    );
-
     await initializeDateFormatting('id_ID', null);
 
     if (!kIsWeb) {

@@ -1,28 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:kroscek/screens/admin/config_crud.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 // Admin
-import 'screens/admin/absensi_dashboard.dart';
-import 'screens/admin/account_management.dart';
-import 'screens/admin/admin_dashboard.dart';
-import 'screens/admin/aktivitas_dashboard.dart';
-import 'screens/admin/filter_regions.dart';
-import 'screens/admin/regions_dashboard.dart';
+// import 'screens/admin/admin_dashboard.dart';
 // QA
 import 'screens/qa/qa_screen.dart';
 // Login
 import 'screens/login_screen.dart';
 // Splash
 import 'screens/splash_screen.dart';
-// Flagging Graph
-import 'screens/admin/flagging_graph_page.dart';
 // Workload Map
 // import 'screens/admin/workload_map_screen.dart';
-// Audit Dashboard
-import 'screens/admin/audit_dashboard.dart';
-// Notification Management
-import 'screens/admin/notifications_management.dart';
 // Edit Field Screen
 import 'screens/qa/edit_field_screen.dart';
 // SC
@@ -61,15 +49,6 @@ final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 const _adminOnlyRoutes = {
   '/admin',
-  '/accounts',
-  '/regions',
-  '/absensi',
-  '/aktivitas',
-  '/config',
-  '/filter',
-  '/audit_dashboard',
-  '/flagging_graph',
-  '/notifications_management',
 };
 
 const _operationalWriteRoles = {
@@ -120,34 +99,10 @@ final router = GoRouter(
       path: '/qa/settings/mapping',
       builder: (context, state) => const QaMappingScreen(),
     ),
-    GoRoute(
-      path: '/admin',
-      builder: (context, state) => const AdminDashboard(),
-    ),
-    GoRoute(
-      path: '/accounts',
-      builder: (context, state) => const AccountManagement(),
-    ),
-    GoRoute(
-      path: '/regions',
-      builder: (context, state) => const RegionsDashboard(),
-    ),
-    GoRoute(
-      path: '/absensi',
-      builder: (context, state) => const AbsensiDashboard(),
-    ),
-    GoRoute(
-      path: '/aktivitas',
-      builder: (context, state) => const AktivitasDashboard(),
-    ),
-    GoRoute(
-      path: '/config',
-      builder: (context, state) => const CrudPage(),
-    ),
-    GoRoute(
-      path: '/filter',
-      builder: (context, state) => const FilterRegionsScreen(),
-    ),
+    // GoRoute(
+    //   path: '/admin',
+    //   builder: (context, state) => const AdminDashboard(),
+    // ),
     // GoRoute(
     //   path: '/workload_map',
     //   builder: (context, state) => const WorkloadMapScreen(),
@@ -162,18 +117,6 @@ final router = GoRouter(
           initialSeason: extra?['season'],
         );
       },
-    ),
-    GoRoute(
-      path: '/audit_dashboard',
-      builder: (context, state) => const AuditDashboard(),
-    ),
-    GoRoute(
-      path: '/flagging_graph',
-      builder: (context, state) => const FlaggingGraphPage(),
-    ),
-    GoRoute(
-      path: '/notifications_management',
-      builder: (context, state) => const NotificationsManagementScreen(),
     ),
     // --- NEW INSPECTION ROUTES ---
     GoRoute(
