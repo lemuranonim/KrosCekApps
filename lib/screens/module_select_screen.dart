@@ -26,6 +26,12 @@ class _ModuleSelectScreenState extends State<ModuleSelectScreen> {
     setState(() => _session = session);
   }
 
+  Future<void> _openModule(String route) async {
+    await SessionManager.instance.saveSelectedModuleRoute(route);
+    if (!mounted) return;
+    context.go(route);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -107,7 +113,7 @@ class _ModuleSelectScreenState extends State<ModuleSelectScreen> {
                 subtitle: 'Mapping audit lahan dan inspeksi fase',
                 accentColor: AdvantaColors.primaryGreen,
                 chips: const ['Map', 'Audit', 'Coverage'],
-                onTap: () => context.go('/qa'),
+                onTap: () => _openModule('/qa'),
               ),
               const SizedBox(height: 14),
               _ModuleCard(
@@ -116,7 +122,7 @@ class _ModuleSelectScreenState extends State<ModuleSelectScreen> {
                 subtitle: 'Sample tracking, purity, emergence, dan approval',
                 accentColor: AdvantaColors.gold,
                 chips: const ['GOT', 'FET', 'Review'],
-                onTap: () => context.go('/got-fet'),
+                onTap: () => _openModule('/got-fet'),
               ),
             ],
           ),

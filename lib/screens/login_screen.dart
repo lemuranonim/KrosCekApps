@@ -92,7 +92,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     }
 
     final appUser = await _auth.restoreSession();
-    if (appUser != null && mounted) _navigateByRole(appUser);
+    if (appUser != null && mounted) {
+      await _navigateToSavedModuleOrSelect();
+    }
   }
 
   void _invalidateProviders() {
@@ -157,6 +159,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         context.go('/module-select');
         break;
     }
+  }
+
+  Future<void> _navigateToSavedModuleOrSelect() async {
+    final selectedModuleRoute =
+        await SessionManager.instance.getSelectedModuleRoute();
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    context.go(selectedModuleRoute ?? '/module-select');
   }
 
   @override

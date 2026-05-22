@@ -66,7 +66,10 @@ bool _isAdminRole(String? role) => role?.toLowerCase() == 'admin';
 bool _isGuestRole(String? role) => role?.toLowerCase() == 'guest';
 bool _canWriteOperational(String? role) =>
     _operationalWriteRoles.contains(role?.toLowerCase());
-String _homeForRole(String? role) => '/module-select';
+Future<String> _homeForActiveSession() async {
+  return await SessionManager.instance.getSelectedModuleRoute() ??
+      '/module-select';
+}
 bool _isInspectionRoute(String path) =>
     path.startsWith('/inspect/') ||
     path.startsWith('/inspect_sc/') ||
@@ -286,22 +289,22 @@ final router = GoRouter(
     }
 
     if (isLoggedIn && path == '/login') {
-      return _homeForRole(userRole);
+      return await _homeForActiveSession();
     }
 
     if (!isLoggedIn) return null;
 
     if (_adminOnlyRoutes.contains(path) && !_isAdminRole(userRole)) {
-      return _homeForRole(userRole);
+      return await _homeForActiveSession();
     }
 
     if (_isOperationalWriteRoute(path) && !_canWriteOperational(userRole)) {
-      return _homeForRole(userRole);
+      return await _homeForActiveSession();
     }
 
     if ((path == '/coverage' || path == '/qa/settings/mapping') &&
         _isGuestRole(userRole)) {
-      return '/qa';
+      return await _homeForActiveSession();
     }
 
     if (path == '/detasseling-map' &&
@@ -310,7 +313,7 @@ final router = GoRouter(
           action: userAction,
           name: session.name,
         )) {
-      return _homeForRole(userRole);
+      return await _homeForActiveSession();
     }
 
     return null;

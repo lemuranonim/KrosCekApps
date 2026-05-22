@@ -92,13 +92,6 @@ class _GotFetScreenState extends State<GotFetScreen> {
           onPressed: () => context.go('/module-select'),
         ),
         title: const Text('GOT & FET'),
-        actions: [
-          IconButton(
-            tooltip: 'QA Inspection',
-            icon: const Icon(Icons.map_rounded),
-            onPressed: () => context.go('/qa'),
-          ),
-        ],
       ),
       body: IndexedStack(
         index: _selectedIndex,
