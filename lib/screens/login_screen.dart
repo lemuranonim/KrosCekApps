@@ -146,15 +146,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     setState(() => _isLoading = false);
     switch (user.role.toLowerCase()) {
       case 'admin':
-        context.go('/admin');
+        context.go('/module-select');
         break;
-    // ── BARU: Guest → /qa (read-only, enforced oleh GuestGuard) ──
+    // ── Guest masuk ke pemilih modul, akses tulis tetap dijaga router ──
       case 'guest':
-        context.go('/qa');
+        context.go('/module-select');
         break;
-    // FI, SPV, Dev, Manager, QA → /qa
+    // FI, SPV, Dev, Manager, QA → pilih QA Inspection atau GOT & FET
       default:
-        context.go('/qa');
+        context.go('/module-select');
         break;
     }
   }

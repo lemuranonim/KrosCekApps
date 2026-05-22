@@ -460,11 +460,11 @@ class SplashScreenState extends State<SplashScreen>
     if (isLoggedIn && userRole != null) {
       switch (userRole.toLowerCase()) {
         case 'admin':
-          context.go('/admin');
+          context.go('/module-select');
           break;
-      // FI, SPV, Dev, Manager, QA → /qa
+      // FI, SPV, Dev, Manager, QA -> pilih modul kerja
         default:
-          context.go('/qa');
+          context.go('/module-select');
           break;
       }
     } else {
