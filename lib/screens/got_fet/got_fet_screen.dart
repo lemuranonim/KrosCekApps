@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
 
 enum _FetPointStatus { grown, notGrown, review, notReadable }
@@ -21,6 +22,7 @@ class _GotFetScreenState extends State<GotFetScreen> {
   late final List<_GotFetSample> _samples;
   late List<_FetPointStatus> _replicationOne;
   late List<_FetPointStatus> _replicationTwo;
+  ActiveSession? _session;
 
   int _selectedIndex = 0;
   int _selectedSampleIndex = 0;
@@ -35,6 +37,7 @@ class _GotFetScreenState extends State<GotFetScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSession();
     _samples = _seedSamples();
     _replicationOne = _seedFetPoints(
       notGrownIndexes: const [6, 13, 24, 39],
@@ -50,6 +53,10 @@ class _GotFetScreenState extends State<GotFetScreen> {
 
   int get _gotTrueType =>
       math.max(0, _gotTotalObserved - _gotOffType - _gotSelfing - _gotMale);
+
+  int get _gotConfirmedIssueCount => _gotOffType + _gotSelfing + _gotMale;
+
+  bool get _gotCountsValid => _gotConfirmedIssueCount <= _gotTotalObserved;
 
   double get _gotPurity =>
       _gotTotalObserved == 0 ? 0 : (_gotTrueType / _gotTotalObserved) * 100;
@@ -75,6 +82,23 @@ class _GotFetScreenState extends State<GotFetScreen> {
   List<_FetPointStatus> get _currentReplication =>
       _selectedReplication == 1 ? _replicationOne : _replicationTwo;
 
+  bool get _currentReplicationHasOpenItems =>
+      _countStatus(_currentReplication, _FetPointStatus.review) +
+          _countStatus(_currentReplication, _FetPointStatus.notReadable) >
+      0;
+
+  int get _currentReplicationGrown =>
+      _countStatus(_currentReplication, _FetPointStatus.grown);
+
+  double get _currentReplicationEmergence =>
+      (_currentReplicationGrown / _currentReplication.length) * 100;
+
+  Future<void> _loadSession() async {
+    final session = await SessionManager.instance.getActiveSession();
+    if (!mounted) return;
+    setState(() => _session = session);
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
@@ -87,7 +111,29 @@ class _GotFetScreenState extends State<GotFetScreen> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('GOT & FET'),
+        toolbarHeight: 66,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Digital GOT & FET'),
+            const SizedBox(height: 2),
+            Text(
+              _session?.name.trim().isNotEmpty == true
+                  ? _session!.name
+                  : 'Seed quality workflow',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AdvantaText.caption.copyWith(
+                color: Theme.of(context)
+                    .appBarTheme
+                    .foregroundColor
+                    ?.withAlpha(170),
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+              ),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'User Settings',
@@ -142,9 +188,9 @@ class _GotFetScreenState extends State<GotFetScreen> {
                 'Sample movement, observation status, and decision aging.',
           ),
           const SizedBox(height: 16),
-          _buildDashboardMetrics(),
+          _buildSampleContextBlock(),
           const SizedBox(height: 16),
-          _buildSamplePicker(),
+          _buildDashboardMetrics(),
           const SizedBox(height: 16),
           _buildTimelineCard(_selectedSample),
           const SizedBox(height: 16),
@@ -171,11 +217,13 @@ class _GotFetScreenState extends State<GotFetScreen> {
                 'Genetic purity, off-type count, photo evidence, and approval.',
           ),
           const SizedBox(height: 16),
-          _buildSamplePicker(),
+          _buildSampleContextBlock(),
           const SizedBox(height: 16),
           _buildGotSummaryCard(),
           const SizedBox(height: 16),
           _buildGotInputCard(),
+          const SizedBox(height: 12),
+          _buildGotValidationNotice(),
           const SizedBox(height: 16),
           _buildPhotoStandardCard(),
           const SizedBox(height: 18),
@@ -193,12 +241,14 @@ class _GotFetScreenState extends State<GotFetScreen> {
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.send_rounded),
                   label: const Text('Submit'),
-                  onPressed: () {
-                    _selectedSample.status = 'Submitted';
-                    setState(() {});
-                    _showSnack(
-                        'GOT result ${_selectedSample.lotId} submitted.');
-                  },
+                  onPressed: _gotCountsValid
+                      ? () {
+                          _selectedSample.status = 'Submitted';
+                          setState(() {});
+                          _showSnack(
+                              'GOT result ${_selectedSample.lotId} submitted.');
+                        }
+                      : null,
                 ),
               ),
             ],
@@ -220,7 +270,7 @@ class _GotFetScreenState extends State<GotFetScreen> {
                 '50 planting holes per replication, 2 replications, 100 points.',
           ),
           const SizedBox(height: 16),
-          _buildSamplePicker(),
+          _buildSampleContextBlock(),
           const SizedBox(height: 16),
           _buildFetSummaryCard(),
           const SizedBox(height: 16),
@@ -229,6 +279,8 @@ class _GotFetScreenState extends State<GotFetScreen> {
           _buildFetGridCard(),
           const SizedBox(height: 16),
           _buildFetLegend(),
+          const SizedBox(height: 12),
+          _buildFetAttentionNotice(),
           const SizedBox(height: 18),
           Row(
             children: [
@@ -245,7 +297,9 @@ class _GotFetScreenState extends State<GotFetScreen> {
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.check_circle_rounded),
                   label: const Text('Save Rep'),
-                  onPressed: _saveFetReplication,
+                  onPressed: _currentReplicationHasOpenItems
+                      ? null
+                      : _saveFetReplication,
                 ),
               ),
             ],
@@ -267,9 +321,9 @@ class _GotFetScreenState extends State<GotFetScreen> {
                 'Supervisor validation, revision request, approval, and final decision.',
           ),
           const SizedBox(height: 16),
-          _buildReviewMetrics(),
+          _buildSampleContextBlock(),
           const SizedBox(height: 16),
-          _buildSamplePicker(),
+          _buildReviewMetrics(),
           const SizedBox(height: 16),
           _buildReviewDetailCard(),
           const SizedBox(height: 16),
@@ -373,6 +427,79 @@ class _GotFetScreenState extends State<GotFetScreen> {
         _MetricData('Decision', _selectedSample.status, Icons.flag_rounded,
             _statusColor(_selectedSample.status)),
       ],
+    );
+  }
+
+  Widget _buildSampleContextBlock() {
+    return Column(
+      children: [
+        _buildSamplePicker(),
+        const SizedBox(height: 12),
+        _buildSelectedSampleStrip(),
+      ],
+    );
+  }
+
+  Widget _buildSelectedSampleStrip() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final sample = _selectedSample;
+    final statusColor = _statusColor(sample.status);
+    final textColor =
+        isDark ? AdvantaColors.goldLight : AdvantaColors.deepForest;
+    final mutedColor = isDark
+        ? AdvantaColors.goldLight.withAlpha(155)
+        : AdvantaColors.mutedGrey;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? AdvantaColors.midGreen : Colors.white,
+        borderRadius: AdvantaRadius.cardRadius,
+        border: Border.all(
+          color: statusColor.withAlpha(isDark ? 90 : 55),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  sample.lotId,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AdvantaText.heading3.copyWith(color: textColor),
+                ),
+              ),
+              _StatusPill(label: sample.status, color: statusColor),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${sample.hybrid} | ${sample.crop} | ${sample.testType}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AdvantaText.body2.copyWith(color: mutedColor),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                  child: _MiniFact(label: 'Sample', value: sample.sampleId)),
+              Expanded(child: _MiniFact(label: 'PIC', value: sample.pic)),
+              Expanded(
+                child: _MiniFact(
+                  label: sample.isOverdue ? 'Overdue' : 'Due',
+                  value: _dateFormat.format(sample.dueDate),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -580,6 +707,26 @@ class _GotFetScreenState extends State<GotFetScreen> {
     );
   }
 
+  Widget _buildGotValidationNotice() {
+    if (_gotCountsValid) {
+      return _NoticeCard(
+        icon: Icons.check_circle_rounded,
+        title: 'GOT count valid',
+        message:
+            'Suspicious plant dicatat terpisah dan tidak mengurangi purity sebelum reviewer mengonfirmasi kategori.',
+        color: AdvantaColors.success,
+      );
+    }
+
+    return _NoticeCard(
+      icon: Icons.error_outline_rounded,
+      title: 'Periksa jumlah GOT',
+      message:
+          'Off-type + selfing + male tidak boleh melebihi total observed. Koreksi angka sebelum submit.',
+      color: AdvantaColors.error,
+    );
+  }
+
   Widget _buildPhotoStandardCard() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -735,27 +882,51 @@ class _GotFetScreenState extends State<GotFetScreen> {
                     message: 'Hole ${index + 1}: ${_fetStatusLabel(status)}',
                     child: InkWell(
                       onTap: () => _cycleFetPoint(index),
+                      onLongPress: () => _markFetPointGrown(index),
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
-                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(vertical: 3),
                         decoration: BoxDecoration(
                           color: color.withAlpha(isDark ? 70 : 42),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: color, width: 1.2),
                         ),
-                        child: Text(
-                          '${index + 1}',
-                          style: AdvantaText.caption.copyWith(
-                            color: isDark
-                                ? Colors.white
-                                : AdvantaColors.deepForest,
-                            fontWeight: FontWeight.w800,
-                          ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '${index + 1}',
+                              maxLines: 1,
+                              style: AdvantaText.caption.copyWith(
+                                color: isDark
+                                    ? Colors.white
+                                    : AdvantaColors.deepForest,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Text(
+                              _fetStatusShortLabel(status),
+                              maxLines: 1,
+                              style: AdvantaText.caption.copyWith(
+                                color: color,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
                   );
                 },
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Tap titik untuk mengganti status. Long press mengembalikan titik ke Grown.',
+              style: AdvantaText.caption.copyWith(
+                color: isDark
+                    ? AdvantaColors.goldLight.withAlpha(155)
+                    : AdvantaColors.mutedGrey,
               ),
             ),
           ],
@@ -775,6 +946,31 @@ class _GotFetScreenState extends State<GotFetScreen> {
             color: _fetStatusColor(status),
           ),
       ],
+    );
+  }
+
+  Widget _buildFetAttentionNotice() {
+    final reviewCount =
+        _countStatus(_currentReplication, _FetPointStatus.review);
+    final notReadableCount =
+        _countStatus(_currentReplication, _FetPointStatus.notReadable);
+
+    if (reviewCount == 0 && notReadableCount == 0) {
+      return _NoticeCard(
+        icon: Icons.check_circle_rounded,
+        title: 'Replication ready',
+        message:
+            'Rep $_selectedReplication siap disimpan. Emergence rep ini ${_currentReplicationEmergence.toStringAsFixed(1)}%.',
+        color: AdvantaColors.success,
+      );
+    }
+
+    return _NoticeCard(
+      icon: Icons.warning_rounded,
+      title: 'Manual correction required',
+      message:
+          '$reviewCount review point dan $notReadableCount unreadable point harus dikoreksi sebelum Rep $_selectedReplication disimpan.',
+      color: AdvantaColors.gold,
     );
   }
 
@@ -952,6 +1148,12 @@ class _GotFetScreenState extends State<GotFetScreen> {
     });
   }
 
+  void _markFetPointGrown(int index) {
+    setState(() {
+      _currentReplication[index] = _FetPointStatus.grown;
+    });
+  }
+
   void _saveFetReplication() {
     final reviewCount =
         _countStatus(_currentReplication, _FetPointStatus.review);
@@ -999,6 +1201,15 @@ class _GotFetScreenState extends State<GotFetScreen> {
       _FetPointStatus.notGrown => 'Not Grown',
       _FetPointStatus.review => 'Review',
       _FetPointStatus.notReadable => 'Not Readable',
+    };
+  }
+
+  String _fetStatusShortLabel(_FetPointStatus status) {
+    return switch (status) {
+      _FetPointStatus.grown => 'G',
+      _FetPointStatus.notGrown => 'NG',
+      _FetPointStatus.review => 'R',
+      _FetPointStatus.notReadable => 'NR',
     };
   }
 
@@ -1495,6 +1706,66 @@ class _ValidationChip extends StatelessWidget {
               color:
                   isDark ? AdvantaColors.goldLight : AdvantaColors.deepForest,
               fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoticeCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+  final Color color;
+
+  const _NoticeCard({
+    required this.icon,
+    required this.title,
+    required this.message,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: color.withAlpha(isDark ? 42 : 22),
+        borderRadius: AdvantaRadius.cardRadius,
+        border: Border.all(color: color.withAlpha(isDark ? 95 : 70)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AdvantaText.bodyBold.copyWith(
+                    color: isDark
+                        ? AdvantaColors.goldLight
+                        : AdvantaColors.deepForest,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  message,
+                  style: AdvantaText.caption.copyWith(
+                    color: isDark
+                        ? AdvantaColors.goldLight.withAlpha(160)
+                        : AdvantaColors.charcoal.withAlpha(170),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

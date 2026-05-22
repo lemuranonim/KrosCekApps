@@ -86,7 +86,8 @@ class _GotFetSettingsScreenState extends State<GotFetSettingsScreen> {
     );
 
     if (confirmed != true || !mounted) return;
-    await SessionManager.instance.clearSessionOnLogout(userId: _session?.userId);
+    await SessionManager.instance
+        .clearSessionOnLogout(userId: _session?.userId);
     if (!mounted) return;
     context.go('/login');
   }
@@ -95,9 +96,11 @@ class _GotFetSettingsScreenState extends State<GotFetSettingsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final textColor = isDark ? AdvantaColors.goldLight : AdvantaColors.deepForest;
-    final mutedColor =
-        isDark ? AdvantaColors.goldLight.withAlpha(165) : AdvantaColors.mutedGrey;
+    final textColor =
+        isDark ? AdvantaColors.goldLight : AdvantaColors.deepForest;
+    final mutedColor = isDark
+        ? AdvantaColors.goldLight.withAlpha(165)
+        : AdvantaColors.mutedGrey;
 
     return Scaffold(
       appBar: AppBar(
