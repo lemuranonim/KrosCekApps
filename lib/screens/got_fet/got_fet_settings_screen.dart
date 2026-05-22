@@ -5,6 +5,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
 
+const _gotFetNavy = Color(0xFF061A44);
+const _gotFetGreen = Color(0xFF009B54);
+const _gotFetSurface = Color(0xFFF6F8FB);
+
 class GotFetSettingsScreen extends StatefulWidget {
   const GotFetSettingsScreen({super.key});
 
@@ -103,7 +107,11 @@ class _GotFetSettingsScreenState extends State<GotFetSettingsScreen> {
         : AdvantaColors.mutedGrey;
 
     return Scaffold(
+      backgroundColor: isDark ? AdvantaColors.deepForest : _gotFetSurface,
       appBar: AppBar(
+        backgroundColor: _gotFetNavy,
+        foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         title: const Text('GOT & FET Settings'),
       ),
       body: SafeArea(
@@ -122,14 +130,14 @@ class _GotFetSettingsScreenState extends State<GotFetSettingsScreen> {
                             width: 54,
                             height: 54,
                             decoration: BoxDecoration(
-                              color: AdvantaColors.gold.withAlpha(
+                              color: _gotFetGreen.withAlpha(
                                 isDark ? 45 : 24,
                               ),
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: const Icon(
                               Icons.science_rounded,
-                              color: AdvantaColors.gold,
+                              color: _gotFetGreen,
                               size: 28,
                             ),
                           ),
@@ -190,6 +198,7 @@ class _GotFetSettingsScreenState extends State<GotFetSettingsScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AdvantaColors.error,
                         foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
                       icon: const Icon(Icons.logout_rounded),
                       label: const Text('KELUAR'),
