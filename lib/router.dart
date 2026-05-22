@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/qa/qa_screen.dart';
 import 'screens/module_select_screen.dart';
 import 'screens/got_fet/got_fet_screen.dart';
+import 'screens/got_fet/got_fet_settings_screen.dart';
 // Login
 import 'screens/login_screen.dart';
 // Splash
@@ -104,6 +105,10 @@ final router = GoRouter(
     GoRoute(
       path: '/got-fet',
       builder: (context, state) => const GotFetScreen(),
+    ),
+    GoRoute(
+      path: '/got-fet/settings',
+      builder: (context, state) => const GotFetSettingsScreen(),
     ),
     GoRoute(
       path: '/qa/settings',

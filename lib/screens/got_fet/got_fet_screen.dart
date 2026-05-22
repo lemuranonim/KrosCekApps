@@ -86,12 +86,15 @@ class _GotFetScreenState extends State<GotFetScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          tooltip: 'Kembali',
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/module-select'),
-        ),
+        automaticallyImplyLeading: false,
         title: const Text('GOT & FET'),
+        actions: [
+          IconButton(
+            tooltip: 'User Settings',
+            icon: const Icon(Icons.account_circle_rounded),
+            onPressed: () => context.push('/got-fet/settings'),
+          ),
+        ],
       ),
       body: IndexedStack(
         index: _selectedIndex,
