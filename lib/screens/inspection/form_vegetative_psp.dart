@@ -39,6 +39,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   final _corrTaggingCtrl = TextEditingController();
   final _coRoguingCtrl = TextEditingController();
   final _fieldSizeCtrl = TextEditingController();
+  final _pldAreaCtrl = TextEditingController();
+  final _pldReasonCtrl = TextEditingController();
   final _manualLatCtrl = TextEditingController();
   final _manualLngCtrl = TextEditingController();
   late final List<_PspRoguingDraft> _roguings;
@@ -58,9 +60,12 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   DateTime? _revTglTanam;
   String? _previousCrop;
   String? _typeSeed;
+  String? _recommendation;
   String? _corrTaggingSource;
 
   bool get _isGuest => GuestGuard.isGuest(_session);
+  bool get _isPld => pspIsDiscardDecision(_recommendation);
+  bool get _requiresFullAudit => !_isGuest && !_isPld;
   _PspRoguingDraft get _selectedRoguing => _roguings[_selectedRoguingIndex];
 
   @override
@@ -79,6 +84,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     _corrTaggingCtrl.dispose();
     _coRoguingCtrl.dispose();
     _fieldSizeCtrl.dispose();
+    _pldAreaCtrl.dispose();
+    _pldReasonCtrl.dispose();
     _manualLatCtrl.dispose();
     _manualLngCtrl.dispose();
     for (final roguing in _roguings) {
@@ -211,6 +218,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         '';
     _coRoguingCtrl.text = audit?['co_detasseling']?.toString() ?? '';
     _fieldSizeCtrl.text = audit?['field_size_by_audit_ha']?.toString() ?? '';
+    _pldAreaCtrl.text = audit?['recommendation_pld_ha']?.toString() ?? '';
+    _pldReasonCtrl.text = audit?['pld_reason']?.toString() ?? '';
 
     _revTglTanam = _parseDate(
         audit?['rev_planting_date'] ?? fieldData['planting_date_pdn']);
@@ -218,6 +227,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     setState(() {
       _previousCrop = audit?['previous_crop_by_audit']?.toString();
       _typeSeed = audit?['type_seed']?.toString();
+      _recommendation = audit?['decision']?.toString();
       for (final roguing in _roguings) {
         roguing.load(audit);
       }
@@ -541,16 +551,37 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     return true;
   }
 
+  bool _validatePldRecommendation() {
+    if (!_isPld) return true;
+    final pldArea = _parseDouble(_pldAreaCtrl);
+    if (pldArea == null || pldArea <= 0) {
+      _snack('Recommendation PLD (Ha) wajib diisi dengan angka valid',
+          err: true);
+      return false;
+    }
+    return true;
+  }
+
+  String _pldReasonValue() {
+    final reason = _pldReasonCtrl.text.trim();
+    if (reason.isNotEmpty) return reason;
+    return 'PSP Recommendation Discard - Roguing ${_selectedRoguing.number}';
+  }
+
   Future<void> _saveAudit() async {
     if (GuestGuard.blockIfGuest(context, _session)) return;
-    if (_corrTaggingCtrl.text.trim().isEmpty) {
-      _snack('Correction Tagging wajib diisi atau dikonfirmasi', err: true);
-      return;
-    }
-    if (!_validateDates()) return;
-    if (!_formKey.currentState!.validate()) {
-      _snack('Periksa kembali isian form', err: true);
-      return;
+    if (_isPld) {
+      if (!_validatePldRecommendation()) return;
+    } else {
+      if (_corrTaggingCtrl.text.trim().isEmpty) {
+        _snack('Correction Tagging wajib diisi atau dikonfirmasi', err: true);
+        return;
+      }
+      if (!_validateDates()) return;
+      if (!_formKey.currentState!.validate()) {
+        _snack('Periksa kembali isian form', err: true);
+        return;
+      }
     }
 
     setState(() => _isSaving = true);
@@ -591,13 +622,13 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         'offtype_in_male': r4.offtype ?? r1.offtype,
         'offtype_in_female': r4.offtype ?? r1.offtype,
         'lsv_status': r4.lsv,
-        'decision': null,
-        'pld_reason': null,
-        'flagging': null,
-        'remarks': null,
+        'decision': _recommendation,
+        'pld_reason': _isPld ? _pldReasonValue() : null,
+        'flagging': _isPld ? 'PLD' : null,
+        'remarks': _isPld ? _pldReasonCtrl.text.trim() : null,
         'fase': 'vegetative',
         'updated_at': now.toIso8601String(),
-        'recommendation_pld_ha': null,
+        'recommendation_pld_ha': _isPld ? _parseDouble(_pldAreaCtrl) : null,
       };
 
       for (final roguing in _roguings) {
@@ -642,7 +673,9 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       if (!mounted) return;
       ref.invalidate(masterFieldDetailProvider(widget.fieldNumber));
       ref.invalidate(vegetativeAuditProvider(widget.fieldNumber));
-      _snack('Vegetative PSP audit berhasil disimpan');
+      _snack(_isPld
+          ? 'Rekomendasi PLD Roguing ${_selectedRoguing.number} berhasil disimpan'
+          : 'Vegetative PSP audit berhasil disimpan');
       await Future.delayed(const Duration(milliseconds: 600));
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -694,12 +727,16 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       appBar: PspAppBar(
         checkpointLabel: 'Vegetative PSP/PS',
         fieldNumber: widget.fieldNumber,
-        isDiscard: false,
+        isDiscard: _isPld,
         accentColor: _kPspVeg,
         onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () => AdvantaLoadingState(title: 'Memuat form audit', subtitle: 'Mengambil data inspeksi', accentColor: _kPspVeg, icon: Icons.assignment_rounded),
+        loading: () => AdvantaLoadingState(
+            title: 'Memuat form audit',
+            subtitle: 'Mengambil data inspeksi',
+            accentColor: _kPspVeg,
+            icon: Icons.assignment_rounded),
         error: (e, _) => Center(
           child: Text(
             'Error: $e',
@@ -763,10 +800,12 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           ),
           PspSaveBar(
             isSaving: _isSaving,
-            isDiscard: false,
+            isDiscard: _isPld && !_isGuest,
             saveLabel: _isGuest
                 ? 'READ-ONLY - TIDAK DAPAT MENYIMPAN'
-                : 'SIMPAN $activeSaveLabel',
+                : (_isPld
+                    ? 'SIMPAN $activeSaveLabel - PLD'
+                    : 'SIMPAN $activeSaveLabel'),
             onSave: _isGuest
                 ? () => GuestGuard.blockIfGuest(context, _session)
                 : _saveAudit,
@@ -788,7 +827,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           hint: 'Nama QA Field Inspector',
           column: 'qa_fi',
           icon: Icons.person_outline,
-          required: !_isGuest,
+          required: _requiresFullAudit,
           accentColor: _kPspVeg,
         ),
         const SizedBox(height: 12),
@@ -798,7 +837,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           hint: 'Nama QA Supervisor',
           column: 'qa_spv',
           icon: Icons.supervisor_account_outlined,
-          required: !_isGuest,
+          required: _requiresFullAudit,
           accentColor: _kPspVeg,
         ),
         const SizedBox(height: 12),
@@ -808,7 +847,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           controller: _coRoguingCtrl,
           label: 'Co-Roguing',
           hint: 'Nama PIC co-roguing',
-          required: !_isGuest,
+          required: _requiresFullAudit,
           icon: Icons.group_outlined,
           accentColor: _kPspVeg,
         ),
@@ -828,7 +867,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           label: 'Field Size by Audit (Ha)',
           keyboardType: TextInputType.number,
           icon: Icons.crop_landscape_outlined,
-          required: !_isGuest,
+          required: _requiresFullAudit,
           accentColor: _kPspVeg,
         ),
         const SizedBox(height: 14),
@@ -836,7 +875,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           label: 'Previous Crop Actual',
           options: pspPreviousCropActualOpts,
           value: _previousCrop,
-          required: !_isGuest,
+          required: _requiresFullAudit,
           onChanged: (v) => _setValue(() => _previousCrop = v),
           accentColor: _kPspVeg,
         ),
@@ -845,7 +884,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           label: 'Type Seed',
           options: pspTypeSeedOpts,
           value: _typeSeed,
-          required: !_isGuest,
+          required: _requiresFullAudit,
           onChanged: (v) => _setValue(() => _typeSeed = v),
           accentColor: _kPspVeg,
         ),
@@ -887,6 +926,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       icon: Icons.eco_outlined,
       color: color,
       children: [
+        _buildPldRecommendationFields(color, roguing.number),
+        const SizedBox(height: 14),
         _dateTile('Date Of Inspeksi Roguing 1', roguing),
         const SizedBox(height: 14),
         _isolationFields(roguing, color),
@@ -903,9 +944,50 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       icon: Icons.fact_check_outlined,
       color: color,
       children: [
+        _buildPldRecommendationFields(color, roguing.number),
+        const SizedBox(height: 14),
         _dateTile('Date Of Inspeksi Roguing ${roguing.number}', roguing),
         const SizedBox(height: 14),
         _coreRoguingFields(roguing, color, includeLsv: true),
+      ],
+    );
+  }
+
+  Widget _buildPldRecommendationFields(Color color, int roguingNumber) {
+    return Column(
+      children: [
+        PspOptionPicker(
+          label: 'Recommendation Discard / PLD',
+          options: pspRecommendationOpts,
+          value: _recommendation,
+          onChanged: (v) => _setValue(() => _recommendation = v),
+          accentColor: AdvantaColors.error,
+        ),
+        if (_isPld) ...[
+          const SizedBox(height: 12),
+          PspDiscardBanner(
+            message:
+                'Recommendation Discard aktif di Roguing $roguingNumber - audit lengkap tidak wajib diisi.',
+          ),
+        ],
+        const SizedBox(height: 14),
+        PspTextField(
+          controller: _pldAreaCtrl,
+          label: 'Recommendation PLD (Ha)',
+          keyboardType: TextInputType.number,
+          icon: Icons.square_foot_outlined,
+          required: _isPld && !_isGuest,
+          accentColor: AdvantaColors.error,
+        ),
+        const SizedBox(height: 14),
+        PspTextField(
+          controller: _pldReasonCtrl,
+          label: 'Reason / Remarks PLD',
+          hint: 'Alasan rekomendasi discard',
+          maxLines: 3,
+          icon: Icons.edit_note_outlined,
+          accentColor: color,
+        ),
       ],
     );
   }
@@ -1541,7 +1623,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Audit Offtype',
-                required: !_isGuest,
+                required: _requiresFullAudit,
                 options: pspBinaryFindingOpts,
                 value: roguing.offtype,
                 onChanged: (v) => _setValue(() => roguing.offtype = v),
@@ -1552,7 +1634,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Audit Volunteer',
-                required: !_isGuest,
+                required: _requiresFullAudit,
                 options: pspBinaryFindingOpts,
                 value: roguing.volunteer,
                 onChanged: (v) => _setValue(() => roguing.volunteer = v),
@@ -1565,7 +1647,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           const SizedBox(height: 14),
           PspOptionPicker(
             label: 'Audit LSV',
-            required: !_isGuest,
+            required: _requiresFullAudit,
             options: pspNoYesOpts,
             value: roguing.lsv,
             onChanged: (v) => _setValue(() => roguing.lsv = v),
@@ -1575,7 +1657,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         const SizedBox(height: 14),
         PspOptionPicker(
           label: 'Crop Health',
-          required: !_isGuest,
+          required: _requiresFullAudit,
           options: pspScoreOpts,
           value: roguing.cropHealth,
           onChanged: (v) => _setValue(() => roguing.cropHealth = v),
@@ -1584,7 +1666,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         const SizedBox(height: 14),
         PspOptionPicker(
           label: 'Crop Uniformity',
-          required: !_isGuest,
+          required: _requiresFullAudit,
           options: pspScoreOpts,
           value: roguing.cropUniformity,
           onChanged: (v) => _setValue(() => roguing.cropUniformity = v),
@@ -1599,7 +1681,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       children: [
         PspOptionPicker(
           label: 'Isolation Audit',
-          required: !_isGuest,
+          required: _requiresFullAudit,
           options: pspNoYesOpts,
           value: roguing.isolationAudit,
           onChanged: (v) => _setValue(() => roguing.isolationAudit = v),
@@ -1611,7 +1693,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Isolation Type',
-                required: !_isGuest &&
+                required: _requiresFullAudit &&
                     pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: pspIsolationTypeOpts,
                 value: roguing.isolationType,
@@ -1623,7 +1705,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Isolation Distance',
-                required: !_isGuest &&
+                required: _requiresFullAudit &&
                     pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: pspIsolationDistanceOpts,
                 value: roguing.isolationDistance,

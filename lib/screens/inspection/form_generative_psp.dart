@@ -39,6 +39,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
 
   bool get _isGuest => GuestGuard.isGuest(_session);
   bool get _isPld => pspIsDiscardDecision(_recommendation);
+  bool get _requiresFullAudit => !_isGuest && !_isPld;
   _PspGenRoguingDraft get _selectedRoguing => _roguings[_selectedRoguingIndex];
 
   @override
@@ -124,6 +125,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
   }
 
   bool _validateDates() {
+    if (_isPld) return true;
     final activeRoguing = _selectedRoguing;
     if (activeRoguing.date == null) {
       _snack('Tanggal Roguing ${activeRoguing.number} wajib diisi', err: true);
@@ -142,12 +144,33 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
     return true;
   }
 
+  bool _validatePldRecommendation() {
+    if (!_isPld) return true;
+    final pldArea = _parseDouble(_pldAreaCtrl);
+    if (pldArea == null || pldArea <= 0) {
+      _snack('Recommendation PLD (Ha) wajib diisi dengan angka valid',
+          err: true);
+      return false;
+    }
+    return true;
+  }
+
+  String _pldReasonValue() {
+    final reason = _remarksCtrl.text.trim();
+    if (reason.isNotEmpty) return reason;
+    return 'PSP Recommendation Discard - Roguing ${_selectedRoguing.number}';
+  }
+
   Future<void> _save() async {
     if (GuestGuard.blockIfGuest(context, _session)) return;
     if (!_validateDates()) return;
-    if (!_formKey.currentState!.validate()) {
-      _snack('Periksa kembali isian form', err: true);
-      return;
+    if (_isPld) {
+      if (!_validatePldRecommendation()) return;
+    } else {
+      if (!_formKey.currentState!.validate()) {
+        _snack('Periksa kembali isian form', err: true);
+        return;
+      }
     }
 
     setState(() => _isSaving = true);
@@ -165,10 +188,10 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
         'lsv_status_5': r6.lsv,
         'crop_health_5': r6.cropHealth,
         'crop_uniformity_5': r6.cropUniformity,
-        'final_flagging_5': r6.flagging,
+        'final_flagging_5': _isPld ? 'PLD' : r6.flagging,
         'final_decision_5': _recommendation,
         'pld_area_ha_5': _isPld ? _parseDouble(_pldAreaCtrl) : null,
-        'pld_reason_5': _isPld ? 'PSP Recommendation Discard' : null,
+        'pld_reason_5': _isPld ? _pldReasonValue() : null,
         'remarks_5': _remarksCtrl.text.trim(),
         'submitted_at_5': now.toIso8601String(),
         'fase': 'generative_5',
@@ -212,7 +235,9 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
       if (!mounted) return;
       ref.invalidate(masterFieldDetailProvider(widget.fieldNumber));
       ref.invalidate(generativeAuditProvider(widget.fieldNumber));
-      _snack('Generative PSP audit berhasil disimpan');
+      _snack(_isPld
+          ? 'Rekomendasi PLD Roguing ${_selectedRoguing.number} berhasil disimpan'
+          : 'Generative PSP audit berhasil disimpan');
       await Future.delayed(const Duration(milliseconds: 600));
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -252,7 +277,11 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
         onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () => AdvantaLoadingState(title: 'Memuat form audit', subtitle: 'Mengambil data inspeksi', accentColor: _kPspGen, icon: Icons.assignment_rounded),
+        loading: () => AdvantaLoadingState(
+            title: 'Memuat form audit',
+            subtitle: 'Mengambil data inspeksi',
+            accentColor: _kPspGen,
+            icon: Icons.assignment_rounded),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (audit) {
           _loadAudit(audit, fieldData);
@@ -327,7 +356,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
           label: 'QA FI',
           hint: 'Nama QA Field Inspector',
           column: 'qa_fi',
-          required: !_isGuest,
+          required: _requiresFullAudit,
           icon: Icons.person_outline,
           accentColor: _kPspGen,
         ),
@@ -337,7 +366,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
           label: 'QA SPV',
           hint: 'Nama QA Supervisor',
           column: 'qa_spv',
-          required: !_isGuest,
+          required: _requiresFullAudit,
           icon: Icons.supervisor_account_outlined,
           accentColor: _kPspGen,
         ),
@@ -370,6 +399,8 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
       icon: isFinal ? Icons.gavel_outlined : Icons.fact_check_outlined,
       color: color,
       children: [
+        _buildPldRecommendationFields(color, roguing.number, isFinal: isFinal),
+        const SizedBox(height: 14),
         PspDateTileNullable(
           label: 'Date Of Inspeksi Roguing ${roguing.number}',
           date: roguing.date,
@@ -383,7 +414,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
         const SizedBox(height: 14),
         PspOptionPicker(
           label: 'Nicking Observation',
-          required: !_isGuest,
+          required: _requiresFullAudit,
           options: pspNoYesOpts,
           value: roguing.nickingObservation,
           onChanged: (v) => _setValue(() => roguing.nickingObservation = v),
@@ -392,46 +423,55 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
         const SizedBox(height: 14),
         PspOptionPicker(
           label: 'Flagging',
-          required: !_isGuest,
+          required: _requiresFullAudit,
           options: pspRoguingFlaggingOpts,
           value: roguing.flagging,
           onChanged: (v) => _setValue(() => roguing.flagging = v),
           accentColor: color,
         ),
-        if (isFinal) ...[
-          const SizedBox(height: 14),
-          PspOptionPicker(
-            label: 'Recommendation',
-            required: !_isGuest,
-            options: pspRecommendationOpts,
-            value: _recommendation,
-            onChanged: (v) => _setValue(() => _recommendation = v),
-            accentColor: color,
-          ),
-          if (_isPld) ...[
-            const SizedBox(height: 12),
-            const PspDiscardBanner(
-              message: 'Recommendation Discard aktif - isi luas PLD bila ada.',
-            ),
-          ],
-          const SizedBox(height: 14),
-          PspTextField(
-            controller: _pldAreaCtrl,
-            label: 'Recommendation PLD (Ha)',
-            keyboardType: TextInputType.number,
-            icon: Icons.square_foot_outlined,
-            required: _isPld && !_isGuest,
-            accentColor: color,
-          ),
-          const SizedBox(height: 14),
-          PspTextField(
-            controller: _remarksCtrl,
-            label: 'Remarks',
-            maxLines: 4,
-            icon: Icons.edit_note_outlined,
-            accentColor: color,
+      ],
+    );
+  }
+
+  Widget _buildPldRecommendationFields(
+    Color color,
+    int roguingNumber, {
+    required bool isFinal,
+  }) {
+    return Column(
+      children: [
+        PspOptionPicker(
+          label: isFinal ? 'Recommendation' : 'Recommendation Discard / PLD',
+          required: _requiresFullAudit && isFinal,
+          options: pspRecommendationOpts,
+          value: _recommendation,
+          onChanged: (v) => _setValue(() => _recommendation = v),
+          accentColor: AdvantaColors.error,
+        ),
+        if (_isPld) ...[
+          const SizedBox(height: 12),
+          PspDiscardBanner(
+            message:
+                'Recommendation Discard aktif di Roguing $roguingNumber - audit lengkap tidak wajib diisi.',
           ),
         ],
+        const SizedBox(height: 14),
+        PspTextField(
+          controller: _pldAreaCtrl,
+          label: 'Recommendation PLD (Ha)',
+          keyboardType: TextInputType.number,
+          icon: Icons.square_foot_outlined,
+          required: _isPld && !_isGuest,
+          accentColor: AdvantaColors.error,
+        ),
+        const SizedBox(height: 14),
+        PspTextField(
+          controller: _remarksCtrl,
+          label: 'Remarks',
+          maxLines: 4,
+          icon: Icons.edit_note_outlined,
+          accentColor: color,
+        ),
       ],
     );
   }
@@ -445,7 +485,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Standing crop Offtype',
-                required: !_isGuest,
+                required: _requiresFullAudit,
                 options: pspBinaryFindingOpts,
                 value: roguing.standingCropOfftype,
                 onChanged: (v) =>
@@ -457,7 +497,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Standing crop Volunteer',
-                required: !_isGuest,
+                required: _requiresFullAudit,
                 options: pspBinaryFindingOpts,
                 value: roguing.standingCropVolunteer,
                 onChanged: (v) =>
@@ -474,7 +514,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Offtype Shed',
-                required: !_isGuest,
+                required: _requiresFullAudit,
                 options: pspBinaryFindingOpts,
                 value: roguing.offtypeShed,
                 onChanged: (v) => _setValue(() => roguing.offtypeShed = v),
@@ -485,7 +525,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Volunteer Shed',
-                required: !_isGuest,
+                required: _requiresFullAudit,
                 options: pspBinaryFindingOpts,
                 value: roguing.volunteerShed,
                 onChanged: (v) => _setValue(() => roguing.volunteerShed = v),
@@ -497,7 +537,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
         const SizedBox(height: 14),
         PspOptionPicker(
           label: 'Audit LSV',
-          required: !_isGuest,
+          required: _requiresFullAudit,
           options: pspNoYesOpts,
           value: roguing.lsv,
           onChanged: (v) => _setValue(() => roguing.lsv = v),
@@ -506,7 +546,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
         const SizedBox(height: 14),
         PspOptionPicker(
           label: 'Crop Health',
-          required: !_isGuest,
+          required: _requiresFullAudit,
           options: pspScoreOpts,
           value: roguing.cropHealth,
           onChanged: (v) => _setValue(() => roguing.cropHealth = v),
@@ -515,7 +555,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
         const SizedBox(height: 14),
         PspOptionPicker(
           label: 'Crop Uniformity',
-          required: !_isGuest,
+          required: _requiresFullAudit,
           options: pspScoreOpts,
           value: roguing.cropUniformity,
           onChanged: (v) => _setValue(() => roguing.cropUniformity = v),
@@ -530,7 +570,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
       children: [
         PspOptionPicker(
           label: 'Isolation Audit',
-          required: !_isGuest,
+          required: _requiresFullAudit,
           options: pspNoYesOpts,
           value: roguing.isolationAudit,
           onChanged: (v) => _setValue(() => roguing.isolationAudit = v),
@@ -542,7 +582,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Isolation Type',
-                required: !_isGuest &&
+                required: _requiresFullAudit &&
                     pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: pspIsolationTypeOpts,
                 value: roguing.isolationType,
@@ -554,7 +594,7 @@ class _FormGenerativePSPState extends ConsumerState<FormGenerativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Isolation Distance',
-                required: !_isGuest &&
+                required: _requiresFullAudit &&
                     pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: pspIsolationDistanceOpts,
                 value: roguing.isolationDistance,

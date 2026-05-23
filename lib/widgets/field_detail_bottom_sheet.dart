@@ -250,13 +250,19 @@ class _FieldDetailBottomSheetState
   bool _isVegetativePldDecision(dynamic value) {
     final normalized = _normalizedAuditValue(value);
     if (normalized.isEmpty) return false;
-    return normalized == 'D' || _isExplicitPldValue(value);
+    return normalized == 'D' ||
+        normalized == 'DISCARD' ||
+        _isExplicitPldValue(value);
   }
 
   bool _isVegetativePldAction(dynamic value) {
     final normalized = _normalizedAuditValue(value);
     if (normalized.isEmpty) return false;
-    return normalized == 'F' || _isExplicitPldValue(value);
+    return normalized == 'F' ||
+        normalized == 'G' ||
+        normalized == 'DISCARD PARTIAL' ||
+        normalized == 'DISCARD FULL' ||
+        _isExplicitPldValue(value);
   }
 
   bool _isPldFlagging(dynamic value) => _isExplicitPldValue(value);
@@ -271,7 +277,7 @@ class _FieldDetailBottomSheetState
 
   bool _isGenerativePldAudit(Map<String, dynamic>? audit, int checkpoint) {
     if (audit == null) return false;
-    return _isExplicitPldValue(audit['final_decision_$checkpoint']) ||
+    return _isVegetativePldDecision(audit['final_decision_$checkpoint']) ||
         _isExplicitPldValue(audit['action_needed_$checkpoint']) ||
         _isPldFlagging(audit['final_flagging_$checkpoint']) ||
         _isPldFlagging(audit['flagging_$checkpoint']);
@@ -279,14 +285,14 @@ class _FieldDetailBottomSheetState
 
   bool _isPreHarvestPldAudit(Map<String, dynamic>? audit) {
     if (audit == null) return false;
-    return _isExplicitPldValue(audit['final_decision']) ||
+    return _isVegetativePldDecision(audit['final_decision']) ||
         _isPldFlagging(audit['flagging']) ||
         _isPldFlagging(audit['final_flagging']);
   }
 
   bool _isHarvestPldAudit(Map<String, dynamic>? audit) {
     if (audit == null) return false;
-    return _isExplicitPldValue(audit['final_decision']) ||
+    return _isVegetativePldDecision(audit['final_decision']) ||
         _isPldFlagging(audit['final_flagging']) ||
         _isPldFlagging(audit['downgrade_flagging']);
   }
