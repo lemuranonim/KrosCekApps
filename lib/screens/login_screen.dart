@@ -93,7 +93,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
     final appUser = await _auth.restoreSession();
     if (appUser != null && mounted) {
-      await _navigateToSavedModuleOrSelect();
+      _navigateHome();
     }
   }
 
@@ -148,25 +148,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     setState(() => _isLoading = false);
     switch (user.role.toLowerCase()) {
       case 'admin':
-        context.go('/module-select');
+        context.go('/qa');
         break;
-    // ── Guest masuk ke pemilih modul, akses tulis tetap dijaga router ──
+    // ── Guest masuk ke QA Inspection, akses tulis tetap dijaga router ──
       case 'guest':
-        context.go('/module-select');
+        context.go('/qa');
         break;
-    // FI, SPV, Dev, Manager, QA → pilih QA Inspection atau GOT & FET
+    // FI, SPV, Dev, Manager, QA → langsung ke QA Inspection
       default:
-        context.go('/module-select');
+        context.go('/qa');
         break;
     }
   }
 
-  Future<void> _navigateToSavedModuleOrSelect() async {
-    final selectedModuleRoute =
-        await SessionManager.instance.getSelectedModuleRoute();
+  void _navigateHome() {
     if (!mounted) return;
     setState(() => _isLoading = false);
-    context.go(selectedModuleRoute ?? '/module-select');
+    context.go('/qa');
   }
 
   @override

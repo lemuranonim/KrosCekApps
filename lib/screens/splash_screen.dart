@@ -454,13 +454,11 @@ class SplashScreenState extends State<SplashScreen>
     // Kedua-duanya harus valid — Supabase session + local session
     final isLoggedIn = supabaseUser != null && session != null;
     final userRole   = session?.role;
-    final selectedModuleRoute =
-        await SessionManager.instance.getSelectedModuleRoute();
 
     if (!mounted) return;
 
     if (isLoggedIn && userRole != null) {
-      context.go(selectedModuleRoute ?? '/module-select');
+      context.go('/qa');
     } else {
       context.go('/login');
     }

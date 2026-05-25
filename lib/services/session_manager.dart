@@ -17,7 +17,6 @@ class SessionKeys {
   static const activeUserAction = '_session_active_user_action';
   static const activeUserRegion = '_session_active_user_region';     // <--- TAMBAHAN
   static const activeUserDistrict = '_session_active_user_district'; // <--- TAMBAHAN
-  static const selectedModuleRoute = 'selected_module_route';
 
   static String forUser(String uid, String dataKey) => 'u_${uid}_$dataKey';
 }
@@ -69,11 +68,6 @@ class SessionManager {
   SessionManager._();
   static final SessionManager instance = SessionManager._();
 
-  static const _allowedModuleRoutes = {
-    '/qa',
-    '/got-fet',
-  };
-
   Future<ActiveSession?> getActiveSession() async {
     final prefs = await SharedPreferences.getInstance();
     final uid = prefs.getString(SessionKeys.activeUserId);
@@ -102,32 +96,6 @@ class SessionManager {
     await prefs.setString(SessionKeys.activeUserAction, session.action);
     await prefs.setString(SessionKeys.activeUserRegion, session.region ?? '');     // <--- TAMBAH INI
     await prefs.setString(SessionKeys.activeUserDistrict, session.district ?? ''); // <--- TAMBAH INI
-  }
-
-  Future<String?> getSelectedModuleRoute() async {
-    final session = await getActiveSession();
-    if (session == null) return null;
-
-    final prefs = await SharedPreferences.getInstance();
-    final route = prefs.getString(
-      SessionKeys.forUser(session.userId, SessionKeys.selectedModuleRoute),
-    );
-
-    if (_allowedModuleRoutes.contains(route)) return route;
-    return null;
-  }
-
-  Future<void> saveSelectedModuleRoute(String route) async {
-    if (!_allowedModuleRoutes.contains(route)) return;
-
-    final session = await getActiveSession();
-    if (session == null) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      SessionKeys.forUser(session.userId, SessionKeys.selectedModuleRoute),
-      route,
-    );
   }
 
   // [BARU] Fungsi untuk refresh nama di cache lokal setelah rename berhasil

@@ -5,9 +5,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 // import 'screens/admin/admin_dashboard.dart';
 // QA
 import 'screens/qa/qa_screen.dart';
-import 'screens/module_select_screen.dart';
-import 'screens/got_fet/got_fet_screen.dart';
-import 'screens/got_fet/got_fet_settings_screen.dart';
 // Login
 import 'screens/login_screen.dart';
 // Splash
@@ -67,10 +64,7 @@ bool _isAdminRole(String? role) => role?.toLowerCase() == 'admin';
 bool _isGuestRole(String? role) => role?.toLowerCase() == 'guest';
 bool _canWriteOperational(String? role) =>
     _operationalWriteRoles.contains(role?.toLowerCase());
-Future<String> _homeForActiveSession() async {
-  return await SessionManager.instance.getSelectedModuleRoute() ??
-      '/module-select';
-}
+Future<String> _homeForActiveSession() async => '/qa';
 bool _isInspectionRoute(String path) =>
     path.startsWith('/inspect/') ||
     path.startsWith('/inspect_sc/') ||
@@ -96,7 +90,7 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/module-select',
-      builder: (context, state) => const ModuleSelectScreen(),
+      redirect: (context, state) => '/qa',
     ),
     GoRoute(
       path: '/qa',
@@ -104,11 +98,11 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/got-fet',
-      builder: (context, state) => const GotFetScreen(),
+      redirect: (context, state) => '/qa',
     ),
     GoRoute(
       path: '/got-fet/settings',
-      builder: (context, state) => const GotFetSettingsScreen(),
+      redirect: (context, state) => '/qa/settings',
     ),
     GoRoute(
       path: '/qa/settings',
