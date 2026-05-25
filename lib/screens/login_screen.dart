@@ -5,7 +5,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../services/supabase_auth_service.dart';
 import '../services/session_manager.dart';
@@ -298,18 +297,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     width: 94, height: 94,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(colors: [
-                        AdvantaColors.primaryGreen,
-                        AdvantaColors.deepForest
-                      ]),
+                      color: Colors.white,
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.all(22),
-                      child: SvgPicture.asset('assets/logo_kc.svg',
-                          placeholderBuilder: (_) => const Icon(
+                      padding: const EdgeInsets.all(10),
+                      child: Image.asset(
+                        'assets/logo_kc_notitle_unbox.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Icon(
                               Icons.agriculture_rounded,
-                              color: Colors.white,
-                              size: 36)),
+                              color: AdvantaColors.primaryGreen,
+                              size: 36),
+                      ),
                     ),
                   ),
                 ],

@@ -23,7 +23,7 @@ class NotificationService {
     const DarwinInitializationSettings initializationSettingsIOS = DarwinInitializationSettings(/* ... */);
 
     const AndroidInitializationSettings initializationSettingsAndroid =
-    AndroidInitializationSettings('@mipmap/launcher_icon');
+    AndroidInitializationSettings('@mipmap/ic_launcher');
 
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,

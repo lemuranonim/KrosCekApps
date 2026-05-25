@@ -149,6 +149,9 @@ flutter:
 
   assets:
     - assets/logo.png
+    - assets/logo_kc.png
+    - assets/logo_kc_notitle_unbox.png
+    - assets/logo_kc_title_unbox.png
     - assets/advanta-logo.png
     - assets/icon.png
     - assets/icon_foreground.png
@@ -169,7 +172,6 @@ flutter:
     - assets/icon/icon.png
     - assets/gadm41_IDN_3.json
     - assets/gadm41_IDN_4.json
-    - assets/logo_kc.svg
     - .env
     - shorebird.yaml
 
@@ -185,10 +187,16 @@ flutter_launcher_icons:
   ios: true
   remove_alpha_ios: true
 
-  # --- Nonaktifkan Platform Lain untuk Menghindari Error ---
+  # --- Platform lain ---
   web:
-    generate: false
+    generate: true
+    image_path: "assets/icon.png"
+    background_color: "#0d3a62"
+    theme_color: "#0d3a62"
   windows:
-    generate: false
+    generate: true
+    image_path: "assets/icon.png"
+    icon_size: 256
   macos:
-    generate: false
+    generate: true
+    image_path: "assets/icon.png"

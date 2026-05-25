@@ -22,7 +22,6 @@ import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 // url_launcher
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/detasseling_plan_provider.dart';
@@ -6321,7 +6320,7 @@ class _MapLoadingScreenState extends State<_MapLoadingScreen>
                   width: 96,
                   height: 96,
                   decoration: BoxDecoration(
-                    color: AdvantaColors.primaryGreen.withAlpha(40),
+                    color: Colors.white,
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: AdvantaColors.lightGreen.withAlpha(80),
@@ -6336,12 +6335,13 @@ class _MapLoadingScreenState extends State<_MapLoadingScreen>
                     ],
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: SvgPicture.asset(
-                      'assets/logo_kc.svg',
-                      placeholderBuilder: (_) => const Icon(
+                    padding: const EdgeInsets.all(12),
+                    child: Image.asset(
+                      'assets/logo_kc_notitle_unbox.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Icon(
                           Icons.agriculture_rounded,
-                          color: Colors.white,
+                          color: AdvantaColors.primaryGreen,
                           size: 48),
                     ),
                   ),

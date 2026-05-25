@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import 'dart:isolate';
 import 'dart:ui';
@@ -850,9 +849,7 @@ class SplashScreenState extends State<SplashScreen>
             child: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [AdvantaColors.primaryGreen, AdvantaColors.deepForest],
-                ),
+                color: Colors.white,
                 boxShadow: [
                   BoxShadow(
                     color: AdvantaColors.lightGreen.withAlpha(isDark ? 60 : 20),
@@ -861,10 +858,11 @@ class SplashScreenState extends State<SplashScreen>
                 ],
               ),
               child: Padding(
-                padding: const EdgeInsets.all(22),
-                child: SvgPicture.asset(
-                  'assets/logo_kc.svg',
-                  placeholderBuilder: (_) => const Icon(Icons.agriculture_rounded, color: Colors.white, size: 36),
+                padding: const EdgeInsets.all(12),
+                child: Image.asset(
+                  'assets/logo_kc_notitle_unbox.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.agriculture_rounded, color: AdvantaColors.primaryGreen, size: 36),
                 ),
               ),
             ),
