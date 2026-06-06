@@ -108,6 +108,59 @@ bool _isRiskDecision(dynamic value) {
   }.contains(code);
 }
 
+bool _isExcludedCoverageRegion(String? region) {
+  return region?.trim().toLowerCase() == 'region tester';
+}
+
+bool _isPldDiscardCoverageValue(dynamic value) {
+  final raw = value?.toString().trim();
+  if (raw == null || raw.isEmpty) return false;
+  final normalized = raw.toLowerCase();
+  if (normalized.contains('pld') || normalized.contains('discard')) {
+    return true;
+  }
+  return normalized == 'd' || normalized == 'f' || normalized == 'g';
+}
+
+bool _hasCoveragePldDiscardValue(Map<String, dynamic> raw) {
+  final veg = _firstRow(raw['audit_vegetative']);
+  final gen = _firstRow(raw['audit_generative']);
+  final ph = _firstRow(raw['audit_pre_harvest']);
+  final hv = _firstRow(raw['audit_harvest']);
+
+  final values = <dynamic>[
+    raw['flagging_final'],
+    veg?['decision'],
+    veg?['action_needed'],
+    veg?['flagging'],
+    ph?['final_decision'],
+    ph?['final_flagging'],
+    hv?['status_downgrade'],
+    hv?['final_flagging'],
+    hv?['downgrade_flagging'],
+    gen?['flagging'],
+    gen?['final_flagging_5'],
+  ];
+
+  for (var i = 1; i <= 5; i++) {
+    values.add(gen?['action_needed_$i']);
+    values.add(gen?['final_decision_$i']);
+    values.add(gen?['final_flagging_$i']);
+  }
+
+  return values.any(_isPldDiscardCoverageValue);
+}
+
+List<FieldCoverageStatus> _applyCoverageVisibilityFilters(
+  List<FieldCoverageStatus> fields, {
+  required bool showPldDiscard,
+}) {
+  return fields
+      .where((f) => !_isExcludedCoverageRegion(f.region))
+      .where((f) => showPldDiscard || !f.hasPldDiscardValue)
+      .toList(growable: false);
+}
+
 /// Status coverage untuk satu field, dihitung dari data audit.
 class FieldCoverageStatus {
   final Map<String, dynamic> raw; // DISIMPAN UNTUK MENGIRIM KE DETAIL SHEET
@@ -147,6 +200,7 @@ class FieldCoverageStatus {
   final String? actionCode;
   final String? actionPhase;
   final bool hasCorrectionTagging;
+  final bool hasPldDiscardValue;
 
   /// Apakah ada fase yang seharusnya On Going / Overdue tapi belum diaudit.
   final bool isOverdue;
@@ -187,6 +241,7 @@ class FieldCoverageStatus {
     required this.actionCode,
     required this.actionPhase,
     required this.hasCorrectionTagging,
+    required this.hasPldDiscardValue,
     required this.isOverdue,
   });
 
@@ -454,6 +509,7 @@ class FieldCoverageStatus {
       actionCode: action?.code,
       actionPhase: action?.phase,
       hasCorrectionTagging: correction != null,
+      hasPldDiscardValue: _hasCoveragePldDiscardValue(raw),
       isOverdue: overdue,
     );
   }
@@ -963,16 +1019,33 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
   String? _selectedSpv;
   int _expandedAreaIndex = -1;
   bool _showAllRegisteredFields = false; // Default: hanya yang wajib audit
+  bool _showPldDiscardFields = false;
 
   @override
   Widget build(BuildContext context) {
     final regionOptionsAsync = ref.watch(
       activeMasterFieldRegionsProvider(const MasterFieldMapScope.all()),
     );
-    final regionOptions = regionOptionsAsync.value ?? const <String>[];
+    final regionOptions = (regionOptionsAsync.value ?? const <String>[])
+        .where((region) => !_isExcludedCoverageRegion(region))
+        .toList(growable: false);
     final needsRegionScope =
         !_showAllRegions && _selectedRegion == null && regionOptions.isNotEmpty;
 
+    if (!_showAllRegions && _isExcludedCoverageRegion(_selectedRegion)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            _showAllRegions ||
+            !_isExcludedCoverageRegion(_selectedRegion)) {
+          return;
+        }
+        setState(() {
+          _selectedRegion = null;
+          _selectedDistrict = null;
+          _selectedSpv = null;
+        });
+      });
+    }
     if (!_showAllRegions &&
         _selectedRegion != null &&
         regionOptions.isNotEmpty &&
@@ -1016,16 +1089,21 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
       loading: () => const _SkeletonLoader(),
       error: (e, _) => _CoverageErrorWidget(error: e.toString()),
       data: (allFields) {
+        final visibleFields = _applyCoverageVisibilityFilters(
+          allFields,
+          showPldDiscard: _showPldDiscardFields,
+        );
+
         // CASCADING LOGIC — Region → District → SPV
         final regions = regionOptions.isNotEmpty
             ? regionOptions
-            : (allFields
+            : (visibleFields
                 .map((f) => f.region)
                 .where((r) => r.isNotEmpty)
                 .toSet()
                 .toList()
               ..sort());
-        final districtOptions = allFields
+        final districtOptions = visibleFields
             .where(
                 (f) => _selectedRegion == null || f.region == _selectedRegion)
             .map((f) => f.district)
@@ -1033,7 +1111,7 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
             .toSet()
             .toList()
           ..sort();
-        final spvOptions = allFields
+        final spvOptions = visibleFields
             .where((f) {
               if (_selectedRegion != null && f.region != _selectedRegion) {
                 return false;
@@ -1051,7 +1129,7 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
           ..sort();
 
         // Apply filters
-        final filtered = allFields.where((f) {
+        final filtered = visibleFields.where((f) {
           if (_selectedRegion != null && f.region != _selectedRegion) {
             return false;
           }
@@ -1145,6 +1223,20 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     icon: Icons.visibility_rounded,
                     onSelected: (v) => setState(
                         () => _showAllRegisteredFields = v == 'Semua Lahan'),
+                  ),
+                  PremiumFilterChip(
+                    label: _showPldDiscardFields
+                        ? 'PLD/Discard'
+                        : 'PLD Disembunyikan',
+                    options: const ['PLD Disembunyikan', 'PLD/Discard'],
+                    selected: _showPldDiscardFields
+                        ? 'PLD/Discard'
+                        : 'PLD Disembunyikan',
+                    icon: _showPldDiscardFields
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
+                    onSelected: (v) => setState(
+                        () => _showPldDiscardFields = v == 'PLD/Discard'),
                   ),
                 ],
                 onRefresh: () => _refreshCoverage(ref, coverageScope),
@@ -1279,6 +1371,7 @@ class _SPVViewState extends ConsumerState<_SPVView> {
   String? _selectedFi;
   int _expandedDistrictIndex = -1;
   bool _showAllRegisteredFields = false; // Default: hanya yang wajib audit
+  bool _showPldDiscardFields = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1295,18 +1388,22 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             : allFields
                 .where((f) => f.qaSpv.trim().toLowerCase() == myName)
                 .toList();
+        final visibleSpvFields = _applyCoverageVisibilityFilters(
+          mySpvFields,
+          showPldDiscard: _showPldDiscardFields,
+        );
 
         // 2. CASCADING LOGIC SPV (Berdasarkan lahan milik SPV ini saja)
-        final spvOptions = mySpvFields
+        final spvOptions = visibleSpvFields
             .map((f) => f.qaSpv)
             .where((s) => s.isNotEmpty)
             .toSet()
             .toList()
           ..sort();
-        final spvScopedFields = mySpvFields
+        final spvScopedFields = visibleSpvFields
             .where((f) => _selectedSpv == null || f.qaSpv == _selectedSpv)
             .toList();
-        final districts = mySpvFields
+        final districts = visibleSpvFields
             .where((f) => _selectedSpv == null || f.qaSpv == _selectedSpv)
             .map((f) => f.district)
             .where((d) => d.isNotEmpty)
@@ -1425,6 +1522,20 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     icon: Icons.visibility_rounded,
                     onSelected: (v) => setState(
                         () => _showAllRegisteredFields = v == 'Semua Lahan'),
+                  ),
+                  PremiumFilterChip(
+                    label: _showPldDiscardFields
+                        ? 'PLD/Discard'
+                        : 'PLD Disembunyikan',
+                    options: const ['PLD Disembunyikan', 'PLD/Discard'],
+                    selected: _showPldDiscardFields
+                        ? 'PLD/Discard'
+                        : 'PLD Disembunyikan',
+                    icon: _showPldDiscardFields
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
+                    onSelected: (v) => setState(
+                        () => _showPldDiscardFields = v == 'PLD/Discard'),
                   ),
                 ],
                 onRefresh: () => _refreshCoverage(ref),
@@ -1551,6 +1662,7 @@ class _FIViewState extends ConsumerState<_FIView> {
   String? _selectedPhase;
   int _expandedVillageIndex = -1;
   bool _showAllRegisteredFields = false;
+  bool _showPldDiscardFields = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1567,15 +1679,19 @@ class _FIViewState extends ConsumerState<_FIView> {
             : allFields
                 .where((f) => f.qaFi.trim().toLowerCase() == myName)
                 .toList();
+        final visibleFiFields = _applyCoverageVisibilityFilters(
+          myFiFields,
+          showPldDiscard: _showPldDiscardFields,
+        );
 
         // 2. CASCADING LOGIC FI (Gunakan myFiFields)
-        final fiOptions = myFiFields
+        final fiOptions = visibleFiFields
             .map((f) => f.qaFi)
             .where((s) => s.isNotEmpty)
             .toSet()
             .toList()
           ..sort();
-        final fiScopedFields = myFiFields
+        final fiScopedFields = visibleFiFields
             .where((f) => _selectedFi == null || f.qaFi == _selectedFi)
             .toList();
         final districts = fiScopedFields
@@ -1740,6 +1856,20 @@ class _FIViewState extends ConsumerState<_FIView> {
                     icon: Icons.visibility_rounded,
                     onSelected: (v) => setState(
                         () => _showAllRegisteredFields = v == 'Semua Lahan'),
+                  ),
+                  PremiumFilterChip(
+                    label: _showPldDiscardFields
+                        ? 'PLD/Discard'
+                        : 'PLD Disembunyikan',
+                    options: const ['PLD Disembunyikan', 'PLD/Discard'],
+                    selected: _showPldDiscardFields
+                        ? 'PLD/Discard'
+                        : 'PLD Disembunyikan',
+                    icon: _showPldDiscardFields
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
+                    onSelected: (v) => setState(
+                        () => _showPldDiscardFields = v == 'PLD/Discard'),
                   ),
                 ],
                 onRefresh: () => _refreshCoverage(ref),

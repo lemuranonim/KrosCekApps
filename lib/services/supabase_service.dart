@@ -51,6 +51,8 @@ class SupabaseService {
       rev_planting_date,
       co_detasseling,
       correction_tagging,
+      decision,
+      action_needed,
       date_of_inspeksi_roguing_1,
       date_of_inspeksi_roguing_2,
       date_of_inspeksi_roguing_3,
@@ -62,11 +64,26 @@ class SupabaseService {
       date_of_audit_3,
       date_of_audit_4,
       date_of_audit_5,
+      action_needed_1,
+      action_needed_2,
+      action_needed_3,
+      action_needed_4,
+      final_decision_3,
+      final_decision_5,
       detasseling_assesment_3,
       detasseling_assesment_5
     ),
-    audit_pre_harvest(audit_date),
-    audit_harvest(date_of_audit)
+    audit_pre_harvest(
+      audit_date,
+      final_decision,
+      final_flagging
+    ),
+    audit_harvest(
+      date_of_audit,
+      final_flagging,
+      status_downgrade,
+      downgrade_flagging
+    )
   ''';
 
   static const String _masterFieldCoverageSelect = '''
@@ -683,9 +700,11 @@ class SupabaseService {
   Future<void> upsertVegetativeAudit(Map<String, dynamic> data) async {
     try {
       data['updated_at'] = DateTime.now().toIso8601String();
-      await _supabase
-          .from('audit_vegetative')
-          .upsert(data, onConflict: 'field_number');
+      await _saveAuditByFieldNumber(
+        tableName: 'audit_vegetative',
+        data: data,
+        errorContext: 'Gagal menyimpan audit vegetative',
+      );
     } catch (e) {
       throw Exception('Gagal menyimpan audit vegetative: $e');
     }
@@ -719,9 +738,11 @@ class SupabaseService {
       // Tambahkan timestamp submission untuk checkpoint tsb
       data['submitted_at_$checkpoint'] = DateTime.now().toIso8601String();
 
-      await _supabase
-          .from('audit_generative')
-          .upsert(data, onConflict: 'field_number');
+      await _saveAuditByFieldNumber(
+        tableName: 'audit_generative',
+        data: data,
+        errorContext: 'Gagal menyimpan audit generative-$checkpoint',
+      );
     } catch (e) {
       throw Exception('Gagal menyimpan audit generative-$checkpoint: $e');
     }
@@ -764,9 +785,11 @@ class SupabaseService {
           final tableName = _phaseToTable(phase);
           record['updated_at'] = DateTime.now().toIso8601String();
           record['is_mass_submit'] = true;
-          await _supabase
-              .from(tableName)
-              .upsert(record, onConflict: 'field_number');
+          await _saveAuditByFieldNumber(
+            tableName: tableName,
+            data: record,
+            errorContext: 'Gagal bulk upsert $phase',
+          );
         }
       }
     } catch (e) {
@@ -787,6 +810,121 @@ class SupabaseService {
       default:
         throw Exception('Unknown phase: $phase');
     }
+  }
+
+  Future<void> _saveAuditByFieldNumber({
+    required String tableName,
+    required Map<String, dynamic> data,
+    required String errorContext,
+  }) async {
+    final fieldNumber = data['field_number']?.toString().trim();
+    if (fieldNumber == null || fieldNumber.isEmpty) {
+      throw Exception('$errorContext: field_number kosong');
+    }
+
+    final payload = Map<String, dynamic>.from(data);
+    final droppedColumns = <String>{};
+    var useManualFallback = false;
+
+    for (var attempt = 0; attempt < 12; attempt++) {
+      try {
+        if (useManualFallback) {
+          await _manualSaveAuditByFieldNumber(tableName, payload, fieldNumber);
+        } else {
+          await _supabase
+              .from(tableName)
+              .upsert(payload, onConflict: 'field_number');
+        }
+
+        if (kDebugMode && droppedColumns.isNotEmpty) {
+          debugPrint(
+            '$tableName saved without unsupported columns: '
+            '${droppedColumns.join(', ')}',
+          );
+        }
+        return;
+      } catch (e) {
+        final missingColumns = _missingPayloadColumnsFromError(
+          e,
+          payload.keys.toSet(),
+        );
+
+        if (missingColumns.isNotEmpty) {
+          var removedAny = false;
+          for (final column in missingColumns) {
+            if (column == 'field_number') continue;
+            removedAny = payload.remove(column) != null || removedAny;
+            droppedColumns.add(column);
+          }
+          if (removedAny) continue;
+        }
+
+        if (!useManualFallback && _isMissingOnConflictConstraint(e)) {
+          useManualFallback = true;
+          continue;
+        }
+
+        throw Exception('$errorContext: $e');
+      }
+    }
+
+    throw Exception(
+      '$errorContext: gagal menyimpan setelah retry fallback schema',
+    );
+  }
+
+  Future<void> _manualSaveAuditByFieldNumber(
+    String tableName,
+    Map<String, dynamic> payload,
+    String fieldNumber,
+  ) async {
+    final existing = await _supabase
+        .from(tableName)
+        .select('field_number')
+        .eq('field_number', fieldNumber)
+        .limit(1)
+        .maybeSingle();
+
+    if (existing == null) {
+      await _supabase.from(tableName).insert(payload);
+    } else {
+      await _supabase
+          .from(tableName)
+          .update(payload)
+          .eq('field_number', fieldNumber);
+    }
+  }
+
+  Set<String> _missingPayloadColumnsFromError(
+    Object error,
+    Set<String> payloadColumns,
+  ) {
+    final text = error.toString();
+    final missing = <String>{};
+    final patterns = <RegExp>[
+      RegExp(r"Could not find the '([^']+)' column"),
+      RegExp(
+          r'column [A-Za-z_][A-Za-z0-9_]*\.([A-Za-z_][A-Za-z0-9_]*) does not exist'),
+      RegExp(r'column "([^"]+)" does not exist'),
+      RegExp(r'column ([A-Za-z_][A-Za-z0-9_]*) does not exist'),
+    ];
+
+    for (final pattern in patterns) {
+      for (final match in pattern.allMatches(text)) {
+        final column = match.group(1);
+        if (column != null && payloadColumns.contains(column)) {
+          missing.add(column);
+        }
+      }
+    }
+    return missing;
+  }
+
+  bool _isMissingOnConflictConstraint(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('42p10') ||
+        text.contains('no unique or exclusion constraint') ||
+        text.contains('there is no unique or exclusion constraint matching');
   }
 
   // ============================================================
@@ -921,9 +1059,11 @@ class SupabaseService {
   Future<void> upsertPreHarvestAudit(Map<String, dynamic> data) async {
     try {
       data['updated_at'] = DateTime.now().toIso8601String();
-      await _supabase
-          .from('audit_pre_harvest')
-          .upsert(data, onConflict: 'field_number');
+      await _saveAuditByFieldNumber(
+        tableName: 'audit_pre_harvest',
+        data: data,
+        errorContext: 'Gagal menyimpan audit pre-harvest',
+      );
     } catch (e) {
       throw Exception('Gagal menyimpan audit pre-harvest: $e');
     }
@@ -947,9 +1087,11 @@ class SupabaseService {
   Future<void> upsertHarvestAudit(Map<String, dynamic> data) async {
     try {
       data['updated_at'] = DateTime.now().toIso8601String();
-      await _supabase
-          .from('audit_harvest')
-          .upsert(data, onConflict: 'field_number');
+      await _saveAuditByFieldNumber(
+        tableName: 'audit_harvest',
+        data: data,
+        errorContext: 'Gagal menyimpan audit harvest',
+      );
     } catch (e) {
       throw Exception('Gagal menyimpan audit harvest: $e');
     }

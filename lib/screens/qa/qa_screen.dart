@@ -64,6 +64,8 @@ class QAScreen extends ConsumerStatefulWidget {
 
 class _QAScreenState extends ConsumerState<QAScreen>
     with TickerProviderStateMixin {
+  static const String _excludedRegionTester = 'region tester';
+
   // Tinggi overlay atas (header + chips) — diukur setelah build
   final GlobalKey _topOverlayKey = GlobalKey();
   final GlobalKey _mapViewKey = GlobalKey();
@@ -82,6 +84,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
   String? _selectedSeason;
   bool _showAllSeasons = false;
   bool _showAllRegions = false;
+  bool _showPldDiscardFields = false;
 
   // Modes
   _WorkMode _workMode = _WorkMode.single;
@@ -110,6 +113,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
   bool _isSavingPolygon = false;
   bool _isSavingCorrectionTagging = false;
   bool _isPolygonSheetOpen = false;
+  String? _lastPolygonInteractionFieldNumber;
+  DateTime? _lastPolygonInteractionAt;
 
   // ── State Minggu Kerja ──────────────────────────────────
   late List<Map<String, dynamic>> _workWeeks; // UBAH JADI dynamic
@@ -658,6 +663,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
       _selectedWeek['label'],
       _activePhaseView,
       _auditFilter,
+      _showPldDiscardFields,
     ].join('|');
 
     if (_cachedFilteredFields != null && _lastFilterKey == filterKey) {
@@ -674,6 +680,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final selDistrict = _selectedDistrict?.trim().toLowerCase();
 
     return allParsed.where((f) {
+      if (_isExcludedRegion(f.raw['region'])) return false;
+      if (!_showPldDiscardFields && _hasPldDiscardValue(f.raw)) return false;
+
       // ── Proyeksi DAP untuk Visual Marker ──
       final int projectedDap = _getProjectedDap(f.dap);
       final ActivePhaseView projectedPhase = _activePhaseView ==
@@ -802,6 +811,60 @@ class _QAScreenState extends ConsumerState<QAScreen>
     });
   }
 
+  bool _isExcludedRegion(Object? region) {
+    return region?.toString().trim().toLowerCase() == _excludedRegionTester;
+  }
+
+  bool _hasPldDiscardValue(Map<String, dynamic> raw) {
+    final veg = _firstAuditRow(raw, 'audit_vegetative');
+    final gen = _firstAuditRow(raw, 'audit_generative');
+    final preHarvest = _firstAuditRow(raw, 'audit_pre_harvest');
+    final harvest = _firstAuditRow(raw, 'audit_harvest');
+
+    final values = <Object?>[
+      raw['flagging_final'],
+      veg?['decision'],
+      veg?['action_needed'],
+      preHarvest?['final_decision'],
+      preHarvest?['final_flagging'],
+      harvest?['status_downgrade'],
+      harvest?['final_flagging'],
+      harvest?['downgrade_flagging'],
+    ];
+
+    for (var i = 1; i <= 5; i++) {
+      values.add(gen?['action_needed_$i']);
+      values.add(gen?['final_decision_$i']);
+    }
+
+    return values.any(_isPldDiscardValue);
+  }
+
+  Map<String, dynamic>? _firstAuditRow(
+    Map<String, dynamic> raw,
+    String tableKey,
+  ) {
+    final value = raw[tableKey];
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    if (value is List && value.isNotEmpty) {
+      final first = value.first;
+      if (first is Map<String, dynamic>) return first;
+      if (first is Map) return Map<String, dynamic>.from(first);
+    }
+    return null;
+  }
+
+  bool _isPldDiscardValue(Object? value) {
+    final raw = value?.toString().trim();
+    if (raw == null || raw.isEmpty) return false;
+    final normalized = raw.toLowerCase();
+    if (normalized.contains('pld') || normalized.contains('discard')) {
+      return true;
+    }
+    return normalized == 'd' || normalized == 'f' || normalized == 'g';
+  }
+
   List<String> _uniqueValues(
     List<ParsedFieldData> fields,
     String fieldKey, {
@@ -812,6 +875,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
       final raw = field.raw;
       if (where != null && !where(raw)) continue;
       final value = raw[fieldKey]?.toString().trim() ?? '';
+      if (fieldKey == 'region' && _isExcludedRegion(value)) continue;
       if (value.isNotEmpty) values.add(value);
     }
     return values.toList()..sort();
@@ -827,6 +891,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
       final raw = field.raw;
       final dbRegion = raw['region']?.toString().trim() ?? '';
       final dbDistrict = raw['district_kab']?.toString().trim() ?? '';
+      if (_isExcludedRegion(dbRegion)) continue;
       if (region != null && dbRegion.toLowerCase() != region.toLowerCase()) {
         continue;
       }
@@ -870,9 +935,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   void _setRegionScope(String? region) {
+    final normalizedRegion = _isExcludedRegion(region) ? null : region;
     setState(() {
-      _showAllRegions = region == null;
-      _selectedRegion = region;
+      _showAllRegions = normalizedRegion == null;
+      _selectedRegion = normalizedRegion;
       _selectedDistrict = null;
       _clearMapCaches();
     });
@@ -918,7 +984,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final regionOptionsAsync = ref.watch(
       activeMasterFieldRegionsProvider(regionScopeForOptions),
     );
-    final regionOptions = regionOptionsAsync.value ?? const <String>[];
+    final regionOptions = (regionOptionsAsync.value ?? const <String>[])
+        .where((region) => !_isExcludedRegion(region))
+        .toList(growable: false);
     final needsRegionScope = _shouldAutoScopeByRegion(user) &&
         !_showAllRegions &&
         _selectedRegion == null;
@@ -945,11 +1013,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final seasonsAsync = ref.watch(activeMasterFieldSeasonsProvider);
     final seasonOptions = seasonsAsync.value ?? const <String>[];
     final mapFieldsForFilters =
-        parsedMapAsync.value ?? const <ParsedFieldData>[];
+        (parsedMapAsync.value ?? const <ParsedFieldData>[])
+            .where((field) => !_isExcludedRegion(field.raw['region']))
+            .toList(growable: false);
     final districts = _uniqueValues(
       mapFieldsForFilters,
       'district_kab',
       where: (raw) {
+        if (_isExcludedRegion(raw['region'])) return false;
         if (_selectedRegion == null) return true;
         final region = raw['region']?.toString().trim().toLowerCase() ?? '';
         return region == _selectedRegion!.toLowerCase();
@@ -984,9 +1055,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final bool canUseMassInspect =
         user != null && user.role.toLowerCase() != 'guest';
 
-    if (_selectedRegion != null && !regionOptions.contains(_selectedRegion)) {
+    if (_selectedRegion != null &&
+        (_isExcludedRegion(_selectedRegion) ||
+            !regionOptions.contains(_selectedRegion))) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || regionOptions.contains(_selectedRegion)) return;
+        if (!mounted ||
+            (!_isExcludedRegion(_selectedRegion) &&
+                regionOptions.contains(_selectedRegion))) {
+          return;
+        }
         setState(() {
           _selectedRegion = null;
           _selectedDistrict = null;
@@ -1339,6 +1416,21 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       },
                     ),
                   );
+                },
+              ),
+              const SizedBox(width: 8),
+              _NewQuickFilterChip(
+                icon: _showPldDiscardFields
+                    ? Icons.visibility_rounded
+                    : Icons.visibility_off_rounded,
+                label:
+                    _showPldDiscardFields ? 'PLD/Discard' : 'PLD Disembunyikan',
+                isActive: !_showPldDiscardFields,
+                onTap: () {
+                  setState(() {
+                    _showPldDiscardFields = !_showPldDiscardFields;
+                    _clearMapCaches();
+                  });
                 },
               ),
             ],
@@ -1895,7 +1987,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
             setState(() => _currentZoom = newZoom);
           }
         },
-        onTap: (_, __) {
+        onTap: (_, point) {
+          if (_isEditingPolygon) return;
+          if (_handlePolygonMapTap(point, polygonFields)) return;
+
           if (_isLegendVisible || _isSpeedDialOpen) {
             setState(() {
               _isLegendVisible = false;
@@ -2022,7 +2117,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   }
                 });
               } else {
-                unawaited(_openFieldDetailSafely(f.raw));
+                final canOpenPolygonActions = _showPolygons &&
+                    _currentZoom >= _polygonMinZoom &&
+                    (f.polygonPoints?.length ?? 0) >= 3;
+                if (canOpenPolygonActions) {
+                  _handlePolygonSelection(f);
+                } else {
+                  unawaited(_openFieldDetailSafely(f.raw));
+                }
               }
             },
             child: Stack(
@@ -3118,6 +3220,170 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return lng >= west || lng <= east;
   }
 
+  bool _handlePolygonMapTap(
+    LatLng point,
+    List<ParsedFieldData> polygonFields,
+  ) {
+    final field = _findPolygonFieldAtPoint(point, polygonFields);
+    if (field == null) return false;
+    _handlePolygonSelection(field);
+    return true;
+  }
+
+  ParsedFieldData? _findPolygonFieldAtPoint(
+    LatLng point,
+    List<ParsedFieldData> polygonFields,
+  ) {
+    ParsedFieldData? bestInsideField;
+    var bestInsideArea = double.infinity;
+
+    for (final field in polygonFields) {
+      final points = field.polygonPoints;
+      if (points == null || points.length < 3) continue;
+      final bounds = field.polygonBounds ?? LatLngBounds.fromPoints(points);
+      if (!_boundsContainsLatLng(bounds, point.latitude, point.longitude)) {
+        continue;
+      }
+
+      if (_isPointInPolygon(point, points)) {
+        final area = _calculatePolygonAreaHa(points);
+        if (area < bestInsideArea) {
+          bestInsideArea = area;
+          bestInsideField = field;
+        }
+      }
+    }
+
+    if (bestInsideField != null) return bestInsideField;
+
+    ParsedFieldData? nearestEdgeField;
+    var nearestEdgePx = double.infinity;
+    for (final field in polygonFields) {
+      final points = field.polygonPoints;
+      if (points == null || points.length < 3) continue;
+
+      final distancePx = _distanceToPolygonEdgePx(point, points);
+      if (distancePx < nearestEdgePx) {
+        nearestEdgePx = distancePx;
+        nearestEdgeField = field;
+      }
+    }
+
+    return nearestEdgePx <= 24 ? nearestEdgeField : null;
+  }
+
+  bool _isPointInPolygon(LatLng point, List<LatLng> polygonPoints) {
+    final ring = _openPolygonRing(polygonPoints);
+    if (ring.length < 3) return false;
+
+    final x = point.longitude;
+    final y = point.latitude;
+    var inside = false;
+
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      final xi = ring[i].longitude;
+      final yi = ring[i].latitude;
+      final xj = ring[j].longitude;
+      final yj = ring[j].latitude;
+
+      final intersects =
+          ((yi > y) != (yj > y)) && x < (xj - xi) * (y - yi) / (yj - yi) + xi;
+      if (intersects) inside = !inside;
+    }
+
+    return inside;
+  }
+
+  double _distanceToPolygonEdgePx(LatLng point, List<LatLng> polygonPoints) {
+    try {
+      final ring = _closedPolygonRing(polygonPoints);
+      if (ring.length < 2) return double.infinity;
+
+      final target = _mapController.camera.latLngToScreenPoint(point);
+      var best = double.infinity;
+
+      for (var i = 0; i < ring.length - 1; i++) {
+        final start = _mapController.camera.latLngToScreenPoint(ring[i]);
+        final end = _mapController.camera.latLngToScreenPoint(ring[i + 1]);
+        best = math.min(best, _distanceToSegmentPx(target, start, end));
+      }
+
+      return best;
+    } catch (_) {
+      return double.infinity;
+    }
+  }
+
+  double _distanceToSegmentPx(
+    math.Point<double> point,
+    math.Point<double> start,
+    math.Point<double> end,
+  ) {
+    final dx = end.x - start.x;
+    final dy = end.y - start.y;
+    if (dx == 0 && dy == 0) {
+      return math.sqrt(
+        math.pow(point.x - start.x, 2) + math.pow(point.y - start.y, 2),
+      );
+    }
+
+    final t = (((point.x - start.x) * dx) + ((point.y - start.y) * dy)) /
+        ((dx * dx) + (dy * dy));
+    final clampedT = t.clamp(0.0, 1.0);
+    final projectionX = start.x + clampedT * dx;
+    final projectionY = start.y + clampedT * dy;
+
+    return math.sqrt(
+      math.pow(point.x - projectionX, 2) + math.pow(point.y - projectionY, 2),
+    );
+  }
+
+  bool _shouldSkipDuplicatePolygonInteraction(ParsedFieldData field) {
+    final fieldNumber = field.raw['field_number']?.toString() ?? '';
+    final key =
+        fieldNumber.isEmpty ? identityHashCode(field).toString() : fieldNumber;
+    final now = DateTime.now();
+    final lastAt = _lastPolygonInteractionAt;
+
+    if (_lastPolygonInteractionFieldNumber == key &&
+        lastAt != null &&
+        now.difference(lastAt) < const Duration(milliseconds: 350)) {
+      return true;
+    }
+
+    _lastPolygonInteractionFieldNumber = key;
+    _lastPolygonInteractionAt = now;
+    return false;
+  }
+
+  void _handlePolygonSelection(ParsedFieldData field) {
+    if (!mounted || _isEditingPolygon) return;
+    if (_shouldSkipDuplicatePolygonInteraction(field)) return;
+
+    final fieldNumber = field.raw['field_number']?.toString() ?? '';
+
+    if (_workMode == _WorkMode.mass && fieldNumber.isNotEmpty) {
+      setState(() {
+        if (_selectedFieldNumbers.contains(fieldNumber)) {
+          _selectedFieldNumbers.remove(fieldNumber);
+        } else {
+          _selectedFieldNumbers.add(fieldNumber);
+        }
+      });
+      return;
+    }
+
+    if (_isLegendVisible || _isSpeedDialOpen) {
+      setState(() {
+        _isLegendVisible = false;
+        _isSpeedDialOpen = false;
+        _speedDialCtrl.reverse();
+      });
+    }
+
+    _showPolygonActionSheet(field);
+  }
+
   void _handlePolygonHit() {
     final hit = _polygonHitNotifier.value;
     if (!mounted || _isEditingPolygon || hit == null || hit.hitValues.isEmpty) {
@@ -3132,28 +3398,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
         _polygonHitNotifier.value = null;
       }
 
-      final fieldNumber = field.raw['field_number']?.toString() ?? '';
-
-      if (_workMode == _WorkMode.mass && fieldNumber.isNotEmpty) {
-        setState(() {
-          if (_selectedFieldNumbers.contains(fieldNumber)) {
-            _selectedFieldNumbers.remove(fieldNumber);
-          } else {
-            _selectedFieldNumbers.add(fieldNumber);
-          }
-        });
-        return;
-      }
-
-      if (_isLegendVisible || _isSpeedDialOpen) {
-        setState(() {
-          _isLegendVisible = false;
-          _isSpeedDialOpen = false;
-          _speedDialCtrl.reverse();
-        });
-      }
-
-      _showPolygonActionSheet(field);
+      _handlePolygonSelection(field);
     });
   }
 
@@ -3220,11 +3465,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
     for (var i = 0; i < points.length; i++) {
       final isSelected = _selectedPolygonVertexIndex == i;
+      final labelColor = isSelected && !_isKmlPolygonEdit
+          ? AdvantaColors.charcoal
+          : Colors.white;
       markers.add(
         Marker(
           point: points[i],
-          width: 42,
-          height: 42,
+          width: 52,
+          height: 52,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => _selectedPolygonVertexIndex = i),
@@ -3238,12 +3486,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
             child: Center(
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 120),
-                width: isSelected ? 30 : 26,
-                height: isSelected ? 30 : 26,
+                alignment: Alignment.center,
+                width: isSelected ? 34 : 32,
+                height: isSelected ? 34 : 32,
                 decoration: BoxDecoration(
                   color: isSelected ? accent : AdvantaColors.deepForest,
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(color: Colors.white, width: 2.4),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withAlpha(120),
@@ -3254,10 +3503,18 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 child: Text(
                   '${i + 1}',
                   style: AdvantaText.caption.copyWith(
-                    color: isSelected ? AdvantaColors.charcoal : Colors.white,
-                    fontSize: 12,
+                    color: labelColor,
+                    fontSize: 14,
                     fontWeight: FontWeight.w900,
                     height: 1,
+                    shadows: labelColor == Colors.white
+                        ? [
+                            const Shadow(
+                              color: Colors.black54,
+                              blurRadius: 2,
+                            ),
+                          ]
+                        : null,
                   ),
                 ),
               ),
