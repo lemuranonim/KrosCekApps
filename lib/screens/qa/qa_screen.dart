@@ -12,8 +12,11 @@
 // ─────────────────────────────────────────────────────────
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -34,6 +37,7 @@ import '../../services/session_manager.dart';
 import '../../widgets/field_list_view.dart'; // Sesuaikan path ini
 import '../../utils/audit_status_helper.dart';
 import '../../utils/active_phase_filter.dart';
+import '../../utils/coord_helper.dart';
 import '../../utils/dap_helper.dart';
 import '../../utils/qa_name_helper.dart';
 import '../../widgets/audit_status_widgets.dart';
@@ -97,8 +101,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
       ValueNotifier<LayerHitResult<ParsedFieldData>?>(null);
   ParsedFieldData? _editingPolygonField;
   List<LatLng> _editingPolygonPoints = [];
+  List<LatLng> _editingPolygonResetPoints = [];
   final List<List<LatLng>> _polygonEditUndoStack = [];
   int? _selectedPolygonVertexIndex;
+  String _editingPolygonSource = 'manual';
+  String? _editingPolygonFileName;
+  int? _editingPolygonKmlPointCount;
   bool _isSavingPolygon = false;
   bool _isSavingCorrectionTagging = false;
   bool _isPolygonSheetOpen = false;
@@ -1015,69 +1023,78 @@ class _QAScreenState extends ConsumerState<QAScreen>
             _buildRefreshOverlay(),
 
           // ── 2. NEW UNIFIED TOP OVERLAY (Minimalist) ────────
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              key: _topOverlayKey,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    AdvantaColors.deepForest.withAlpha(240),
-                    AdvantaColors.deepForest.withAlpha(150),
-                    Colors.transparent,
-                  ],
-                  stops: const [0.0, 0.6, 1.0],
+          if (_editingPolygonField == null)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                key: _topOverlayKey,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AdvantaColors.deepForest.withAlpha(240),
+                      AdvantaColors.deepForest.withAlpha(150),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.6, 1.0],
+                  ),
+                ),
+                child: SafeArea(
+                  bottom: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // BARIS 1: Unified Search & Action Bar
+                      _buildUnifiedTopBar(attendance),
+
+                      // BARIS 2: Gabungan Semua Filter (Region, District, QA, Status, Fase)
+                      if (parsedMapAsync is AsyncData)
+                        _buildUnifiedFilters(
+                          seasons: seasonOptions,
+                          regions: regionOptions,
+                          districts: districts,
+                          qaList: qaList,
+                          userRole: user?.role, // <── TAMBAHKAN BARIS INI
+                        ),
+
+                      // BARIS 3: Coordinate Quality Summary
+                      if (parsedMapAsync is AsyncData)
+                        parsedMapAsync.whenData((parsedFields) {
+                              final visibleFields =
+                                  _getFilteredFields(parsedFields);
+                              return _buildCoordinateQualityStrip(
+                                  visibleFields);
+                            }).value ??
+                            const SizedBox.shrink(),
+
+                      // BARIS 4: Uncoord Banner (Dibuat lebih tipis/compact)
+                      if (parsedMapAsync is AsyncData)
+                        parsedMapAsync.whenData((parsedFields) {
+                              final uncoordFields = _filterFields(parsedFields)
+                                  .where((f) => f.isDefault)
+                                  .map((f) => f.raw)
+                                  .toList();
+                              if (uncoordFields.isEmpty) {
+                                return const SizedBox.shrink();
+                              }
+                              return _buildCompactUncoordBanner(uncoordFields);
+                            }).value ??
+                            const SizedBox.shrink(),
+                    ],
+                  ),
                 ),
               ),
-              child: SafeArea(
-                bottom: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // BARIS 1: Unified Search & Action Bar
-                    _buildUnifiedTopBar(attendance),
-
-                    // BARIS 2: Gabungan Semua Filter (Region, District, QA, Status, Fase)
-                    if (parsedMapAsync is AsyncData)
-                      _buildUnifiedFilters(
-                        seasons: seasonOptions,
-                        regions: regionOptions,
-                        districts: districts,
-                        qaList: qaList,
-                        userRole: user?.role, // <── TAMBAHKAN BARIS INI
-                      ),
-
-                    // BARIS 3: Coordinate Quality Summary
-                    if (parsedMapAsync is AsyncData)
-                      parsedMapAsync.whenData((parsedFields) {
-                            final visibleFields =
-                                _getFilteredFields(parsedFields);
-                            return _buildCoordinateQualityStrip(visibleFields);
-                          }).value ??
-                          const SizedBox.shrink(),
-
-                    // BARIS 4: Uncoord Banner (Dibuat lebih tipis/compact)
-                    if (parsedMapAsync is AsyncData)
-                      parsedMapAsync.whenData((parsedFields) {
-                            final uncoordFields = _filterFields(parsedFields)
-                                .where((f) => f.isDefault)
-                                .map((f) => f.raw)
-                                .toList();
-                            if (uncoordFields.isEmpty) {
-                              return const SizedBox.shrink();
-                            }
-                            return _buildCompactUncoordBanner(uncoordFields);
-                          }).value ??
-                          const SizedBox.shrink(),
-                  ],
-                ),
-              ),
+            )
+          else
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _buildPolygonEditTopBar(),
             ),
-          ),
 
           // ── 3. FLOATING WORK MODE TOGGLE ───────────────────
           // Dipindah ke bawah agar tidak menutupi map atas
@@ -1483,15 +1500,34 @@ class _QAScreenState extends ConsumerState<QAScreen>
   Widget _buildPolygonEditToolbar() {
     final field = _editingPolygonField?.raw;
     final fieldNumber = field?['field_number']?.toString() ?? '-';
+    final masterAreaHa = field == null ? null : _readFieldAreaHa(field);
+    final polygonAreaHa = _calculatePolygonAreaHa(_editingPolygonPoints);
+    final isKml = _isKmlPolygonEdit;
+    final accent = _polygonEditAccent;
+    final polygonSubtitle = isKml
+        ? '${_editingPolygonFileName ?? 'File KML'} - ${_editingPolygonKmlPointCount ?? _editingPolygonPoints.length} titik'
+        : '${_editingPolygonPoints.length} titik polygon';
+    final areaDeltaHa =
+        masterAreaHa == null ? null : polygonAreaHa - masterAreaHa;
+    final areaDeltaPct = masterAreaHa == null || masterAreaHa <= 0
+        ? null
+        : (areaDeltaHa! / masterAreaHa) * 100;
     final canDelete = _selectedPolygonVertexIndex != null &&
         _editingPolygonPoints.length > 3 &&
         !_isSavingPolygon;
+    final deltaColor = areaDeltaHa == null
+        ? Colors.white70
+        : areaDeltaHa.abs() < 0.005
+            ? AdvantaColors.lightGreen
+            : areaDeltaHa > 0
+                ? AdvantaColors.lightGreen
+                : AdvantaColors.goldLight;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
       decoration: BoxDecoration(
         color: AdvantaColors.deepForest.withAlpha(238),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AdvantaColors.gold.withAlpha(120)),
         boxShadow: AdvantaShadows.card(true),
       ),
@@ -1499,18 +1535,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: AdvantaColors.gold.withAlpha(40),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.edit_location_alt_outlined,
-                    color: AdvantaColors.gold, size: 18),
-              ),
-              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1522,20 +1548,39 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       overflow: TextOverflow.ellipsis,
                       style: AdvantaText.bodyBold.copyWith(color: Colors.white),
                     ),
-                    Text(
-                      '${_editingPolygonPoints.length} titik polygon',
-                      style:
-                          AdvantaText.caption.copyWith(color: Colors.white54),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(Icons.polyline_rounded, color: accent, size: 13),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            polygonSubtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AdvantaText.caption
+                                .copyWith(color: Colors.white60),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(width: 10),
+              _buildPolygonAreaMetric(
+                label: isKml ? 'Corr. Size (KML)' : 'Corr. Field Size',
+                value: _formatAreaHa(polygonAreaHa),
+                valueColor: accent,
+                alignEnd: true,
               ),
               GestureDetector(
                 onTap: _isSavingPolygon ? null : _savePolygonEdit,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
-                  width: 42,
-                  height: 36,
+                  margin: const EdgeInsets.only(left: 10),
+                  width: isKml ? 124 : 44,
+                  height: 44,
                   decoration: BoxDecoration(
                     color: _isSavingPolygon
                         ? AdvantaColors.primaryGreen.withAlpha(90)
@@ -1544,23 +1589,84 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   ),
                   child: _isSavingPolygon
                       ? const Padding(
-                          padding: EdgeInsets.all(10),
+                          padding: EdgeInsets.all(11),
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(Icons.check_rounded,
-                          color: Colors.white, size: 20),
+                      : isKml
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.check_rounded,
+                                    color: Colors.white, size: 18),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'Gunakan',
+                                  style: AdvantaText.caption.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : const Icon(Icons.check_rounded,
+                              color: Colors.white, size: 20),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black.withAlpha(45),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withAlpha(22)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildPolygonAreaMetric(
+                    label: 'Area Master',
+                    value: _formatAreaHa(masterAreaHa),
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 34,
+                  color: Colors.white.withAlpha(25),
+                ),
+                Expanded(
+                  child: _buildPolygonAreaMetric(
+                    label: 'Selisih',
+                    value: areaDeltaHa == null
+                        ? '-'
+                        : '${_formatSignedAreaHa(areaDeltaHa)}'
+                            '${areaDeltaPct == null ? '' : ' (${_formatSignedPercent(areaDeltaPct)})'}',
+                    valueColor: deltaColor,
+                    alignEnd: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
+                _PolygonToolButton(
+                  icon: Icons.upload_file_rounded,
+                  tooltip: isKml ? 'Ganti file KML' : 'Upload KML',
+                  color: const Color(0xFF42A5F5),
+                  onTap: _isSavingPolygon || _editingPolygonField == null
+                      ? null
+                      : () => unawaited(
+                            _importPolygonFromKml(_editingPolygonField!),
+                          ),
+                ),
                 _PolygonToolButton(
                   icon: Icons.center_focus_strong_rounded,
                   tooltip: 'Fit polygon',
@@ -1594,6 +1700,110 @@ class _QAScreenState extends ConsumerState<QAScreen>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPolygonEditTopBar() {
+    final isKml = _isKmlPolygonEdit;
+    final accent = _polygonEditAccent;
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: AdvantaColors.deepForest.withAlpha(235),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AdvantaColors.gold.withAlpha(110)),
+            boxShadow: AdvantaShadows.card(true),
+          ),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: _isSavingPolygon ? null : _cancelPolygonEdit,
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(16),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Icon(Icons.close_rounded, color: accent, size: 18),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(
+                isKml
+                    ? Icons.upload_file_rounded
+                    : Icons.edit_location_alt_outlined,
+                color: accent,
+                size: 18,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  isKml ? 'Preview Polygon KML' : 'Mode Edit Polygon',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AdvantaText.bodyBold.copyWith(color: accent),
+                ),
+              ),
+              TextButton(
+                onPressed: _isSavingPolygon ? null : _cancelPolygonEdit,
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(0, 32),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                    side: BorderSide(color: Colors.white.withAlpha(45)),
+                  ),
+                ),
+                child: Text(
+                  'Keluar',
+                  style: AdvantaText.caption.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPolygonAreaMetric({
+    required String label,
+    required String value,
+    Color? valueColor,
+    bool alignEnd = false,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment:
+          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AdvantaText.caption.copyWith(color: Colors.white54),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AdvantaText.bodyBold.copyWith(
+            color: valueColor ?? Colors.white,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1666,6 +1876,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
         initialCenter: const LatLng(-7.5, 112.5),
         initialZoom: 8.0,
         maxZoom: 18.0,
+        interactionOptions: _isEditingPolygon
+            ? const InteractionOptions(flags: InteractiveFlag.none)
+            : const InteractionOptions(),
         // ── Optimasi: Kurangi frekuensi rebuild saat zoom ──
         onMapEvent: (event) {
           final newZoom = _mapController.camera.zoom;
@@ -1740,26 +1953,27 @@ class _QAScreenState extends ConsumerState<QAScreen>
           ),
 
         // ── 5. Field markers (cluster) ────────────────────
-        MarkerClusterLayerWidget(
-          options: MarkerClusterLayerOptions(
-            maxClusterRadius: 45,
-            size: const Size(46, 46),
-            alignment: Alignment.center,
-            padding: const EdgeInsets.all(50),
-            // Optimasi cluster: matikan animasi jika marker terlalu banyak
-            animationsOptions: const AnimationsOptions(
-              zoom: Duration.zero,
-              fitBound: Duration.zero,
-              centerMarker: Duration.zero,
-              spiderfy: Duration.zero,
+        if (_editingPolygonField == null)
+          MarkerClusterLayerWidget(
+            options: MarkerClusterLayerOptions(
+              maxClusterRadius: 45,
+              size: const Size(46, 46),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.all(50),
+              // Optimasi cluster: matikan animasi jika marker terlalu banyak
+              animationsOptions: const AnimationsOptions(
+                zoom: Duration.zero,
+                fitBound: Duration.zero,
+                centerMarker: Duration.zero,
+                spiderfy: Duration.zero,
+              ),
+              markers: _getMarkers(
+                visibleMarkerFields,
+                stackDefaultMarkers: uncoordRaw.length > 4,
+              ),
+              builder: (ctx, markers) => _buildCluster(markers.length),
             ),
-            markers: _getMarkers(
-              visibleMarkerFields,
-              stackDefaultMarkers: uncoordRaw.length > 4,
-            ),
-            builder: (ctx, markers) => _buildCluster(markers.length),
           ),
-        ),
 
         if (_editingPolygonField != null) _buildPolygonEditHandleLayer(),
       ],
@@ -1994,6 +2208,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   bool get _isEditingPolygon => _editingPolygonField != null;
 
+  bool get _isKmlPolygonEdit => _editingPolygonSource == 'kml';
+
+  Color get _polygonEditAccent =>
+      _isKmlPolygonEdit ? const Color(0xFF42A5F5) : AdvantaColors.goldLight;
+
   bool get _canEditPolygon {
     final role = ref.read(currentUserProvider).value?.role.toLowerCase();
     return role != null && role != 'guest';
@@ -2147,25 +2366,61 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 ],
               ),
               const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: canEdit
-                      ? () {
-                          Navigator.pop(sheetContext);
-                          _startPolygonEdit(field);
-                        }
-                      : null,
-                  icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
-                  label: Text('Edit Polygon', style: AdvantaText.button),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AdvantaColors.primaryGreen,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: AdvantaRadius.buttonRadius,
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: canEdit
+                          ? () {
+                              Navigator.pop(sheetContext);
+                              _startPolygonEdit(field);
+                            }
+                          : null,
+                      icon: const Icon(Icons.edit_location_alt_outlined,
+                          size: 18),
+                      label: Text(
+                        'Manual',
+                        style: AdvantaText.button.copyWith(
+                          fontSize: 12,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AdvantaColors.primaryGreen,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: AdvantaRadius.buttonRadius,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: canEdit
+                          ? () {
+                              Navigator.pop(sheetContext);
+                              unawaited(_importPolygonFromKml(field));
+                            }
+                          : null,
+                      icon: const Icon(Icons.upload_file_rounded, size: 18),
+                      label: Text(
+                        'Upload KML',
+                        style: AdvantaText.button.copyWith(
+                          fontSize: 12,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1565C0),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: AdvantaRadius.buttonRadius,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -2189,8 +2444,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
     setState(() {
       _editingPolygonField = field;
       _editingPolygonPoints = List<LatLng>.from(points);
+      _editingPolygonResetPoints = List<LatLng>.from(points);
       _polygonEditUndoStack.clear();
       _selectedPolygonVertexIndex = null;
+      _editingPolygonSource = 'manual';
+      _editingPolygonFileName = null;
+      _editingPolygonKmlPointCount = null;
       _workMode = _WorkMode.single;
       _selectedFieldNumbers.clear();
       _isLegendVisible = false;
@@ -2201,13 +2460,86 @@ class _QAScreenState extends ConsumerState<QAScreen>
     _fitPolygonPoints(points);
   }
 
+  Future<void> _importPolygonFromKml(ParsedFieldData field) async {
+    if (!_canEditPolygon) {
+      _showPolygonSnack('Akses upload KML tidak tersedia.', isError: true);
+      return;
+    }
+
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['kml', 'KML'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final picked = result.files.first;
+      String content;
+      if (picked.bytes != null) {
+        content = utf8.decode(picked.bytes!);
+      } else if (picked.path != null) {
+        content = await File(picked.path!).readAsString();
+      } else {
+        _showPolygonSnack('Tidak dapat membaca file KML.', isError: true);
+        return;
+      }
+
+      final polygon = CoordHelper.kmlPolygonToWkt(content);
+      if (polygon == null) {
+        _showPolygonSnack(
+          'File KML belum berisi polygon WGS84 yang valid.',
+          isError: true,
+        );
+        return;
+      }
+
+      final points = _openPolygonRing(_wktPolygonToLatLngs(polygon.wkt));
+      if (points.length < 3) {
+        _showPolygonSnack(
+          'Polygon KML belum punya minimal 3 titik valid.',
+          isError: true,
+        );
+        return;
+      }
+
+      setState(() {
+        _editingPolygonField = field;
+        _editingPolygonPoints = List<LatLng>.from(points);
+        _editingPolygonResetPoints = List<LatLng>.from(points);
+        _polygonEditUndoStack.clear();
+        _selectedPolygonVertexIndex = null;
+        _editingPolygonSource = 'kml';
+        _editingPolygonFileName = picked.name;
+        _editingPolygonKmlPointCount = polygon.pointCount;
+        _workMode = _WorkMode.single;
+        _selectedFieldNumbers.clear();
+        _isLegendVisible = false;
+        _isSpeedDialOpen = false;
+        _showPolygons = true;
+      });
+      _speedDialCtrl.reverse();
+      _fitPolygonPoints(points);
+      _showPolygonSnack(
+        'Preview KML dimuat: ${picked.name} (${polygon.pointCount} titik).',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showPolygonSnack('Gagal import KML: $e', isError: true);
+    }
+  }
+
   void _cancelPolygonEdit() {
     if (_isSavingPolygon) return;
     setState(() {
       _editingPolygonField = null;
       _editingPolygonPoints = [];
+      _editingPolygonResetPoints = [];
       _polygonEditUndoStack.clear();
       _selectedPolygonVertexIndex = null;
+      _editingPolygonSource = 'manual';
+      _editingPolygonFileName = null;
+      _editingPolygonKmlPointCount = null;
     });
   }
 
@@ -2230,7 +2562,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
   void _resetPolygonEdit() {
     final field = _editingPolygonField;
     if (field == null || _isSavingPolygon) return;
-    final points = _openPolygonRing(field.polygonPoints ?? const <LatLng>[]);
+    final points = _editingPolygonResetPoints.isNotEmpty
+        ? _openPolygonRing(_editingPolygonResetPoints)
+        : _openPolygonRing(field.polygonPoints ?? const <LatLng>[]);
     if (points.length < 3) return;
     _pushPolygonUndo();
     setState(() {
@@ -2310,29 +2644,171 @@ class _QAScreenState extends ConsumerState<QAScreen>
       return;
     }
 
+    final editNote = await _confirmPolygonSave(field);
+    if (editNote == null || !mounted) return;
+
     setState(() => _isSavingPolygon = true);
 
     try {
+      final wasKmlUpload = _isKmlPolygonEdit;
+      final polygonAreaHa = _calculatePolygonAreaHa(_editingPolygonPoints);
+      final userName = ref.read(currentUserProvider).value?.name.trim();
+      final normalizedNote = editNote.isEmpty ? null : editNote;
       final geometryWkt = _latLngListToPolygonWkt(_editingPolygonPoints);
       await ref.read(supabaseServiceProvider).updateFieldGeometryWkt(
             fieldNumber: fieldNumber,
             geometryWkt: geometryWkt,
+            geometrySource: wasKmlUpload ? 'qa_kml' : 'qa_manual',
+            geometryAreaHa: polygonAreaHa,
+            geometryPointCount: _editingPolygonPoints.length,
+            geometryUpdatedBy: userName,
+            geometryEditNote: normalizedNote,
+            corrFieldSizeHa: polygonAreaHa,
+            corrFieldSizeSource:
+                wasKmlUpload ? 'fam_polygon_kml' : 'fam_polygon_manual',
+            corrFieldSizeUpdatedBy: userName,
+            corrFieldSizeNote: normalizedNote,
           );
 
       if (!mounted) return;
       setState(() {
         _editingPolygonField = null;
         _editingPolygonPoints = [];
+        _editingPolygonResetPoints = [];
         _polygonEditUndoStack.clear();
         _selectedPolygonVertexIndex = null;
+        _editingPolygonSource = 'manual';
+        _editingPolygonFileName = null;
+        _editingPolygonKmlPointCount = null;
         _isSavingPolygon = false;
       });
       _refreshMapProviders();
-      _showPolygonSnack('Polygon berhasil disimpan.');
+      _showPolygonSnack(
+        wasKmlUpload
+            ? 'Polygon KML berhasil disimpan.'
+            : 'Polygon berhasil disimpan.',
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSavingPolygon = false);
       _showPolygonSnack('Gagal menyimpan polygon: $e', isError: true);
+    }
+  }
+
+  Future<String?> _confirmPolygonSave(ParsedFieldData field) async {
+    final fieldNumber = field.raw['field_number']?.toString() ?? '-';
+    final masterAreaHa = _readFieldAreaHa(field.raw);
+    final polygonAreaHa = _calculatePolygonAreaHa(_editingPolygonPoints);
+    final deltaHa = masterAreaHa == null ? null : polygonAreaHa - masterAreaHa;
+    final deltaPct =
+        masterAreaHa == null || masterAreaHa <= 0 || deltaHa == null
+            ? null
+            : (deltaHa / masterAreaHa) * 100;
+    final deltaColor = deltaHa == null
+        ? AdvantaColors.charcoal
+        : deltaHa >= 0
+            ? AdvantaColors.success
+            : AdvantaColors.gold;
+    final noteController = TextEditingController();
+
+    try {
+      final result = await showDialog<bool>(
+        context: context,
+        barrierDismissible: !_isSavingPolygon,
+        builder: (dialogContext) {
+          return AlertDialog(
+            shape: const RoundedRectangleBorder(
+              borderRadius: AdvantaRadius.dialogRadius,
+            ),
+            title: Text(
+              _isKmlPolygonEdit
+                  ? 'Simpan polygon hasil upload KML?'
+                  : 'Simpan perubahan polygon?',
+              style: AdvantaText.heading3.copyWith(
+                color: AdvantaColors.charcoal,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _PolygonConfirmRow(label: 'Field Number', value: fieldNumber),
+                _PolygonConfirmRow(
+                  label: 'Area Master',
+                  value: _formatAreaHa(masterAreaHa),
+                ),
+                _PolygonConfirmRow(
+                  label: _isKmlPolygonEdit
+                      ? 'Corr. Field Size KML'
+                      : 'Corr. Field Size Baru',
+                  value: _formatAreaHa(polygonAreaHa),
+                ),
+                _PolygonConfirmRow(
+                  label: 'Selisih Area',
+                  value: deltaHa == null
+                      ? '-'
+                      : '${_formatSignedAreaHa(deltaHa)}'
+                          '${deltaPct == null ? '' : ' (${_formatSignedPercent(deltaPct)})'}',
+                  valueColor: deltaColor,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteController,
+                  minLines: 2,
+                  maxLines: 3,
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    labelText: 'Catatan Perubahan (opsional)',
+                    hintText: 'Tulis catatan...',
+                    filled: true,
+                    fillColor: AdvantaColors.softGrey,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  style: AdvantaText.body2.copyWith(
+                    color: AdvantaColors.charcoal,
+                  ),
+                ),
+              ],
+            ),
+            actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                style: TextButton.styleFrom(
+                  foregroundColor: AdvantaColors.charcoal,
+                  backgroundColor: AdvantaColors.softGrey,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: AdvantaRadius.buttonRadius,
+                  ),
+                ),
+                child: Text('Batal', style: AdvantaText.button),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AdvantaColors.primaryGreen,
+                  foregroundColor: Colors.white,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: AdvantaRadius.buttonRadius,
+                  ),
+                ),
+                child: Text('Simpan', style: AdvantaText.button),
+              ),
+            ],
+          );
+        },
+      );
+
+      return result == true ? noteController.text.trim() : null;
+    } finally {
+      noteController.dispose();
     }
   }
 
@@ -2411,9 +2887,91 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return result;
   }
 
+  List<LatLng> _wktPolygonToLatLngs(String wkt) {
+    final match = RegExp(
+      r'POLYGON\s*\(\((.+?)\)\)',
+      caseSensitive: false,
+    ).firstMatch(wkt);
+    if (match == null) return const [];
+
+    final points = <LatLng>[];
+    for (final pair in match.group(1)!.split(',')) {
+      final parts = pair.trim().split(RegExp(r'\s+'));
+      if (parts.length < 2) continue;
+      final lng = double.tryParse(parts[0]);
+      final lat = double.tryParse(parts[1]);
+      if (lat == null || lng == null) continue;
+      points.add(LatLng(lat, lng));
+    }
+    return points;
+  }
+
   bool _sameLatLng(LatLng a, LatLng b) {
     return (a.latitude - b.latitude).abs() < 0.0000001 &&
         (a.longitude - b.longitude).abs() < 0.0000001;
+  }
+
+  double? _readFieldAreaHa(Map<String, dynamic> raw) {
+    const keys = [
+      'effective_area_ha',
+      'total_area_planted_ha',
+      'area_ha',
+      'ha',
+    ];
+
+    for (final key in keys) {
+      final value = raw[key];
+      if (value is num) return value.toDouble();
+      final parsed =
+          double.tryParse(value?.toString().trim().replaceAll(',', '.') ?? '');
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  double _calculatePolygonAreaHa(List<LatLng> points) {
+    final ring = _closedPolygonRing(points);
+    if (ring.length < 4) return 0;
+
+    const earthRadiusMeters = 6378137.0;
+    double sum = 0;
+
+    for (var i = 0; i < ring.length - 1; i++) {
+      final current = ring[i];
+      final next = ring[i + 1];
+      final lon1 = current.longitude * math.pi / 180;
+      final lon2 = next.longitude * math.pi / 180;
+      final lat1 = current.latitude * math.pi / 180;
+      final lat2 = next.latitude * math.pi / 180;
+      sum += (lon2 - lon1) * (2 + math.sin(lat1) + math.sin(lat2));
+    }
+
+    final areaSqm = (sum * earthRadiusMeters * earthRadiusMeters / 2).abs();
+    return areaSqm / 10000;
+  }
+
+  String _formatAreaHa(double? value) {
+    if (value == null || value.isNaN || value.isInfinite) return '-';
+    final decimals = value.abs() >= 100 ? 1 : 2;
+    return '${value.toStringAsFixed(decimals)} Ha';
+  }
+
+  String _formatSignedAreaHa(double value) {
+    final sign = value > 0
+        ? '+'
+        : value < 0
+            ? '-'
+            : '';
+    return '$sign${value.abs().toStringAsFixed(2)} Ha';
+  }
+
+  String _formatSignedPercent(double value) {
+    final sign = value > 0
+        ? '+'
+        : value < 0
+            ? '-'
+            : '';
+    return '$sign${value.abs().toStringAsFixed(1)}%';
   }
 
   String _latLngListToPolygonWkt(List<LatLng> points) {
@@ -2605,13 +3163,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
     if (field == null || points.length < 3) {
       return const PolygonLayer<ParsedFieldData>(polygons: []);
     }
+    final accent = _polygonEditAccent;
 
     return PolygonLayer<ParsedFieldData>(
       polygons: [
         Polygon<ParsedFieldData>(
           points: points,
-          color: AdvantaColors.gold.withAlpha(45),
-          borderColor: AdvantaColors.gold,
+          color: accent.withAlpha(_isKmlPolygonEdit ? 58 : 45),
+          borderColor: accent,
           borderStrokeWidth: 2.4,
           hitValue: field,
         ),
@@ -2623,6 +3182,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final points = _editingPolygonPoints;
     final markers = <Marker>[];
     if (points.length < 3) return const MarkerLayer(markers: []);
+    final accent = _polygonEditAccent;
 
     for (var i = 0; i < points.length; i++) {
       final nextIndex = (i + 1) % points.length;
@@ -2642,7 +3202,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 decoration: BoxDecoration(
                   color: AdvantaColors.deepForest.withAlpha(230),
                   shape: BoxShape.circle,
-                  border: Border.all(color: AdvantaColors.gold, width: 1.3),
+                  border: Border.all(color: accent, width: 1.3),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withAlpha(90),
@@ -2650,8 +3210,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     ),
                   ],
                 ),
-                child: const Icon(Icons.add_rounded,
-                    color: AdvantaColors.gold, size: 14),
+                child: Icon(Icons.add_rounded, color: accent, size: 14),
               ),
             ),
           ),
@@ -2682,9 +3241,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 width: isSelected ? 30 : 26,
                 height: isSelected ? 30 : 26,
                 decoration: BoxDecoration(
-                  color: isSelected
-                      ? AdvantaColors.gold
-                      : AdvantaColors.deepForest,
+                  color: isSelected ? accent : AdvantaColors.deepForest,
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
                   boxShadow: [
@@ -2694,10 +3251,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     ),
                   ],
                 ),
-                child: Icon(
-                  Icons.drag_indicator_rounded,
-                  color: isSelected ? AdvantaColors.charcoal : Colors.white,
-                  size: 16,
+                child: Text(
+                  '${i + 1}',
+                  style: AdvantaText.caption.copyWith(
+                    color: isSelected ? AdvantaColors.charcoal : Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
                 ),
               ),
             ),
@@ -4571,6 +5132,50 @@ class _NewQuickFilterChip extends StatelessWidget {
             ]
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PolygonConfirmRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  const _PolygonConfirmRow({
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: AdvantaText.body2.copyWith(
+                color: AdvantaColors.charcoal.withAlpha(180),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Flexible(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: AdvantaText.bodyBold.copyWith(
+                color: valueColor ?? AdvantaColors.charcoal,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -40,6 +40,12 @@ class SupabaseService {
     target_dt_date,
     season_id,
     geometry_wkt,
+    geometry_area_ha,
+    geometry_source,
+    geometry_updated_at,
+    corr_field_size_ha,
+    corr_field_size_source,
+    corr_field_size_updated_at,
     audit_vegetative(
       date_of_audit,
       rev_planting_date,
@@ -99,6 +105,12 @@ class SupabaseService {
     target_dt_date,
     season_id,
     geometry_wkt,
+    geometry_area_ha,
+    geometry_source,
+    geometry_updated_at,
+    corr_field_size_ha,
+    corr_field_size_source,
+    corr_field_size_updated_at,
     audit_vegetative(
       date_of_audit,
       audit_date_user,
@@ -541,11 +553,74 @@ class SupabaseService {
   Future<void> updateFieldGeometryWkt({
     required String fieldNumber,
     required String geometryWkt,
+    String? geometrySource,
+    double? geometryAreaHa,
+    int? geometryPointCount,
+    String? geometryUpdatedBy,
+    String? geometryEditNote,
+    double? corrFieldSizeHa,
+    String? corrFieldSizeSource,
+    String? corrFieldSizeUpdatedBy,
+    String? corrFieldSizeNote,
   }) async {
+    final payload = <String, dynamic>{'geometry_wkt': geometryWkt};
+    final hasGeometryMetadata = geometrySource != null ||
+        geometryAreaHa != null ||
+        geometryPointCount != null ||
+        geometryUpdatedBy != null ||
+        geometryEditNote != null;
+    final hasCorrFieldSize = corrFieldSizeHa != null ||
+        corrFieldSizeSource != null ||
+        corrFieldSizeUpdatedBy != null ||
+        corrFieldSizeNote != null;
+
+    if (hasGeometryMetadata) {
+      payload.addAll({
+        'geometry_source': geometrySource,
+        'geometry_area_ha': geometryAreaHa,
+        'geometry_point_count': geometryPointCount,
+        'geometry_updated_by': geometryUpdatedBy,
+        'geometry_updated_at': DateTime.now().toIso8601String(),
+        'geometry_edit_note': geometryEditNote,
+      });
+    }
+    if (hasCorrFieldSize) {
+      payload.addAll({
+        'corr_field_size_ha': corrFieldSizeHa,
+        'corr_field_size_source': corrFieldSizeSource,
+        'corr_field_size_updated_by': corrFieldSizeUpdatedBy,
+        'corr_field_size_updated_at': DateTime.now().toIso8601String(),
+        'corr_field_size_note': corrFieldSizeNote,
+      });
+    }
+
     try {
-      await _supabase.from('master_fields').update(
-          {'geometry_wkt': geometryWkt}).eq('field_number', fieldNumber);
+      final updatedRows = await _supabase
+          .from('master_fields')
+          .update(payload)
+          .eq('field_number', fieldNumber)
+          .select('field_number');
+
+      if (updatedRows.isEmpty) {
+        throw Exception('field_number tidak ditemukan: $fieldNumber');
+      }
     } catch (e) {
+      if (hasGeometryMetadata || hasCorrFieldSize) {
+        try {
+          final updatedRows = await _supabase
+              .from('master_fields')
+              .update({'geometry_wkt': geometryWkt})
+              .eq('field_number', fieldNumber)
+              .select('field_number');
+
+          if (updatedRows.isEmpty) {
+            throw Exception('field_number tidak ditemukan: $fieldNumber');
+          }
+          return;
+        } catch (_) {
+          // Keep the original metadata update error below for clearer diagnostics.
+        }
+      }
       throw Exception('Gagal menyimpan polygon lahan: $e');
     }
   }
