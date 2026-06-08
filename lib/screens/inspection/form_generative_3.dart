@@ -38,6 +38,8 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
   // Controllers
   final _qaFiCtrl = TextEditingController();
   final _qaSpvCtrl = TextEditingController();
+  final _actualTkdCtrl = TextEditingController();
+  final _auditHelperCtrl = TextEditingController();
   final _discardAreaCtrl = TextEditingController();
   final _discardReasonCtrl = TextEditingController();
   final _remarksCtrl = TextEditingController();
@@ -76,6 +78,8 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
   void dispose() {
     _qaFiCtrl.dispose();
     _qaSpvCtrl.dispose();
+    _actualTkdCtrl.dispose();
+    _auditHelperCtrl.dispose();
     _discardAreaCtrl.dispose();
     _discardReasonCtrl.dispose();
     _remarksCtrl.dispose();
@@ -87,6 +91,8 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
     _dataLoaded = true;
     _qaFiCtrl.text = audit['qa_fi_3'] ?? audit['qa_fi'] ?? '';
     _qaSpvCtrl.text = audit['qa_spv'] ?? '';
+    _actualTkdCtrl.text = audit['actual_tkd_3']?.toString() ?? '';
+    _auditHelperCtrl.text = audit['audit_helper_3'] ?? '';
     _discardAreaCtrl.text = audit['discard_area_ha_3']?.toString() ?? '';
     _discardReasonCtrl.text = audit['discard_reason_3'] ?? '';
     _remarksCtrl.text = audit['remarks_3'] ?? '';
@@ -197,6 +203,8 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
         'remarks_3': _remarksCtrl.text.trim(),
         'qa_fi_3': _qaFiCtrl.text.trim(),
         'qa_spv': _qaSpvCtrl.text.trim(),
+        'actual_tkd_3': int.tryParse(_actualTkdCtrl.text.trim()),
+        'audit_helper_3': _auditHelperCtrl.text.trim(),
         'submitted_at_3': now.toIso8601String(),
         'fase': 'generative_3',
       };
@@ -268,6 +276,8 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
       'remarks_3': _remarksCtrl.text.trim(),
       'qa_fi_3': _qaFiCtrl.text.trim(),
       'qa_spv': _qaSpvCtrl.text.trim(),
+      'actual_tkd_3': int.tryParse(_actualTkdCtrl.text.trim()),
+      'audit_helper_3': _auditHelperCtrl.text.trim(),
     };
   }
 
@@ -329,7 +339,11 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
         onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () => AdvantaLoadingState(title: 'Memuat form audit', subtitle: 'Mengambil data inspeksi', accentColor: kGen3Color, icon: Icons.assignment_rounded),
+        loading: () => AdvantaLoadingState(
+            title: 'Memuat form audit',
+            subtitle: 'Mengambil data inspeksi',
+            accentColor: kGen3Color,
+            icon: Icons.assignment_rounded),
         error: (e, _) => Center(
             child: Text('Error: $e',
                 style: AdvantaText.body2
@@ -391,6 +405,24 @@ class _FormGenerative3State extends ConsumerState<FormGenerative3> {
                         column: 'qa_spv',
                         required: !_isGuest,
                         icon: Icons.supervisor_account_outlined,
+                        accentColor: kGen3Color,
+                      ),
+                      const SizedBox(height: 12),
+                      GenTextField(
+                        controller: _actualTkdCtrl,
+                        label: 'Aktual TKD',
+                        hint: 'Jumlah tenaga kerja aktual',
+                        keyboardType: TextInputType.number,
+                        icon: Icons.engineering_outlined,
+                        accentColor: kGen3Color,
+                      ),
+                      const SizedBox(height: 12),
+                      GenQaAutocomplete(
+                        controller: _auditHelperCtrl,
+                        label: 'Audit Helper',
+                        hint: 'Nama helper audit',
+                        column: 'qa_fi',
+                        icon: Icons.group_add_outlined,
                         accentColor: kGen3Color,
                       ),
                     ],

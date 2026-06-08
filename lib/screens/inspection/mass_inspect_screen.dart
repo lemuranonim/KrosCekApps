@@ -307,6 +307,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   // ── Common ────────────────────────────────────────────────
   final _qaFiCtrl = TextEditingController();
   final _qaSpvCtrl = TextEditingController();
+  final _actualTkdCtrl = TextEditingController();
+  final _auditHelperCtrl = TextEditingController();
 
   // ── Vegetative ────────────────────────────────────────────
   final _vegSowingRatioFCtrl = TextEditingController();
@@ -499,6 +501,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   void dispose() {
     _qaFiCtrl.dispose();
     _qaSpvCtrl.dispose();
+    _actualTkdCtrl.dispose();
+    _auditHelperCtrl.dispose();
     _vegSowingRatioFCtrl.dispose();
     _vegSowingRatioMCtrl.dispose();
     _vegCoDetasselingCtrl.dispose();
@@ -833,6 +837,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'week_of_audit_1': week,
               'qa_fi_1': _qaFiCtrl.text.trim(),
               'qa_spv': _qaSpvCtrl.text.trim(),
+              'actual_tkd_1': int.tryParse(_actualTkdCtrl.text.trim()),
+              'audit_helper_1': _auditHelperCtrl.text.trim(),
               'readiness_status_1': _gen1Readiness,
               'roguing_status_1': _gen1Roguing,
               'lsv_status_1': _gen1Lsv,
@@ -851,6 +857,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'week_of_audit_2': week,
               'qa_fi_2': _qaFiCtrl.text.trim(),
               'qa_spv': _qaSpvCtrl.text.trim(),
+              'actual_tkd_2': int.tryParse(_actualTkdCtrl.text.trim()),
+              'audit_helper_2': _auditHelperCtrl.text.trim(),
               'female_shedding_2': _gen2FemaleShed,
               'offtype_m_2': _gen2OfftypeM,
               'offtype_f_2': _gen2OfftypeF,
@@ -871,6 +879,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'week_of_audit_3': week,
               'qa_fi_3': _qaFiCtrl.text.trim(),
               'qa_spv': _qaSpvCtrl.text.trim(),
+              'actual_tkd_3': int.tryParse(_actualTkdCtrl.text.trim()),
+              'audit_helper_3': _auditHelperCtrl.text.trim(),
               'female_shedding_3': _gen3FemaleShed,
               'offtype_m_3': _gen3OfftypeM,
               'offtype_f_3': _gen3OfftypeF,
@@ -904,6 +914,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'week_of_audit_4': week,
               'qa_fi_4': _qaFiCtrl.text.trim(),
               'qa_spv': _qaSpvCtrl.text.trim(),
+              'actual_tkd_4': int.tryParse(_actualTkdCtrl.text.trim()),
+              'audit_helper_4': _auditHelperCtrl.text.trim(),
               'female_shedding_4': _gen4FemaleShed,
               'offtype_m_4': _gen4OfftypeM,
               'offtype_f_4': _gen4OfftypeF,
@@ -955,6 +967,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'week_of_audit_5': week,
               'qa_fi_5': _qaFiCtrl.text.trim(),
               'qa_spv': _qaSpvCtrl.text.trim(),
+              'actual_tkd_5': int.tryParse(_actualTkdCtrl.text.trim()),
+              'audit_helper_5': _auditHelperCtrl.text.trim(),
               'female_shedding_5': _gen5FemaleShed,
               'offtype_m_5': _gen5OfftypeM,
               'offtype_f_5': _gen5OfftypeF,
@@ -1105,7 +1119,11 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       appBar: _buildAppBar(context),
       body: masterAsync.when(
         data: (selected) => _buildForm(context, selected),
-        loading: () => AdvantaLoadingState(title: 'Memuat form audit', subtitle: 'Mengambil data inspeksi', accentColor: _phaseColor, icon: Icons.assignment_rounded),
+        loading: () => AdvantaLoadingState(
+            title: 'Memuat form audit',
+            subtitle: 'Mengambil data inspeksi',
+            accentColor: _phaseColor,
+            icon: Icons.assignment_rounded),
         error: (e, _) => Center(
           child: Text('Error: $e',
               style: AdvantaText.body2
@@ -1281,6 +1299,8 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
     final auditDateLabel = widget.targetPhase == 'harvest' && isPspSelection
         ? 'Date of Inspeksi Harvest'
         : 'Tanggal Audit';
+    final showDetasselingLabor =
+        !isPspSelection && widget.targetPhase.startsWith('generative_');
 
     if (isPspSelection) {
       return psp.PspSection(
@@ -1351,6 +1371,26 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
           icon: Icons.supervisor_account_outlined,
           accentColor: _phaseColor,
         ),
+        if (showDetasselingLabor) ...[
+          const SizedBox(height: 12),
+          GenTextField(
+            controller: _actualTkdCtrl,
+            label: 'Aktual TKD',
+            hint: 'Jumlah tenaga kerja aktual',
+            keyboardType: TextInputType.number,
+            icon: Icons.engineering_outlined,
+            accentColor: _phaseColor,
+          ),
+          const SizedBox(height: 12),
+          GenQaAutocomplete(
+            controller: _auditHelperCtrl,
+            label: 'Audit Helper',
+            hint: 'Nama helper audit',
+            column: 'qa_fi',
+            icon: Icons.group_add_outlined,
+            accentColor: _phaseColor,
+          ),
+        ],
       ],
     );
   }

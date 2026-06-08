@@ -560,7 +560,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
 
           if (fitsColumns) {
             return SizedBox(
-              height: 98,
+              height: 120,
               child: Row(
                 children: [
                   Expanded(
@@ -593,7 +593,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
           }
 
           return SizedBox(
-            height: 98,
+            height: 120,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: tileCount,
@@ -768,11 +768,13 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       final date = week.startDate.add(Duration(days: index));
       final codets = <String>{};
       double area = 0;
+      var recommendedTkd = 0;
       for (final group in groups) {
         for (final field in group.fields) {
           if (normalizeDate(field.plannedDate) == date) {
             codets.add(group.key);
             area += field.areaHa;
+            recommendedTkd += field.recommendedTkd;
           }
         }
       }
@@ -780,6 +782,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         date: date,
         codetCount: codets.length,
         areaHa: area,
+        recommendedTkd: recommendedTkd,
       );
     });
   }
@@ -1842,16 +1845,29 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       );
       drawIcon(
         Icons.eco_rounded,
-        Rect.fromLTWH(rect.left + 28, rect.top + 164, 22, 22),
+        Rect.fromLTWH(rect.left + 28, rect.top + 154, 22, 22),
         active ? Colors.white : deep,
       );
       drawText(
         '${_formatHa(day.areaHa)} Ha',
-        Offset(rect.left + 58, rect.top + 163),
+        Offset(rect.left + 58, rect.top + 153),
         maxWidth: rect.width - 66,
         fontSize: 16,
         color: textColor,
         weight: FontWeight.w700,
+      );
+      drawIcon(
+        Icons.engineering_rounded,
+        Rect.fromLTWH(rect.left + 28, rect.top + 194, 22, 22),
+        active ? Colors.white : deep,
+      );
+      drawText(
+        '${day.recommendedTkd} TKD',
+        Offset(rect.left + 58, rect.top + 193),
+        maxWidth: rect.width - 66,
+        fontSize: 16,
+        color: textColor,
+        weight: FontWeight.w800,
       );
     }
 
@@ -2062,13 +2078,14 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     drawPanelTitle(rect, 'DETASSELLING PLAN BY CODET');
     final headerTop = rect.top + 54;
     final tableLeft = rect.left + 18;
-    final colWidths = [128.0, 150.0, 96.0, 156.0, 206.0, 120.0, 104.0];
+    final colWidths = [120.0, 132.0, 72.0, 126.0, 154.0, 112.0, 110.0, 92.0];
     final headers = [
       'Codet',
       'Desa',
       'Crop',
       'Hybrid',
       'Total DT Next Week (Ha)',
+      'Rekom TKD',
       'Pass Rule',
       'Status',
     ];
@@ -2139,7 +2156,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       );
       x += colWidths[1];
       drawBadge(
-        Rect.fromLTWH(x + 28, top, 44, 24),
+        Rect.fromLTWH(x + 18, top, 44, 24),
         group.cropLabel,
         fill: group.crop == DetasselingCropFilter.sc
             ? const Color(0xFFE2E9FF)
@@ -2166,6 +2183,14 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         weight: FontWeight.w900,
       );
       x += colWidths[4];
+      drawCenteredText(
+        '${group.recommendedTkd} TKD',
+        Rect.fromLTWH(x, top - 2, colWidths[5], 30),
+        fontSize: 15,
+        color: green,
+        weight: FontWeight.w900,
+      );
+      x += colWidths[5];
       drawBadge(
         Rect.fromLTWH(x + 12, top - 1, 86, 26),
         _groupPassRule(group),
@@ -2176,7 +2201,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
             ? const Color(0xFF175CFF)
             : green,
       );
-      x += colWidths[5];
+      x += colWidths[6];
       final status = _exportStatusLabel(group.status);
       canvas.drawCircle(
         Offset(x + 18, top + 12),
@@ -2186,7 +2211,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       drawText(
         status,
         Offset(x + 32, top + 3),
-        maxWidth: colWidths[6] - 38,
+        maxWidth: colWidths[7] - 38,
         fontSize: 13,
         color: ink,
         weight: FontWeight.w800,
@@ -2860,6 +2885,26 @@ class _DayTile extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (selected ? Colors.white : AdvantaColors.primaryGreen)
+                      .withAlpha(selected ? 34 : (hasPlan ? 24 : 12)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${summary.recommendedTkd} TKD',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: AdvantaText.caption.copyWith(
+                    color: selected ? Colors.white : AdvantaColors.primaryGreen,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -2952,6 +2997,26 @@ class _AllDayTile extends StatelessWidget {
                     color: selected ? Colors.white : AdvantaColors.charcoal,
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (selected ? Colors.white : AdvantaColors.primaryGreen)
+                      .withAlpha(selected ? 34 : 24),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${plan.recommendedTkd} TKD',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: AdvantaText.caption.copyWith(
+                    color: selected ? Colors.white : AdvantaColors.primaryGreen,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
@@ -3587,7 +3652,7 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: SizedBox(
-                  width: 560,
+                  width: 650,
                   child: Column(
                     children: [
                       const _DetailFnHeader(),
@@ -4172,6 +4237,7 @@ class _DetailFnHeader extends StatelessWidget {
           _DetailFnCell('Est. Date', width: 84, muted: true),
           _DetailFnCell('Status', width: 92, muted: true),
           _DetailFnCell('Pass', width: 58, muted: true),
+          _DetailFnCell('TKD/FN', width: 76, muted: true),
         ],
       ),
     );
@@ -4239,6 +4305,8 @@ class _DetailFnRow extends StatelessWidget {
                   ),
                 ),
               ),
+              _DetailFnCell('${field.recommendedTkd} TKD',
+                  width: 76, accent: true),
             ],
           ),
         ),
@@ -4693,11 +4761,9 @@ String _passLabelForDate(
   DateTime date,
   DetasselingCropFilter crop,
 ) {
-  final offset =
-      normalizeDate(date).difference(normalizeDate(weekStart)).inDays;
-  final pass = (offset ~/ 2) + 1;
-  final maxPass = crop == DetasselingCropFilter.sc ? 5 : 3;
-  return 'P${pass.clamp(1, maxPass)}';
+  final pass =
+      detasselingPassForDate(weekStart: weekStart, date: date, crop: crop);
+  return 'P$pass';
 }
 
 String _phaseForDetasselingPass(String passLabel) {

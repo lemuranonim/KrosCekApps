@@ -38,6 +38,8 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
   // Controllers
   final _qaFiCtrl = TextEditingController();
   final _qaSpvCtrl = TextEditingController();
+  final _actualTkdCtrl = TextEditingController();
+  final _auditHelperCtrl = TextEditingController();
   final _remarksCtrl = TextEditingController();
 
   // Date
@@ -67,6 +69,8 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
   void dispose() {
     _qaFiCtrl.dispose();
     _qaSpvCtrl.dispose();
+    _actualTkdCtrl.dispose();
+    _auditHelperCtrl.dispose();
     _remarksCtrl.dispose();
     super.dispose();
   }
@@ -76,6 +80,8 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
     _dataLoaded = true;
     _qaFiCtrl.text = audit['qa_fi_1'] ?? audit['qa_fi'] ?? '';
     _qaSpvCtrl.text = audit['qa_spv'] ?? '';
+    _actualTkdCtrl.text = audit['actual_tkd_1']?.toString() ?? '';
+    _auditHelperCtrl.text = audit['audit_helper_1'] ?? '';
     _remarksCtrl.text = audit['remarks_1'] ?? '';
     if (audit['date_of_audit_1'] != null) {
       try {
@@ -135,6 +141,8 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
         'remarks_1': _remarksCtrl.text.trim(),
         'qa_fi_1': _qaFiCtrl.text.trim(),
         'qa_spv': _qaSpvCtrl.text.trim(),
+        'actual_tkd_1': int.tryParse(_actualTkdCtrl.text.trim()),
+        'audit_helper_1': _auditHelperCtrl.text.trim(),
         'submitted_at_1': now.toIso8601String(),
         'fase': 'generative_1',
       };
@@ -200,6 +208,8 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
       'remarks_1': _remarksCtrl.text.trim(),
       'qa_fi_1': _qaFiCtrl.text.trim(),
       'qa_spv': _qaSpvCtrl.text.trim(),
+      'actual_tkd_1': int.tryParse(_actualTkdCtrl.text.trim()),
+      'audit_helper_1': _auditHelperCtrl.text.trim(),
     };
   }
 
@@ -263,7 +273,11 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
         onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () => AdvantaLoadingState(title: 'Memuat form audit', subtitle: 'Mengambil data inspeksi', accentColor: kGen1Color, icon: Icons.assignment_rounded),
+        loading: () => AdvantaLoadingState(
+            title: 'Memuat form audit',
+            subtitle: 'Mengambil data inspeksi',
+            accentColor: kGen1Color,
+            icon: Icons.assignment_rounded),
         error: (e, _) => Center(
             child: Text('Error: $e',
                 style: AdvantaText.body2
@@ -326,6 +340,24 @@ class _FormGenerative1State extends ConsumerState<FormGenerative1> {
                         column: 'qa_spv',
                         required: !_isGuest,
                         icon: Icons.supervisor_account_outlined,
+                        accentColor: kGen1Color,
+                      ),
+                      const SizedBox(height: 12),
+                      GenTextField(
+                        controller: _actualTkdCtrl,
+                        label: 'Aktual TKD',
+                        hint: 'Jumlah tenaga kerja aktual',
+                        keyboardType: TextInputType.number,
+                        icon: Icons.engineering_outlined,
+                        accentColor: kGen1Color,
+                      ),
+                      const SizedBox(height: 12),
+                      GenQaAutocomplete(
+                        controller: _auditHelperCtrl,
+                        label: 'Audit Helper',
+                        hint: 'Nama helper audit',
+                        column: 'qa_fi',
+                        icon: Icons.group_add_outlined,
                         accentColor: kGen1Color,
                       ),
                     ],

@@ -177,16 +177,20 @@ class DetasselingIsoExportService {
     );
 
     final dates = _dateWindow(planDates, actualDates.values.toList());
-    const labelW = 78.0;
+    const labelW = 104.0;
     final colW = (width - labelW) / dates.length;
     final rowTop = top + 38;
-    const dowH = 38.0;
-    const dateH = 76.0;
-    const planH = 82.0;
-    const actualH = 62.0;
+    const dowH = 28.0;
+    const dateH = 54.0;
+    const scheduleRowH = 37.0;
+    const scheduleRowCount = 6;
+    const gridH = dowH + dateH + scheduleRowH * scheduleRowCount;
+    final passTkdPerHa =
+        f.isSweetCorn ? const [4, 4, 4, 4, 4] : const [5, 5, 5];
+    final plannedTkdByPass = _allocateTkdByPass(f.totalAreaHa, passTkdPerHa);
 
     _drawGridLine(canvas, Offset(left + labelW, rowTop),
-        Offset(left + labelW, rowTop + dowH + dateH + planH + actualH));
+        Offset(left + labelW, rowTop + gridH));
     var x = left + labelW;
     for (var i = 0; i < dates.length; i++) {
       final date = dates[i];
@@ -194,58 +198,46 @@ class DetasselingIsoExportService {
       if (_isSameDay(date, f.auditDate)) {
         _drawFilledRect(canvas, colRect, const Color(0xFFEAF7EF));
       }
-      _drawGridLine(canvas, Offset(x, rowTop), Offset(x, rowTop + 258));
+      _drawGridLine(canvas, Offset(x, rowTop), Offset(x, rowTop + gridH));
       _textCentered(
         canvas,
         DateFormat('E', 'id_ID').format(date).substring(0, 1).toUpperCase(),
-        Rect.fromLTWH(x, rowTop + 8, colW, 20),
-        size: 16,
+        Rect.fromLTWH(x, rowTop + 5, colW, 18),
+        size: 14,
         weight: FontWeight.w800,
       );
       _textCentered(
         canvas,
         '${date.day}\n${DateFormat('MMM', 'id_ID').format(date)}',
-        Rect.fromLTWH(x, rowTop + dowH + 10, colW, 48),
-        size: 16,
+        Rect.fromLTWH(x, rowTop + dowH + 6, colW, 42),
+        size: 14,
         weight: FontWeight.w700,
       );
 
       final planned = _passForDate(planDates, date);
-      if (planned != null) {
-        _textCentered(
-          canvas,
-          'P$planned',
-          Rect.fromLTWH(x, rowTop + dowH + dateH + 25, colW, 28),
-          size: 18,
-          weight: FontWeight.w800,
-        );
-      } else {
-        _textCentered(
-          canvas,
-          '-',
-          Rect.fromLTWH(x, rowTop + dowH + dateH + 25, colW, 28),
-          size: 19,
-          weight: FontWeight.w700,
-        );
-      }
-
       final actual = _actualPassForDate(actualDates, date);
-      if (actual != null) {
+      final values = [
+        planned == null ? '-' : '${plannedTkdByPass[planned - 1]}',
+        actual == null ? '-' : _actualTkdLabel(f.actualTkdByPass[actual]),
+        planned == null ? '-' : 'P$planned',
+        actual == null ? '-' : '✓',
+        actual == null ? '-' : _personCode(f.auditFiByPass[actual] ?? f.qaFi),
+        actual == null ? '-' : _personCode(f.auditHelperByPass[actual] ?? ''),
+      ];
+      for (var row = 0; row < values.length; row++) {
         _textCentered(
           canvas,
-          '✓',
-          Rect.fromLTWH(x, rowTop + dowH + dateH + planH + 13, colW, 34),
-          size: 34,
+          values[row],
+          Rect.fromLTWH(
+            x + 2,
+            rowTop + dowH + dateH + scheduleRowH * row + 7,
+            colW - 4,
+            22,
+          ),
+          size: row == 3 && values[row] == '✓' ? 20 : 13.5,
           weight: FontWeight.w900,
-          color: const Color(0xFF1B6E1F),
-        );
-      } else {
-        _textCentered(
-          canvas,
-          '-',
-          Rect.fromLTWH(x, rowTop + dowH + dateH + planH + 16, colW, 28),
-          size: 18,
-          weight: FontWeight.w700,
+          color:
+              row == 3 && values[row] == '✓' ? const Color(0xFF1B6E1F) : _ink,
         );
       }
       x += colW;
@@ -255,31 +247,39 @@ class DetasselingIsoExportService {
         Offset(left + width, rowTop + dowH));
     _drawGridLine(canvas, Offset(left, rowTop + dowH + dateH),
         Offset(left + width, rowTop + dowH + dateH));
-    _drawGridLine(canvas, Offset(left, rowTop + dowH + dateH + planH),
-        Offset(left + width, rowTop + dowH + dateH + planH));
-    _drawGridLine(canvas, Offset(left, rowTop + dowH + dateH + planH + actualH),
-        Offset(left + width, rowTop + dowH + dateH + planH + actualH));
+    for (var row = 1; row <= scheduleRowCount; row++) {
+      final y = rowTop + dowH + dateH + scheduleRowH * row;
+      _drawGridLine(canvas, Offset(left, y), Offset(left + width, y));
+    }
 
-    _textCentered(
-      canvas,
+    final rowLabels = [
+      'PLANNING\nTKD',
+      'AKTUAL\nTKD',
       'PLAN\n(Pass)',
-      Rect.fromLTWH(left, rowTop + dowH + dateH + 18, labelW, 50),
-      size: 17,
-      weight: FontWeight.w800,
-    );
-    _textCentered(
-      canvas,
-      'AKTUAL',
-      Rect.fromLTWH(left, rowTop + dowH + dateH + planH + 18, labelW, 30),
-      size: 17,
-      weight: FontWeight.w800,
-    );
+      'AKTUAL\nDT',
+      'AUDIT\nFI',
+      'AUDIT\nHELPER',
+    ];
+    for (var row = 0; row < rowLabels.length; row++) {
+      _textCentered(
+        canvas,
+        rowLabels[row],
+        Rect.fromLTWH(
+          left + 4,
+          rowTop + dowH + dateH + scheduleRowH * row + 5,
+          labelW - 8,
+          scheduleRowH - 10,
+        ),
+        size: 12.5,
+        weight: FontWeight.w800,
+      );
+    }
 
     _text(
       canvas,
-      '❖  Untuk SC (sweet corn), detasselling dapat berlanjut hingga P4 dan P5 dengan interval +2 hari yang sama.',
-      const Offset(left + 16, top + height - 36),
-      size: 16,
+      'P = waktu/pass detasselling dimulai. TKD aktual dan helper mengikuti tanggal audit tiap pass.',
+      const Offset(left + 16, top + height - 23),
+      size: 13.5,
       weight: FontWeight.w500,
     );
   }
@@ -373,6 +373,7 @@ class DetasselingIsoExportService {
       116.0,
       116.0,
       116.0,
+      116.0,
       if (passCount == 5) 116.0,
       if (passCount == 5) 116.0,
     ];
@@ -387,6 +388,7 @@ class DetasselingIsoExportService {
       'Planting\nDate',
       'Hybrid',
       'Est DT\n(HST)',
+      'TKD / FN\n(by Ha)',
       'P1\n(${_dayMonth(planDates[0])})',
       'P2\n(${_dayMonth(planDates[1])})',
       'P3\n(${_dayMonth(planDates[2])})',
@@ -420,6 +422,7 @@ class DetasselingIsoExportService {
       _formatDate(f.plantingDate),
       f.hybrid,
       '${f.estimatedDap}',
+      '${f.recommendedTkdForPass(currentPass)} TKD',
     ];
 
     x = left;
@@ -440,12 +443,12 @@ class DetasselingIsoExportService {
       _textCentered(
         canvas,
         mark,
-        Rect.fromLTWH(x + 6, bodyTop + 20, allCols[6 + pass] - 12, 56),
+        Rect.fromLTWH(x + 6, bodyTop + 20, allCols[7 + pass] - 12, 56),
         size: actual == null ? 17 : 23,
         weight: FontWeight.w900,
         color: actual == null ? _ink : const Color(0xFF1B6E1F),
       );
-      x += allCols[6 + pass];
+      x += allCols[7 + pass];
     }
 
     final action = f.actionRemarks.isEmpty ? '-' : f.actionRemarks;
@@ -478,8 +481,9 @@ class DetasselingIsoExportService {
       ('Week:', f.week),
       ('Auditor (QA FI):', f.qaFi),
       ('QA SPV:', f.qaSpv),
+      ('Audit Helper:', f.auditHelper),
     ];
-    final metaW = width / 4;
+    final metaW = width / 5;
     for (var i = 0; i < meta.length; i++) {
       final rect =
           Rect.fromLTWH(left + 18 + (metaW - 9) * i, top + 48, metaW - 28, 50);
@@ -1156,6 +1160,37 @@ class DetasselingIsoExportService {
     return text.isEmpty ? fallback : text;
   }
 
+  static int? _readInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.round();
+    final text = value.toString().trim();
+    if (text.isEmpty) return null;
+    return int.tryParse(text);
+  }
+
+  static String _actualTkdLabel(int? value) {
+    return value == null ? '-' : value.toString();
+  }
+
+  static String _personCode(String value) {
+    final text = value.trim();
+    if (text.isEmpty) return '-';
+    final words = text
+        .split(RegExp(r'\s+'))
+        .where((word) => word.trim().isNotEmpty)
+        .toList();
+    if (words.isEmpty) return '-';
+    if (words.length == 1) {
+      final word = words.first;
+      return word.length <= 4 ? word.toUpperCase() : word.substring(0, 4);
+    }
+    return words
+        .take(2)
+        .map((word) => word.substring(0, 1).toUpperCase())
+        .join();
+  }
+
   static double _readArea(Map<String, dynamic> raw) {
     for (final value in [
       raw['effective_area_ha'],
@@ -1247,6 +1282,10 @@ class _FieldSnapshot {
   final int estimatedDap;
   final String qaFi;
   final String qaSpv;
+  final String auditHelper;
+  final Map<int, int> actualTkdByPass;
+  final Map<int, String> auditFiByPass;
+  final Map<int, String> auditHelperByPass;
   final String femaleShedding;
   final String offtypeM;
   final String offtypeF;
@@ -1277,6 +1316,10 @@ class _FieldSnapshot {
     required this.estimatedDap,
     required this.qaFi,
     required this.qaSpv,
+    required this.auditHelper,
+    required this.actualTkdByPass,
+    required this.auditFiByPass,
+    required this.auditHelperByPass,
     required this.femaleShedding,
     required this.offtypeM,
     required this.offtypeF,
@@ -1292,6 +1335,15 @@ class _FieldSnapshot {
   });
 
   bool get isSweetCorn => crop.toUpperCase() == 'SC';
+
+  int recommendedTkdForPass(int pass) {
+    final passTkdPerHa = isSweetCorn ? const [4, 4, 4, 4, 4] : const [5, 5, 5];
+    if (pass < 1 || pass > passTkdPerHa.length) return 0;
+    return DetasselingIsoExportService._allocateTkdByPass(
+      totalAreaHa,
+      passTkdPerHa,
+    )[pass - 1];
+  }
 
   String get actionRemarks {
     final action = DetasselingIsoExportService._action(actionNeeded);
@@ -1320,6 +1372,27 @@ class _FieldSnapshot {
         ? 'FC'
         : data.cropLabel.trim().toUpperCase();
 
+    final actualTkdByPass = <int, int>{};
+    final auditFiByPass = <int, String>{};
+    final auditHelperByPass = <int, String>{};
+    for (var pass = 1; pass <= 5; pass++) {
+      final actualTkd =
+          DetasselingIsoExportService._readInt(audit['actual_tkd_$pass']);
+      if (actualTkd != null) actualTkdByPass[pass] = actualTkd;
+
+      final auditFi = DetasselingIsoExportService._readText(
+        audit['qa_fi_$pass'] ?? audit['qa_fi'],
+        fallback: '',
+      );
+      if (auditFi.isNotEmpty) auditFiByPass[pass] = auditFi;
+
+      final auditHelper = DetasselingIsoExportService._readText(
+        audit['audit_helper_$pass'],
+        fallback: '',
+      );
+      if (auditHelper.isNotEmpty) auditHelperByPass[pass] = auditHelper;
+    }
+
     return _FieldSnapshot(
       fieldNumber: DetasselingIsoExportService._readText(raw['field_number']),
       farmer: DetasselingIsoExportService._readText(raw['farmer_name']),
@@ -1343,6 +1416,12 @@ class _FieldSnapshot {
         audit['qa_fi_${data.passNumber}'] ?? audit['qa_fi'],
       ),
       qaSpv: DetasselingIsoExportService._readText(audit['qa_spv']),
+      auditHelper: DetasselingIsoExportService._readText(
+        audit['audit_helper_${data.passNumber}'],
+      ),
+      actualTkdByPass: actualTkdByPass,
+      auditFiByPass: auditFiByPass,
+      auditHelperByPass: auditHelperByPass,
       femaleShedding: DetasselingIsoExportService._readText(
         audit['female_shedding_${data.passNumber}'],
         fallback: '',

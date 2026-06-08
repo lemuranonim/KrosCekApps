@@ -130,6 +130,9 @@ class DetasselingPlanField {
   final int currentDap;
   final int plannedDap;
   final int dtEndDap;
+  final int plannedPass;
+  final int recommendedTkd;
+  final int passRecommendedTkd;
   final DateTime plannedDate;
   final bool isAssessmentDone;
 
@@ -145,6 +148,9 @@ class DetasselingPlanField {
     required this.currentDap,
     required this.plannedDap,
     required this.dtEndDap,
+    required this.plannedPass,
+    required this.recommendedTkd,
+    required this.passRecommendedTkd,
     required this.plannedDate,
     required this.isAssessmentDone,
   });
@@ -179,6 +185,12 @@ class DetasselingPlanGroup {
 
   int get fieldCount => fields.length;
 
+  int get recommendedTkd =>
+      fields.fold(0, (sum, field) => sum + field.recommendedTkd);
+
+  int get passRecommendedTkd =>
+      fields.fold(0, (sum, field) => sum + field.passRecommendedTkd);
+
   int get pendingCount =>
       fields.where((field) => !field.isAssessmentDone).length;
 
@@ -198,11 +210,13 @@ class DetasselingDailySummary {
   final DateTime date;
   final int codetCount;
   final double areaHa;
+  final int recommendedTkd;
 
   const DetasselingDailySummary({
     required this.date,
     required this.codetCount,
     required this.areaHa,
+    required this.recommendedTkd,
   });
 }
 
@@ -227,6 +241,12 @@ class DetasselingPlanningData {
       groups.fold(0, (sum, group) => sum + group.totalAreaHa);
 
   int get codetCount => groups.length;
+
+  int get recommendedTkd =>
+      groups.fold(0, (sum, group) => sum + group.recommendedTkd);
+
+  int get passRecommendedTkd =>
+      groups.fold(0, (sum, group) => sum + group.passRecommendedTkd);
 
   int get pendingGroupCount => groups
       .where((group) => group.status == DetasselingGroupStatus.pending)
@@ -349,6 +369,11 @@ DetasselingPlanningData buildDetasselingPlanningData(
     );
     final codet = _readCodet(raw);
     final village = _readText(raw['village_desa'], fallback: 'Unknown Desa');
+    final plannedPass = detasselingPassForDate(
+      weekStart: weekStart,
+      date: plannedDate,
+      crop: crop,
+    );
     fields.add(
       DetasselingPlanField(
         parsed: parsed,
@@ -362,6 +387,16 @@ DetasselingPlanningData buildDetasselingPlanningData(
         currentDap: currentDap,
         plannedDap: plannedDap,
         dtEndDap: weekEndDap,
+        plannedPass: plannedPass,
+        recommendedTkd: detasselingRecommendedTkdForArea(
+          _readArea(raw),
+          crop,
+        ),
+        passRecommendedTkd: detasselingRecommendedTkdForPass(
+          areaHa: _readArea(raw),
+          crop: crop,
+          pass: plannedPass,
+        ),
         plannedDate: plannedDate,
         isAssessmentDone: _hasDetasselingAssessment(raw),
       ),
@@ -409,11 +444,13 @@ DetasselingPlanningData buildDetasselingPlanningData(
     final date = weekStart.add(Duration(days: index));
     final codets = <String>{};
     double area = 0;
+    var recommendedTkd = 0;
     for (final group in groups) {
       for (final field in group.fields) {
         if (normalizeDate(field.plannedDate) == date) {
           codets.add(group.key);
           area += field.areaHa;
+          recommendedTkd += field.recommendedTkd;
         }
       }
     }
@@ -421,6 +458,7 @@ DetasselingPlanningData buildDetasselingPlanningData(
       date: date,
       codetCount: codets.length,
       areaHa: area,
+      recommendedTkd: recommendedTkd,
     );
   });
 
@@ -506,6 +544,86 @@ bool canAccessDetasselingMapForRole({
     action: action,
     name: name,
   ).canView;
+}
+
+int detasselingTotalTkdPerHaFor(DetasselingCropFilter crop) {
+  return crop == DetasselingCropFilter.sc ? 20 : 15;
+}
+
+List<int> detasselingPassTkdPerHaFor(DetasselingCropFilter crop) {
+  return crop == DetasselingCropFilter.sc
+      ? const [4, 4, 4, 4, 4]
+      : const [5, 5, 5];
+}
+
+int detasselingPassCountFor(DetasselingCropFilter crop) {
+  return detasselingPassTkdPerHaFor(crop).length;
+}
+
+int detasselingPassForDate({
+  required DateTime weekStart,
+  required DateTime date,
+  required DetasselingCropFilter crop,
+}) {
+  final offset =
+      normalizeDate(date).difference(normalizeDate(weekStart)).inDays;
+  final pass = (offset ~/ 2) + 1;
+  return pass.clamp(1, detasselingPassCountFor(crop)).toInt();
+}
+
+int detasselingRecommendedTkdForArea(
+  double areaHa,
+  DetasselingCropFilter crop,
+) {
+  return _roundPositiveTkd(areaHa * detasselingTotalTkdPerHaFor(crop));
+}
+
+int detasselingRecommendedTkdForPass({
+  required double areaHa,
+  required DetasselingCropFilter crop,
+  required int pass,
+}) {
+  final allocated = detasselingAllocatedTkdByPass(areaHa, crop);
+  if (pass < 1 || pass > allocated.length) return 0;
+  return allocated[pass - 1];
+}
+
+List<int> detasselingAllocatedTkdByPass(
+  double areaHa,
+  DetasselingCropFilter crop,
+) {
+  final passTkdPerHa = detasselingPassTkdPerHaFor(crop);
+  if (areaHa <= 0) return List.filled(passTkdPerHa.length, 0);
+
+  final exact = passTkdPerHa.map((value) => areaHa * value).toList();
+  final floors = exact.map((value) => value.floor()).toList();
+  final targetTotal =
+      exact.fold<double>(0, (total, value) => total + value).round();
+  var remainder = targetTotal - floors.fold<int>(0, (a, b) => a + b);
+  if (remainder <= 0) return floors;
+
+  final order = List<int>.generate(exact.length, (index) => index);
+  order.sort((a, b) {
+    final aFraction = exact[a] - floors[a];
+    final bFraction = exact[b] - floors[b];
+    final byFraction = bFraction.compareTo(aFraction);
+    if (byFraction != 0) return byFraction;
+    return a.compareTo(b);
+  });
+
+  var cursor = 0;
+  while (remainder > 0 && order.isNotEmpty) {
+    floors[order[cursor % order.length]] += 1;
+    cursor++;
+    remainder--;
+  }
+  return floors;
+}
+
+int _roundPositiveTkd(double value) {
+  if (value <= 0) return 0;
+  final rounded = value.round();
+  return rounded < 1 ? 1 : rounded;
 }
 
 bool _isFieldAllowedForScope(
