@@ -154,6 +154,73 @@ class DapHelper {
     ),
   ];
 
+  static const List<DapPhaseRule> _scHighlandRules = [
+    DapPhaseRule(
+      key: 'vegetative',
+      phaseStart: 0,
+      phaseEnd: 49,
+      onGoingStart: 7,
+      onGoingEnd: 35,
+      markerColor: _vegetativeColor,
+    ),
+    DapPhaseRule(
+      key: 'generative_1',
+      phaseStart: 50,
+      phaseEnd: 51,
+      onGoingStart: 50,
+      onGoingEnd: 51,
+      markerColor: _generative1Color,
+    ),
+    DapPhaseRule(
+      key: 'generative_2',
+      phaseStart: 52,
+      phaseEnd: 53,
+      onGoingStart: 52,
+      onGoingEnd: 53,
+      markerColor: _generative2Color,
+    ),
+    DapPhaseRule(
+      key: 'generative_3',
+      phaseStart: 54,
+      phaseEnd: 55,
+      onGoingStart: 54,
+      onGoingEnd: 55,
+      markerColor: _generative3Color,
+    ),
+    DapPhaseRule(
+      key: 'generative_4',
+      phaseStart: 56,
+      phaseEnd: 57,
+      onGoingStart: 56,
+      onGoingEnd: 57,
+      markerColor: _generative4Color,
+    ),
+    DapPhaseRule(
+      key: 'generative_5',
+      phaseStart: 58,
+      phaseEnd: 59,
+      onGoingStart: 58,
+      onGoingEnd: 59,
+      markerColor: _generative5Color,
+    ),
+    DapPhaseRule(
+      key: 'pre_harvest',
+      phaseStart: 60,
+      phaseEnd: 89,
+      onGoingStart: 60,
+      onGoingEnd: 89,
+      markerColor: _preHarvestColor,
+    ),
+    DapPhaseRule(
+      key: 'harvest',
+      phaseStart: 90,
+      phaseEnd: 100,
+      onGoingStart: 90,
+      onGoingEnd: 100,
+      markerColor: _harvestColor,
+    ),
+  ];
+
   static const List<DapPhaseRule> _pspRules = [
     DapPhaseRule(
       key: 'vegetative',
@@ -264,14 +331,79 @@ class DapHelper {
     return h.startsWith('ASF');
   }
 
-  static List<DapPhaseRule> getPhaseRules({String? hybrid}) {
-    if (isSweetCorn(hybrid)) return _scRules;
+  static String _normalizeLocation(String? value) {
+    return value?.trim().toLowerCase() ?? '';
+  }
+
+  static bool isSweetCornHighlandLocation({
+    String? district,
+    String? region,
+    String? subDistrict,
+  }) {
+    return [
+      _normalizeLocation(district),
+      _normalizeLocation(region),
+      _normalizeLocation(subDistrict),
+    ].any((value) => value.contains('malang'));
+  }
+
+  static int detasselingStartDapForField(Map<String, dynamic> field) {
+    return detasselingStartDapForValues(
+      hybrid: field['hybrid']?.toString(),
+      district: field['district_kab']?.toString(),
+      region: field['region']?.toString(),
+      subDistrict: field['sub_district_kec']?.toString(),
+    );
+  }
+
+  static int detasselingStartDapForValues({
+    String? hybrid,
+    String? district,
+    String? region,
+    String? subDistrict,
+  }) {
+    if (!isSweetCorn(hybrid)) return 50;
+    return isSweetCornHighlandLocation(
+      district: district,
+      region: region,
+      subDistrict: subDistrict,
+    )
+        ? 50
+        : 47;
+  }
+
+  static List<DapPhaseRule> getPhaseRules({
+    String? hybrid,
+    String? district,
+    String? region,
+    String? subDistrict,
+  }) {
+    if (isSweetCorn(hybrid)) {
+      return isSweetCornHighlandLocation(
+        district: district,
+        region: region,
+        subDistrict: subDistrict,
+      )
+          ? _scHighlandRules
+          : _scRules;
+    }
     if (isPsp(hybrid)) return _pspRules;
     return _fcRules;
   }
 
-  static DapPhaseRule? getPhaseRule(String phaseKey, {String? hybrid}) {
-    for (final rule in getPhaseRules(hybrid: hybrid)) {
+  static DapPhaseRule? getPhaseRule(
+    String phaseKey, {
+    String? hybrid,
+    String? district,
+    String? region,
+    String? subDistrict,
+  }) {
+    for (final rule in getPhaseRules(
+      hybrid: hybrid,
+      district: district,
+      region: region,
+      subDistrict: subDistrict,
+    )) {
       if (rule.key == phaseKey) return rule;
     }
     return null;
@@ -287,16 +419,43 @@ class DapHelper {
   /// Untuk SC, rule mengikuti jadwal:
   /// Veg 7-39, Gen1 40-47, Gen2 48-50, Gen3 51-53, Gen4 54-56,
   /// Gen5 57-59, Pre-Harvest 60-89, Harvest 90-100 DAP.
-  static String getRecommendedPhase(int dap, {String? hybrid}) {
-    final rules = getPhaseRules(hybrid: hybrid);
+  ///
+  /// Untuk SC area dataran tinggi Malang, detasseling dimundurkan:
+  /// Veg 7-49, Gen1 50-51, Gen2 52-53, Gen3 54-55, Gen4 56-57,
+  /// Gen5 58-59, Pre-Harvest 60-89, Harvest 90-100 DAP.
+  static String getRecommendedPhase(
+    int dap, {
+    String? hybrid,
+    String? district,
+    String? region,
+    String? subDistrict,
+  }) {
+    final rules = getPhaseRules(
+      hybrid: hybrid,
+      district: district,
+      region: region,
+      subDistrict: subDistrict,
+    );
     for (final rule in rules) {
       if (dap <= rule.phaseEnd) return rule.key;
     }
     return 'harvest';
   }
 
-  static ActivePhaseView getActivePhaseView(int dap, {String? hybrid}) {
-    final phaseKey = getRecommendedPhase(dap, hybrid: hybrid);
+  static ActivePhaseView getActivePhaseView(
+    int dap, {
+    String? hybrid,
+    String? district,
+    String? region,
+    String? subDistrict,
+  }) {
+    final phaseKey = getRecommendedPhase(
+      dap,
+      hybrid: hybrid,
+      district: district,
+      region: region,
+      subDistrict: subDistrict,
+    );
     return phaseKeyToView(phaseKey);
   }
 
@@ -325,9 +484,17 @@ class DapHelper {
     int dap,
     ActivePhaseView phase, {
     String? hybrid,
+    String? district,
+    String? region,
+    String? subDistrict,
   }) {
     if (phase == ActivePhaseView.auto) return true;
-    final rules = getPhaseRules(hybrid: hybrid);
+    final rules = getPhaseRules(
+      hybrid: hybrid,
+      district: district,
+      region: region,
+      subDistrict: subDistrict,
+    );
 
     bool matchesRule(DapPhaseRule rule) {
       switch (phase) {
@@ -353,8 +520,16 @@ class DapHelper {
   static List<List<int>> getOperationalRanges(
     ActivePhaseView phase, {
     String? hybrid,
+    String? district,
+    String? region,
+    String? subDistrict,
   }) {
-    final rules = getPhaseRules(hybrid: hybrid);
+    final rules = getPhaseRules(
+      hybrid: hybrid,
+      district: district,
+      region: region,
+      subDistrict: subDistrict,
+    );
 
     bool matchesRule(DapPhaseRule rule) {
       switch (phase) {
@@ -377,13 +552,26 @@ class DapHelper {
         .toList(growable: false);
   }
 
-  static List<int> getPhaseLimits({String? hybrid}) {
-    return getPhaseRules(hybrid: hybrid)
-        .map((rule) => rule.phaseEnd)
-        .toList(growable: false);
+  static List<int> getPhaseLimits({
+    String? hybrid,
+    String? district,
+    String? region,
+    String? subDistrict,
+  }) {
+    return getPhaseRules(
+      hybrid: hybrid,
+      district: district,
+      region: region,
+      subDistrict: subDistrict,
+    ).map((rule) => rule.phaseEnd).toList(growable: false);
   }
 
-  static List<String> getPhaseShortLabels({String? hybrid}) {
+  static List<String> getPhaseShortLabels({
+    String? hybrid,
+    String? district,
+    String? region,
+    String? subDistrict,
+  }) {
     final labels = <String, String>{
       'vegetative': 'Veg',
       'generative_1': 'CP1',
@@ -395,9 +583,12 @@ class DapHelper {
       'harvest': 'Harvest',
     };
 
-    return getPhaseRules(hybrid: hybrid)
-        .map((rule) => labels[rule.key] ?? rule.key)
-        .toList(growable: false);
+    return getPhaseRules(
+      hybrid: hybrid,
+      district: district,
+      region: region,
+      subDistrict: subDistrict,
+    ).map((rule) => labels[rule.key] ?? rule.key).toList(growable: false);
   }
 
   /// Badge label berdasarkan prioritas status:
@@ -406,11 +597,20 @@ class DapHelper {
     int dap,
     String phaseKey, {
     String? hybrid,
+    String? district,
+    String? region,
+    String? subDistrict,
     bool isDone = false,
   }) {
     if (isDone) return 'Done';
 
-    final rule = getPhaseRule(phaseKey, hybrid: hybrid);
+    final rule = getPhaseRule(
+      phaseKey,
+      hybrid: hybrid,
+      district: district,
+      region: region,
+      subDistrict: subDistrict,
+    );
     if (rule == null) return 'Unknown';
 
     if (rule.containsOnGoingDap(dap)) return 'On Going';
@@ -435,8 +635,27 @@ class DapHelper {
   }
 
   /// Menentukan warna marker Peta berdasarkan batas fase (Rekomendasi)
-  static Color getDapMarkerColor(int dap, {String? hybrid}) {
-    final phaseKey = getRecommendedPhase(dap, hybrid: hybrid);
-    return getPhaseRule(phaseKey, hybrid: hybrid)?.markerColor ?? _harvestColor;
+  static Color getDapMarkerColor(
+    int dap, {
+    String? hybrid,
+    String? district,
+    String? region,
+    String? subDistrict,
+  }) {
+    final phaseKey = getRecommendedPhase(
+      dap,
+      hybrid: hybrid,
+      district: district,
+      region: region,
+      subDistrict: subDistrict,
+    );
+    return getPhaseRule(
+          phaseKey,
+          hybrid: hybrid,
+          district: district,
+          region: region,
+          subDistrict: subDistrict,
+        )?.markerColor ??
+        _harvestColor;
   }
 }

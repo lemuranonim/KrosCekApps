@@ -11,6 +11,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../utils/dap_helper.dart';
+
 class DetasselingIsoFormData {
   final Map<String, dynamic> fieldData;
   final Map<String, dynamic> auditData;
@@ -75,7 +77,11 @@ class DetasselingIsoExportService {
 
     final f = _FieldSnapshot.from(data);
     final passCount = f.isSweetCorn ? 5 : 3;
-    final planDates = _planDates(f.plantingDate, passCount);
+    final planDates = _planDates(
+      f.plantingDate,
+      passCount,
+      f.detasselingStartDap,
+    );
     final actualDates = _actualDates(data, passCount);
     final advantaLogo = await _loadUiImage(_advantaLogoAsset);
 
@@ -301,7 +307,7 @@ class DetasselingIsoExportService {
     );
     _textCentered(
       canvas,
-      '50 HST',
+      '${f.detasselingStartDap} HST',
       const Rect.fromLTWH(1525, 177, 246, 34),
       size: 27,
       weight: FontWeight.w900,
@@ -754,9 +760,13 @@ class DetasselingIsoExportService {
     return 'iso_detasselling_${fn}_${pass}_$stamp.$extension';
   }
 
-  static List<DateTime> _planDates(DateTime plantingDate, int passCount) {
+  static List<DateTime> _planDates(
+    DateTime plantingDate,
+    int passCount,
+    int startDap,
+  ) {
     final p1 = DateTime(plantingDate.year, plantingDate.month, plantingDate.day)
-        .add(const Duration(days: 49));
+        .add(Duration(days: startDap - 1));
     return List.generate(passCount, (i) => p1.add(Duration(days: i * 2)));
   }
 
@@ -1280,6 +1290,7 @@ class _FieldSnapshot {
   final double areaHa;
   final double totalAreaHa;
   final int estimatedDap;
+  final int detasselingStartDap;
   final String qaFi;
   final String qaSpv;
   final String auditHelper;
@@ -1314,6 +1325,7 @@ class _FieldSnapshot {
     required this.areaHa,
     required this.totalAreaHa,
     required this.estimatedDap,
+    required this.detasselingStartDap,
     required this.qaFi,
     required this.qaSpv,
     required this.auditHelper,
@@ -1365,12 +1377,22 @@ class _FieldSnapshot {
     final auditDate = DetasselingIsoExportService._parseDate(
             audit['date_of_audit_${data.passNumber}']) ??
         DateTime.now();
-    final passOne =
-        DateTime(plantingDate.year, plantingDate.month, plantingDate.day)
-            .add(const Duration(days: 49));
     final cropLabel = data.cropLabel.trim().toUpperCase().isEmpty
         ? 'FC'
         : data.cropLabel.trim().toUpperCase();
+    final rawHybrid = raw['hybrid']?.toString();
+    final helperHybrid = cropLabel == 'SC' && !DapHelper.isSweetCorn(rawHybrid)
+        ? 'AX01'
+        : rawHybrid;
+    final detasselingStartDap = DapHelper.detasselingStartDapForValues(
+      hybrid: helperHybrid,
+      district: raw['district_kab']?.toString(),
+      region: raw['region']?.toString(),
+      subDistrict: raw['sub_district_kec']?.toString(),
+    );
+    final passOne =
+        DateTime(plantingDate.year, plantingDate.month, plantingDate.day)
+            .add(Duration(days: detasselingStartDap - 1));
 
     final actualTkdByPass = <int, int>{};
     final auditFiByPass = <int, String>{};
@@ -1412,6 +1434,7 @@ class _FieldSnapshot {
       totalAreaHa: DetasselingIsoExportService._readArea(raw),
       estimatedDap:
           DetasselingIsoExportService._dapOnDate(plantingDate, passOne),
+      detasselingStartDap: detasselingStartDap,
       qaFi: DetasselingIsoExportService._readText(
         audit['qa_fi_${data.passNumber}'] ?? audit['qa_fi'],
       ),

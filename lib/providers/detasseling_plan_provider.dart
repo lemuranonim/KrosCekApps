@@ -130,6 +130,7 @@ class DetasselingPlanField {
   final int currentDap;
   final int plannedDap;
   final int dtEndDap;
+  final int detasselingStartDap;
   final int plannedPass;
   final int recommendedTkd;
   final int passRecommendedTkd;
@@ -148,6 +149,7 @@ class DetasselingPlanField {
     required this.currentDap,
     required this.plannedDap,
     required this.dtEndDap,
+    required this.detasselingStartDap,
     required this.plannedPass,
     required this.recommendedTkd,
     required this.passRecommendedTkd,
@@ -354,9 +356,11 @@ DetasselingPlanningData buildDetasselingPlanningData(
     final plantingDate = _readPlanningPlantingDate(raw);
     if (plantingDate == null) continue;
 
-    final firstPlannedOffset = _firstOffsetAtOrAbove50Dap(
+    final detasselingStartDap = DapHelper.detasselingStartDapForField(raw);
+    final firstPlannedOffset = _firstOffsetAtOrAboveDap(
       plantingDate: plantingDate,
       weekStart: weekStart,
+      startDap: detasselingStartDap,
     );
     if (firstPlannedOffset == null) continue;
 
@@ -387,6 +391,7 @@ DetasselingPlanningData buildDetasselingPlanningData(
         currentDap: currentDap,
         plannedDap: plannedDap,
         dtEndDap: weekEndDap,
+        detasselingStartDap: detasselingStartDap,
         plannedPass: plannedPass,
         recommendedTkd: detasselingRecommendedTkdForArea(
           _readArea(raw),
@@ -642,13 +647,14 @@ bool _isFieldAllowedForScope(
   }
 }
 
-int? _firstOffsetAtOrAbove50Dap({
+int? _firstOffsetAtOrAboveDap({
   required DateTime plantingDate,
   required DateTime weekStart,
+  required int startDap,
 }) {
   for (var offset = 0; offset < 7; offset++) {
     final date = weekStart.add(Duration(days: offset));
-    if (_detasselingDapOnDate(plantingDate, date) >= 50) return offset;
+    if (_detasselingDapOnDate(plantingDate, date) >= startDap) return offset;
   }
   return null;
 }
