@@ -39,6 +39,7 @@ import '../../utils/audit_status_helper.dart';
 import '../../utils/active_phase_filter.dart';
 import '../../utils/coord_helper.dart';
 import '../../utils/dap_helper.dart';
+import '../../utils/pld_visibility_helper.dart';
 import '../../utils/qa_name_helper.dart';
 import '../../widgets/audit_status_widgets.dart';
 import '../../widgets/phase_asset_icon.dart';
@@ -821,23 +822,34 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final preHarvest = _firstAuditRow(raw, 'audit_pre_harvest');
     final harvest = _firstAuditRow(raw, 'audit_harvest');
 
-    final values = <Object?>[
-      raw['flagging_final'],
-      veg?['decision'],
-      veg?['action_needed'],
-      preHarvest?['final_decision'],
-      preHarvest?['final_flagging'],
-      harvest?['status_downgrade'],
-      harvest?['final_flagging'],
-      harvest?['downgrade_flagging'],
-    ];
-
-    for (var i = 1; i <= 5; i++) {
-      values.add(gen?['action_needed_$i']);
-      values.add(gen?['final_decision_$i']);
+    if (PldVisibilityHelper.isExplicitPld(raw['flagging_final']) ||
+        PldVisibilityHelper.isDecisionPld(veg?['decision']) ||
+        PldVisibilityHelper.isDecisionPld(veg?['final_decision']) ||
+        PldVisibilityHelper.isVegetativeActionPldFull(
+          veg?['action_needed'],
+        ) ||
+        PldVisibilityHelper.isPldOrDiscardFull(
+          preHarvest?['final_decision'],
+        ) ||
+        PldVisibilityHelper.isExplicitPld(preHarvest?['final_flagging']) ||
+        PldVisibilityHelper.isPldOrDiscardFull(harvest?['status_downgrade']) ||
+        PldVisibilityHelper.isExplicitPld(harvest?['final_flagging']) ||
+        PldVisibilityHelper.isExplicitPld(harvest?['downgrade_flagging'])) {
+      return true;
     }
 
-    return values.any(_isPldDiscardValue);
+    for (var i = 1; i <= 5; i++) {
+      if (PldVisibilityHelper.isPldOrDiscardFull(
+            gen?['action_needed_$i'],
+          ) ||
+          PldVisibilityHelper.isPldOrDiscardFull(
+            gen?['final_decision_$i'],
+          )) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   Map<String, dynamic>? _firstAuditRow(
@@ -853,16 +865,6 @@ class _QAScreenState extends ConsumerState<QAScreen>
       if (first is Map) return Map<String, dynamic>.from(first);
     }
     return null;
-  }
-
-  bool _isPldDiscardValue(Object? value) {
-    final raw = value?.toString().trim();
-    if (raw == null || raw.isEmpty) return false;
-    final normalized = raw.toLowerCase();
-    if (normalized.contains('pld') || normalized.contains('discard')) {
-      return true;
-    }
-    return normalized == 'd' || normalized == 'f' || normalized == 'g';
   }
 
   List<String> _uniqueValues(

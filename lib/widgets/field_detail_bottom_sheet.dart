@@ -8,6 +8,7 @@ import '../providers/master_fields_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/dap_helper.dart';
 import '../utils/audit_status_helper.dart';
+import '../utils/pld_visibility_helper.dart';
 import 'phase_asset_icon.dart';
 
 class FieldDetailBottomSheet extends ConsumerStatefulWidget {
@@ -236,33 +237,16 @@ class _FieldDetailBottomSheetState
   String _fmt(dynamic v, {String fallback = '—'}) =>
       (v == null || v.toString().trim().isEmpty) ? fallback : v.toString();
 
-  String _normalizedAuditValue(dynamic value) {
-    if (value == null) return '';
-    return value.toString().trim().toUpperCase();
-  }
-
   bool _isExplicitPldValue(dynamic value) {
-    final normalized = _normalizedAuditValue(value);
-    if (normalized.isEmpty) return false;
-    return normalized == 'PLD' || normalized.contains('PLD');
+    return PldVisibilityHelper.isExplicitPld(value);
   }
 
   bool _isVegetativePldDecision(dynamic value) {
-    final normalized = _normalizedAuditValue(value);
-    if (normalized.isEmpty) return false;
-    return normalized == 'D' ||
-        normalized == 'DISCARD' ||
-        _isExplicitPldValue(value);
+    return PldVisibilityHelper.isDecisionPld(value);
   }
 
   bool _isVegetativePldAction(dynamic value) {
-    final normalized = _normalizedAuditValue(value);
-    if (normalized.isEmpty) return false;
-    return normalized == 'F' ||
-        normalized == 'G' ||
-        normalized == 'DISCARD PARTIAL' ||
-        normalized == 'DISCARD FULL' ||
-        _isExplicitPldValue(value);
+    return PldVisibilityHelper.isVegetativeActionPldFull(value);
   }
 
   bool _isPldFlagging(dynamic value) => _isExplicitPldValue(value);
@@ -278,7 +262,9 @@ class _FieldDetailBottomSheetState
   bool _isGenerativePldAudit(Map<String, dynamic>? audit, int checkpoint) {
     if (audit == null) return false;
     return _isVegetativePldDecision(audit['final_decision_$checkpoint']) ||
-        _isExplicitPldValue(audit['action_needed_$checkpoint']) ||
+        PldVisibilityHelper.isPldOrDiscardFull(
+          audit['action_needed_$checkpoint'],
+        ) ||
         _isPldFlagging(audit['final_flagging_$checkpoint']) ||
         _isPldFlagging(audit['flagging_$checkpoint']);
   }

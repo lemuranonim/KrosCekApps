@@ -303,6 +303,9 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isSaving = false;
   DateTime _auditDate = DateTime.now();
+  DateTime _actualDtDate = DateTime.now();
+  DateTime _auditFiDate = DateTime.now();
+  DateTime _auditHelperDate = DateTime.now();
 
   // ── Common ────────────────────────────────────────────────
   final _qaFiCtrl = TextEditingController();
@@ -532,6 +535,15 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
   }
 
   // ─── Date pickers ─────────────────────────────────────────
+  void _setAuditDate(DateTime date) {
+    setState(() {
+      _auditDate = date;
+      _actualDtDate = date;
+      _auditFiDate = date;
+      _auditHelperDate = date;
+    });
+  }
+
   Future<void> _pickAuditDate() async {
     final p = await showDatePicker(
       context: context,
@@ -541,7 +553,22 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       builder: (ctx, child) =>
           Theme(data: genDatePickerTheme(ctx, _phaseColor), child: child!),
     );
-    if (p != null) setState(() => _auditDate = p);
+    if (p != null) _setAuditDate(p);
+  }
+
+  Future<void> _pickDetasselingDate(
+    DateTime currentDate,
+    ValueChanged<DateTime> onPicked,
+  ) async {
+    final p = await showDatePicker(
+      context: context,
+      initialDate: currentDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (ctx, child) =>
+          Theme(data: genDatePickerTheme(ctx, _phaseColor), child: child!),
+    );
+    if (p != null) setState(() => onPicked(p));
   }
 
   Future<void> _pickVegRevPlantingDate() async {
@@ -680,6 +707,15 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
       return false;
     }
     return true;
+  }
+
+  void _addDetasselingDatePayload(Map<String, dynamic> rec, int pass) {
+    rec['actual_dt_date_$pass'] =
+        DateFormat('yyyy-MM-dd').format(_actualDtDate);
+    rec['audit_fi_date_$pass'] = DateFormat('yyyy-MM-dd').format(_auditFiDate);
+    rec['audit_helper_date_$pass'] = _auditHelperCtrl.text.trim().isEmpty
+        ? null
+        : DateFormat('yyyy-MM-dd').format(_auditHelperDate);
   }
 
   // ─── SUBMIT ──────────────────────────────────────────────
@@ -1056,6 +1092,12 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
               'updated_at': nowStr,
             });
         }
+
+        if (!isPspSelection && widget.targetPhase.startsWith('generative_')) {
+          final pass = int.tryParse(widget.targetPhase.split('_').last);
+          if (pass != null) _addDetasselingDatePayload(rec, pass);
+        }
+
         records.add(rec);
       }
 
@@ -1389,6 +1431,36 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
             column: 'qa_fi',
             icon: Icons.group_add_outlined,
             accentColor: _phaseColor,
+          ),
+          const SizedBox(height: 12),
+          GenDateTile(
+            label: 'Aktual DT Date',
+            date: _actualDtDate,
+            required: false,
+            onTap: () => _pickDetasselingDate(
+              _actualDtDate,
+              (date) => _actualDtDate = date,
+            ),
+          ),
+          const SizedBox(height: 12),
+          GenDateTile(
+            label: 'Audit Date FI',
+            date: _auditFiDate,
+            required: false,
+            onTap: () => _pickDetasselingDate(
+              _auditFiDate,
+              (date) => _auditFiDate = date,
+            ),
+          ),
+          const SizedBox(height: 12),
+          GenDateTile(
+            label: 'Audit Date Helper',
+            date: _auditHelperDate,
+            required: false,
+            onTap: () => _pickDetasselingDate(
+              _auditHelperDate,
+              (date) => _auditHelperDate = date,
+            ),
           ),
         ],
       ],

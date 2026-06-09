@@ -44,6 +44,9 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
 
   // Date
   DateTime _auditDate = DateTime.now();
+  DateTime _actualDtDate = DateTime.now();
+  DateTime _auditFiDate = DateTime.now();
+  DateTime _auditHelperDate = DateTime.now();
 
   // Dropdowns
   String? _nst;
@@ -77,6 +80,24 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
     super.dispose();
   }
 
+  DateTime? _readAuditDate(dynamic value) {
+    if (value == null) return null;
+    try {
+      return DateTime.parse(value.toString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _setAuditDate(DateTime date) {
+    setState(() {
+      _auditDate = date;
+      _actualDtDate = date;
+      _auditFiDate = date;
+      _auditHelperDate = date;
+    });
+  }
+
   void _loadAudit(Map<String, dynamic> audit) {
     if (_dataLoaded) return;
     _dataLoaded = true;
@@ -90,6 +111,10 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
         _auditDate = DateTime.parse(audit['date_of_audit_2']);
       } catch (_) {}
     }
+    _actualDtDate = _readAuditDate(audit['actual_dt_date_2']) ?? _auditDate;
+    _auditFiDate = _readAuditDate(audit['audit_fi_date_2']) ?? _auditDate;
+    _auditHelperDate =
+        _readAuditDate(audit['audit_helper_date_2']) ?? _auditDate;
     setState(() {
       _nst = audit['nst_2'];
       _roguingStatus = audit['roguing_status_2'];
@@ -118,7 +143,28 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
         child: child!,
       ),
     );
-    if (p != null) setState(() => _auditDate = p);
+    if (p != null) _setAuditDate(p);
+  }
+
+  Future<void> _pickDetasselingDate(
+    DateTime currentDate,
+    ValueChanged<DateTime> onPicked,
+  ) async {
+    if (_isGuest) {
+      GuestGuard.blockIfGuest(context, _session);
+      return;
+    }
+    final p = await showDatePicker(
+      context: context,
+      initialDate: currentDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (ctx, child) => Theme(
+        data: genDatePickerTheme(ctx, kGen2Color),
+        child: child!,
+      ),
+    );
+    if (p != null) setState(() => onPicked(p));
   }
 
   Future<void> _save() async {
@@ -150,6 +196,11 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
         'qa_spv': _qaSpvCtrl.text.trim(),
         'actual_tkd_2': int.tryParse(_actualTkdCtrl.text.trim()),
         'audit_helper_2': _auditHelperCtrl.text.trim(),
+        'actual_dt_date_2': DateFormat('yyyy-MM-dd').format(_actualDtDate),
+        'audit_fi_date_2': DateFormat('yyyy-MM-dd').format(_auditFiDate),
+        'audit_helper_date_2': _auditHelperCtrl.text.trim().isEmpty
+            ? null
+            : DateFormat('yyyy-MM-dd').format(_auditHelperDate),
         'submitted_at_2': now.toIso8601String(),
         'fase': 'generative_2',
       };
@@ -220,6 +271,11 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
       'qa_spv': _qaSpvCtrl.text.trim(),
       'actual_tkd_2': int.tryParse(_actualTkdCtrl.text.trim()),
       'audit_helper_2': _auditHelperCtrl.text.trim(),
+      'actual_dt_date_2': DateFormat('yyyy-MM-dd').format(_actualDtDate),
+      'audit_fi_date_2': DateFormat('yyyy-MM-dd').format(_auditFiDate),
+      'audit_helper_date_2': _auditHelperCtrl.text.trim().isEmpty
+          ? null
+          : DateFormat('yyyy-MM-dd').format(_auditHelperDate),
     };
   }
 
@@ -369,6 +425,36 @@ class _FormGenerative2SCState extends ConsumerState<FormGenerative2SC> {
                         column: 'qa_fi',
                         icon: Icons.group_add_outlined,
                         accentColor: kGen2Color,
+                      ),
+                      const SizedBox(height: 12),
+                      GenDateTile(
+                        label: 'Aktual DT Date',
+                        date: _actualDtDate,
+                        required: false,
+                        onTap: () => _pickDetasselingDate(
+                          _actualDtDate,
+                          (date) => _actualDtDate = date,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      GenDateTile(
+                        label: 'Audit Date FI',
+                        date: _auditFiDate,
+                        required: false,
+                        onTap: () => _pickDetasselingDate(
+                          _auditFiDate,
+                          (date) => _auditFiDate = date,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      GenDateTile(
+                        label: 'Audit Date Helper',
+                        date: _auditHelperDate,
+                        required: false,
+                        onTap: () => _pickDetasselingDate(
+                          _auditHelperDate,
+                          (date) => _auditHelperDate = date,
+                        ),
                       ),
                     ],
                   ),

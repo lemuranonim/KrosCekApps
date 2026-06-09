@@ -22,6 +22,8 @@ import '../../services/session_manager.dart';
 // ── IMPORT TEMA PUSAT ────────────────────────────────
 import '../theme/app_theme.dart';
 
+const _splashWallpaperAsset = 'assets/splash_wallpaper.png';
+
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
   debugPrint("DOWNLOAD_CALLBACK: Task id=$id, status=$status, progress=$progress%");
@@ -736,35 +738,46 @@ class SplashScreenState extends State<SplashScreen>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Warna adaptif untuk Background Splash
-    final bgColors = isDark
-        ? [AdvantaColors.deepForest, const Color(0xFF112E20), const Color(0xFF0A2318)] // Corporate Luxury
-        : [AdvantaColors.cream, AdvantaColors.softGrey, const Color(0xFFE0E3E0)]; // High Readability Light Mode
-
-    // Warna adaptif untuk teks
-    final mainTextColor = isDark ? Colors.white : AdvantaColors.deepForest;
-    final subTextColor = isDark ? Colors.white.withAlpha(170) : AdvantaColors.midGreen;
-    final accentLineColor = isDark ? AdvantaColors.gold : AdvantaColors.primaryGreen;
+    final mainTextColor = Colors.white;
+    final subTextColor = Colors.white.withAlpha(isDark ? 180 : 210);
+    final accentLineColor = isDark ? AdvantaColors.gold : AdvantaColors.goldLight;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: Stack(
         children: [
-          // ── 1. Background Dinamis ─────
           Positioned.fill(
-            child: Container(
+            child: Image.asset(
+              _splashWallpaperAsset,
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+              errorBuilder: (_, __, ___) => Container(color: AdvantaColors.deepForest),
+            ),
+          ),
+
+          Positioned.fill(
+            child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: bgColors,
-                  stops: const [0.0, 0.6, 1.0],
+                  colors: isDark
+                      ? [
+                          AdvantaColors.deepForest.withAlpha(215),
+                          AdvantaColors.deepForest.withAlpha(178),
+                          const Color(0xFF071A12).withAlpha(232),
+                        ]
+                      : [
+                          AdvantaColors.deepForest.withAlpha(110),
+                          AdvantaColors.deepForest.withAlpha(82),
+                          AdvantaColors.deepForest.withAlpha(205),
+                        ],
+                  stops: const [0.0, 0.45, 1.0],
                 ),
               ),
             ),
           ),
 
-          // ── 2. Subtle geometric pattern ─
           Positioned.fill(
             child: CustomPaint(painter: _HexPatternPainter(isDark)),
           ),
