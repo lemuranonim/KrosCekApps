@@ -37,6 +37,10 @@ assets/config.json
 .pub-cache/
 .pub/
 /build/
+/docs/
+/supabase/
+.vscode/
+/local commit/
 
 # Symbolication related
 app.*.symbols

@@ -735,6 +735,7 @@ class SupabaseService {
     try {
       // Pastikan field_number ada di data
       data['field_number'] = fieldNumber;
+      _applyDetasselingDateDefaults(data, checkpoint);
       // Tambahkan timestamp submission untuk checkpoint tsb
       data['submitted_at_$checkpoint'] = DateTime.now().toIso8601String();
 
@@ -746,6 +747,24 @@ class SupabaseService {
     } catch (e) {
       throw Exception('Gagal menyimpan audit generative-$checkpoint: $e');
     }
+  }
+
+  void _applyDetasselingDateDefaults(
+    Map<String, dynamic> data,
+    int checkpoint,
+  ) {
+    final auditDateKey = 'date_of_audit_$checkpoint';
+    final auditDate = data[auditDateKey];
+    if (auditDate == null || auditDate.toString().trim().isEmpty) return;
+
+    data.putIfAbsent('actual_dt_date_$checkpoint', () => auditDate);
+    data.putIfAbsent('audit_fi_date_$checkpoint', () => auditDate);
+
+    final helper = data['audit_helper_$checkpoint']?.toString().trim() ?? '';
+    data.putIfAbsent(
+      'audit_helper_date_$checkpoint',
+      () => helper.isEmpty ? null : auditDate,
+    );
   }
 
   // Backward compatibility atau jika masih butuh function spesifik

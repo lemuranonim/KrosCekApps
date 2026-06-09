@@ -715,7 +715,11 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       week: plan.week,
       groups: List.unmodifiable(groups),
       dailySummaries: List.unmodifiable(
-        _dailySummariesForGroups(plan.week, groups),
+        _dailySummariesForGroups(
+          plan.week,
+          groups,
+          selectedDate: date,
+        ),
       ),
       sourceFieldCount: plan.sourceFieldCount,
       plannedFieldCount: fieldCount,
@@ -739,7 +743,8 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
   ) {
     final normalized = normalizeDate(date);
     return group.fields
-        .where((field) => normalizeDate(field.plannedDate) == normalized)
+        .where(
+            (field) => detasselingPassForFieldOnDate(field, normalized) != null)
         .toList(growable: false);
   }
 
@@ -760,21 +765,50 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     );
   }
 
+  List<DetasselingPlanField> _fieldsForPassFilter(
+    Iterable<DetasselingPlanField> fields, {
+    DateTime? selectedDate,
+    int? selectedPass,
+  }) {
+    if (selectedDate == null || selectedPass == null) {
+      return fields.toList(growable: false);
+    }
+    final date = normalizeDate(selectedDate);
+    return fields
+        .where(
+          (field) => detasselingPassForFieldOnDate(field, date) == selectedPass,
+        )
+        .toList(growable: false);
+  }
+
   List<DetasselingDailySummary> _dailySummariesForGroups(
     DetasselingWeekOption week,
-    List<DetasselingPlanGroup> groups,
-  ) {
+    List<DetasselingPlanGroup> groups, {
+    DateTime? selectedDate,
+  }) {
+    final selected = selectedDate == null ? null : normalizeDate(selectedDate);
     return List.generate(7, (index) {
       final date = week.startDate.add(Duration(days: index));
+      if (selected != null && date != selected) {
+        return DetasselingDailySummary(
+          date: date,
+          codetCount: 0,
+          areaHa: 0,
+          recommendedTkd: 0,
+        );
+      }
       final codets = <String>{};
       double area = 0;
       var recommendedTkd = 0;
       for (final group in groups) {
         for (final field in group.fields) {
-          if (normalizeDate(field.plannedDate) == date) {
+          if (detasselingPassForFieldOnDate(field, date) != null) {
             codets.add(group.key);
             area += field.areaHa;
-            recommendedTkd += field.recommendedTkd;
+            recommendedTkd += detasselingRecommendedTkdForFieldOnDate(
+              field,
+              date,
+            );
           }
         }
       }
@@ -806,9 +840,19 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     return DateFormat('d MMM yyyy', 'id_ID').format(date);
   }
 
+  String _datePassFilterLabel(DateTime? date, int? pass) {
+    final label = _dateFilterLabel(date);
+    return pass == null ? label : '$label P$pass';
+  }
+
   String _dateFilterSuffix(DateTime? date) {
     if (date == null) return 'all_date';
     return DateFormat('yyyyMMdd').format(date);
+  }
+
+  String _datePassFilterSuffix(DateTime? date, int? pass) {
+    final suffix = _dateFilterSuffix(date);
+    return pass == null ? suffix : '${suffix}_p$pass';
   }
 
   DetasselingPlanGroup? _selectedGroup(DetasselingPlanningData? plan) {
@@ -929,6 +973,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     DetasselingPlanningData plan,
     DetasselingPlanGroup group, {
     DateTime? selectedDate,
+    int? selectedPass,
   }) async {
     if (_isExportingPicture) return;
     setState(() => _isExportingPicture = true);
@@ -937,6 +982,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         plan,
         group,
         selectedDate: selectedDate,
+        selectedPass: selectedPass,
       );
       final destination = await _saveBytes(
         bytes: bytes,
@@ -945,6 +991,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
           group,
           'png',
           selectedDate: selectedDate,
+          selectedPass: selectedPass,
         ),
         mimeType: 'image/png',
       );
@@ -960,6 +1007,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     DetasselingPlanningData plan,
     DetasselingPlanGroup group, {
     DateTime? selectedDate,
+    int? selectedPass,
   }) async {
     if (_isExportingPdf) return;
     setState(() => _isExportingPdf = true);
@@ -968,6 +1016,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         plan,
         group,
         selectedDate: selectedDate,
+        selectedPass: selectedPass,
       );
       final doc = pw.Document();
       doc.addPage(
@@ -989,6 +1038,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
           group,
           'pdf',
           selectedDate: selectedDate,
+          selectedPass: selectedPass,
         ),
         mimeType: 'application/pdf',
       );
@@ -1004,6 +1054,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     DetasselingPlanningData plan,
     DetasselingPlanGroup group, {
     DateTime? selectedDate,
+    int? selectedPass,
   }) async {
     const width = 1200.0;
     const height = 1600.0;
@@ -1014,8 +1065,14 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     const line = Color(0xFFDCE3DD);
     const ink = Color(0xFF092817);
     final reportGroup = _groupForDateFilter(group, selectedDate);
-    final reportFields = reportGroup.fields;
-    final dateScopeLabel = _dateFilterLabel(selectedDate);
+    final reportFields = _fieldsForPassFilter(
+      reportGroup.fields,
+      selectedDate: selectedDate,
+      selectedPass: selectedPass,
+    );
+    final reportArea =
+        reportFields.fold(0.0, (sum, field) => sum + field.areaHa);
+    final dateScopeLabel = _datePassFilterLabel(selectedDate, selectedPass);
 
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
@@ -1216,12 +1273,12 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       (
         Icons.area_chart_rounded,
         'Total DT Week',
-        '${_formatHa(reportGroup.totalAreaHa)} Ha',
+        '${_formatHa(reportArea)} Ha',
         green
       ),
       (Icons.spa_rounded, 'Season', season, null),
       (Icons.location_on_rounded, 'Region', region, null),
-      (Icons.groups_2_rounded, 'FN', '${reportGroup.fieldCount} FN', null),
+      (Icons.groups_2_rounded, 'FN', '${reportFields.length} FN', null),
       (Icons.calendar_month_rounded, 'Week', plan.week.label, null),
       (Icons.flag_rounded, 'Pass Rule', _groupPassRule(group), green),
     ];
@@ -1271,9 +1328,15 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     final dayW = (dayRect.width - 26) / 7;
     for (var i = 0; i < 7; i++) {
       final date = plan.week.startDate.add(Duration(days: i));
-      final fields = reportFields
-          .where((field) => normalizeDate(field.plannedDate) == date)
-          .toList();
+      final fields = selectedDate != null && normalizeDate(date) != selectedDate
+          ? <DetasselingPlanField>[]
+          : reportFields.where(
+              (field) {
+                final pass = detasselingPassForFieldOnDate(field, date);
+                return pass != null &&
+                    (selectedPass == null || pass == selectedPass);
+              },
+            ).toList();
       final area = fields.fold(0.0, (sum, field) => sum + field.areaHa);
       final active = fields.isNotEmpty;
       final rect = Rect.fromLTWH(
@@ -1310,7 +1373,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       drawCenteredText(
         fields.isEmpty
             ? '-'
-            : _passLabelForDate(plan.week.startDate, date, group.crop),
+            : detasselingPassLabelsForFieldsOnDate(fields, date),
         Rect.fromLTWH(rect.left + 18, rect.top + 76, rect.width - 36, 28),
         fontSize: 15,
         color: active ? Colors.white : green,
@@ -1373,6 +1436,10 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     const rowHeight = 42.0;
     for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
       final field = rows[rowIndex];
+      final rowDate = selectedDate ?? field.plannedDate;
+      final passLabel = selectedDate == null
+          ? 'P${field.plannedPass}'
+          : detasselingPassLabelForFieldOnDate(field, rowDate);
       final top = headerTop + 31 + rowHeight * rowIndex;
       canvas.drawLine(
         Offset(tableRect.left + 24, top - 8),
@@ -1385,16 +1452,12 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         field.fieldNumber.isEmpty ? '-' : field.fieldNumber,
         field.farmerName.isEmpty ? '-' : field.farmerName,
         '${_formatHa(field.areaHa)} Ha',
-        DateFormat('d MMM', 'id_ID').format(field.plannedDate),
+        DateFormat('d MMM', 'id_ID').format(rowDate),
         field.dtDapRangeLabel.replaceFirst('DT ', ''),
-        _passLabelForDate(plan.week.startDate, field.plannedDate, group.crop),
+        passLabel,
         _isDetasselingPhaseDone(
           field,
-          _detasselingPhaseForField(
-            plan.week.startDate,
-            group.crop,
-            field,
-          ),
+          _detasselingPhaseForField(field, rowDate, selectedPass),
         )
             ? 'Done'
             : 'Planned',
@@ -2511,8 +2574,9 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     DetasselingPlanGroup group,
     String extension, {
     DateTime? selectedDate,
+    int? selectedPass,
   }) {
-    final stamp = _dateFilterSuffix(selectedDate);
+    final stamp = _datePassFilterSuffix(selectedDate, selectedPass);
     final codet = _safeFilePart(group.codet);
     return 'weekly_dt_codet_${plan.week.label}_${codet}_$stamp.$extension';
   }
@@ -2541,20 +2605,25 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         group: group,
         initialDate: _selectedPlanningDate,
         onFieldTap: _openFieldDetail,
-        onOpenInspection: (fields) => _openCodetMassInspection(
+        onOpenInspection: (fields, selectedDate, selectedPass) =>
+            _openCodetMassInspection(
           plan.week,
           group,
           fieldsOverride: fields,
+          selectedDate: selectedDate,
+          selectedPass: selectedPass,
         ),
-        onDownloadPicture: (date) => _downloadCodetPicture(
+        onDownloadPicture: (date, pass) => _downloadCodetPicture(
           plan,
           group,
           selectedDate: date,
+          selectedPass: pass,
         ),
-        onDownloadPdf: (date) => _downloadCodetPdf(
+        onDownloadPdf: (date, pass) => _downloadCodetPdf(
           plan,
           group,
           selectedDate: date,
+          selectedPass: pass,
         ),
       ),
     );
@@ -2564,6 +2633,8 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     DetasselingWeekOption week,
     DetasselingPlanGroup group, {
     List<DetasselingPlanField>? fieldsOverride,
+    DateTime? selectedDate,
+    int? selectedPass,
   }) {
     final selectedFields = fieldsOverride ?? group.fields;
     if (selectedFields.isEmpty) {
@@ -2572,9 +2643,9 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     }
 
     final pendingFields = _pendingDetasselingMassInspectionFields(
-      weekStart: week.startDate,
-      crop: group.crop,
       fields: selectedFields,
+      date: selectedDate,
+      pass: selectedPass,
     );
     if (pendingFields.isEmpty) {
       _snack('Semua FN pada pass ini sudah diaudit.', isError: true);
@@ -2582,9 +2653,9 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     }
 
     final phases = _detasselingPhaseKeysForFields(
-      weekStart: week.startDate,
-      crop: group.crop,
       fields: pendingFields,
+      date: selectedDate,
+      pass: selectedPass,
     );
     if (phases.length > 1) {
       _snack(
@@ -3139,9 +3210,15 @@ class _CodetDetailSheet extends StatefulWidget {
   final DetasselingPlanGroup group;
   final DateTime? initialDate;
   final ValueChanged<DetasselingPlanField> onFieldTap;
-  final ValueChanged<List<DetasselingPlanField>> onOpenInspection;
-  final Future<void> Function(DateTime? selectedDate)? onDownloadPicture;
-  final Future<void> Function(DateTime? selectedDate)? onDownloadPdf;
+  final void Function(
+    List<DetasselingPlanField> fields,
+    DateTime? selectedDate,
+    int? selectedPass,
+  ) onOpenInspection;
+  final Future<void> Function(DateTime? selectedDate, int? selectedPass)?
+      onDownloadPicture;
+  final Future<void> Function(DateTime? selectedDate, int? selectedPass)?
+      onDownloadPdf;
 
   const _CodetDetailSheet({
     required this.week,
@@ -3159,6 +3236,7 @@ class _CodetDetailSheet extends StatefulWidget {
 
 class _CodetDetailSheetState extends State<_CodetDetailSheet> {
   DateTime? _selectedDate;
+  int? _selectedPass;
   bool _exportingPicture = false;
   bool _exportingPdf = false;
 
@@ -3166,6 +3244,7 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
   void initState() {
     super.initState();
     _selectedDate = _initialSelectedDate();
+    _selectedPass = null;
   }
 
   @override
@@ -3174,6 +3253,7 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
     if (oldWidget.group.key != widget.group.key ||
         oldWidget.week.startDate != widget.week.startDate) {
       _selectedDate = _initialSelectedDate();
+      _selectedPass = null;
     }
   }
 
@@ -3192,12 +3272,31 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
         (index) => widget.week.startDate.add(Duration(days: index)),
       );
 
-  List<DetasselingPlanField> _fieldsFor(DateTime? day) {
+  List<DetasselingPlanField> _fieldsFor(DateTime? day, {int? pass}) {
     if (day == null) return widget.group.fields;
     final date = normalizeDate(day);
-    return widget.group.fields
-        .where((field) => normalizeDate(field.plannedDate) == date)
-        .toList();
+    return widget.group.fields.where((field) {
+      final fieldPass = detasselingPassForFieldOnDate(field, date);
+      return fieldPass != null && (pass == null || fieldPass == pass);
+    }).toList();
+  }
+
+  List<int> _passesFor(DateTime? day) {
+    if (day == null) return const [];
+    final date = normalizeDate(day);
+    final passes = <int>{};
+    for (final field in widget.group.fields) {
+      final pass = detasselingPassForFieldOnDate(field, date);
+      if (pass != null) passes.add(pass);
+    }
+    return passes.toList()..sort();
+  }
+
+  void _selectDate(DateTime? date) {
+    setState(() {
+      _selectedDate = date == null ? null : normalizeDate(date);
+      _selectedPass = null;
+    });
   }
 
   bool _isSelectedDay(DateTime day) {
@@ -3211,6 +3310,12 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
     return DateFormat('d MMM', 'id_ID').format(selectedDate);
   }
 
+  String _selectedScopeLabel(int? selectedPass) {
+    return selectedPass == null
+        ? _selectedDateLabel
+        : '$_selectedDateLabel P$selectedPass';
+  }
+
   double _areaFor(List<DetasselingPlanField> fields) =>
       fields.fold(0, (sum, field) => sum + field.areaHa);
 
@@ -3219,7 +3324,10 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
     if (callback == null || _exportingPicture) return;
     setState(() => _exportingPicture = true);
     try {
-      await callback(_selectedDate);
+      final selectedPass = _passesFor(_selectedDate).contains(_selectedPass)
+          ? _selectedPass
+          : null;
+      await callback(_selectedDate, selectedPass);
     } finally {
       if (mounted) setState(() => _exportingPicture = false);
     }
@@ -3230,7 +3338,10 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
     if (callback == null || _exportingPdf) return;
     setState(() => _exportingPdf = true);
     try {
-      await callback(_selectedDate);
+      final selectedPass = _passesFor(_selectedDate).contains(_selectedPass)
+          ? _selectedPass
+          : null;
+      await callback(_selectedDate, selectedPass);
     } finally {
       if (mounted) setState(() => _exportingPdf = false);
     }
@@ -3238,7 +3349,10 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedFields = _fieldsFor(_selectedDate);
+    final availablePasses = _passesFor(_selectedDate);
+    final selectedPass =
+        availablePasses.contains(_selectedPass) ? _selectedPass : null;
+    final selectedFields = _fieldsFor(_selectedDate, pass: selectedPass);
     final raw = widget.group.fields.isEmpty
         ? null
         : widget.group.fields.first.parsed.raw;
@@ -3285,13 +3399,17 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
                       const SizedBox(height: 12),
                       _buildDaySelector(),
                       const SizedBox(height: 12),
-                      _buildDayMetric(selectedFields),
+                      if (availablePasses.length > 1) ...[
+                        _buildPassSelector(availablePasses, selectedPass),
+                        const SizedBox(height: 12),
+                      ],
+                      _buildDayMetric(selectedFields, selectedPass),
                       const SizedBox(height: 12),
-                      _buildFnTable(selectedFields),
+                      _buildFnTable(selectedFields, selectedPass),
                       const SizedBox(height: 12),
                       _buildInfoNote(),
                       const SizedBox(height: 16),
-                      _buildActions(selectedFields),
+                      _buildActions(selectedFields, selectedPass),
                       const SizedBox(height: 18),
                     ],
                   ),
@@ -3556,7 +3674,7 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
                           selected: _selectedDate == null,
                           fnCount: allFields.length,
                           areaHa: _areaFor(allFields),
-                          onTap: () => setState(() => _selectedDate = null),
+                          onTap: () => _selectDate(null),
                         ),
                       );
                     }
@@ -3569,16 +3687,13 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
                         selected: _isSelectedDay(day),
                         passLabel: fields.isEmpty
                             ? '-'
-                            : _passLabelForDate(
-                                widget.week.startDate,
+                            : detasselingPassLabelsForFieldsOnDate(
+                                fields,
                                 day,
-                                widget.group.crop,
                               ),
                         fnCount: fields.length,
                         areaHa: _areaFor(fields),
-                        onTap: () => setState(
-                          () => _selectedDate = normalizeDate(day),
-                        ),
+                        onTap: () => _selectDate(day),
                       ),
                     );
                   },
@@ -3591,7 +3706,33 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
     );
   }
 
-  Widget _buildDayMetric(List<DetasselingPlanField> selectedFields) {
+  Widget _buildPassSelector(List<int> passes, int? selectedPass) {
+    return _DetailPanel(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _PassChoiceChip(
+            label: 'All',
+            selected: selectedPass == null,
+            onTap: () => setState(() => _selectedPass = null),
+          ),
+          for (final pass in passes)
+            _PassChoiceChip(
+              label: 'P$pass',
+              selected: selectedPass == pass,
+              onTap: () => setState(() => _selectedPass = pass),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDayMetric(
+    List<DetasselingPlanField> selectedFields,
+    int? selectedPass,
+  ) {
     return _DetailPanel(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       child: Row(
@@ -3599,7 +3740,7 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
           Expanded(
             child: _DetailInlineStat(
               icon: Icons.calendar_month_rounded,
-              value: _selectedDateLabel,
+              value: _selectedScopeLabel(selectedPass),
             ),
           ),
           _DetailDivider(height: 30),
@@ -3622,14 +3763,17 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
     );
   }
 
-  Widget _buildFnTable(List<DetasselingPlanField> selectedFields) {
+  Widget _buildFnTable(
+    List<DetasselingPlanField> selectedFields,
+    int? selectedPass,
+  ) {
     return _DetailPanel(
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'FN List - $_selectedDateLabel',
+            'FN List - ${_selectedScopeLabel(selectedPass)}',
             style: AdvantaText.heading3.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.w900,
@@ -3659,11 +3803,19 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
                       for (final field in selectedFields)
                         _DetailFnRow(
                           field: field,
-                          passLabel: _passLabelForDate(
-                            widget.week.startDate,
-                            field.plannedDate,
-                            widget.group.crop,
-                          ),
+                          displayDate: _selectedDate ?? field.plannedDate,
+                          passLabel: _selectedDate == null
+                              ? 'P${field.plannedPass}'
+                              : detasselingPassLabelForFieldOnDate(
+                                  field,
+                                  _selectedDate!,
+                                ),
+                          tkdLabel: _selectedDate == null
+                              ? '${field.recommendedTkd} TKD'
+                              : '${detasselingRecommendedTkdForFieldOnDate(
+                                  field,
+                                  _selectedDate!,
+                                )} TKD',
                           onTap: () => widget.onFieldTap(field),
                         ),
                     ],
@@ -3697,21 +3849,24 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
     );
   }
 
-  Widget _buildActions(List<DetasselingPlanField> selectedFields) {
+  Widget _buildActions(
+    List<DetasselingPlanField> selectedFields,
+    int? selectedPass,
+  ) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 520;
         final halfWidth = (constraints.maxWidth - 8) / 2;
         final hasFields = selectedFields.isNotEmpty;
         final pendingFields = _pendingDetasselingMassInspectionFields(
-          weekStart: widget.week.startDate,
-          crop: widget.group.crop,
           fields: selectedFields,
+          date: _selectedDate,
+          pass: selectedPass,
         );
         final pendingPhases = _detasselingPhaseKeysForFields(
-          weekStart: widget.week.startDate,
-          crop: widget.group.crop,
           fields: pendingFields,
+          date: _selectedDate,
+          pass: selectedPass,
         );
         final canInspect =
             pendingFields.isNotEmpty && pendingPhases.length == 1;
@@ -3720,14 +3875,16 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
             : pendingFields.isEmpty
                 ? 'Sudah audit'
                 : pendingPhases.length > 1
-                    ? 'Pilih hari/pass'
+                    ? 'Pilih pass'
                     : '${pendingFields.length} FN ${_detasselingPhaseShortLabel(pendingPhases.single)}';
         final picture = SizedBox(
           width: compact ? halfWidth : (constraints.maxWidth - 16) * 0.34,
           child: _DetailActionButton(
             icon: Icons.image_outlined,
             title: 'Download Picture',
-            subtitle: _selectedDate == null ? 'Export all date' : 'Export PNG',
+            subtitle: selectedPass == null
+                ? (_selectedDate == null ? 'Export all date' : 'Export PNG')
+                : 'Export P$selectedPass',
             busy: _exportingPicture,
             onTap: widget.onDownloadPicture == null || !hasFields
                 ? null
@@ -3739,7 +3896,9 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
           child: _DetailActionButton(
             icon: Icons.picture_as_pdf_outlined,
             title: 'Download PDF',
-            subtitle: _selectedDate == null ? 'Export all date' : 'Export PDF',
+            subtitle: selectedPass == null
+                ? (_selectedDate == null ? 'Export all date' : 'Export PDF')
+                : 'Export P$selectedPass',
             busy: _exportingPdf,
             onTap: widget.onDownloadPdf == null || !hasFields
                 ? null
@@ -3756,7 +3915,11 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
             subtitle: inspectionSubtitle,
             filled: true,
             onTap: canInspect
-                ? () => widget.onOpenInspection(pendingFields)
+                ? () => widget.onOpenInspection(
+                      pendingFields,
+                      _selectedDate,
+                      selectedPass,
+                    )
                 : null,
           ),
         );
@@ -3790,6 +3953,52 @@ class _DetailPanel extends StatelessWidget {
         border: Border.all(color: Colors.white.withAlpha(22)),
       ),
       child: child,
+    );
+  }
+}
+
+class _PassChoiceChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PassChoiceChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected
+                ? AdvantaColors.lightGreen
+                : Colors.white.withAlpha(12),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected
+                  ? AdvantaColors.lightGreen
+                  : Colors.white.withAlpha(28),
+            ),
+          ),
+          child: Text(
+            label,
+            style: AdvantaText.caption.copyWith(
+              color: selected ? AdvantaColors.deepForest : Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -4246,12 +4455,16 @@ class _DetailFnHeader extends StatelessWidget {
 
 class _DetailFnRow extends StatelessWidget {
   final DetasselingPlanField field;
+  final DateTime displayDate;
   final String passLabel;
+  final String tkdLabel;
   final VoidCallback onTap;
 
   const _DetailFnRow({
     required this.field,
+    required this.displayDate,
     required this.passLabel,
+    required this.tkdLabel,
     required this.onTap,
   });
 
@@ -4280,7 +4493,7 @@ class _DetailFnRow extends StatelessWidget {
               _DetailFnCell('${_formatHa(field.areaHa)} Ha',
                   width: 74, accent: true),
               _DetailFnCell(
-                DateFormat('d MMM', 'id_ID').format(field.plannedDate),
+                DateFormat('d MMM', 'id_ID').format(displayDate),
                 width: 84,
               ),
               SizedBox(
@@ -4305,8 +4518,7 @@ class _DetailFnRow extends StatelessWidget {
                   ),
                 ),
               ),
-              _DetailFnCell('${field.recommendedTkd} TKD',
-                  width: 76, accent: true),
+              _DetailFnCell(tkdLabel, width: 76, accent: true),
             ],
           ),
         ),
@@ -4756,29 +4968,21 @@ String _detailStatusLabel(DetasselingGroupStatus status) {
   return status == DetasselingGroupStatus.done ? 'Done' : 'Planned';
 }
 
-String _passLabelForDate(
-  DateTime weekStart,
-  DateTime date,
-  DetasselingCropFilter crop,
-) {
-  final pass =
-      detasselingPassForDate(weekStart: weekStart, date: date, crop: crop);
-  return 'P$pass';
-}
-
 String _phaseForDetasselingPass(String passLabel) {
   final pass = int.tryParse(passLabel.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1;
   return 'generative_${pass.clamp(1, 5)}';
 }
 
 String _detasselingPhaseForField(
-  DateTime weekStart,
-  DetasselingCropFilter crop,
   DetasselingPlanField field,
+  DateTime? date,
+  int? pass,
 ) {
-  return _phaseForDetasselingPass(
-    _passLabelForDate(weekStart, field.plannedDate, crop),
-  );
+  final resolvedPass = pass ??
+      (date == null
+          ? field.plannedPass
+          : detasselingPassForFieldOnDate(field, date) ?? field.plannedPass);
+  return 'generative_${resolvedPass.clamp(1, 5)}';
 }
 
 bool _isDetasselingPhaseDone(
@@ -4803,23 +5007,23 @@ bool _isDetasselingPhaseDone(
 }
 
 List<DetasselingPlanField> _pendingDetasselingMassInspectionFields({
-  required DateTime weekStart,
-  required DetasselingCropFilter crop,
   required Iterable<DetasselingPlanField> fields,
+  DateTime? date,
+  int? pass,
 }) {
   return fields.where((field) {
-    final phase = _detasselingPhaseForField(weekStart, crop, field);
+    final phase = _detasselingPhaseForField(field, date, pass);
     return !_isDetasselingPhaseDone(field, phase);
   }).toList(growable: false);
 }
 
 Set<String> _detasselingPhaseKeysForFields({
-  required DateTime weekStart,
-  required DetasselingCropFilter crop,
   required Iterable<DetasselingPlanField> fields,
+  DateTime? date,
+  int? pass,
 }) {
   return fields
-      .map((field) => _detasselingPhaseForField(weekStart, crop, field))
+      .map((field) => _detasselingPhaseForField(field, date, pass))
       .toSet();
 }
 

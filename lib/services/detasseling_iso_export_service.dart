@@ -82,12 +82,17 @@ class DetasselingIsoExportService {
       passCount,
       f.detasselingStartDap,
     );
-    final actualDates = _actualDates(data, passCount);
+    final actualDates = f.actualDtDateByPass;
+    final auditRelatedDates = [
+      ...f.actualDtDateByPass.values,
+      ...f.auditFiDateByPass.values,
+      ...f.auditHelperDateByPass.values,
+    ];
     final advantaLogo = await _loadUiImage(_advantaLogoAsset);
 
     _drawHeader(canvas, advantaLogo);
     _drawFieldInfo(canvas, f);
-    _drawPlanSchedule(canvas, f, planDates, actualDates);
+    _drawPlanSchedule(canvas, f, planDates, auditRelatedDates);
     _drawLaborBox(canvas, f);
     _drawFnSchedule(canvas, f, planDates, actualDates, data.passNumber);
     _drawInspectionSummary(canvas, f);
@@ -168,7 +173,7 @@ class DetasselingIsoExportService {
     Canvas canvas,
     _FieldSnapshot f,
     List<DateTime> planDates,
-    Map<int, DateTime> actualDates,
+    List<DateTime> auditRelatedDates,
   ) {
     const left = 405.0;
     const top = 122.0;
@@ -182,7 +187,7 @@ class DetasselingIsoExportService {
       'PLAN VS ACTUAL DETASSELLING SCHEDULE (${f.crop})',
     );
 
-    final dates = _dateWindow(planDates, actualDates.values.toList());
+    final dates = _dateWindow(planDates, auditRelatedDates);
     const labelW = 104.0;
     final colW = (width - labelW) / dates.length;
     final rowTop = top + 38;
@@ -221,14 +226,19 @@ class DetasselingIsoExportService {
       );
 
       final planned = _passForDate(planDates, date);
-      final actual = _actualPassForDate(actualDates, date);
+      final actualTkdPass = _actualPassForDate(f.actualDtDateByPass, date);
+      final actualDtPass = _actualPassForDate(f.actualDtDateByPass, date);
+      final auditFiPass = _actualPassForDate(f.auditFiDateByPass, date);
+      final auditHelperPass = _actualPassForDate(f.auditHelperDateByPass, date);
       final values = [
         planned == null ? '-' : '${plannedTkdByPass[planned - 1]}',
-        actual == null ? '-' : _actualTkdLabel(f.actualTkdByPass[actual]),
+        actualTkdPass == null
+            ? '-'
+            : _actualTkdLabel(f.actualTkdByPass[actualTkdPass]),
         planned == null ? '-' : 'P$planned',
-        actual == null ? '-' : '✓',
-        actual == null ? '-' : _personCode(f.auditFiByPass[actual] ?? f.qaFi),
-        actual == null ? '-' : _personCode(f.auditHelperByPass[actual] ?? ''),
+        actualDtPass == null ? '-' : '✓',
+        auditFiPass == null ? '-' : '✓',
+        auditHelperPass == null ? '-' : '✓',
       ];
       for (var row = 0; row < values.length; row++) {
         _textCentered(
@@ -240,10 +250,10 @@ class DetasselingIsoExportService {
             colW - 4,
             22,
           ),
-          size: row == 3 && values[row] == '✓' ? 20 : 13.5,
+          size: row >= 3 && values[row] == '✓' ? 20 : 13.5,
           weight: FontWeight.w900,
           color:
-              row == 3 && values[row] == '✓' ? const Color(0xFF1B6E1F) : _ink,
+              row >= 3 && values[row] == '✓' ? const Color(0xFF1B6E1F) : _ink,
         );
       }
       x += colW;
@@ -262,9 +272,9 @@ class DetasselingIsoExportService {
       'PLANNING\nTKD',
       'AKTUAL\nTKD',
       'PLAN\n(Pass)',
-      'AKTUAL\nDT',
-      'AUDIT\nFI',
-      'AUDIT\nHELPER',
+      'AKTUAL DT\nDATE',
+      'AUDIT FI\nDATE',
+      'AUDIT HELPER\nDATE',
     ];
     for (var row = 0; row < rowLabels.length; row++) {
       _textCentered(
@@ -283,7 +293,7 @@ class DetasselingIsoExportService {
 
     _text(
       canvas,
-      'P = waktu/pass detasselling dimulai. TKD aktual dan helper mengikuti tanggal audit tiap pass.',
+      'P = waktu/pass detasselling dimulai. Aktual DT, Audit FI, dan Audit Helper mengikuti tanggal masing-masing.',
       const Offset(left + 16, top + height - 23),
       size: 13.5,
       weight: FontWeight.w500,
@@ -770,18 +780,6 @@ class DetasselingIsoExportService {
     return List.generate(passCount, (i) => p1.add(Duration(days: i * 2)));
   }
 
-  static Map<int, DateTime> _actualDates(
-    DetasselingIsoFormData data,
-    int passCount,
-  ) {
-    final result = <int, DateTime>{};
-    for (var pass = 1; pass <= passCount; pass++) {
-      final parsed = _parseDate(data.auditData['date_of_audit_$pass']);
-      if (parsed != null) result[pass] = parsed;
-    }
-    return result;
-  }
-
   static List<DateTime> _dateWindow(
     List<DateTime> planDates,
     List<DateTime> actualDates,
@@ -1183,24 +1181,6 @@ class DetasselingIsoExportService {
     return value == null ? '-' : value.toString();
   }
 
-  static String _personCode(String value) {
-    final text = value.trim();
-    if (text.isEmpty) return '-';
-    final words = text
-        .split(RegExp(r'\s+'))
-        .where((word) => word.trim().isNotEmpty)
-        .toList();
-    if (words.isEmpty) return '-';
-    if (words.length == 1) {
-      final word = words.first;
-      return word.length <= 4 ? word.toUpperCase() : word.substring(0, 4);
-    }
-    return words
-        .take(2)
-        .map((word) => word.substring(0, 1).toUpperCase())
-        .join();
-  }
-
   static double _readArea(Map<String, dynamic> raw) {
     for (final value in [
       raw['effective_area_ha'],
@@ -1297,6 +1277,9 @@ class _FieldSnapshot {
   final Map<int, int> actualTkdByPass;
   final Map<int, String> auditFiByPass;
   final Map<int, String> auditHelperByPass;
+  final Map<int, DateTime> actualDtDateByPass;
+  final Map<int, DateTime> auditFiDateByPass;
+  final Map<int, DateTime> auditHelperDateByPass;
   final String femaleShedding;
   final String offtypeM;
   final String offtypeF;
@@ -1332,6 +1315,9 @@ class _FieldSnapshot {
     required this.actualTkdByPass,
     required this.auditFiByPass,
     required this.auditHelperByPass,
+    required this.actualDtDateByPass,
+    required this.auditFiDateByPass,
+    required this.auditHelperDateByPass,
     required this.femaleShedding,
     required this.offtypeM,
     required this.offtypeF,
@@ -1397,7 +1383,22 @@ class _FieldSnapshot {
     final actualTkdByPass = <int, int>{};
     final auditFiByPass = <int, String>{};
     final auditHelperByPass = <int, String>{};
+    final actualDtDateByPass = <int, DateTime>{};
+    final auditFiDateByPass = <int, DateTime>{};
+    final auditHelperDateByPass = <int, DateTime>{};
     for (var pass = 1; pass <= 5; pass++) {
+      final defaultAuditDate =
+          DetasselingIsoExportService._parseDate(audit['date_of_audit_$pass']);
+      final actualDtDate = DetasselingIsoExportService._parseDate(
+              audit['actual_dt_date_$pass']) ??
+          defaultAuditDate;
+      if (actualDtDate != null) actualDtDateByPass[pass] = actualDtDate;
+
+      final auditFiDate = DetasselingIsoExportService._parseDate(
+              audit['audit_fi_date_$pass']) ??
+          defaultAuditDate;
+      if (auditFiDate != null) auditFiDateByPass[pass] = auditFiDate;
+
       final actualTkd =
           DetasselingIsoExportService._readInt(audit['actual_tkd_$pass']);
       if (actualTkd != null) actualTkdByPass[pass] = actualTkd;
@@ -1413,6 +1414,14 @@ class _FieldSnapshot {
         fallback: '',
       );
       if (auditHelper.isNotEmpty) auditHelperByPass[pass] = auditHelper;
+
+      final auditHelperDate = DetasselingIsoExportService._parseDate(
+            audit['audit_helper_date_$pass'],
+          ) ??
+          (auditHelper.isNotEmpty ? defaultAuditDate : null);
+      if (auditHelperDate != null) {
+        auditHelperDateByPass[pass] = auditHelperDate;
+      }
     }
 
     return _FieldSnapshot(
@@ -1445,6 +1454,9 @@ class _FieldSnapshot {
       actualTkdByPass: actualTkdByPass,
       auditFiByPass: auditFiByPass,
       auditHelperByPass: auditHelperByPass,
+      actualDtDateByPass: actualDtDateByPass,
+      auditFiDateByPass: auditFiDateByPass,
+      auditHelperDateByPass: auditHelperDateByPass,
       femaleShedding: DetasselingIsoExportService._readText(
         audit['female_shedding_${data.passNumber}'],
         fallback: '',

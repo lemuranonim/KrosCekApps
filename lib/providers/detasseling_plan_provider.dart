@@ -131,6 +131,7 @@ class DetasselingPlanField {
   final int plannedDap;
   final int dtEndDap;
   final int detasselingStartDap;
+  final DateTime passOneDate;
   final int plannedPass;
   final int recommendedTkd;
   final int passRecommendedTkd;
@@ -150,6 +151,7 @@ class DetasselingPlanField {
     required this.plannedDap,
     required this.dtEndDap,
     required this.detasselingStartDap,
+    required this.passOneDate,
     required this.plannedPass,
     required this.recommendedTkd,
     required this.passRecommendedTkd,
@@ -357,27 +359,27 @@ DetasselingPlanningData buildDetasselingPlanningData(
     if (plantingDate == null) continue;
 
     final detasselingStartDap = DapHelper.detasselingStartDapForField(raw);
-    final firstPlannedOffset = _firstOffsetAtOrAboveDap(
+    final passOneDate = _detasselingPassOneDate(
       plantingDate: plantingDate,
-      weekStart: weekStart,
       startDap: detasselingStartDap,
     );
-    if (firstPlannedOffset == null) continue;
+    final passSchedules = _detasselingPassSchedulesInRange(
+      passOneDate: passOneDate,
+      crop: crop,
+      startDate: week.startDate,
+      endDate: week.endDate,
+    );
+    if (passSchedules.isEmpty) continue;
 
-    final plannedDate = weekStart.add(Duration(days: firstPlannedOffset));
+    final firstSchedule = passSchedules.first;
+    final lastSchedule = passSchedules.last;
+    final plannedDate = firstSchedule.date;
     final currentDap = _detasselingDapOnDate(plantingDate, today);
     final plannedDap = _detasselingDapOnDate(plantingDate, plannedDate);
-    final weekEndDap = _detasselingDapOnDate(
-      plantingDate,
-      weekStart.add(const Duration(days: 6)),
-    );
+    final dtEndDap = _detasselingDapOnDate(plantingDate, lastSchedule.date);
     final codet = _readCodet(raw);
     final village = _readText(raw['village_desa'], fallback: 'Unknown Desa');
-    final plannedPass = detasselingPassForDate(
-      weekStart: weekStart,
-      date: plannedDate,
-      crop: crop,
-    );
+    final plannedPass = firstSchedule.pass;
     fields.add(
       DetasselingPlanField(
         parsed: parsed,
@@ -390,8 +392,9 @@ DetasselingPlanningData buildDetasselingPlanningData(
         areaHa: _readArea(raw),
         currentDap: currentDap,
         plannedDap: plannedDap,
-        dtEndDap: weekEndDap,
+        dtEndDap: dtEndDap,
         detasselingStartDap: detasselingStartDap,
+        passOneDate: passOneDate,
         plannedPass: plannedPass,
         recommendedTkd: detasselingRecommendedTkdForArea(
           _readArea(raw),
@@ -452,10 +455,15 @@ DetasselingPlanningData buildDetasselingPlanningData(
     var recommendedTkd = 0;
     for (final group in groups) {
       for (final field in group.fields) {
-        if (normalizeDate(field.plannedDate) == date) {
+        final pass = detasselingPassForFieldOnDate(field, date);
+        if (pass != null) {
           codets.add(group.key);
           area += field.areaHa;
-          recommendedTkd += field.recommendedTkd;
+          recommendedTkd += detasselingRecommendedTkdForPass(
+            areaHa: field.areaHa,
+            crop: field.crop,
+            pass: pass,
+          );
         }
       }
     }
@@ -565,15 +573,57 @@ int detasselingPassCountFor(DetasselingCropFilter crop) {
   return detasselingPassTkdPerHaFor(crop).length;
 }
 
-int detasselingPassForDate({
-  required DateTime weekStart,
-  required DateTime date,
-  required DetasselingCropFilter crop,
-}) {
-  final offset =
-      normalizeDate(date).difference(normalizeDate(weekStart)).inDays;
-  final pass = (offset ~/ 2) + 1;
-  return pass.clamp(1, detasselingPassCountFor(crop)).toInt();
+DateTime detasselingPassDateForField(
+  DetasselingPlanField field,
+  int pass,
+) {
+  return normalizeDate(field.passOneDate).add(Duration(days: (pass - 1) * 2));
+}
+
+int? detasselingPassForFieldOnDate(
+  DetasselingPlanField field,
+  DateTime date,
+) {
+  final normalized = normalizeDate(date);
+  for (var pass = 1; pass <= detasselingPassCountFor(field.crop); pass++) {
+    if (detasselingPassDateForField(field, pass) == normalized) return pass;
+  }
+  return null;
+}
+
+String detasselingPassLabelForFieldOnDate(
+  DetasselingPlanField field,
+  DateTime date,
+) {
+  final pass = detasselingPassForFieldOnDate(field, date);
+  return pass == null ? '-' : 'P$pass';
+}
+
+String detasselingPassLabelsForFieldsOnDate(
+  Iterable<DetasselingPlanField> fields,
+  DateTime date,
+) {
+  final passes = <int>{};
+  for (final field in fields) {
+    final pass = detasselingPassForFieldOnDate(field, date);
+    if (pass != null) passes.add(pass);
+  }
+  if (passes.isEmpty) return '-';
+  final sorted = passes.toList()..sort();
+  return sorted.map((pass) => 'P$pass').join('/');
+}
+
+int detasselingRecommendedTkdForFieldOnDate(
+  DetasselingPlanField field,
+  DateTime date,
+) {
+  final pass = detasselingPassForFieldOnDate(field, date);
+  if (pass == null) return 0;
+  return detasselingRecommendedTkdForPass(
+    areaHa: field.areaHa,
+    crop: field.crop,
+    pass: pass,
+  );
 }
 
 int detasselingRecommendedTkdForArea(
@@ -647,16 +697,39 @@ bool _isFieldAllowedForScope(
   }
 }
 
-int? _firstOffsetAtOrAboveDap({
+class _DetasselingPassSchedule {
+  final int pass;
+  final DateTime date;
+
+  const _DetasselingPassSchedule({
+    required this.pass,
+    required this.date,
+  });
+}
+
+DateTime _detasselingPassOneDate({
   required DateTime plantingDate,
-  required DateTime weekStart,
   required int startDap,
 }) {
-  for (var offset = 0; offset < 7; offset++) {
-    final date = weekStart.add(Duration(days: offset));
-    if (_detasselingDapOnDate(plantingDate, date) >= startDap) return offset;
+  return normalizeDate(plantingDate).add(Duration(days: startDap - 1));
+}
+
+List<_DetasselingPassSchedule> _detasselingPassSchedulesInRange({
+  required DateTime passOneDate,
+  required DetasselingCropFilter crop,
+  required DateTime startDate,
+  required DateTime endDate,
+}) {
+  final start = normalizeDate(startDate);
+  final end = normalizeDate(endDate);
+  final schedules = <_DetasselingPassSchedule>[];
+  for (var pass = 1; pass <= detasselingPassCountFor(crop); pass++) {
+    final date = normalizeDate(passOneDate).add(Duration(days: (pass - 1) * 2));
+    if (!date.isBefore(start) && !date.isAfter(end)) {
+      schedules.add(_DetasselingPassSchedule(pass: pass, date: date));
+    }
   }
-  return null;
+  return schedules;
 }
 
 DateTime? _readPlanningPlantingDate(Map<String, dynamic> raw) {
