@@ -22,7 +22,7 @@ import '../../services/session_manager.dart';
 // ── IMPORT TEMA PUSAT ────────────────────────────────
 import '../theme/app_theme.dart';
 
-const _splashWallpaperAsset = 'assets/splash_wallpaper.png';
+const _splashWallpaperAsset = 'assets/splash_wallpaper.jpg';
 
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
