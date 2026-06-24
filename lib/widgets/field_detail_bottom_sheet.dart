@@ -436,12 +436,17 @@ class _FieldDetailBottomSheetState
     setState(() => _isExportingPhaseIso = true);
     try {
       final payload = PhaseIsoExportData(fieldData: fieldData, phase: phase);
-      final path = asPdf
+      final result = asPdf
           ? await PhaseIsoExportService.downloadPdf(payload)
           : await PhaseIsoExportService.downloadPicture(payload);
       if (mounted) {
         _showSheetSnack(
-          'ISO ${PhaseIsoExportService.phaseLabel(phase)} tersimpan: $path',
+          'ISO ${PhaseIsoExportService.phaseLabel(phase)} berhasil didownload: ${result.displayPath}',
+          action: SnackBarAction(
+            label: 'BUKA',
+            textColor: AdvantaColors.goldLight,
+            onPressed: () => _openPhaseIsoExport(result),
+          ),
         );
       }
     } catch (e) {
@@ -456,7 +461,17 @@ class _FieldDetailBottomSheetState
     }
   }
 
-  void _showSheetSnack(String msg, {bool err = false}) {
+  Future<void> _openPhaseIsoExport(PhaseIsoExportResult result) async {
+    try {
+      await PhaseIsoExportService.openExport(result);
+    } catch (e) {
+      if (mounted) {
+        _showSheetSnack('Tidak dapat membuka file ISO: $e', err: true);
+      }
+    }
+  }
+
+  void _showSheetSnack(String msg, {bool err = false, SnackBarAction? action}) {
     if (!mounted) return;
     final theme = Theme.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -469,6 +484,10 @@ class _FieldDetailBottomSheetState
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(12),
+        duration: action == null
+            ? const Duration(seconds: 4)
+            : const Duration(seconds: 8),
+        action: action,
       ),
     );
   }

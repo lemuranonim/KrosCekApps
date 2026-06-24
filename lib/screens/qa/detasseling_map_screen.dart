@@ -25,6 +25,16 @@ import '../../utils/audit_status_helper.dart';
 import '../../widgets/advanta_loading_state.dart';
 import '../../widgets/field_detail_bottom_sheet.dart';
 
+class _ExportSaveResult {
+  final String displayPath;
+  final String openPath;
+
+  const _ExportSaveResult({
+    required this.displayPath,
+    required this.openPath,
+  });
+}
+
 class DetasselingMapScreen extends ConsumerStatefulWidget {
   const DetasselingMapScreen({super.key});
 
@@ -923,7 +933,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         ),
         mimeType: 'image/png',
       );
-      _snack('Picture weekly planning tersimpan di $destination.');
+      _snackExportSuccess('Picture weekly planning', destination);
     } catch (e) {
       _snack('Gagal download picture: $e', isError: true);
     } finally {
@@ -961,7 +971,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         ),
         mimeType: 'application/pdf',
       );
-      _snack('PDF weekly planning tersimpan di $destination.');
+      _snackExportSuccess('PDF weekly planning', destination);
     } catch (e) {
       _snack('Gagal download PDF: $e', isError: true);
     } finally {
@@ -995,7 +1005,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         ),
         mimeType: 'image/png',
       );
-      _snack('Picture detail Codet tersimpan di $destination.');
+      _snackExportSuccess('Picture detail Codet', destination);
     } catch (e) {
       _snack('Gagal download picture detail Codet: $e', isError: true);
     } finally {
@@ -1042,7 +1052,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         ),
         mimeType: 'application/pdf',
       );
-      _snack('PDF detail Codet tersimpan di $destination.');
+      _snackExportSuccess('PDF detail Codet', destination);
     } catch (e) {
       _snack('Gagal download PDF detail Codet: $e', isError: true);
     } finally {
@@ -2504,7 +2514,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     return status == DetasselingGroupStatus.done ? 'Done' : 'Planned';
   }
 
-  Future<String> _saveBytes({
+  Future<_ExportSaveResult> _saveBytes({
     required Uint8List bytes,
     required String fileName,
     required String mimeType,
@@ -2525,19 +2535,27 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         if (saved == null) {
           throw Exception('MediaStore tidak mengembalikan lokasi file.');
         }
-        return 'Download/Kroscek/$fileName';
-      } catch (e) {
+        return _ExportSaveResult(
+          displayPath: 'Download/Kroscek/$fileName',
+          openPath: tempFile.path,
+        );
+      } catch (_) {
         final fallback = await _saveToAppDocuments(bytes, fileName);
-        await OpenFile.open(fallback.path);
-        return 'Documents/${fallback.uri.pathSegments.last} ($mimeType)';
+        return _ExportSaveResult(
+          displayPath:
+              'Documents/${fallback.uri.pathSegments.last} ($mimeType)',
+          openPath: fallback.path,
+        );
       }
     }
 
     final downloadDir = await _downloadDirectory();
     final outputFile = io.File(p.join(downloadDir.path, fileName));
     await outputFile.writeAsBytes(bytes, flush: true);
-    await OpenFile.open(outputFile.path);
-    return outputFile.path;
+    return _ExportSaveResult(
+      displayPath: outputFile.path,
+      openPath: outputFile.path,
+    );
   }
 
   Future<io.File> _saveToAppDocuments(Uint8List bytes, String fileName) async {
@@ -2719,7 +2737,28 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     setState(() {});
   }
 
-  void _snack(String message, {bool isError = false}) {
+  void _snackExportSuccess(String title, _ExportSaveResult result) {
+    _snack(
+      '$title berhasil didownload: ${result.displayPath}',
+      action: SnackBarAction(
+        label: 'BUKA',
+        textColor: AdvantaColors.goldLight,
+        onPressed: () => _openExportResult(result),
+      ),
+    );
+  }
+
+  Future<void> _openExportResult(_ExportSaveResult result) async {
+    try {
+      await OpenFile.open(result.openPath);
+    } catch (e) {
+      if (mounted) {
+        _snack('Tidak dapat membuka file export: $e', isError: true);
+      }
+    }
+  }
+
+  void _snack(String message, {bool isError = false, SnackBarAction? action}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -2728,6 +2767,10 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
             isError ? AdvantaColors.error : AdvantaColors.primaryGreen,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: action == null
+            ? const Duration(seconds: 4)
+            : const Duration(seconds: 8),
+        action: action,
       ),
     );
   }

@@ -294,10 +294,19 @@ class _FormGenerative4SCState extends ConsumerState<FormGenerative4SC> {
         passNumber: 4,
         cropLabel: 'SC',
       );
-      final path = asPdf
+      final result = asPdf
           ? await DetasselingIsoExportService.downloadPdf(payload)
           : await DetasselingIsoExportService.downloadPicture(payload);
-      if (mounted) _snack('ISO Form tersimpan: $path');
+      if (mounted) {
+        _snack(
+          'ISO Form berhasil didownload: ${result.displayPath}',
+          action: SnackBarAction(
+            label: 'BUKA',
+            textColor: AdvantaColors.goldLight,
+            onPressed: () => _openIsoExport(result),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) _snack('Gagal generate ISO Form: $e', err: true);
     } finally {
@@ -305,7 +314,15 @@ class _FormGenerative4SCState extends ConsumerState<FormGenerative4SC> {
     }
   }
 
-  void _snack(String msg, {bool err = false}) {
+  Future<void> _openIsoExport(DetasselingIsoExportResult result) async {
+    try {
+      await DetasselingIsoExportService.openExport(result);
+    } catch (e) {
+      if (mounted) _snack('Tidak dapat membuka ISO Form: $e', err: true);
+    }
+  }
+
+  void _snack(String msg, {bool err = false, SnackBarAction? action}) {
     final theme = Theme.of(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content:
@@ -314,6 +331,10 @@ class _FormGenerative4SCState extends ConsumerState<FormGenerative4SC> {
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       margin: const EdgeInsets.all(12),
+      duration: action == null
+          ? const Duration(seconds: 4)
+          : const Duration(seconds: 8),
+      action: action,
     ));
   }
 

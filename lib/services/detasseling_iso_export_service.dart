@@ -27,13 +27,24 @@ class DetasselingIsoFormData {
   });
 }
 
+class DetasselingIsoExportResult {
+  final String displayPath;
+  final String openPath;
+
+  const DetasselingIsoExportResult({
+    required this.displayPath,
+    required this.openPath,
+  });
+}
+
 class DetasselingIsoExportService {
   static const _advantaLogoAsset = 'assets/advanta-logo.png';
   static const _green = Color(0xFF004822);
   static const _line = Color(0xFF8E9892);
   static const _ink = Color(0xFF101915);
 
-  static Future<String> downloadPicture(DetasselingIsoFormData data) async {
+  static Future<DetasselingIsoExportResult> downloadPicture(
+      DetasselingIsoFormData data) async {
     final bytes = await buildPng(data);
     return _saveBytes(
       bytes: bytes,
@@ -42,7 +53,8 @@ class DetasselingIsoExportService {
     );
   }
 
-  static Future<String> downloadPdf(DetasselingIsoFormData data) async {
+  static Future<DetasselingIsoExportResult> downloadPdf(
+      DetasselingIsoFormData data) async {
     final png = await buildPng(data);
     final doc = pw.Document();
     final image = pw.MemoryImage(png);
@@ -694,7 +706,11 @@ class DetasselingIsoExportService {
     }
   }
 
-  static Future<String> _saveBytes({
+  static Future<void> openExport(DetasselingIsoExportResult result) async {
+    await OpenFile.open(result.openPath);
+  }
+
+  static Future<DetasselingIsoExportResult> _saveBytes({
     required Uint8List bytes,
     required String fileName,
     required String mimeType,
@@ -715,19 +731,27 @@ class DetasselingIsoExportService {
         if (saved == null) {
           throw Exception('MediaStore tidak mengembalikan lokasi file.');
         }
-        return 'Download/Kroscek/$fileName';
+        return DetasselingIsoExportResult(
+          displayPath: 'Download/Kroscek/$fileName',
+          openPath: tempFile.path,
+        );
       } catch (_) {
         final fallback = await _saveToAppDocuments(bytes, fileName);
-        await OpenFile.open(fallback.path);
-        return 'Documents/${fallback.uri.pathSegments.last} ($mimeType)';
+        return DetasselingIsoExportResult(
+          displayPath:
+              'Documents/${fallback.uri.pathSegments.last} ($mimeType)',
+          openPath: fallback.path,
+        );
       }
     }
 
     final downloadDir = await _downloadDirectory();
     final outputFile = io.File(p.join(downloadDir.path, fileName));
     await outputFile.writeAsBytes(bytes, flush: true);
-    await OpenFile.open(outputFile.path);
-    return outputFile.path;
+    return DetasselingIsoExportResult(
+      displayPath: outputFile.path,
+      openPath: outputFile.path,
+    );
   }
 
   static Future<io.File> _saveToAppDocuments(

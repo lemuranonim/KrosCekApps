@@ -23,6 +23,16 @@ class PhaseIsoExportData {
   });
 }
 
+class PhaseIsoExportResult {
+  final String displayPath;
+  final String openPath;
+
+  const PhaseIsoExportResult({
+    required this.displayPath,
+    required this.openPath,
+  });
+}
+
 class PhaseIsoExportService {
   static const _advantaLogoAsset = 'assets/advanta-logo.png';
   static const _green = Color(0xFF004822);
@@ -54,7 +64,8 @@ class PhaseIsoExportService {
     };
   }
 
-  static Future<String> downloadPicture(PhaseIsoExportData data) async {
+  static Future<PhaseIsoExportResult> downloadPicture(
+      PhaseIsoExportData data) async {
     final bytes = await buildPng(data);
     return _saveBytes(
       bytes: bytes,
@@ -63,7 +74,8 @@ class PhaseIsoExportService {
     );
   }
 
-  static Future<String> downloadPdf(PhaseIsoExportData data) async {
+  static Future<PhaseIsoExportResult> downloadPdf(
+      PhaseIsoExportData data) async {
     final png = await buildPng(data);
     final doc = pw.Document();
     final image = pw.MemoryImage(png);
@@ -531,7 +543,7 @@ class PhaseIsoExportService {
       Rect.fromLTWH(rightTable.left, rightTable.top + 30, rightTable.width,
           rightTable.height - 30),
       ['No.', 'Correction Item', 'Result / Status', 'Rating'],
-      [55, 215, 220, 155],
+      [55, 215, 175, 100],
       s.accuracyRows,
     );
   }
@@ -819,7 +831,7 @@ class PhaseIsoExportService {
     _sectionLabel(
         canvas, Rect.fromLTWH(rect.left, rect.top, rect.width, 24), title,
         size: 13);
-    var y = rect.top + 39;
+    var y = rect.top + 36;
     for (final label in ['Signature', 'Nama', 'Tanggal']) {
       _text(canvas, label, Offset(rect.left + 25, y),
           size: 12.5, weight: FontWeight.w700);
@@ -827,7 +839,7 @@ class PhaseIsoExportService {
           size: 12.5, weight: FontWeight.w700);
       _drawGridLine(canvas, Offset(rect.left + 195, y + 11),
           Offset(rect.right - 140, y + 11));
-      y += 24;
+      y += 22;
     }
   }
 
@@ -1166,7 +1178,11 @@ class PhaseIsoExportService {
     }
   }
 
-  static Future<String> _saveBytes({
+  static Future<void> openExport(PhaseIsoExportResult result) async {
+    await OpenFile.open(result.openPath);
+  }
+
+  static Future<PhaseIsoExportResult> _saveBytes({
     required Uint8List bytes,
     required String fileName,
     required String mimeType,
@@ -1187,19 +1203,27 @@ class PhaseIsoExportService {
         if (saved == null) {
           throw Exception('MediaStore tidak mengembalikan lokasi file.');
         }
-        return 'Download/Kroscek/$fileName';
+        return PhaseIsoExportResult(
+          displayPath: 'Download/Kroscek/$fileName',
+          openPath: tempFile.path,
+        );
       } catch (_) {
         final fallback = await _saveToAppDocuments(bytes, fileName);
-        await OpenFile.open(fallback.path);
-        return 'Documents/${fallback.uri.pathSegments.last} ($mimeType)';
+        return PhaseIsoExportResult(
+          displayPath:
+              'Documents/${fallback.uri.pathSegments.last} ($mimeType)',
+          openPath: fallback.path,
+        );
       }
     }
 
     final downloadDir = await _downloadDirectory();
     final outputFile = io.File(p.join(downloadDir.path, fileName));
     await outputFile.writeAsBytes(bytes, flush: true);
-    await OpenFile.open(outputFile.path);
-    return outputFile.path;
+    return PhaseIsoExportResult(
+      displayPath: outputFile.path,
+      openPath: outputFile.path,
+    );
   }
 
   static Future<io.File> _saveToAppDocuments(
