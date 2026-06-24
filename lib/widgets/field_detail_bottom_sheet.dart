@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../providers/master_fields_provider.dart';
+import '../services/detasseling_iso_export_service.dart';
 import '../services/phase_iso_export_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/dap_helper.dart';
@@ -60,6 +61,7 @@ class _FieldDetailBottomSheetState
     extends ConsumerState<FieldDetailBottomSheet> {
   int _tab = 0; // 0: Info, 1: Histori, 2: Aksi
   bool _isExportingPhaseIso = false;
+  bool _isExportingGenerativeIso = false;
 
   // 1. TAMBAHKAN VARIABEL STATE INI
   late int _dap;
@@ -400,30 +402,118 @@ class _FieldDetailBottomSheetState
     ];
   }
 
+  Map<String, dynamic>? _firstAuditValue(dynamic value) {
+    if (value == null) return null;
+    if (value is List && value.isNotEmpty && value.first is Map) {
+      return Map<String, dynamic>.from(value.first as Map);
+    }
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  bool _hasFilledValue(dynamic value) {
+    return value != null && value.toString().trim().isNotEmpty;
+  }
+
+  Future<Map<String, dynamic>> _resolveExportFieldData() async {
+    var fieldData = widget.field;
+    final fieldNumber = fieldData['field_number']?.toString().trim() ?? '';
+    if (fieldNumber.isEmpty) return fieldData;
+
+    final cachedDetail = ref.read(masterFieldDetailProvider(fieldNumber)).value;
+    if (cachedDetail != null) return cachedDetail;
+
+    try {
+      final freshDetail = await ref
+          .read(supabaseServiceProvider)
+          .getMasterFieldWithAllAudits(fieldNumber);
+      if (freshDetail != null) return freshDetail;
+    } catch (_) {
+      // Tetap gunakan data yang sudah ada di sheet.
+    }
+    return fieldData;
+  }
+
+  Map<String, dynamic>? _generativeAudit(Map<String, dynamic> fieldData) {
+    return _firstAuditValue(fieldData['audit_generative']);
+  }
+
+  bool _hasGenerativeIsoData(Map<String, dynamic> fieldData) {
+    final audit = _generativeAudit(fieldData);
+    return _hasFilledValue(audit?['date_of_audit_3']);
+  }
+
+  String _generativeIsoCropLabel(Map<String, dynamic> fieldData) {
+    final type = fieldData['type']?.toString().trim().toUpperCase() ?? '';
+    if (type == 'SC' || type.contains('SWEET')) return 'SC';
+    final hybrid = fieldData['hybrid']?.toString();
+    return DapHelper.isSweetCorn(hybrid) ? 'SC' : 'FC';
+  }
+
+  Future<void> _downloadGenerativeIso({required bool asPdf}) async {
+    if (_isExportingGenerativeIso) return;
+
+    final fieldData = await _resolveExportFieldData();
+    final audit = _generativeAudit(fieldData);
+    if (audit == null || !_hasFilledValue(audit['date_of_audit_3'])) {
+      _showSheetSnack(
+        'ISO Generative/QPIR bisa didownload setelah Gen 3 close.',
+        err: true,
+      );
+      return;
+    }
+
+    setState(() => _isExportingGenerativeIso = true);
+    try {
+      final payload = DetasselingIsoFormData(
+        fieldData: fieldData,
+        auditData: audit,
+        passNumber: 3,
+        cropLabel: _generativeIsoCropLabel(fieldData),
+      );
+      final result = asPdf
+          ? await DetasselingIsoExportService.downloadPdf(payload)
+          : await DetasselingIsoExportService.downloadPicture(payload);
+      if (mounted) {
+        _showSheetSnack(
+          'ISO Generative/QPIR berhasil didownload: ${result.displayPath}',
+          action: SnackBarAction(
+            label: 'BUKA',
+            textColor: AdvantaColors.goldLight,
+            onPressed: () => _openGenerativeIsoExport(result),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSheetSnack('Gagal generate ISO Generative/QPIR: $e', err: true);
+      }
+    } finally {
+      if (mounted) setState(() => _isExportingGenerativeIso = false);
+    }
+  }
+
+  Future<void> _openGenerativeIsoExport(
+      DetasselingIsoExportResult result) async {
+    try {
+      await DetasselingIsoExportService.openExport(result);
+    } catch (e) {
+      if (mounted) {
+        _showSheetSnack(
+          'Tidak dapat membuka file ISO Generative/QPIR: $e',
+          err: true,
+        );
+      }
+    }
+  }
+
   Future<void> _downloadPhaseIso(
     PhaseIsoType phase, {
     required bool asPdf,
   }) async {
     if (_isExportingPhaseIso) return;
 
-    var fieldData = widget.field;
-    final fieldNumber = fieldData['field_number']?.toString().trim() ?? '';
-    if (fieldNumber.isNotEmpty) {
-      final cachedDetail =
-          ref.read(masterFieldDetailProvider(fieldNumber)).value;
-      if (cachedDetail != null) {
-        fieldData = cachedDetail;
-      } else {
-        try {
-          final freshDetail = await ref
-              .read(supabaseServiceProvider)
-              .getMasterFieldWithAllAudits(fieldNumber);
-          if (freshDetail != null) fieldData = freshDetail;
-        } catch (_) {
-          // Tetap gunakan data yang sudah ada di sheet.
-        }
-      }
-    }
+    final fieldData = await _resolveExportFieldData();
 
     if (!PhaseIsoExportService.hasAuditData(fieldData, phase)) {
       _showSheetSnack(
@@ -495,8 +585,13 @@ class _FieldDetailBottomSheetState
   // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final field = widget.field;
-    final fieldNumber = field['field_number']?.toString() ?? '';
+    final baseField = widget.field;
+    final baseFieldNumber = baseField['field_number']?.toString() ?? '';
+    final detailField = baseFieldNumber.isEmpty
+        ? null
+        : ref.watch(masterFieldDetailProvider(baseFieldNumber)).value;
+    final field = detailField ?? baseField;
+    final fieldNumber = field['field_number']?.toString() ?? baseFieldNumber;
     final flag = field['flagging_final']?.toString();
     final user = ref.watch(currentUserProvider).value;
     final canEditMasterData =
@@ -1050,15 +1145,44 @@ class _FieldDetailBottomSheetState
       isDark: isDark,
       children: [
         Text(
-          'Export format ISO untuk fase Vegetative, Pre-Harvest, dan Harvest.',
+          'Export format ISO/QPIR sesuai urutan fase audit.',
           style: AdvantaText.caption.copyWith(
             color: isDark ? Colors.white60 : AdvantaColors.mutedGrey,
             height: 1.4,
           ),
         ),
         const SizedBox(height: 12),
-        ...List.generate(options.length, (index) {
-          final option = options[index];
+        ...List.generate(options.length + 1, (index) {
+          final isGenerativeRow = index == 1;
+          final isLast = index == options.length;
+
+          if (isGenerativeRow) {
+            final hasData = _hasGenerativeIsoData(field);
+            return Column(
+              children: [
+                _PhaseIsoExportRow(
+                  label: 'Generative / QPIR',
+                  icon: Icons.local_florist_rounded,
+                  color: const Color(0xFFE53935),
+                  enabled: hasData,
+                  busy: _isExportingGenerativeIso,
+                  theme: theme,
+                  isDark: isDark,
+                  enabledText: 'Gen 3 close, siap download',
+                  disabledText: 'Download aktif setelah Gen 3 close',
+                  onPicture: () => _downloadGenerativeIso(asPdf: false),
+                  onPdf: () => _downloadGenerativeIso(asPdf: true),
+                ),
+                if (!isLast)
+                  Divider(
+                    height: 18,
+                    color: isDark ? Colors.white10 : Colors.black12,
+                  ),
+              ],
+            );
+          }
+
+          final option = options[index > 1 ? index - 1 : index];
           final hasData = PhaseIsoExportService.hasAuditData(field, option.$1);
           return Column(
             children: [
@@ -1073,7 +1197,7 @@ class _FieldDetailBottomSheetState
                 onPicture: () => _downloadPhaseIso(option.$1, asPdf: false),
                 onPdf: () => _downloadPhaseIso(option.$1, asPdf: true),
               ),
-              if (index != options.length - 1)
+              if (!isLast)
                 Divider(
                   height: 18,
                   color: isDark ? Colors.white10 : Colors.black12,
@@ -2063,6 +2187,8 @@ class _PhaseIsoExportRow extends StatelessWidget {
   final bool isDark;
   final VoidCallback onPicture;
   final VoidCallback onPdf;
+  final String enabledText;
+  final String disabledText;
 
   const _PhaseIsoExportRow({
     required this.label,
@@ -2074,6 +2200,8 @@ class _PhaseIsoExportRow extends StatelessWidget {
     required this.isDark,
     required this.onPicture,
     required this.onPdf,
+    this.enabledText = 'Data audit tersedia',
+    this.disabledText = 'Belum ada data audit fase ini',
   });
 
   @override
@@ -2111,9 +2239,7 @@ class _PhaseIsoExportRow extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                enabled
-                    ? 'Data audit tersedia'
-                    : 'Belum ada data audit fase ini',
+                enabled ? enabledText : disabledText,
                 style: AdvantaText.caption.copyWith(color: subColor),
               ),
             ],

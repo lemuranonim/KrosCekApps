@@ -999,6 +999,8 @@ class PhaseIsoExportService {
       case _IsoStatus.pld:
         _drawClipboardBadge(canvas, origin, 38);
         break;
+      case _IsoStatus.blank:
+        break;
     }
   }
 
@@ -1374,12 +1376,75 @@ class PhaseIsoExportService {
     return map[v] ?? _dash(value);
   }
 
-  static _IsoStatus _scoreStatus(String value) {
+  static bool _isBlankValue(String value) {
     final v = _norm(value);
-    if (const {'best', 'good', '4', '5'}.contains(v)) return _IsoStatus.pass;
-    if (const {'fair', '3'}.contains(v)) return _IsoStatus.atRisk;
-    if (const {'poor', 'very poor', '1', '2'}.contains(v)) return _IsoStatus.nc;
-    return _IsoStatus.atRisk;
+    return v.isEmpty || v == '-' || v == 'null';
+  }
+
+  static _IsoStatus _vegetativeScoreStatus(String value) {
+    final v = _norm(value);
+    if (_isBlankValue(value)) return _IsoStatus.blank;
+    if (const {'best', 'good', 'fair', '5', '4', '3'}.contains(v)) {
+      return _IsoStatus.pass;
+    }
+    if (const {'poor', 'very poor', '2', '1'}.contains(v)) {
+      return _IsoStatus.nc;
+    }
+    return _IsoStatus.blank;
+  }
+
+  static bool _isSweetCorn(String crop) {
+    final v = _norm(crop);
+    return v == 'sc' || v.contains('sweet corn') || v.contains('sweetcorn');
+  }
+
+  static String _vegetativeCropHealthScore(String value, String crop) {
+    if (!_isSweetCorn(crop)) return _score(value);
+    final pct = _readLeadingNumber(value);
+    if (pct == null) return _dash(value);
+    if (pct <= 1) return '5 - Best';
+    if (pct <= 2) return '4 - Good';
+    if (pct <= 3) return '3 - Fair';
+    if (pct <= 4) return '2 - Poor';
+    return '1 - Very Poor';
+  }
+
+  static _IsoStatus _vegetativeCropHealthStatus(String value, String crop) {
+    if (_isBlankValue(value)) return _IsoStatus.blank;
+    if (!_isSweetCorn(crop)) return _vegetativeScoreStatus(value);
+    final pct = _readLeadingNumber(value);
+    if (pct == null) return _IsoStatus.blank;
+    return pct <= 3 ? _IsoStatus.pass : _IsoStatus.nc;
+  }
+
+  static _IsoStatus _preHarvestScoreStatus(String value) {
+    return _vegetativeScoreStatus(value);
+  }
+
+  static String _preHarvestCropHealthScore(String value, String crop) {
+    return _vegetativeCropHealthScore(value, crop);
+  }
+
+  static _IsoStatus _preHarvestCropHealthStatus(String value, String crop) {
+    return _vegetativeCropHealthStatus(value, crop);
+  }
+
+  static _IsoStatus _harvestScoreStatus(String value) {
+    return _vegetativeScoreStatus(value);
+  }
+
+  static String _harvestCropHealthScore(String value, String crop) {
+    return _vegetativeCropHealthScore(value, crop);
+  }
+
+  static _IsoStatus _harvestCropHealthStatus(String value, String crop) {
+    return _vegetativeCropHealthStatus(value, crop);
+  }
+
+  static double? _readLeadingNumber(String value) {
+    final match = RegExp(r'\d+(?:[,.]\d+)?').firstMatch(value);
+    if (match == null) return null;
+    return double.tryParse(match.group(0)!.replaceAll(',', '.'));
   }
 
   static String _yesNo(String value) {
@@ -1413,20 +1478,6 @@ class PhaseIsoExportService {
       'd': 'D - Discard',
     };
     return map[v] ?? _dash(value);
-  }
-
-  static _IsoStatus _decisionStatus(String value) {
-    final v = _norm(value);
-    if (v == 'pass' || v == 'a') return _IsoStatus.pass;
-    if (v == 'pass with note' ||
-        v == 'pass w/ note' ||
-        v == 'b' ||
-        v == 'hold' ||
-        v == 'c') {
-      return _IsoStatus.atRisk;
-    }
-    if (v.contains('discard') || v == 'pld' || v == 'd') return _IsoStatus.nc;
-    return _IsoStatus.atRisk;
   }
 
   static String _roguing(String value) {
@@ -1485,6 +1536,7 @@ class PhaseIsoExportService {
       _IsoStatus.atRisk => _risk,
       _IsoStatus.nc => Colors.red,
       _IsoStatus.pld => const Color(0xFF183A9E),
+      _IsoStatus.blank => const Color(0xFF6B7280),
     };
   }
 
@@ -1494,6 +1546,7 @@ class PhaseIsoExportService {
       _IsoStatus.atRisk => _riskFill,
       _IsoStatus.nc => const Color(0xFFFFE0E0),
       _IsoStatus.pld => const Color(0xFFE2E7FF),
+      _IsoStatus.blank => Colors.white,
     };
   }
 
@@ -1503,6 +1556,7 @@ class PhaseIsoExportService {
       _IsoStatus.atRisk => _warn,
       _IsoStatus.nc => const Color(0xFFFFCDD2),
       _IsoStatus.pld => const Color(0xFFE2E7FF),
+      _IsoStatus.blank => Colors.white,
     };
   }
 
@@ -1512,11 +1566,12 @@ class PhaseIsoExportService {
       _IsoStatus.atRisk => Colors.black,
       _IsoStatus.nc => _risk,
       _IsoStatus.pld => const Color(0xFF183A9E),
+      _IsoStatus.blank => const Color(0xFF6B7280),
     };
   }
 }
 
-enum _IsoStatus { pass, atRisk, nc, pld }
+enum _IsoStatus { pass, atRisk, nc, pld, blank }
 
 extension on String {
   String get titleCase {
@@ -1542,6 +1597,7 @@ class _AssessmentRow {
       _IsoStatus.atRisk => 'AT RISK',
       _IsoStatus.nc => 'NC',
       _IsoStatus.pld => 'PLD',
+      _IsoStatus.blank => '-',
     };
   }
 }
@@ -1750,6 +1806,7 @@ class _PhaseIsoSnapshot {
       _IsoStatus.atRisk => 'AT RISK',
       _IsoStatus.nc => 'NC',
       _IsoStatus.pld => 'PLD',
+      _IsoStatus.blank => '-',
     };
   }
 
@@ -1758,7 +1815,7 @@ class _PhaseIsoSnapshot {
       ...assessmentRows.map((row) => row.rating),
       if (phase == PhaseIsoType.vegetative)
         ...accuracyRows.map((row) => row.rating),
-    ];
+    ].where((rating) => rating != _IsoStatus.blank).toList();
     if (phase == PhaseIsoType.vegetative) {
       final action =
           PhaseIsoExportService._readText(audit['action_needed'], fallback: '');
@@ -1876,6 +1933,8 @@ class _PhaseIsoSnapshot {
   List<_AssessmentRow> get vegetativeRows {
     final cropUniformity =
         PhaseIsoExportService._readText(audit['crop_uniformity'], fallback: '');
+    final cropHealth =
+        PhaseIsoExportService._readText(audit['crop_health'], fallback: '');
     final lsv =
         PhaseIsoExportService._readText(audit['lsv_status'], fallback: '');
     final maleSplit = PhaseIsoExportService._readText(
@@ -1890,20 +1949,24 @@ class _PhaseIsoSnapshot {
         fallback: '');
     final ratio = PhaseIsoExportService._readText(
         audit['sowing_ratio_by_audit'],
-        fallback: '-');
+        fallback: '');
 
     return [
       _AssessmentRow(
           'Crop Uniformity',
           PhaseIsoExportService._score(cropUniformity),
-          PhaseIsoExportService._scoreStatus(cropUniformity)),
+          PhaseIsoExportService._vegetativeScoreStatus(cropUniformity)),
+      _AssessmentRow(
+          'Crop Health',
+          PhaseIsoExportService._vegetativeCropHealthScore(cropHealth, crop),
+          PhaseIsoExportService._vegetativeCropHealthStatus(cropHealth, crop)),
       _AssessmentRow(
           'LSV Status', PhaseIsoExportService._lsv(lsv), _lsvStatus(lsv)),
       _AssessmentRow('Male Split', PhaseIsoExportService._yesNo(maleSplit),
           _yesNoStatus(maleSplit, yesIsPass: true)),
-      _AssessmentRow('Male 2 Rows', ratio,
-          ratio == '-' ? _IsoStatus.atRisk : _IsoStatus.pass),
-      _AssessmentRow('One Seed per Hole', PhaseIsoExportService._yesNo(oneSeed),
+      _AssessmentRow(
+          'Male 2 Rows', _maleTwoRowsLabel(ratio), _maleTwoRowsStatus(ratio)),
+      _AssessmentRow('One Seed / Hole', PhaseIsoExportService._yesNo(oneSeed),
           _yesNoStatus(oneSeed, yesIsPass: true)),
       _AssessmentRow('Roguing Status', PhaseIsoExportService._roguing(roguing),
           _roguingStatus(roguing)),
@@ -1954,29 +2017,22 @@ class _PhaseIsoSnapshot {
       final decision = PhaseIsoExportService._readText(audit['final_decision'],
           fallback: '');
       return [
-        _AssessmentRow(
-            'Male Chopping (Rows)',
-            _maleChoppingLabel(male),
-            PhaseIsoExportService._norm(male) == 'complete' ||
-                    PhaseIsoExportService._norm(male) == 'a'
-                ? _IsoStatus.pass
-                : _IsoStatus.atRisk),
+        _AssessmentRow('Male Chopping (Rows)', _maleChoppingLabel(male),
+            _preHarvestMaleChoppingStatus(male)),
         _AssessmentRow(
             'Crop Uniformity',
             PhaseIsoExportService._score(uniformity),
-            PhaseIsoExportService._scoreStatus(uniformity)),
-        _AssessmentRow('Crop Health', PhaseIsoExportService._score(health),
-            PhaseIsoExportService._scoreStatus(health)),
+            PhaseIsoExportService._preHarvestScoreStatus(uniformity)),
         _AssessmentRow(
-            'Final Flagging',
-            PhaseIsoExportService._dash(flagging),
-            flagging.toUpperCase() == 'GF'
-                ? _IsoStatus.pass
-                : _IsoStatus.atRisk),
+            'Crop Health',
+            PhaseIsoExportService._preHarvestCropHealthScore(health, crop),
+            PhaseIsoExportService._preHarvestCropHealthStatus(health, crop)),
+        _AssessmentRow('Final Flagging', PhaseIsoExportService._dash(flagging),
+            _preHarvestFlaggingStatus(flagging)),
         _AssessmentRow(
             'Final Decision',
             PhaseIsoExportService._decision(decision),
-            PhaseIsoExportService._decisionStatus(decision)),
+            _preHarvestDecisionStatus(decision)),
       ];
     }
 
@@ -1994,21 +2050,21 @@ class _PhaseIsoSnapshot {
         PhaseIsoExportService._readText(audit['final_flagging'], fallback: '');
     return [
       _AssessmentRow('Ear Condition (Maturity)',
-          PhaseIsoExportService._dash(ear), _earStatus(ear)),
+          PhaseIsoExportService._dash(ear), _harvestEarStatus(ear)),
       _AssessmentRow(
           'Crop Uniformity',
           PhaseIsoExportService._score(uniformity),
-          PhaseIsoExportService._scoreStatus(uniformity)),
-      _AssessmentRow('Crop Health', PhaseIsoExportService._score(health),
-          PhaseIsoExportService._scoreStatus(health)),
+          PhaseIsoExportService._harvestScoreStatus(uniformity)),
+      _AssessmentRow(
+          'Crop Health',
+          PhaseIsoExportService._harvestCropHealthScore(health, crop),
+          PhaseIsoExportService._harvestCropHealthStatus(health, crop)),
       _AssessmentRow(
           'Downgrade Flagging',
-          PhaseIsoExportService._dash(downgrade.isEmpty ? 'None' : downgrade),
-          downgrade.isEmpty || downgrade == '-'
-              ? _IsoStatus.pass
-              : _IsoStatus.atRisk),
+          PhaseIsoExportService._dash(downgrade),
+          _harvestDowngradeFlaggingStatus(downgrade)),
       _AssessmentRow('Final Flagging', PhaseIsoExportService._dash(flagging),
-          flagging.toUpperCase() == 'GF' ? _IsoStatus.pass : _IsoStatus.atRisk),
+          _harvestFinalFlaggingStatus(flagging)),
       _AssessmentRow('Harvest Result', harvestResult,
           harvestResult.startsWith('A') ? _IsoStatus.pass : _IsoStatus.atRisk),
     ];
@@ -2016,39 +2072,181 @@ class _PhaseIsoSnapshot {
 
   static _IsoStatus _lsvStatus(String value) {
     final v = PhaseIsoExportService._norm(value);
-    if (v == 'none' || v == 'a') return _IsoStatus.pass;
-    if (v == 'high' || v == 'd') return _IsoStatus.nc;
-    return _IsoStatus.atRisk;
+    if (PhaseIsoExportService._isBlankValue(value)) return _IsoStatus.blank;
+    if (v == 'no' || v == 'none' || v == 'low' || v == 'a' || v == 'b') {
+      return _IsoStatus.pass;
+    }
+    if (v == 'moderate' || v == 'high' || v == 'c' || v == 'd') {
+      return _IsoStatus.nc;
+    }
+    return _IsoStatus.blank;
   }
 
   static _IsoStatus _yesNoStatus(String value, {required bool yesIsPass}) {
     final v = PhaseIsoExportService._norm(value);
-    final yes = v == 'yes' || v == 'a' || v == 'y';
-    final no = v == 'no' || v == 'b' || v == 'n';
-    if (yes) return yesIsPass ? _IsoStatus.pass : _IsoStatus.atRisk;
-    if (no) return yesIsPass ? _IsoStatus.atRisk : _IsoStatus.pass;
-    return _IsoStatus.atRisk;
+    if (PhaseIsoExportService._isBlankValue(value)) return _IsoStatus.blank;
+    final yes = v == 'yes' || v == 'a' || v == 'y' || v.contains('(yes)');
+    final no = v == 'no' || v == 'b' || v == 'n' || v.contains('(no)');
+    if (yes) return yesIsPass ? _IsoStatus.pass : _IsoStatus.nc;
+    if (no) return yesIsPass ? _IsoStatus.nc : _IsoStatus.pass;
+    return _IsoStatus.blank;
+  }
+
+  static String _maleTwoRowsLabel(String value) {
+    final hasTwoRows = _hasTwoMaleRows(value);
+    if (hasTwoRows == null) return PhaseIsoExportService._dash(value);
+    return hasTwoRows ? 'A (Yes)' : 'B (No)';
+  }
+
+  static _IsoStatus _maleTwoRowsStatus(String value) {
+    final hasTwoRows = _hasTwoMaleRows(value);
+    if (hasTwoRows == null) return _IsoStatus.blank;
+    return hasTwoRows ? _IsoStatus.pass : _IsoStatus.nc;
+  }
+
+  static bool? _hasTwoMaleRows(String value) {
+    final v = PhaseIsoExportService._norm(value);
+    if (PhaseIsoExportService._isBlankValue(value)) return null;
+    if (v == 'yes' || v == 'a' || v == 'y' || v.contains('(yes)')) return true;
+    if (v == 'no' || v == 'b' || v == 'n' || v.contains('(no)')) return false;
+    if (value.contains(':')) {
+      final parts = value.split(':');
+      final maleRows = PhaseIsoExportService._readLeadingNumber(parts.last);
+      if (maleRows == null) return null;
+      return maleRows == 2;
+    }
+    final rows = PhaseIsoExportService._readLeadingNumber(value);
+    if (rows == null) return null;
+    return rows == 2;
   }
 
   static _IsoStatus _roguingStatus(String value) {
     final v = PhaseIsoExportService._norm(value);
+    if (PhaseIsoExportService._isBlankValue(value)) return _IsoStatus.blank;
     if (v == 'done' || v == 'c') return _IsoStatus.pass;
-    return _IsoStatus.atRisk;
+    if (v == 'not yet' ||
+        v == 'on going' ||
+        v == 'ongoing' ||
+        v == 'a' ||
+        v == 'b') {
+      return _IsoStatus.nc;
+    }
+    return _IsoStatus.blank;
   }
 
-  static _IsoStatus _earStatus(String value) {
+  static _IsoStatus _harvestEarStatus(String value) {
     final v = PhaseIsoExportService._norm(value);
-    if (v == 'stage 3' || v == 'stage 4' || v == '3' || v == '4') {
+    if (PhaseIsoExportService._isBlankValue(value)) return _IsoStatus.blank;
+    if (v == 'stage 3' || v == '3') return _IsoStatus.pass;
+    if (v == 'stage 2' || v == '2') return _IsoStatus.atRisk;
+    if (v == 'stage 1' || v == '1') return _IsoStatus.nc;
+    return _IsoStatus.blank;
+  }
+
+  static _IsoStatus _harvestDowngradeFlaggingStatus(String value) {
+    final v = PhaseIsoExportService._norm(value);
+    if (PhaseIsoExportService._isBlankValue(value)) return _IsoStatus.blank;
+    if (v == 'none' || v == 'no' || v == 'not found' || v == 'b') {
       return _IsoStatus.pass;
     }
-    return _IsoStatus.atRisk;
+    if (v == 'potential' ||
+        v == 'watch' ||
+        v == 'tbs' ||
+        v == 'pass w/ note' ||
+        v == 'pass with note') {
+      return _IsoStatus.atRisk;
+    }
+    if (v == 'downgrade' ||
+        v == 'fail' ||
+        v == 'issue found' ||
+        v == 'yes' ||
+        v == 'rfi' ||
+        v == 'rfd' ||
+        v == 'a') {
+      return _IsoStatus.nc;
+    }
+    return _IsoStatus.blank;
+  }
+
+  static _IsoStatus _harvestFinalFlaggingStatus(String value) {
+    final v = PhaseIsoExportService._norm(value);
+    if (PhaseIsoExportService._isBlankValue(value)) return _IsoStatus.blank;
+    if (v == 'gf') return _IsoStatus.pass;
+    if (v == 'pld') return _IsoStatus.atRisk;
+    if (v == 'rfi' || v == 'rfd' || v == 'bf') return _IsoStatus.nc;
+    return _IsoStatus.blank;
   }
 
   static String _maleChoppingLabel(String value) {
     final v = PhaseIsoExportService._norm(value);
-    if (v == 'complete' || v == 'a') return 'A - Complete';
-    if (v == 'not complete' || v == 'b') return 'B - Not Complete';
+    if (v == 'complete' || v == 'done' || v == 'a') return 'A - Complete';
+    if (v == 'pass w/ note' ||
+        v == 'pass with note' ||
+        v == 'partial' ||
+        v == 'on going' ||
+        v == 'ongoing' ||
+        v == 'need monitoring' ||
+        v == 'b') {
+      return PhaseIsoExportService._dash(value);
+    }
+    if (v == 'fail' ||
+        v == 'not complete' ||
+        v == 'not yet' ||
+        v == 'not done' ||
+        v == 'c') {
+      return PhaseIsoExportService._dash(value);
+    }
     return PhaseIsoExportService._dash(value);
+  }
+
+  static _IsoStatus _preHarvestMaleChoppingStatus(String value) {
+    final v = PhaseIsoExportService._norm(value);
+    if (PhaseIsoExportService._isBlankValue(value)) return _IsoStatus.blank;
+    if (v == 'complete' || v == 'done' || v == 'a') return _IsoStatus.pass;
+    if (v == 'pass w/ note' ||
+        v == 'pass with note' ||
+        v == 'partial' ||
+        v == 'on going' ||
+        v == 'ongoing' ||
+        v == 'need monitoring' ||
+        v == 'b') {
+      return _IsoStatus.atRisk;
+    }
+    if (v == 'fail' ||
+        v == 'not complete' ||
+        v == 'not yet' ||
+        v == 'not done' ||
+        v == 'c') {
+      return _IsoStatus.nc;
+    }
+    return _IsoStatus.blank;
+  }
+
+  static _IsoStatus _preHarvestFlaggingStatus(String value) {
+    final v = PhaseIsoExportService._norm(value);
+    if (PhaseIsoExportService._isBlankValue(value)) return _IsoStatus.blank;
+    if (v == 'gf') return _IsoStatus.pass;
+    if (v == 'pld') return _IsoStatus.atRisk;
+    if (v == 'rfi' || v == 'rfd' || v == 'bf') return _IsoStatus.nc;
+    return _IsoStatus.blank;
+  }
+
+  static _IsoStatus _preHarvestDecisionStatus(String value) {
+    final v = PhaseIsoExportService._norm(value);
+    if (PhaseIsoExportService._isBlankValue(value)) return _IsoStatus.blank;
+    if (v == 'pass' || v == 'a') return _IsoStatus.pass;
+    if (v == 'pass w/ note' || v == 'pass with note' || v == 'b') {
+      return _IsoStatus.atRisk;
+    }
+    if (v == 'fail' ||
+        v == 'not pass' ||
+        v == 'hold' ||
+        v == 'discard' ||
+        v == 'c' ||
+        v == 'd') {
+      return _IsoStatus.nc;
+    }
+    return _IsoStatus.blank;
   }
 }
 
