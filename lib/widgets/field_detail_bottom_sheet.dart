@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../providers/master_fields_provider.dart';
+import '../services/phase_iso_export_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/dap_helper.dart';
 import '../utils/audit_status_helper.dart';
@@ -58,6 +59,7 @@ class FieldDetailBottomSheet extends ConsumerStatefulWidget {
 class _FieldDetailBottomSheetState
     extends ConsumerState<FieldDetailBottomSheet> {
   int _tab = 0; // 0: Info, 1: Histori, 2: Aksi
+  bool _isExportingPhaseIso = false;
 
   // 1. TAMBAHKAN VARIABEL STATE INI
   late int _dap;
@@ -373,6 +375,102 @@ class _FieldDetailBottomSheetState
         );
       }
     }
+  }
+
+  List<(PhaseIsoType, String, IconData, Color)> _phaseIsoOptions() {
+    return const [
+      (
+        PhaseIsoType.vegetative,
+        'Vegetative',
+        Icons.grass_rounded,
+        Color(0xFF78909C),
+      ),
+      (
+        PhaseIsoType.preHarvest,
+        'Pre-Harvest',
+        Icons.content_cut_rounded,
+        Color(0xFF26C6DA),
+      ),
+      (
+        PhaseIsoType.harvest,
+        'Harvest',
+        Icons.agriculture_rounded,
+        Color(0xFFFF7043),
+      ),
+    ];
+  }
+
+  Future<void> _downloadPhaseIso(
+    PhaseIsoType phase, {
+    required bool asPdf,
+  }) async {
+    if (_isExportingPhaseIso) return;
+
+    var fieldData = widget.field;
+    final fieldNumber = fieldData['field_number']?.toString().trim() ?? '';
+    if (fieldNumber.isNotEmpty) {
+      final cachedDetail =
+          ref.read(masterFieldDetailProvider(fieldNumber)).value;
+      if (cachedDetail != null) {
+        fieldData = cachedDetail;
+      } else {
+        try {
+          final freshDetail = await ref
+              .read(supabaseServiceProvider)
+              .getMasterFieldWithAllAudits(fieldNumber);
+          if (freshDetail != null) fieldData = freshDetail;
+        } catch (_) {
+          // Tetap gunakan data yang sudah ada di sheet.
+        }
+      }
+    }
+
+    if (!PhaseIsoExportService.hasAuditData(fieldData, phase)) {
+      _showSheetSnack(
+        'Data audit ${PhaseIsoExportService.phaseLabel(phase)} belum tersedia.',
+        err: true,
+      );
+      return;
+    }
+
+    setState(() => _isExportingPhaseIso = true);
+    try {
+      final payload = PhaseIsoExportData(fieldData: fieldData, phase: phase);
+      final path = asPdf
+          ? await PhaseIsoExportService.downloadPdf(payload)
+          : await PhaseIsoExportService.downloadPicture(payload);
+      if (mounted) {
+        _showSheetSnack(
+          'ISO ${PhaseIsoExportService.phaseLabel(phase)} tersimpan: $path',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSheetSnack(
+          'Gagal generate ISO ${PhaseIsoExportService.phaseLabel(phase)}: $e',
+          err: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExportingPhaseIso = false);
+    }
+  }
+
+  void _showSheetSnack(String msg, {bool err = false}) {
+    if (!mounted) return;
+    final theme = Theme.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          msg,
+          style: AdvantaText.body2.copyWith(color: Colors.white),
+        ),
+        backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(12),
+      ),
+    );
   }
 
   // ── Build ─────────────────────────────────────────────────
@@ -910,11 +1008,65 @@ class _FieldDetailBottomSheetState
       int dap, Map<String, dynamic> field, ThemeData theme, bool isDark) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 32.0),
-      child: Column(children: _buildPhaseTimeline(dap, field, theme, isDark)),
+      child: Column(
+        children: [
+          _buildPhaseIsoExportCard(field, theme, isDark),
+          const SizedBox(height: 14.0),
+          ..._buildPhaseTimeline(dap, field, theme, isDark),
+        ],
+      ),
     );
   }
 
-  // 👇 SILAKAN PASTE FUNGSI INI DI BAWAH _buildHistoriTab 👇
+  Widget _buildPhaseIsoExportCard(
+    Map<String, dynamic> field,
+    ThemeData theme,
+    bool isDark,
+  ) {
+    final options = _phaseIsoOptions();
+    return _SectionCard(
+      title: 'ISO Output',
+      icon: Icons.description_outlined,
+      theme: theme,
+      isDark: isDark,
+      children: [
+        Text(
+          'Export format ISO untuk fase Vegetative, Pre-Harvest, dan Harvest.',
+          style: AdvantaText.caption.copyWith(
+            color: isDark ? Colors.white60 : AdvantaColors.mutedGrey,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...List.generate(options.length, (index) {
+          final option = options[index];
+          final hasData = PhaseIsoExportService.hasAuditData(field, option.$1);
+          return Column(
+            children: [
+              _PhaseIsoExportRow(
+                label: option.$2,
+                icon: option.$3,
+                color: option.$4,
+                enabled: hasData,
+                busy: _isExportingPhaseIso,
+                theme: theme,
+                isDark: isDark,
+                onPicture: () => _downloadPhaseIso(option.$1, asPdf: false),
+                onPdf: () => _downloadPhaseIso(option.$1, asPdf: true),
+              ),
+              if (index != options.length - 1)
+                Divider(
+                  height: 18,
+                  color: isDark ? Colors.white10 : Colors.black12,
+                ),
+            ],
+          );
+        }),
+      ],
+    );
+  }
+
+// 👇 SILAKAN PASTE FUNGSI INI DI BAWAH _buildHistoriTab 👇
   List<Widget> _buildPhaseTimeline(
       int dap, Map<String, dynamic> field, ThemeData theme, bool isDark) {
     final phaseToAudit = {
@@ -1875,6 +2027,101 @@ class _PhaseTimelineItem extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PhaseIsoExportRow extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool enabled;
+  final bool busy;
+  final ThemeData theme;
+  final bool isDark;
+  final VoidCallback onPicture;
+  final VoidCallback onPdf;
+
+  const _PhaseIsoExportRow({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.enabled,
+    required this.busy,
+    required this.theme,
+    required this.isDark,
+    required this.onPicture,
+    required this.onPdf,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = enabled
+        ? theme.colorScheme.onSurface
+        : (isDark ? Colors.white38 : AdvantaColors.mutedGrey);
+    final subColor = enabled
+        ? (isDark ? Colors.white60 : AdvantaColors.mutedGrey)
+        : (isDark ? Colors.white30 : AdvantaColors.mutedGrey.withAlpha(150));
+
+    return Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: enabled ? color.withAlpha(36) : Colors.black.withAlpha(8),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: enabled ? color : subColor,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: AdvantaText.bodyBold.copyWith(color: textColor),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                enabled
+                    ? 'Data audit tersedia'
+                    : 'Belum ada data audit fase ini',
+                style: AdvantaText.caption.copyWith(color: subColor),
+              ),
+            ],
+          ),
+        ),
+        Tooltip(
+          message: 'Download Picture',
+          child: IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: enabled && !busy ? onPicture : null,
+            icon: busy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.image_outlined),
+            color: color,
+          ),
+        ),
+        Tooltip(
+          message: 'Download PDF',
+          child: IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: enabled && !busy ? onPdf : null,
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            color: color,
           ),
         ),
       ],

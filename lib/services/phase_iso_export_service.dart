@@ -1,5 +1,4 @@
 import 'dart:io' as io;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -34,7 +33,6 @@ class PhaseIsoExportService {
   static const _ok = Color(0xFF0B6D25);
   static const _okFill = Color(0xFFE2F2DF);
   static const _riskFill = Color(0xFFFFE9D4);
-  static const _warnFill = Color(0xFFFFF1C2);
 
   static bool hasAuditData(Map<String, dynamic> fieldData, PhaseIsoType phase) {
     final audit = _auditFor(fieldData, phase);
@@ -167,7 +165,8 @@ class PhaseIsoExportService {
       );
     }
 
-    final yStart = s.phase == PhaseIsoType.vegetative ? rect.top + 6 : rect.top + 58;
+    final yStart =
+        s.phase == PhaseIsoType.vegetative ? rect.top + 6 : rect.top + 58;
     final rows = <(String, String)>[
       ('Season', s.season),
       ('Week', s.week),
@@ -183,7 +182,10 @@ class PhaseIsoExportService {
       if (s.phase == PhaseIsoType.vegetative)
         ('Ha Plant', '${_formatHa(s.totalAreaHa)} Ha'),
       ('Planting Date', _formatDate(s.plantingDate)),
-      (s.phase == PhaseIsoType.vegetative ? 'DAP' : 'DAP / HST', '${s.dap} HST'),
+      (
+        s.phase == PhaseIsoType.vegetative ? 'DAP' : 'DAP / HST',
+        '${s.dap} HST'
+      ),
       if (s.phase == PhaseIsoType.vegetative) ('Target Audit', s.targetAudit),
       if (s.phase == PhaseIsoType.vegetative) ('Field Stage', s.fieldStage),
     ];
@@ -226,8 +228,12 @@ class PhaseIsoExportService {
       Icons.settings_rounded,
     ];
     final rows = [
-      (s.phase == PhaseIsoType.vegetative ? 'Audit Date' : 'Audit Date', s.auditDateLabel,
-          'Week', s.week),
+      (
+        s.phase == PhaseIsoType.vegetative ? 'Audit Date' : 'Audit Date',
+        s.auditDateLabel,
+        'Week',
+        s.week
+      ),
       ('Auditor (QA FI)', s.qaFi, 'QA SPV', s.qaSpv),
       (
         s.phase == PhaseIsoType.vegetative ? 'Actual DAP' : 'Audit Status',
@@ -244,7 +250,8 @@ class PhaseIsoExportService {
       if (i > 0) {
         _drawGridLine(canvas, Offset(rect.left, y), Offset(rect.right, y));
       }
-      _drawGridLine(canvas, Offset(rect.left + iconW, y), Offset(rect.left + iconW, y + rowH));
+      _drawGridLine(canvas, Offset(rect.left + iconW, y),
+          Offset(rect.left + iconW, y + rowH));
       if (i < 3) {
         _drawGridLine(
           canvas,
@@ -285,9 +292,11 @@ class PhaseIsoExportService {
 
     if (s.phase == PhaseIsoType.vegetative) {
       final pld = Rect.fromLTWH(rect.left, rect.top, rect.width, 168);
-      final accuracy = Rect.fromLTWH(rect.left, rect.top + 185, rect.width, 200);
+      final accuracy =
+          Rect.fromLTWH(rect.left, rect.top + 185, rect.width, 200);
       _drawBorder(canvas, pld, _green, 1.2);
-      _sectionLabel(canvas, Rect.fromLTWH(pld.left, pld.top, pld.width, 44), 'PLD RECOMMENDATION');
+      _sectionLabel(canvas, Rect.fromLTWH(pld.left, pld.top, pld.width, 44),
+          'PLD RECOMMENDATION');
       _drawLeafBadge(canvas, Offset(pld.left + 42, pld.top + 72), 64);
       _drawTextRows(
         canvas,
@@ -352,7 +361,8 @@ class PhaseIsoExportService {
       weight: FontWeight.w900,
       color: _statusColor(s.statusLevel),
     );
-    _drawDottedLine(canvas, Offset(rect.left + 26, rect.top + 176), Offset(rect.right - 26, rect.top + 176));
+    _drawDottedLine(canvas, Offset(rect.left + 26, rect.top + 176),
+        Offset(rect.right - 26, rect.top + 176));
     _textCentered(
       canvas,
       s.phase == PhaseIsoType.harvest ? 'Harvest Result' : 'Final Decision',
@@ -368,7 +378,8 @@ class PhaseIsoExportService {
       weight: FontWeight.w900,
       color: _statusColor(s.statusLevel),
     );
-    _drawDottedLine(canvas, Offset(rect.left + 26, rect.top + 292), Offset(rect.right - 26, rect.top + 292));
+    _drawDottedLine(canvas, Offset(rect.left + 26, rect.top + 292),
+        Offset(rect.right - 26, rect.top + 292));
     _textCentered(
       canvas,
       'Status',
@@ -376,7 +387,8 @@ class PhaseIsoExportService {
       size: 16,
       weight: FontWeight.w700,
     );
-    final statusRect = Rect.fromLTWH(rect.left + 70, rect.top + 352, rect.width - 140, 46);
+    final statusRect =
+        Rect.fromLTWH(rect.left + 70, rect.top + 352, rect.width - 140, 46);
     _drawRoundedFill(canvas, statusRect, _statusFill(s.statusLevel), 8);
     _textCentered(
       canvas,
@@ -391,12 +403,34 @@ class PhaseIsoExportService {
   static void _drawFnDetail(Canvas canvas, _PhaseIsoSnapshot s) {
     final rect = const Rect.fromLTWH(20, 540, 1760, 150);
     _drawBorder(canvas, rect, _green, 1.2);
-    _sectionLabel(canvas, Rect.fromLTWH(rect.left, rect.top, rect.width, 38), 'FN OBSERVATION DETAIL');
+    _sectionLabel(canvas, Rect.fromLTWH(rect.left, rect.top, rect.width, 38),
+        'FN OBSERVATION DETAIL');
 
     final isVeg = s.phase == PhaseIsoType.vegetative;
     final labels = isVeg
-        ? ['FN', 'Farmer', 'Village', 'Ha Plant (Ha)', 'Planting Date', 'DAP', 'Hybrid', 'Field Stage', 'Audit Result', 'Action / Remarks']
-        : ['FN', 'Farmer', 'Grower', 'Effective Area', 'Planting Date', 'HST', 'Hybrid', 'Audit Result', 'Action / Remarks'];
+        ? [
+            'FN',
+            'Farmer',
+            'Village',
+            'Ha Plant (Ha)',
+            'Planting Date',
+            'DAP',
+            'Hybrid',
+            'Field Stage',
+            'Audit Result',
+            'Action / Remarks'
+          ]
+        : [
+            'FN',
+            'Farmer',
+            'Grower',
+            'Effective Area',
+            'Planting Date',
+            'HST',
+            'Hybrid',
+            'Audit Result',
+            'Action / Remarks'
+          ];
     final widths = isVeg
         ? [145.0, 170.0, 150.0, 160.0, 170.0, 125.0, 145.0, 155.0, 170.0, 370.0]
         : [170.0, 210.0, 245.0, 180.0, 205.0, 125.0, 150.0, 150.0, 325.0];
@@ -426,7 +460,8 @@ class PhaseIsoExportService {
           ];
 
     _drawTableHeader(canvas, rect.left, rect.top + 38, widths, labels);
-    _drawTableRow(canvas, rect.left, rect.top + 78, widths, 72, values, ratingIndex: labels.indexOf('Audit Result'), status: s.statusLevel);
+    _drawTableRow(canvas, rect.left, rect.top + 78, widths, 72, values,
+        ratingIndex: labels.indexOf('Audit Result'), status: s.statusLevel);
   }
 
   static void _drawSummary(Canvas canvas, _PhaseIsoSnapshot s) {
@@ -434,7 +469,8 @@ class PhaseIsoExportService {
     final right = const Rect.fromLTWH(1328, 710, 452, 335);
 
     _drawBorder(canvas, left, _green, 1.2);
-    _sectionLabel(canvas, Rect.fromLTWH(left.left, left.top, left.width, 38), 'INSPECTION RESULTS SUMMARY');
+    _sectionLabel(canvas, Rect.fromLTWH(left.left, left.top, left.width, 38),
+        'INSPECTION RESULTS SUMMARY');
 
     if (s.phase == PhaseIsoType.vegetative) {
       _drawVegetativeSummary(canvas, s, left);
@@ -445,7 +481,8 @@ class PhaseIsoExportService {
     _drawFinalStatus(canvas, s, right);
   }
 
-  static void _drawVegetativeSummary(Canvas canvas, _PhaseIsoSnapshot s, Rect rect) {
+  static void _drawVegetativeSummary(
+      Canvas canvas, _PhaseIsoSnapshot s, Rect rect) {
     final metaTop = rect.top + 46;
     final meta = [
       ('Audit Date', s.auditDateLabel),
@@ -458,8 +495,13 @@ class PhaseIsoExportService {
     for (var i = 0; i < meta.length; i++) {
       final r = Rect.fromLTWH(x, metaTop, widths[i] - 8, 34);
       _drawRoundedPanel(canvas, r, const Color(0xFFF8FAF8), _line, 4);
-      _text(canvas, '${meta[i].$1}:', Offset(r.left + 12, r.top + 10), size: 13, weight: FontWeight.w800);
-      _text(canvas, meta[i].$2, Offset(r.left + 105, r.top + 10), size: 13, weight: FontWeight.w700, maxWidth: r.width - 115, maxLines: 1);
+      _text(canvas, '${meta[i].$1}:', Offset(r.left + 12, r.top + 10),
+          size: 13, weight: FontWeight.w800);
+      _text(canvas, meta[i].$2, Offset(r.left + 105, r.top + 10),
+          size: 13,
+          weight: FontWeight.w700,
+          maxWidth: r.width - 115,
+          maxLines: 1);
       x += widths[i];
     }
 
@@ -467,26 +509,35 @@ class PhaseIsoExportService {
     final leftTable = Rect.fromLTWH(rect.left + 10, tableTop, 705, 230);
     final rightTable = Rect.fromLTWH(rect.left + 730, tableTop, 545, 230);
 
-    _drawSubTitle(canvas, Rect.fromLTWH(leftTable.left, leftTable.top, leftTable.width, 30), 'A. LEADING INDICATOR RESULTS');
+    _drawSubTitle(
+        canvas,
+        Rect.fromLTWH(leftTable.left, leftTable.top, leftTable.width, 30),
+        'A. LEADING INDICATOR RESULTS');
     _drawAssessmentTable(
       canvas,
-      Rect.fromLTWH(leftTable.left, leftTable.top + 30, leftTable.width, leftTable.height - 30),
+      Rect.fromLTWH(leftTable.left, leftTable.top + 30, leftTable.width,
+          leftTable.height - 30),
       ['No.', 'Indicator / Item', 'Result / Status', 'Rating'],
       [55, 280, 210, 160],
       s.vegetativeRows,
     );
 
-    _drawSubTitle(canvas, Rect.fromLTWH(rightTable.left, rightTable.top, rightTable.width, 30), 'B. DATA ACCURACY / CORRECTION RESULTS');
+    _drawSubTitle(
+        canvas,
+        Rect.fromLTWH(rightTable.left, rightTable.top, rightTable.width, 30),
+        'B. DATA ACCURACY / CORRECTION RESULTS');
     _drawAssessmentTable(
       canvas,
-      Rect.fromLTWH(rightTable.left, rightTable.top + 30, rightTable.width, rightTable.height - 30),
+      Rect.fromLTWH(rightTable.left, rightTable.top + 30, rightTable.width,
+          rightTable.height - 30),
       ['No.', 'Correction Item', 'Result / Status', 'Rating'],
       [55, 215, 220, 155],
       s.accuracyRows,
     );
   }
 
-  static void _drawSingleSummary(Canvas canvas, _PhaseIsoSnapshot s, Rect rect) {
+  static void _drawSingleSummary(
+      Canvas canvas, _PhaseIsoSnapshot s, Rect rect) {
     _drawSubTitle(
       canvas,
       Rect.fromLTWH(rect.left, rect.top + 38, rect.width, 34),
@@ -502,12 +553,17 @@ class PhaseIsoExportService {
       s.assessmentRows,
     );
 
-    final remarksRect = Rect.fromLTWH(rect.left, rect.top + 267, rect.width, 68);
-    _sectionLabel(canvas, Rect.fromLTWH(remarksRect.left, remarksRect.top, remarksRect.width, 30), 'REMARKS');
+    final remarksRect =
+        Rect.fromLTWH(rect.left, rect.top + 267, rect.width, 68);
+    _sectionLabel(
+        canvas,
+        Rect.fromLTWH(remarksRect.left, remarksRect.top, remarksRect.width, 30),
+        'REMARKS');
     _textInRect(
       canvas,
       s.remarks,
-      Rect.fromLTWH(remarksRect.left + 40, remarksRect.top + 36, remarksRect.width - 80, 28),
+      Rect.fromLTWH(remarksRect.left + 40, remarksRect.top + 36,
+          remarksRect.width - 80, 28),
       size: 14,
       weight: FontWeight.w600,
       textAlign: TextAlign.center,
@@ -517,8 +573,10 @@ class PhaseIsoExportService {
 
   static void _drawFinalStatus(Canvas canvas, _PhaseIsoSnapshot s, Rect rect) {
     _drawBorder(canvas, rect, _green, 1.2);
-    _sectionLabel(canvas, Rect.fromLTWH(rect.left, rect.top, rect.width, 38), 'FINAL STATUS');
-    final box = Rect.fromLTWH(rect.left + 28, rect.top + 66, rect.width - 56, 88);
+    _sectionLabel(canvas, Rect.fromLTWH(rect.left, rect.top, rect.width, 38),
+        'FINAL STATUS');
+    final box =
+        Rect.fromLTWH(rect.left + 28, rect.top + 66, rect.width - 56, 88);
     _drawRoundedPanel(canvas, box, Colors.white, _green, 8);
     _textCentered(
       canvas,
@@ -554,18 +612,25 @@ class PhaseIsoExportService {
       (_IsoStatus.atRisk, 'AT RISK', '= Attention / Improvement needed'),
       (_IsoStatus.nc, 'NC', '= Non Conformance'),
       if (s.phase == PhaseIsoType.vegetative)
-        (_IsoStatus.pld, 'PLD RECOMMENDATION', '= Planned / discard recommendation review'),
+        (
+          _IsoStatus.pld,
+          'PLD RECOMMENDATION',
+          '= Planned / discard recommendation review'
+        ),
     ];
     final w = rect.width / items.length;
     for (var i = 0; i < items.length; i++) {
       final x = rect.left + i * w;
       if (i > 0) {
-        _drawGridLine(canvas, Offset(x, rect.top + 8), Offset(x, rect.bottom - 8));
+        _drawGridLine(
+            canvas, Offset(x, rect.top + 8), Offset(x, rect.bottom - 8));
       }
       final item = items[i];
       _drawLegendIcon(canvas, Offset(x + 55, rect.top + 15), item.$1);
-      _text(canvas, item.$2, Offset(x + 105, rect.top + 13), size: 13.5, weight: FontWeight.w900);
-      _text(canvas, item.$3, Offset(x + 105, rect.top + 33), size: 12.2, weight: FontWeight.w700);
+      _text(canvas, item.$2, Offset(x + 105, rect.top + 13),
+          size: 13.5, weight: FontWeight.w900);
+      _text(canvas, item.$3, Offset(x + 105, rect.top + 33),
+          size: 12.2, weight: FontWeight.w700);
     }
   }
 
@@ -609,7 +674,9 @@ class PhaseIsoExportService {
         texts[i],
         Rect.fromLTWH(x + 8, rect.top + 5, widths[i] - 16, rect.height - 10),
         size: 15,
-        weight: i == 0 || texts[i].contains(s.fieldNumber) ? FontWeight.w900 : FontWeight.w700,
+        weight: i == 0 || texts[i].contains(s.fieldNumber)
+            ? FontWeight.w900
+            : FontWeight.w700,
         color: i == 0 || texts[i].contains(s.fieldNumber) ? _green : _ink,
       );
       x += widths[i];
@@ -624,8 +691,11 @@ class PhaseIsoExportService {
     Color valueColor = _ink,
   }) {
     if (label.isEmpty && value.isEmpty) return;
-    _text(canvas, label, Offset(rect.left + 22, rect.top + rect.height / 2 - 10), size: 16, weight: FontWeight.w700);
-    _text(canvas, ':', Offset(rect.left + 185, rect.top + rect.height / 2 - 10), size: 16, weight: FontWeight.w800);
+    _text(
+        canvas, label, Offset(rect.left + 22, rect.top + rect.height / 2 - 10),
+        size: 16, weight: FontWeight.w700);
+    _text(canvas, ':', Offset(rect.left + 185, rect.top + rect.height / 2 - 10),
+        size: 16, weight: FontWeight.w800);
     _text(
       canvas,
       value,
@@ -646,10 +716,13 @@ class PhaseIsoExportService {
     List<_AssessmentRow> rows,
   ) {
     _drawBorder(canvas, rect, _line, 1);
-    _drawFilledRect(canvas, Rect.fromLTWH(rect.left, rect.top, rect.width, 30), _green);
+    _drawFilledRect(
+        canvas, Rect.fromLTWH(rect.left, rect.top, rect.width, 30), _green);
     var x = rect.left;
     for (var i = 0; i < headers.length; i++) {
-      if (i > 0) _drawGridLine(canvas, Offset(x, rect.top), Offset(x, rect.bottom));
+      if (i > 0) {
+        _drawGridLine(canvas, Offset(x, rect.top), Offset(x, rect.bottom));
+      }
       _textCentered(
         canvas,
         headers[i],
@@ -700,14 +773,18 @@ class PhaseIsoExportService {
     List<double> widths,
     List<String> labels,
   ) {
-    _drawFilledRect(canvas, Rect.fromLTWH(left, top, widths.fold(0, (a, b) => a + b), 40), _green);
+    _drawFilledRect(canvas,
+        Rect.fromLTWH(left, top, widths.fold(0, (a, b) => a + b), 40), _green);
     var x = left;
     for (var i = 0; i < labels.length; i++) {
       if (i > 0) _drawGridLine(canvas, Offset(x, top), Offset(x, top + 112));
-      _textCentered(canvas, labels[i], Rect.fromLTWH(x + 4, top + 8, widths[i] - 8, 22), size: 14.5, weight: FontWeight.w800, color: Colors.white);
+      _textCentered(
+          canvas, labels[i], Rect.fromLTWH(x + 4, top + 8, widths[i] - 8, 22),
+          size: 14.5, weight: FontWeight.w800, color: Colors.white);
       x += widths[i];
     }
-    _drawGridLine(canvas, Offset(left, top + 40), Offset(left + widths.fold(0, (a, b) => a + b), top + 40));
+    _drawGridLine(canvas, Offset(left, top + 40),
+        Offset(left + widths.fold(0, (a, b) => a + b), top + 40));
   }
 
   static void _drawTableRow(
@@ -739,25 +816,33 @@ class PhaseIsoExportService {
 
   static void _signatureBox(Canvas canvas, Rect rect, String title) {
     _drawBorder(canvas, rect, _green, 1);
-    _sectionLabel(canvas, Rect.fromLTWH(rect.left, rect.top, rect.width, 24), title, size: 13);
+    _sectionLabel(
+        canvas, Rect.fromLTWH(rect.left, rect.top, rect.width, 24), title,
+        size: 13);
     var y = rect.top + 39;
     for (final label in ['Signature', 'Nama', 'Tanggal']) {
-      _text(canvas, label, Offset(rect.left + 25, y), size: 12.5, weight: FontWeight.w700);
-      _text(canvas, ':', Offset(rect.left + 150, y), size: 12.5, weight: FontWeight.w700);
-      _drawGridLine(canvas, Offset(rect.left + 195, y + 11), Offset(rect.right - 140, y + 11));
+      _text(canvas, label, Offset(rect.left + 25, y),
+          size: 12.5, weight: FontWeight.w700);
+      _text(canvas, ':', Offset(rect.left + 150, y),
+          size: 12.5, weight: FontWeight.w700);
+      _drawGridLine(canvas, Offset(rect.left + 195, y + 11),
+          Offset(rect.right - 140, y + 11));
       y += 24;
     }
   }
 
-  static void _sectionLabel(Canvas canvas, Rect rect, String label, {double size = 18}) {
+  static void _sectionLabel(Canvas canvas, Rect rect, String label,
+      {double size = 18}) {
     _drawFilledRect(canvas, rect, _green);
-    _textCentered(canvas, label, rect.deflate(4), size: size, weight: FontWeight.w900, color: Colors.white);
+    _textCentered(canvas, label, rect.deflate(4),
+        size: size, weight: FontWeight.w900, color: Colors.white);
   }
 
   static void _drawSubTitle(Canvas canvas, Rect rect, String label) {
     _drawFilledRect(canvas, rect, const Color(0xFFE9F7EA));
     _drawBorder(canvas, rect, _green, 1);
-    _textCentered(canvas, label, rect.deflate(4), size: 17, weight: FontWeight.w900, color: _green);
+    _textCentered(canvas, label, rect.deflate(4),
+        size: 17, weight: FontWeight.w900, color: _green);
   }
 
   static void _drawTextRows(
@@ -772,9 +857,12 @@ class PhaseIsoExportService {
   }) {
     for (var i = 0; i < rows.length; i++) {
       final dy = y + i * rowH;
-      _text(canvas, rows[i].$1, Offset(x, dy), size: size, weight: FontWeight.w700, maxWidth: labelW, maxLines: 1);
-      _text(canvas, ':', Offset(x + labelW, dy), size: size, weight: FontWeight.w900);
-      _text(canvas, rows[i].$2, Offset(x + labelW + 30, dy), size: size, weight: FontWeight.w800, maxWidth: valueW, maxLines: 2);
+      _text(canvas, rows[i].$1, Offset(x, dy),
+          size: size, weight: FontWeight.w700, maxWidth: labelW, maxLines: 1);
+      _text(canvas, ':', Offset(x + labelW, dy),
+          size: size, weight: FontWeight.w900);
+      _text(canvas, rows[i].$2, Offset(x + labelW + 30, dy),
+          size: size, weight: FontWeight.w800, maxWidth: valueW, maxLines: 2);
     }
   }
 
@@ -793,16 +881,21 @@ class PhaseIsoExportService {
       ..strokeWidth = 3.2
       ..strokeCap = StrokeCap.round
       ..color = _green;
-    canvas.drawLine(Offset(origin.dx + size * .5, origin.dy + size * .72), Offset(origin.dx + size * .5, origin.dy + size * .27), stem);
+    canvas.drawLine(Offset(origin.dx + size * .5, origin.dy + size * .72),
+        Offset(origin.dx + size * .5, origin.dy + size * .27), stem);
     final leaf = Path()
       ..moveTo(origin.dx + size * .5, origin.dy + size * .42)
-      ..quadraticBezierTo(origin.dx + size * .15, origin.dy + size * .23, origin.dx + size * .22, origin.dy + size * .62)
-      ..quadraticBezierTo(origin.dx + size * .42, origin.dy + size * .67, origin.dx + size * .5, origin.dy + size * .42);
+      ..quadraticBezierTo(origin.dx + size * .15, origin.dy + size * .23,
+          origin.dx + size * .22, origin.dy + size * .62)
+      ..quadraticBezierTo(origin.dx + size * .42, origin.dy + size * .67,
+          origin.dx + size * .5, origin.dy + size * .42);
     canvas.drawPath(leaf, Paint()..color = _green);
     final leaf2 = Path()
       ..moveTo(origin.dx + size * .51, origin.dy + size * .46)
-      ..quadraticBezierTo(origin.dx + size * .82, origin.dy + size * .22, origin.dx + size * .78, origin.dy + size * .62)
-      ..quadraticBezierTo(origin.dx + size * .58, origin.dy + size * .68, origin.dx + size * .51, origin.dy + size * .46);
+      ..quadraticBezierTo(origin.dx + size * .82, origin.dy + size * .22,
+          origin.dx + size * .78, origin.dy + size * .62)
+      ..quadraticBezierTo(origin.dx + size * .58, origin.dy + size * .68,
+          origin.dx + size * .51, origin.dy + size * .46);
     canvas.drawPath(leaf2, Paint()..color = _green);
   }
 
@@ -815,13 +908,17 @@ class PhaseIsoExportService {
       ..strokeCap = StrokeCap.round
       ..color = Colors.white;
     final board = RRect.fromRectAndRadius(
-      Rect.fromLTWH(origin.dx + size * .28, origin.dy + size * .22, size * .44, size * .56),
+      Rect.fromLTWH(origin.dx + size * .28, origin.dy + size * .22, size * .44,
+          size * .56),
       const Radius.circular(5),
     );
     canvas.drawRRect(board, paint);
-    canvas.drawLine(Offset(origin.dx + size * .39, origin.dy + size * .36), Offset(origin.dx + size * .61, origin.dy + size * .36), paint);
-    canvas.drawLine(Offset(origin.dx + size * .39, origin.dy + size * .50), Offset(origin.dx + size * .61, origin.dy + size * .50), paint);
-    canvas.drawLine(Offset(origin.dx + size * .39, origin.dy + size * .64), Offset(origin.dx + size * .54, origin.dy + size * .64), paint);
+    canvas.drawLine(Offset(origin.dx + size * .39, origin.dy + size * .36),
+        Offset(origin.dx + size * .61, origin.dy + size * .36), paint);
+    canvas.drawLine(Offset(origin.dx + size * .39, origin.dy + size * .50),
+        Offset(origin.dx + size * .61, origin.dy + size * .50), paint);
+    canvas.drawLine(Offset(origin.dx + size * .39, origin.dy + size * .64),
+        Offset(origin.dx + size * .54, origin.dy + size * .64), paint);
   }
 
   static void _drawMaterialIcon(
@@ -851,14 +948,17 @@ class PhaseIsoExportService {
   static void _drawLegendIcon(Canvas canvas, Offset origin, _IsoStatus status) {
     switch (status) {
       case _IsoStatus.pass:
-        canvas.drawCircle(origin + const Offset(18, 18), 18, Paint()..color = _ok);
+        canvas.drawCircle(
+            origin + const Offset(18, 18), 18, Paint()..color = _ok);
         final p = Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 4
           ..strokeCap = StrokeCap.round
           ..color = Colors.white;
-        canvas.drawLine(origin + const Offset(9, 18), origin + const Offset(16, 26), p);
-        canvas.drawLine(origin + const Offset(16, 26), origin + const Offset(28, 10), p);
+        canvas.drawLine(
+            origin + const Offset(9, 18), origin + const Offset(16, 26), p);
+        canvas.drawLine(
+            origin + const Offset(16, 26), origin + const Offset(28, 10), p);
         break;
       case _IsoStatus.atRisk:
         final path = Path()
@@ -867,17 +967,22 @@ class PhaseIsoExportService {
           ..lineTo(origin.dx, origin.dy + 34)
           ..close();
         canvas.drawPath(path, Paint()..color = _warn);
-        _textCentered(canvas, '!', Rect.fromLTWH(origin.dx, origin.dy + 9, 36, 25), size: 23, weight: FontWeight.w900);
+        _textCentered(
+            canvas, '!', Rect.fromLTWH(origin.dx, origin.dy + 9, 36, 25),
+            size: 23, weight: FontWeight.w900);
         break;
       case _IsoStatus.nc:
-        canvas.drawCircle(origin + const Offset(18, 18), 18, Paint()..color = Colors.red);
+        canvas.drawCircle(
+            origin + const Offset(18, 18), 18, Paint()..color = Colors.red);
         final p = Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 4
           ..strokeCap = StrokeCap.round
           ..color = Colors.white;
-        canvas.drawLine(origin + const Offset(10, 10), origin + const Offset(26, 26), p);
-        canvas.drawLine(origin + const Offset(26, 10), origin + const Offset(10, 26), p);
+        canvas.drawLine(
+            origin + const Offset(10, 10), origin + const Offset(26, 26), p);
+        canvas.drawLine(
+            origin + const Offset(26, 10), origin + const Offset(10, 26), p);
         break;
       case _IsoStatus.pld:
         _drawClipboardBadge(canvas, origin, 38);
@@ -889,14 +994,16 @@ class PhaseIsoExportService {
     canvas.drawRect(rect, Paint()..color = color);
   }
 
-  static void _drawRoundedFill(Canvas canvas, Rect rect, Color color, double radius) {
+  static void _drawRoundedFill(
+      Canvas canvas, Rect rect, Color color, double radius) {
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, Radius.circular(radius)),
       Paint()..color = color,
     );
   }
 
-  static void _drawRoundedPanel(Canvas canvas, Rect rect, Color fill, Color border, double radius) {
+  static void _drawRoundedPanel(
+      Canvas canvas, Rect rect, Color fill, Color border, double radius) {
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, Radius.circular(radius)),
       Paint()..color = fill,
@@ -1033,10 +1140,12 @@ class PhaseIsoExportService {
     late final Rect dst;
     if (imageRatio > rectRatio) {
       final height = rect.width / imageRatio;
-      dst = Rect.fromLTWH(rect.left, rect.top + (rect.height - height) / 2, rect.width, height);
+      dst = Rect.fromLTWH(
+          rect.left, rect.top + (rect.height - height) / 2, rect.width, height);
     } else {
       final width = rect.height * imageRatio;
-      dst = Rect.fromLTWH(rect.left + (rect.width - width) / 2, rect.top, width, rect.height);
+      dst = Rect.fromLTWH(
+          rect.left + (rect.width - width) / 2, rect.top, width, rect.height);
     }
     canvas.drawImageRect(
       image,
@@ -1093,7 +1202,8 @@ class PhaseIsoExportService {
     return outputFile.path;
   }
 
-  static Future<io.File> _saveToAppDocuments(Uint8List bytes, String fileName) async {
+  static Future<io.File> _saveToAppDocuments(
+      Uint8List bytes, String fileName) async {
     final directory = await getApplicationDocumentsDirectory();
     final outputDir = io.Directory(p.join(directory.path, 'exports'));
     if (!await outputDir.exists()) {
@@ -1117,7 +1227,8 @@ class PhaseIsoExportService {
     return 'iso_${snapshot.filePhase}_${_safePart(snapshot.fieldNumber)}_$stamp.$extension';
   }
 
-  static Map<String, dynamic>? _auditFor(Map<String, dynamic> field, PhaseIsoType phase) {
+  static Map<String, dynamic>? _auditFor(
+      Map<String, dynamic> field, PhaseIsoType phase) {
     return switch (phase) {
       PhaseIsoType.vegetative => _firstRow(field['audit_vegetative']),
       PhaseIsoType.preHarvest => _firstRow(field['audit_pre_harvest']),
@@ -1162,7 +1273,9 @@ class PhaseIsoExportService {
     if (text == null || text.isEmpty) return null;
     try {
       final parsed = DateTime.tryParse(text);
-      if (parsed != null) return DateTime(parsed.year, parsed.month, parsed.day);
+      if (parsed != null) {
+        return DateTime(parsed.year, parsed.month, parsed.day);
+      }
       if (text.contains('/')) {
         final parts = text.split('/');
         if (parts.length != 3) return null;
@@ -1189,7 +1302,8 @@ class PhaseIsoExportService {
 
   static int _dapOnDate(DateTime? plantingDate, DateTime? auditDate) {
     if (plantingDate == null || auditDate == null) return 0;
-    final planting = DateTime(plantingDate.year, plantingDate.month, plantingDate.day);
+    final planting =
+        DateTime(plantingDate.year, plantingDate.month, plantingDate.day);
     final audit = DateTime(auditDate.year, auditDate.month, auditDate.day);
     return audit.difference(planting).inDays + 1;
   }
@@ -1280,7 +1394,11 @@ class PhaseIsoExportService {
   static _IsoStatus _decisionStatus(String value) {
     final v = _norm(value);
     if (v == 'pass' || v == 'a') return _IsoStatus.pass;
-    if (v == 'pass with note' || v == 'pass w/ note' || v == 'b' || v == 'hold' || v == 'c') {
+    if (v == 'pass with note' ||
+        v == 'pass w/ note' ||
+        v == 'b' ||
+        v == 'hold' ||
+        v == 'c') {
       return _IsoStatus.atRisk;
     }
     if (v.contains('discard') || v == 'pld' || v == 'd') return _IsoStatus.nc;
@@ -1312,11 +1430,6 @@ class PhaseIsoExportService {
       'f': 'F (Recom PLD Full)',
     };
     return map[v] ?? _dash(value);
-  }
-
-  static bool _isNeutralAction(String value) {
-    final v = _norm(value);
-    return v.isEmpty || const {'none', 'a', '-'}.contains(v);
   }
 
   static String _dash(String value) {
@@ -1385,7 +1498,9 @@ extension on String {
   String get titleCase {
     if (isEmpty) return this;
     return split(RegExp(r'\s+'))
-        .map((part) => part.isEmpty ? part : part[0].toUpperCase() + part.substring(1).toLowerCase())
+        .map((part) => part.isEmpty
+            ? part
+            : part[0].toUpperCase() + part.substring(1).toLowerCase())
         .join(' ');
   }
 }
@@ -1456,21 +1571,29 @@ class _PhaseIsoSnapshot {
 
   factory _PhaseIsoSnapshot.from(PhaseIsoExportData data) {
     final field = data.fieldData;
-    final audit = PhaseIsoExportService._auditFor(field, data.phase) ?? const <String, dynamic>{};
+    final audit = PhaseIsoExportService._auditFor(field, data.phase) ??
+        const <String, dynamic>{};
     final auditDate = switch (data.phase) {
-      PhaseIsoType.vegetative => PhaseIsoExportService._parseDate(audit['audit_date_user']) ??
-          PhaseIsoExportService._parseDate(audit['date_of_audit']),
-      PhaseIsoType.preHarvest => PhaseIsoExportService._parseDate(audit['audit_date']),
-      PhaseIsoType.harvest => PhaseIsoExportService._parseDate(audit['date_of_audit']),
+      PhaseIsoType.vegetative =>
+        PhaseIsoExportService._parseDate(audit['audit_date_user']) ??
+            PhaseIsoExportService._parseDate(audit['date_of_audit']),
+      PhaseIsoType.preHarvest =>
+        PhaseIsoExportService._parseDate(audit['audit_date']),
+      PhaseIsoType.harvest =>
+        PhaseIsoExportService._parseDate(audit['date_of_audit']),
     };
     final plantingDate = data.phase == PhaseIsoType.vegetative
         ? PhaseIsoExportService._parseDate(audit['rev_planting_date']) ??
             PhaseIsoExportService._parseDate(field['planting_date_pdn'])
         : PhaseIsoExportService._parseDate(field['planting_date_pdn']);
     final effectiveArea = PhaseIsoExportService._readArea(field);
-    final totalArea = PhaseIsoExportService._readDouble(field['total_area_planted_ha']) ?? effectiveArea;
-    final qaFi = PhaseIsoExportService._readText(audit['qa_fi'], fallback: PhaseIsoExportService._readText(field['qa_fi']));
-    final qaSpv = PhaseIsoExportService._readText(audit['qa_spv'], fallback: PhaseIsoExportService._readText(field['qa_spv']));
+    final totalArea =
+        PhaseIsoExportService._readDouble(field['total_area_planted_ha']) ??
+            effectiveArea;
+    final qaFi = PhaseIsoExportService._readText(audit['qa_fi'],
+        fallback: PhaseIsoExportService._readText(field['qa_fi']));
+    final qaSpv = PhaseIsoExportService._readText(audit['qa_spv'],
+        fallback: PhaseIsoExportService._readText(field['qa_spv']));
     final week = PhaseIsoExportService._readText(
       audit['audit_week'],
       fallback: PhaseIsoExportService._weekLabel(auditDate),
@@ -1483,7 +1606,8 @@ class _PhaseIsoSnapshot {
       fieldNumber: PhaseIsoExportService._readText(field['field_number']),
       farmer: PhaseIsoExportService._readText(field['farmer_name']),
       grower: PhaseIsoExportService._readText(field['grower']),
-      codet: PhaseIsoExportService._readText(field['codet'], fallback: PhaseIsoExportService._readText(field['fa'])),
+      codet: PhaseIsoExportService._readText(field['codet'],
+          fallback: PhaseIsoExportService._readText(field['fa'])),
       village: PhaseIsoExportService._readText(field['village_desa']),
       hybrid: PhaseIsoExportService._readText(field['hybrid']),
       season: PhaseIsoExportService._readText(field['season']),
@@ -1503,8 +1627,10 @@ class _PhaseIsoSnapshot {
 
   String get title {
     return switch (phase) {
-      PhaseIsoType.vegetative => 'QUALITY PROCESS: VEGETATIVE AUDIT & FIELD CONDITION RECORD',
-      PhaseIsoType.preHarvest => 'QUALITY PROCESS: PRE-HARVEST READINESS AUDIT RECORD',
+      PhaseIsoType.vegetative =>
+        'QUALITY PROCESS: VEGETATIVE AUDIT & FIELD CONDITION RECORD',
+      PhaseIsoType.preHarvest =>
+        'QUALITY PROCESS: PRE-HARVEST READINESS AUDIT RECORD',
       PhaseIsoType.harvest => 'QUALITY PROCESS: HARVEST AUDIT RECORD',
     };
   }
@@ -1558,9 +1684,12 @@ class _PhaseIsoSnapshot {
 
   String get finalFlagging {
     return switch (phase) {
-      PhaseIsoType.vegetative => PhaseIsoExportService._readText(audit['flagging']),
-      PhaseIsoType.preHarvest => PhaseIsoExportService._readText(audit['final_flagging']),
-      PhaseIsoType.harvest => PhaseIsoExportService._readText(audit['final_flagging']),
+      PhaseIsoType.vegetative =>
+        PhaseIsoExportService._readText(audit['flagging']),
+      PhaseIsoType.preHarvest =>
+        PhaseIsoExportService._readText(audit['final_flagging']),
+      PhaseIsoType.harvest =>
+        PhaseIsoExportService._readText(audit['final_flagging']),
     };
   }
 
@@ -1583,7 +1712,8 @@ class _PhaseIsoSnapshot {
       PhaseIsoExportService._readText(audit['status_downgrade'], fallback: ''),
     );
     final finalFlag = finalFlagging.toUpperCase();
-    if (finalFlag == 'GF' && (downgrade.isEmpty || downgrade == 'no' || downgrade == 'b')) {
+    if (finalFlag == 'GF' &&
+        (downgrade.isEmpty || downgrade == 'no' || downgrade == 'b')) {
       return 'A - Pass';
     }
     if (finalFlag == 'BF') return 'C - Hold';
@@ -1602,14 +1732,19 @@ class _PhaseIsoSnapshot {
   _IsoStatus get statusLevel {
     final ratings = <_IsoStatus>[
       ...assessmentRows.map((row) => row.rating),
-      if (phase == PhaseIsoType.vegetative) ...accuracyRows.map((row) => row.rating),
+      if (phase == PhaseIsoType.vegetative)
+        ...accuracyRows.map((row) => row.rating),
     ];
     if (phase == PhaseIsoType.vegetative) {
-      final action = PhaseIsoExportService._readText(audit['action_needed'], fallback: '');
-      if (PhaseIsoExportService._norm(action).contains('pld')) return _IsoStatus.pld;
+      final action =
+          PhaseIsoExportService._readText(audit['action_needed'], fallback: '');
+      if (PhaseIsoExportService._norm(action).contains('pld')) {
+        return _IsoStatus.pld;
+      }
     }
     if (ratings.any((rating) => rating == _IsoStatus.nc)) return _IsoStatus.nc;
-    if (ratings.any((rating) => rating == _IsoStatus.atRisk || rating == _IsoStatus.pld)) {
+    if (ratings.any(
+        (rating) => rating == _IsoStatus.atRisk || rating == _IsoStatus.pld)) {
       return _IsoStatus.atRisk;
     }
     return _IsoStatus.pass;
@@ -1617,59 +1752,85 @@ class _PhaseIsoSnapshot {
 
   String get auditStatus {
     if (dap <= 0) return '-';
-    if (phase == PhaseIsoType.vegetative) return dap >= 25 && dap <= 30 ? 'On Time' : 'Out of Window';
-    if (phase == PhaseIsoType.preHarvest) return dap >= 80 && dap <= 95 ? 'On Time' : 'Review Window';
+    if (phase == PhaseIsoType.vegetative) {
+      return dap >= 25 && dap <= 30 ? 'On Time' : 'Out of Window';
+    }
+    if (phase == PhaseIsoType.preHarvest) {
+      return dap >= 80 && dap <= 95 ? 'On Time' : 'Review Window';
+    }
     return dap >= 90 ? 'On Time' : 'Review Window';
   }
 
   String get mainIssue {
     if (remarks != '-' && remarks.length < 90) return remarks;
     if (phase == PhaseIsoType.vegetative) {
-      final roguing = PhaseIsoExportService._readText(audit['roguing_status'], fallback: '');
-      if (!PhaseIsoExportService._norm(roguing).contains('done')) return 'Roguing ${PhaseIsoExportService._dash(roguing)}';
+      final roguing = PhaseIsoExportService._readText(audit['roguing_status'],
+          fallback: '');
+      if (!PhaseIsoExportService._norm(roguing).contains('done')) {
+        return 'Roguing ${PhaseIsoExportService._dash(roguing)}';
+      }
       return 'Vegetative audit finding review';
     }
     if (phase == PhaseIsoType.preHarvest) {
-      return statusLevel == _IsoStatus.pass ? 'Ready for harvest monitoring' : 'Monitoring until harvest';
+      return statusLevel == _IsoStatus.pass
+          ? 'Ready for harvest monitoring'
+          : 'Monitoring until harvest';
     }
-    return statusLevel == _IsoStatus.pass ? 'Ear maturity ready for harvest' : 'Harvest finding needs follow up';
+    return statusLevel == _IsoStatus.pass
+        ? 'Ear maturity ready for harvest'
+        : 'Harvest finding needs follow up';
   }
 
   String get actionNeeded {
-    final direct = PhaseIsoExportService._readText(audit['action_needed'], fallback: '');
+    final direct =
+        PhaseIsoExportService._readText(audit['action_needed'], fallback: '');
     if (direct.isNotEmpty) {
       return PhaseIsoExportService._action(direct);
     }
     if (phase == PhaseIsoType.vegetative) {
-      return statusLevel == _IsoStatus.pass ? 'No corrective action required.' : 'Complete corrective action before next stage.';
+      return statusLevel == _IsoStatus.pass
+          ? 'No corrective action required.'
+          : 'Complete corrective action before next stage.';
     }
     if (phase == PhaseIsoType.preHarvest) {
-      if (statusLevel == _IsoStatus.pass) return 'Proceed to harvest monitoring.';
+      if (statusLevel == _IsoStatus.pass) {
+        return 'Proceed to harvest monitoring.';
+      }
       return 'Continue observation until harvest date.';
     }
-    if (statusLevel == _IsoStatus.pass) return 'Proceed with harvest as scheduled.';
+    if (statusLevel == _IsoStatus.pass) {
+      return 'Proceed with harvest as scheduled.';
+    }
     return 'Review harvest finding and follow up downgrade flagging.';
   }
 
   String get recommendedPldHa {
-    final area = PhaseIsoExportService._readDouble(audit['recommendation_pld_ha']) ??
-        PhaseIsoExportService._readDouble(audit['pld_area_ha']);
+    final area =
+        PhaseIsoExportService._readDouble(audit['recommendation_pld_ha']) ??
+            PhaseIsoExportService._readDouble(audit['pld_area_ha']);
     if (area == null) return '0.00 Ha';
     return '${area.toStringAsFixed(2)} Ha';
   }
 
   String get pldStatus {
-    final action = PhaseIsoExportService._norm(PhaseIsoExportService._readText(audit['action_needed'], fallback: ''));
-    final decision = PhaseIsoExportService._norm(PhaseIsoExportService._readText(audit['decision'], fallback: ''));
-    if (action.contains('pld') || decision.contains('pld')) return 'Recommendation Review';
+    final action = PhaseIsoExportService._norm(
+        PhaseIsoExportService._readText(audit['action_needed'], fallback: ''));
+    final decision = PhaseIsoExportService._norm(
+        PhaseIsoExportService._readText(audit['decision'], fallback: ''));
+    if (action.contains('pld') || decision.contains('pld')) {
+      return 'Recommendation Review';
+    }
     return 'No Recommendation Yet';
   }
 
   String get taggingAccuracy {
-    final poi = PhaseIsoExportService._norm(PhaseIsoExportService._readText(audit['poi_accuracy'], fallback: ''));
+    final poi = PhaseIsoExportService._norm(
+        PhaseIsoExportService._readText(audit['poi_accuracy'], fallback: ''));
     if (poi == 'valid') return 'A (Match)';
     if (poi == 'not valid') return 'B (Check)';
-    final tagging = PhaseIsoExportService._readText(audit['correction_tagging'] ?? field['correction_tagging'], fallback: '');
+    final tagging = PhaseIsoExportService._readText(
+        audit['correction_tagging'] ?? field['correction_tagging'],
+        fallback: '');
     return tagging.isEmpty ? '-' : 'A (Match)';
   }
 
@@ -1680,7 +1841,8 @@ class _PhaseIsoSnapshot {
   }
 
   String get fieldSizeAccuracy {
-    final audited = PhaseIsoExportService._readDouble(audit['field_size_by_audit_ha']);
+    final audited =
+        PhaseIsoExportService._readDouble(audit['field_size_by_audit_ha']);
     if (audited == null) return '-';
     final diff = (audited - effectiveAreaHa).abs();
     final pct = effectiveAreaHa <= 0 ? 0 : diff / effectiveAreaHa * 100;
@@ -1688,37 +1850,67 @@ class _PhaseIsoSnapshot {
   }
 
   List<_AssessmentRow> get vegetativeRows {
-    final cropUniformity = PhaseIsoExportService._readText(audit['crop_uniformity'], fallback: '');
-    final lsv = PhaseIsoExportService._readText(audit['lsv_status'], fallback: '');
-    final maleSplit = PhaseIsoExportService._readText(audit['male_split_by_audit'], fallback: '');
-    final oneSeed = PhaseIsoExportService._readText(audit['one_seed_per_hole'], fallback: '');
-    final roguing = PhaseIsoExportService._readText(audit['roguing_status'], fallback: '');
-    final isolation = PhaseIsoExportService._readText(audit['isolation_problem_by_audit'], fallback: '');
-    final ratio = PhaseIsoExportService._readText(audit['sowing_ratio_by_audit'], fallback: '-');
+    final cropUniformity =
+        PhaseIsoExportService._readText(audit['crop_uniformity'], fallback: '');
+    final lsv =
+        PhaseIsoExportService._readText(audit['lsv_status'], fallback: '');
+    final maleSplit = PhaseIsoExportService._readText(
+        audit['male_split_by_audit'],
+        fallback: '');
+    final oneSeed = PhaseIsoExportService._readText(audit['one_seed_per_hole'],
+        fallback: '');
+    final roguing =
+        PhaseIsoExportService._readText(audit['roguing_status'], fallback: '');
+    final isolation = PhaseIsoExportService._readText(
+        audit['isolation_problem_by_audit'],
+        fallback: '');
+    final ratio = PhaseIsoExportService._readText(
+        audit['sowing_ratio_by_audit'],
+        fallback: '-');
 
     return [
-      _AssessmentRow('Crop Uniformity', PhaseIsoExportService._score(cropUniformity), PhaseIsoExportService._scoreStatus(cropUniformity)),
-      _AssessmentRow('LSV Status', PhaseIsoExportService._lsv(lsv), _lsvStatus(lsv)),
-      _AssessmentRow('Male Split', PhaseIsoExportService._yesNo(maleSplit), _yesNoStatus(maleSplit, yesIsPass: true)),
-      _AssessmentRow('Male 2 Rows', ratio, ratio == '-' ? _IsoStatus.atRisk : _IsoStatus.pass),
-      _AssessmentRow('One Seed per Hole', PhaseIsoExportService._yesNo(oneSeed), _yesNoStatus(oneSeed, yesIsPass: true)),
-      _AssessmentRow('Roguing Status', PhaseIsoExportService._roguing(roguing), _roguingStatus(roguing)),
-      _AssessmentRow('Isolation Problem', PhaseIsoExportService._yesNo(isolation), _yesNoStatus(isolation, yesIsPass: false)),
+      _AssessmentRow(
+          'Crop Uniformity',
+          PhaseIsoExportService._score(cropUniformity),
+          PhaseIsoExportService._scoreStatus(cropUniformity)),
+      _AssessmentRow(
+          'LSV Status', PhaseIsoExportService._lsv(lsv), _lsvStatus(lsv)),
+      _AssessmentRow('Male Split', PhaseIsoExportService._yesNo(maleSplit),
+          _yesNoStatus(maleSplit, yesIsPass: true)),
+      _AssessmentRow('Male 2 Rows', ratio,
+          ratio == '-' ? _IsoStatus.atRisk : _IsoStatus.pass),
+      _AssessmentRow('One Seed per Hole', PhaseIsoExportService._yesNo(oneSeed),
+          _yesNoStatus(oneSeed, yesIsPass: true)),
+      _AssessmentRow('Roguing Status', PhaseIsoExportService._roguing(roguing),
+          _roguingStatus(roguing)),
+      _AssessmentRow(
+          'Isolation Problem',
+          PhaseIsoExportService._yesNo(isolation),
+          _yesNoStatus(isolation, yesIsPass: false)),
     ];
   }
 
   List<_AssessmentRow> get accuracyRows {
-    final taggingRating = taggingAccuracy.startsWith('A') ? _IsoStatus.pass : _IsoStatus.atRisk;
-    final plantingRating = plantingCorrection == 'Yes' ? _IsoStatus.pass : _IsoStatus.atRisk;
-    final audited = PhaseIsoExportService._readDouble(audit['field_size_by_audit_ha']);
+    final taggingRating =
+        taggingAccuracy.startsWith('A') ? _IsoStatus.pass : _IsoStatus.atRisk;
+    final plantingRating =
+        plantingCorrection == 'Yes' ? _IsoStatus.pass : _IsoStatus.atRisk;
+    final audited =
+        PhaseIsoExportService._readDouble(audit['field_size_by_audit_ha']);
     final fieldRating = audited == null
         ? _IsoStatus.atRisk
-        : ((effectiveAreaHa <= 0 || ((audited - effectiveAreaHa).abs() / effectiveAreaHa * 100) <= 5)
+        : ((effectiveAreaHa <= 0 ||
+                ((audited - effectiveAreaHa).abs() / effectiveAreaHa * 100) <=
+                    5)
             ? _IsoStatus.pass
             : _IsoStatus.atRisk);
     return [
       _AssessmentRow('Tagging', taggingAccuracy, taggingRating),
-      _AssessmentRow('Koreksi Tanggal Tanam', PhaseIsoExportService._formatDate(PhaseIsoExportService._parseDate(audit['rev_planting_date'])), plantingRating),
+      _AssessmentRow(
+          'Koreksi Tanggal Tanam',
+          PhaseIsoExportService._formatDate(
+              PhaseIsoExportService._parseDate(audit['rev_planting_date'])),
+          plantingRating),
       _AssessmentRow('Field Size', fieldSizeAccuracy, fieldRating),
     ];
   }
@@ -1726,32 +1918,75 @@ class _PhaseIsoSnapshot {
   List<_AssessmentRow> get assessmentRows {
     if (phase == PhaseIsoType.vegetative) return vegetativeRows;
     if (phase == PhaseIsoType.preHarvest) {
-      final male = PhaseIsoExportService._readText(audit['male_chopping_rows'], fallback: '');
-      final uniformity = PhaseIsoExportService._readText(audit['crop_uniformity'], fallback: '');
-      final health = PhaseIsoExportService._readText(audit['crop_health'], fallback: '');
-      final flagging = PhaseIsoExportService._readText(audit['final_flagging'], fallback: '');
-      final decision = PhaseIsoExportService._readText(audit['final_decision'], fallback: '');
+      final male = PhaseIsoExportService._readText(audit['male_chopping_rows'],
+          fallback: '');
+      final uniformity = PhaseIsoExportService._readText(
+          audit['crop_uniformity'],
+          fallback: '');
+      final health =
+          PhaseIsoExportService._readText(audit['crop_health'], fallback: '');
+      final flagging = PhaseIsoExportService._readText(audit['final_flagging'],
+          fallback: '');
+      final decision = PhaseIsoExportService._readText(audit['final_decision'],
+          fallback: '');
       return [
-        _AssessmentRow('Male Chopping (Rows)', _maleChoppingLabel(male), PhaseIsoExportService._norm(male) == 'complete' || PhaseIsoExportService._norm(male) == 'a' ? _IsoStatus.pass : _IsoStatus.atRisk),
-        _AssessmentRow('Crop Uniformity', PhaseIsoExportService._score(uniformity), PhaseIsoExportService._scoreStatus(uniformity)),
-        _AssessmentRow('Crop Health', PhaseIsoExportService._score(health), PhaseIsoExportService._scoreStatus(health)),
-        _AssessmentRow('Final Flagging', PhaseIsoExportService._dash(flagging), flagging.toUpperCase() == 'GF' ? _IsoStatus.pass : _IsoStatus.atRisk),
-        _AssessmentRow('Final Decision', PhaseIsoExportService._decision(decision), PhaseIsoExportService._decisionStatus(decision)),
+        _AssessmentRow(
+            'Male Chopping (Rows)',
+            _maleChoppingLabel(male),
+            PhaseIsoExportService._norm(male) == 'complete' ||
+                    PhaseIsoExportService._norm(male) == 'a'
+                ? _IsoStatus.pass
+                : _IsoStatus.atRisk),
+        _AssessmentRow(
+            'Crop Uniformity',
+            PhaseIsoExportService._score(uniformity),
+            PhaseIsoExportService._scoreStatus(uniformity)),
+        _AssessmentRow('Crop Health', PhaseIsoExportService._score(health),
+            PhaseIsoExportService._scoreStatus(health)),
+        _AssessmentRow(
+            'Final Flagging',
+            PhaseIsoExportService._dash(flagging),
+            flagging.toUpperCase() == 'GF'
+                ? _IsoStatus.pass
+                : _IsoStatus.atRisk),
+        _AssessmentRow(
+            'Final Decision',
+            PhaseIsoExportService._decision(decision),
+            PhaseIsoExportService._decisionStatus(decision)),
       ];
     }
 
-    final ear = PhaseIsoExportService._readText(audit['ear_condition_observation'], fallback: '');
-    final uniformity = PhaseIsoExportService._readText(audit['crop_uniformity'], fallback: '');
-    final health = PhaseIsoExportService._readText(audit['crop_health'], fallback: '');
-    final downgrade = PhaseIsoExportService._readText(audit['downgrade_flagging'], fallback: '');
-    final flagging = PhaseIsoExportService._readText(audit['final_flagging'], fallback: '');
+    final ear = PhaseIsoExportService._readText(
+        audit['ear_condition_observation'],
+        fallback: '');
+    final uniformity =
+        PhaseIsoExportService._readText(audit['crop_uniformity'], fallback: '');
+    final health =
+        PhaseIsoExportService._readText(audit['crop_health'], fallback: '');
+    final downgrade = PhaseIsoExportService._readText(
+        audit['downgrade_flagging'],
+        fallback: '');
+    final flagging =
+        PhaseIsoExportService._readText(audit['final_flagging'], fallback: '');
     return [
-      _AssessmentRow('Ear Condition (Maturity)', PhaseIsoExportService._dash(ear), _earStatus(ear)),
-      _AssessmentRow('Crop Uniformity', PhaseIsoExportService._score(uniformity), PhaseIsoExportService._scoreStatus(uniformity)),
-      _AssessmentRow('Crop Health', PhaseIsoExportService._score(health), PhaseIsoExportService._scoreStatus(health)),
-      _AssessmentRow('Downgrade Flagging', PhaseIsoExportService._dash(downgrade.isEmpty ? 'None' : downgrade), downgrade.isEmpty || downgrade == '-' ? _IsoStatus.pass : _IsoStatus.atRisk),
-      _AssessmentRow('Final Flagging', PhaseIsoExportService._dash(flagging), flagging.toUpperCase() == 'GF' ? _IsoStatus.pass : _IsoStatus.atRisk),
-      _AssessmentRow('Harvest Result', harvestResult, harvestResult.startsWith('A') ? _IsoStatus.pass : _IsoStatus.atRisk),
+      _AssessmentRow('Ear Condition (Maturity)',
+          PhaseIsoExportService._dash(ear), _earStatus(ear)),
+      _AssessmentRow(
+          'Crop Uniformity',
+          PhaseIsoExportService._score(uniformity),
+          PhaseIsoExportService._scoreStatus(uniformity)),
+      _AssessmentRow('Crop Health', PhaseIsoExportService._score(health),
+          PhaseIsoExportService._scoreStatus(health)),
+      _AssessmentRow(
+          'Downgrade Flagging',
+          PhaseIsoExportService._dash(downgrade.isEmpty ? 'None' : downgrade),
+          downgrade.isEmpty || downgrade == '-'
+              ? _IsoStatus.pass
+              : _IsoStatus.atRisk),
+      _AssessmentRow('Final Flagging', PhaseIsoExportService._dash(flagging),
+          flagging.toUpperCase() == 'GF' ? _IsoStatus.pass : _IsoStatus.atRisk),
+      _AssessmentRow('Harvest Result', harvestResult,
+          harvestResult.startsWith('A') ? _IsoStatus.pass : _IsoStatus.atRisk),
     ];
   }
 
@@ -1779,7 +2014,9 @@ class _PhaseIsoSnapshot {
 
   static _IsoStatus _earStatus(String value) {
     final v = PhaseIsoExportService._norm(value);
-    if (v == 'stage 3' || v == 'stage 4' || v == '3' || v == '4') return _IsoStatus.pass;
+    if (v == 'stage 3' || v == 'stage 4' || v == '3' || v == '4') {
+      return _IsoStatus.pass;
+    }
     return _IsoStatus.atRisk;
   }
 
@@ -1792,5 +2029,6 @@ class _PhaseIsoSnapshot {
 }
 
 class _PhaseIsoExportServiceBridge {
-  static String formatHa(double value) => PhaseIsoExportService._formatHa(value);
+  static String formatHa(double value) =>
+      PhaseIsoExportService._formatHa(value);
 }
