@@ -384,7 +384,7 @@ class DetasselingIsoExportService {
     _drawSectionTitle(
       canvas,
       const Rect.fromLTWH(left, top, width, 34),
-      'FN SCHEDULE DETAIL (PLAN VS ACTUAL)',
+      'FN ACTIVITY SUMMARY',
     );
 
     final passCount = f.isSweetCorn ? 5 : 3;

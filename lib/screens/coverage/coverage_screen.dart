@@ -18,6 +18,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -5346,8 +5347,12 @@ class _SkeletonLoaderState extends State<_SkeletonLoader>
               ])));
 }
 
+final _idWholeNumber = NumberFormat('#,##0', 'id_ID');
+final _idDecimalNumber = NumberFormat('#,##0.0', 'id_ID');
+
 String _formatHa(double ha) {
-  if (ha >= 1000) return '${(ha / 1000).toStringAsFixed(2)} K ha';
-  if (ha == ha.truncateToDouble()) return '${ha.toInt()} ha';
-  return '${ha.toStringAsFixed(1)} ha';
+  final value = ha == ha.truncateToDouble()
+      ? _idWholeNumber.format(ha)
+      : _idDecimalNumber.format(ha);
+  return '$value ha';
 }

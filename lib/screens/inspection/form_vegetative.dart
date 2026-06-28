@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
@@ -142,6 +143,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   final _fieldSizeCtrl = TextEditingController();
   final _sowingRatioFCtrl = TextEditingController();
   final _sowingRatioMCtrl = TextEditingController();
+  final _sowingRatioFFocus = FocusNode();
+  final _sowingRatioMFocus = FocusNode();
   final _remarksCtrl = TextEditingController();
   final _manualLatCtrl = TextEditingController();
   final _manualLngCtrl = TextEditingController();
@@ -192,6 +195,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     _fieldSizeCtrl.dispose();
     _sowingRatioFCtrl.dispose();
     _sowingRatioMCtrl.dispose();
+    _sowingRatioFFocus.dispose();
+    _sowingRatioMFocus.dispose();
     _remarksCtrl.dispose();
     _manualLatCtrl.dispose();
     _manualLngCtrl.dispose();
@@ -385,8 +390,11 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     final ratio = audit['sowing_ratio_by_audit'] as String?;
     if (ratio != null && ratio.contains(':')) {
       final p = ratio.split(':');
-      _sowingRatioFCtrl.text = p[0];
-      _sowingRatioMCtrl.text = p.length > 1 ? p[1] : '';
+      _sowingRatioFCtrl.text =
+          p[0].trim().isEmpty ? '' : p[0].trim().substring(0, 1);
+      final maleRatio = p.length > 1 ? p[1].trim() : '';
+      _sowingRatioMCtrl.text =
+          maleRatio.isEmpty ? '' : maleRatio.substring(0, 1);
     }
 
     if (audit['audit_date_user'] != null) {
@@ -988,7 +996,11 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
         onBack: () => Navigator.pop(context),
       ),
       body: auditAsync.when(
-        loading: () => AdvantaLoadingState(title: 'Memuat form audit', subtitle: 'Mengambil data inspeksi', accentColor: _kPhaseVeg, icon: Icons.assignment_rounded),
+        loading: () => AdvantaLoadingState(
+            title: 'Memuat form audit',
+            subtitle: 'Mengambil data inspeksi',
+            accentColor: _kPhaseVeg,
+            icon: Icons.assignment_rounded),
         error: (e, _) => Center(
           child: Text('Error: $e',
               style: AdvantaText.body2
@@ -2170,7 +2182,17 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
             Expanded(
               child: TextFormField(
                 controller: _sowingRatioFCtrl,
+                focusNode: _sowingRatioFFocus,
                 keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(1),
+                ],
+                onChanged: (value) {
+                  if (value.length == 1) {
+                    _sowingRatioMFocus.requestFocus();
+                  }
+                },
                 style: AdvantaText.body1.copyWith(color: textColor),
                 decoration: _ratioDecor(context, 'Female'),
                 validator: !isDiscard
@@ -2189,7 +2211,12 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
             Expanded(
               child: TextFormField(
                 controller: _sowingRatioMCtrl,
+                focusNode: _sowingRatioMFocus,
                 keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(1),
+                ],
                 style: AdvantaText.body1.copyWith(color: textColor),
                 decoration: _ratioDecor(context, 'Male'),
                 validator: !isDiscard

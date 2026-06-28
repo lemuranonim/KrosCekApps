@@ -119,7 +119,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   // ── State Minggu Kerja ──────────────────────────────────
   late List<Map<String, dynamic>> _workWeeks; // UBAH JADI dynamic
-  late Map<String, dynamic> _selectedWeek; // UBAH JADI dynamic
+  late List<Map<String, dynamic>> _selectedWeeks;
 
   // ── User GPS location ──────────────────────────────────
   LatLng? _userLocation;
@@ -235,73 +235,115 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   DateTime _getWeekReferenceDate() {
+    final week = _primarySelectedWeek;
+    if (week == null) {
+      final today = DateTime.now();
+      return DateTime(today.year, today.month, today.day);
+    }
+    return _getWeekReferenceDateFor(week);
+  }
+
+  Map<String, dynamic>? get _primarySelectedWeek =>
+      _selectedWeeks.isEmpty ? null : _selectedWeeks.first;
+
+  String _weekKey(Map<String, dynamic> week) {
+    final startDate = week['startDate'];
+    if (startDate is DateTime) {
+      return DateTime(startDate.year, startDate.month, startDate.day)
+          .toIso8601String();
+    }
+    return week['label']?.toString() ?? '';
+  }
+
+  String get _selectedWeekCacheKey =>
+      _selectedWeeks.isEmpty ? 'all' : _selectedWeeks.map(_weekKey).join(',');
+
+  List<Map<String, dynamic>> _sortWeeks(List<Map<String, dynamic>> weeks) {
+    final sorted = List<Map<String, dynamic>>.from(weeks);
+    sorted.sort((a, b) {
+      final aStart = a['startDate'];
+      final bStart = b['startDate'];
+      if (aStart is DateTime && bStart is DateTime) {
+        return aStart.compareTo(bStart);
+      }
+      return (a['label']?.toString() ?? '')
+          .compareTo(b['label']?.toString() ?? '');
+    });
+    return sorted;
+  }
+
+  int _getProjectedDapForWeek(int currentDap, Map<String, dynamic> week) {
+    return currentDap + _getWeekProjectionDeltaDaysFor(week);
+  }
+
+  int _getWeekProjectionDeltaDaysFor(Map<String, dynamic> week) {
     final today = DateTime.now();
     final normalizedToday = DateTime(today.year, today.month, today.day);
+    return _getWeekReferenceDateFor(week).difference(normalizedToday).inDays;
+  }
 
-    if (_selectedWeek.isEmpty || _selectedWeek['startDate'] == null) {
-      return normalizedToday; // Jika "Semua Minggu" dipilih, gunakan hari ini
+  DateTime _getWeekReferenceDateFor(Map<String, dynamic> week) {
+    final today = DateTime.now();
+    final normalizedToday = DateTime(today.year, today.month, today.day);
+    final weekStartValue = week['startDate'];
+
+    if (weekStartValue is! DateTime) {
+      return normalizedToday;
     }
 
-    final weekStart = _selectedWeek['startDate'] as DateTime;
-
-    // Normalisasi jam agar hitungan hari presisi
-    final normalizedWeekStart =
-        DateTime(weekStart.year, weekStart.month, weekStart.day);
+    final normalizedWeekStart = DateTime(
+      weekStartValue.year,
+      weekStartValue.month,
+      weekStartValue.day,
+    );
     final targetDate = normalizedWeekStart.add(
       Duration(days: today.weekday - normalizedWeekStart.weekday),
     );
-    final normalizedTarget =
-        DateTime(targetDate.year, targetDate.month, targetDate.day);
-
-    return normalizedTarget;
+    return DateTime(targetDate.year, targetDate.month, targetDate.day);
   }
 
-  // FUNGSI BARU: Mengecek apakah lahan masuk jendela operasional pada minggu yang dipilih
-  bool _isFieldActiveInSelectedWeek(ParsedFieldData f) {
-    // Jika "Semua Minggu" dipilih, kembalikan true (biarkan filter fase normal yang bekerja)
-    if (_selectedWeek.isEmpty ||
-        _selectedWeek['startDate'] == null ||
-        _selectedWeek['endDate'] == null) {
+  bool _isFieldActiveInWeek(ParsedFieldData f, Map<String, dynamic> week) {
+    final startDateValue = week['startDate'];
+    final endDateValue = week['endDate'];
+    if (startDateValue is! DateTime || endDateValue is! DateTime) {
       return true;
     }
 
     final int currentDap = f.dap;
     final bool isSc = DapHelper.isSweetCorn(f.raw['hybrid']?.toString());
 
-    final startDate = _selectedWeek['startDate'] as DateTime;
-    final endDate = _selectedWeek['endDate'] as DateTime;
     final today = DateTime.now();
-
-    final normalizedStart =
-        DateTime(startDate.year, startDate.month, startDate.day);
-    final normalizedEnd = DateTime(endDate.year, endDate.month, endDate.day);
+    final normalizedStart = DateTime(
+      startDateValue.year,
+      startDateValue.month,
+      startDateValue.day,
+    );
+    final normalizedEnd = DateTime(
+      endDateValue.year,
+      endDateValue.month,
+      endDateValue.day,
+    );
     final normalizedToday = DateTime(today.year, today.month, today.day);
 
-    // Hitung DAP di hari pertama dan hari terakhir pada minggu yang dipilih
     final dapAtStart =
         currentDap + normalizedStart.difference(normalizedToday).inDays;
     final dapAtEnd =
         currentDap + normalizedEnd.difference(normalizedToday).inDays;
 
-    // Tentukan target range DAP berdasarkan fase inspeksi FC/SC,
-    // termasuk window overdue yang masih dihitung sebagai fase tersebut.
     final targetRanges = DapHelper.getOperationalRanges(
       _activePhaseView,
       hybrid: isSc ? 'AX01' : null,
     );
 
-    // Cek apakah range umur lahan [dapAtStart - dapAtEnd] bersinggungan dengan target fase
     for (final range in targetRanges) {
       final phaseStart = range[0];
       final phaseEnd = range[1];
-
-      // Rumus Overlap: (Start A <= End B) dan (End A >= Start B)
       if (dapAtStart <= phaseEnd && dapAtEnd >= phaseStart) {
-        return true; // Lahan aktif di fase ini pada minggu tersebut!
+        return true;
       }
     }
 
-    return false; // Lahan berada di luar jendela operasional (misal: fase kosong / overdue)
+    return false;
   }
 
   List<Map<String, dynamic>> _generateDynamicWorkWeeks() {
@@ -386,85 +428,158 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return extendedWeeks;
   }
 
-  // FUNGSI BARU 2: Menampilkan Bottom Sheet untuk memilih minggu manual
-  void _showExtendedWeekPicker() {
-    final extendedWeeks = _generateExtendedWeeks();
+  void _showWeekMultiSelectSheet() {
+    final allWeeks = _generateExtendedWeeks();
+    var tempSelected = _sortWeeks(_selectedWeeks);
+
+    bool containsWeek(Map<String, dynamic> week) {
+      final key = _weekKey(week);
+      return tempSelected.any((selected) => _weekKey(selected) == key);
+    }
+
+    void toggleWeek(Map<String, dynamic> week) {
+      final key = _weekKey(week);
+      if (containsWeek(week)) {
+        tempSelected = tempSelected
+            .where((selected) => _weekKey(selected) != key)
+            .toList(growable: false);
+      } else {
+        tempSelected = _sortWeeks([...tempSelected, week]);
+      }
+    }
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.4,
-          maxChildSize: 0.9,
-          expand: false,
-          builder: (ctx, scrollCtrl) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: AdvantaColors.deepForest,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 10, bottom: 16),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withAlpha(50),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return DraggableScrollableSheet(
+              initialChildSize: 0.68,
+              minChildSize: 0.45,
+              maxChildSize: 0.92,
+              expand: false,
+              builder: (ctx, scrollCtrl) {
+                return Container(
+                  decoration: const BoxDecoration(
+                    color: AdvantaColors.deepForest,
+                    borderRadius:
+                        BorderRadius.vertical(top: Radius.circular(20)),
                   ),
-                  Text(
-                    'Pilih Minggu Manual',
-                    style: AdvantaText.heading3.copyWith(color: Colors.white),
-                  ),
-                  const SizedBox(height: 16),
-                  Divider(color: Colors.white.withAlpha(20), height: 1),
-                  Expanded(
-                    child: ListView.builder(
-                      controller: scrollCtrl,
-                      itemCount: extendedWeeks.length,
-                      itemBuilder: (context, index) {
-                        final week = extendedWeeks[index];
-                        final isSelected = _selectedWeek.isNotEmpty &&
-                            _selectedWeek['label'] == week['label'];
-
-                        return ListTile(
-                          title: Row(
-                            children: [
-                              SizedBox(
-                                width: 50,
-                                child: Text(
-                                  week['label'],
-                                  style: AdvantaText.bodyBold
-                                      .copyWith(color: Colors.white),
-                                ),
+                  child: Column(
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.only(top: 10, bottom: 16),
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(50),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Pilih Minggu',
+                                    style: AdvantaText.heading3
+                                        .copyWith(color: Colors.white),
+                                  ),
+                                  Text(
+                                    'Bisa pilih lebih dari satu minggu',
+                                    style: AdvantaText.caption
+                                        .copyWith(color: Colors.white60),
+                                  ),
+                                ],
                               ),
-                              Text(
-                                week['date'],
-                                style: AdvantaText.body2
-                                    .copyWith(color: Colors.white70),
+                            ),
+                            TextButton(
+                              onPressed: () => setSheetState(() =>
+                                  tempSelected = <Map<String, dynamic>>[]),
+                              child: const Text('Semua'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Divider(color: Colors.white.withAlpha(20), height: 1),
+                      Expanded(
+                        child: ListView.builder(
+                          controller: scrollCtrl,
+                          itemCount: allWeeks.length,
+                          itemBuilder: (context, index) {
+                            final week = allWeeks[index];
+                            final isSelected = containsWeek(week);
+                            return CheckboxListTile(
+                              value: isSelected,
+                              activeColor: AdvantaColors.lightGreen,
+                              checkColor: AdvantaColors.deepForest,
+                              controlAffinity: ListTileControlAffinity.trailing,
+                              onChanged: (_) =>
+                                  setSheetState(() => toggleWeek(week)),
+                              title: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 64,
+                                    child: Text(
+                                      week['label']?.toString() ?? '-',
+                                      style: AdvantaText.bodyBold.copyWith(
+                                        color: isSelected
+                                            ? AdvantaColors.lightGreen
+                                            : Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      week['date']?.toString() ?? '',
+                                      style: AdvantaText.body2.copyWith(
+                                        color: isSelected
+                                            ? AdvantaColors.lightGreen
+                                            : Colors.white70,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          trailing: isSelected
-                              ? const Icon(Icons.check_circle,
-                                  color: AdvantaColors.lightGreen)
-                              : const Icon(Icons.chevron_right,
-                                  color: Colors.white24),
-                          onTap: () {
-                            setState(() => _selectedWeek = week);
-                            Navigator.pop(context); // Tutup bottom sheet
+                            );
                           },
-                        );
-                      },
-                    ),
+                        ),
+                      ),
+                      SafeArea(
+                        top: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              icon: const Icon(Icons.check_rounded),
+                              label: Text(
+                                tempSelected.isEmpty
+                                    ? 'Terapkan Semua Minggu'
+                                    : 'Terapkan ${tempSelected.length} Minggu',
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _selectedWeeks = _sortWeeks(tempSelected);
+                                  _clearMapCaches();
+                                });
+                                Navigator.pop(context);
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             );
           },
         );
@@ -476,18 +591,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
   void initState() {
     super.initState();
 
-    // ── Generate Minggu Dinamis ──
     _workWeeks = _generateDynamicWorkWeeks();
-    // Set default pilihan ke "Minggu Ini" (index 2 karena kita mulai dari -2)
     final now = DateTime.now();
-    _selectedWeek = _workWeeks.firstWhere((week) {
+    final defaultWeek = _workWeeks.firstWhere((week) {
       final start = week['startDate'] as DateTime;
       final end = week['endDate'] as DateTime;
-      // Cek apakah hari ini berada di antara startDate dan endDate
       return now.isAfter(start.subtract(const Duration(days: 1))) &&
           now.isBefore(end.add(const Duration(days: 1)));
-    }, orElse: () => _workWeeks[4]); // Fallback ke index 4 jika meleset
-
+    }, orElse: () => _workWeeks[4]);
+    _selectedWeeks = [defaultWeek];
     _shimmerCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
@@ -661,7 +773,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
       _selectedDistrict,
       _activeFilters.length,
       _activeFilters.map((f) => '${f.param.fieldKey}:${f.value}').join(','),
-      _selectedWeek['label'],
+      _selectedWeekCacheKey,
       _activePhaseView,
       _auditFilter,
       _showPldDiscardFields,
@@ -715,56 +827,66 @@ class _QAScreenState extends ConsumerState<QAScreen>
       }
 
       // ── LOGIKA BARU: FILTER FASE & MINGGU (SIMULASI DAP) ──
-      if (_selectedWeek.isNotEmpty) {
-        // Jika user memilih minggu spesifik, cek apakah lahan ini punya hari aktif
-        // di fase tersebut pada rentang hari Senin-Minggu.
-        if (!_isFieldActiveInSelectedWeek(f)) return false;
-      }
-
-      // ── Audit Status filter (TETAP SAMA) ──
-      if (_auditFilter != _AuditFilter.all) {
-        final auditStatus = AuditStatusHelper.fromRaw(f.raw);
-        // Tetap gunakan projectedPhase agar status di map menyesuaikan kondisi minggu yang dicek
-        final phaseToCheck = projectedPhase;
-
-        switch (_auditFilter) {
-          case _AuditFilter.sampun:
-            // Gunakan isAuditDoneFor dengan projectedDap agar granularity generatif terjaga
-            if (!auditStatus.isAuditDoneFor(phaseToCheck, projectedDap)) {
-              return false;
-            }
-            break;
-          case _AuditFilter.dereng:
-            if (auditStatus.isAuditDoneFor(phaseToCheck, projectedDap)) {
-              return false;
-            }
-            if (phaseToCheck == ActivePhaseView.vegetative &&
-                auditStatus.hasVegetativePartialProgress) {
-              return false;
-            }
-            if (phaseToCheck == ActivePhaseView.generative &&
-                auditStatus.generative == GenerativeAuditStatus.derengJangkep) {
-              return false;
-            }
-            break;
-          case _AuditFilter.partial:
-            final hasVegetativeProgress =
-                phaseToCheck == ActivePhaseView.vegetative &&
-                    auditStatus.hasVegetativePartialProgress;
-            final hasGenerativeProgress = phaseToCheck ==
-                    ActivePhaseView.generative &&
-                auditStatus.generative == GenerativeAuditStatus.derengJangkep;
-            if (!hasVegetativeProgress && !hasGenerativeProgress) {
-              return false;
-            }
-            break;
-          case _AuditFilter.all:
-            break;
-        }
+      if (_selectedWeeks.isNotEmpty) {
+        final matchesSelectedWeek = _selectedWeeks.any((week) {
+          if (!_isFieldActiveInWeek(f, week)) return false;
+          final weekProjectedDap = _getProjectedDapForWeek(f.dap, week);
+          final weekProjectedPhase = _activePhaseView == ActivePhaseView.auto
+              ? _dapToPhaseView(
+                  weekProjectedDap,
+                  hybrid: f.raw['hybrid']?.toString(),
+                )
+              : _activePhaseView;
+          return _matchesAuditFilter(
+            f,
+            weekProjectedPhase,
+            weekProjectedDap,
+          );
+        });
+        if (!matchesSelectedWeek) return false;
+      } else if (!_matchesAuditFilter(f, projectedPhase, projectedDap)) {
+        return false;
       }
 
       return true;
     }).toList();
+  }
+
+  bool _matchesAuditFilter(
+    ParsedFieldData f,
+    ActivePhaseView phaseToCheck,
+    int projectedDap,
+  ) {
+    if (_auditFilter == _AuditFilter.all) return true;
+
+    final auditStatus = AuditStatusHelper.fromRaw(f.raw);
+    switch (_auditFilter) {
+      case _AuditFilter.sampun:
+        return auditStatus.isAuditDoneFor(phaseToCheck, projectedDap);
+      case _AuditFilter.dereng:
+        if (auditStatus.isAuditDoneFor(phaseToCheck, projectedDap)) {
+          return false;
+        }
+        if (phaseToCheck == ActivePhaseView.vegetative &&
+            auditStatus.hasVegetativePartialProgress) {
+          return false;
+        }
+        if (phaseToCheck == ActivePhaseView.generative &&
+            auditStatus.generative == GenerativeAuditStatus.derengJangkep) {
+          return false;
+        }
+        return true;
+      case _AuditFilter.partial:
+        final hasVegetativeProgress =
+            phaseToCheck == ActivePhaseView.vegetative &&
+                auditStatus.hasVegetativePartialProgress;
+        final hasGenerativeProgress =
+            phaseToCheck == ActivePhaseView.generative &&
+                auditStatus.generative == GenerativeAuditStatus.derengJangkep;
+        return hasVegetativeProgress || hasGenerativeProgress;
+      case _AuditFilter.all:
+        return true;
+    }
   }
 
   // Helper: resolve phase dari DAP (duplikat dari MarkerAuditDot, tapi perlu di state level)
@@ -1325,15 +1447,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
           child: SizedBox(
             width: double.infinity, // <── Membuatnya memanjang penuh
             child: _NewWeekPickerChip(
-              selectedWeek: _selectedWeek,
-              workWeeks: _workWeeks,
-              onSelected: (val) {
-                if (val.containsKey('action') && val['action'] == 'manual') {
-                  _showExtendedWeekPicker();
-                } else {
-                  setState(() => _selectedWeek = val);
-                }
-              },
+              selectedWeeks: _selectedWeeks,
+              onTap: _showWeekMultiSelectSheet,
             ),
           ),
         ),
@@ -1445,19 +1560,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              _buildPhaseIconButton(ActivePhaseView.auto, Icons.auto_awesome),
+              _buildPhaseIconButton(ActivePhaseView.auto),
               const SizedBox(width: 8),
-              _buildPhaseIconButton(
-                  ActivePhaseView.vegetative, Icons.eco_outlined),
+              _buildPhaseIconButton(ActivePhaseView.vegetative),
               const SizedBox(width: 8),
-              _buildPhaseIconButton(
-                  ActivePhaseView.generative, Icons.grass_rounded),
+              _buildPhaseIconButton(ActivePhaseView.generative),
               const SizedBox(width: 8),
-              _buildPhaseIconButton(
-                  ActivePhaseView.preHarvest, Icons.agriculture_outlined),
+              _buildPhaseIconButton(ActivePhaseView.preHarvest),
               const SizedBox(width: 8),
-              _buildPhaseIconButton(
-                  ActivePhaseView.harvest, Icons.grain_rounded),
+              _buildPhaseIconButton(ActivePhaseView.harvest),
             ],
           ),
         ),
@@ -1466,7 +1577,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   // Fungsi Helper baru untuk membuat Tombol Ikon Fase yang ringkas
-  Widget _buildPhaseIconButton(ActivePhaseView phase, IconData icon) {
+  Widget _buildPhaseIconButton(ActivePhaseView phase) {
     final isActive = _activePhaseView == phase;
     return GestureDetector(
       onTap: () {
@@ -1478,11 +1589,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
               _auditFilter == _AuditFilter.partial) {
             _auditFilter = _AuditFilter.all;
           }
+          _clearMapCaches();
         });
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(10),
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: isActive
               ? AdvantaColors.primaryGreen.withAlpha(80)
@@ -1497,14 +1611,70 @@ class _QAScreenState extends ConsumerState<QAScreen>
           boxShadow: isActive
               ? [
                   BoxShadow(
-                      color: AdvantaColors.primaryGreen.withAlpha(60),
-                      blurRadius: 8)
+                    color: AdvantaColors.primaryGreen.withAlpha(60),
+                    blurRadius: 8,
+                  )
                 ]
               : [],
         ),
-        child: Icon(icon,
-            color: isActive ? Colors.white : Colors.white60, size: 18),
+        child: _buildCornPhaseFilterIcon(phase, isActive: isActive),
       ),
+    );
+  }
+
+  Widget _buildCornPhaseFilterIcon(
+    ActivePhaseView phase, {
+    required bool isActive,
+  }) {
+    final opacity = isActive ? 1.0 : 0.62;
+    switch (phase) {
+      case ActivePhaseView.auto:
+        return SizedBox(
+          width: 24,
+          height: 24,
+          child: Stack(
+            children: [
+              Positioned(
+                left: 0,
+                top: 0,
+                child: _phaseFilterAsset('vegetative', 13, opacity),
+              ),
+              Positioned(
+                right: 0,
+                top: 0,
+                child: _phaseFilterAsset('generative_1', 13, opacity),
+              ),
+              Positioned(
+                left: 0,
+                bottom: 0,
+                child: _phaseFilterAsset('pre_harvest', 13, opacity),
+              ),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: _phaseFilterAsset('harvest', 13, opacity),
+              ),
+            ],
+          ),
+        );
+      case ActivePhaseView.vegetative:
+        return _phaseFilterAsset('vegetative', 24, opacity);
+      case ActivePhaseView.generative:
+        return _phaseFilterAsset('generative_1', 24, opacity);
+      case ActivePhaseView.preHarvest:
+        return _phaseFilterAsset('pre_harvest', 24, opacity);
+      case ActivePhaseView.harvest:
+        return _phaseFilterAsset('harvest', 24, opacity);
+    }
+  }
+
+  Widget _phaseFilterAsset(String phaseKey, double size, double opacity) {
+    return PhaseAssetIcon(
+      phaseKey: phaseKey,
+      fallbackIcon: Icons.grass_rounded,
+      fallbackColor: Colors.white,
+      size: size,
+      opacity: opacity,
     );
   }
 
@@ -1558,6 +1728,26 @@ class _QAScreenState extends ConsumerState<QAScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (canSeeCoverage)
+            _CompactSegmentButton(
+              icon: Icons.analytics_outlined,
+              isActive: false,
+              isWarning: true,
+              onTap: () => context.push('/coverage'),
+            ),
+          if (canSeeDetasseling)
+            _CompactSegmentButton(
+              icon: Icons.yard_rounded,
+              isActive: false,
+              isWarning: true,
+              onTap: () {
+                final selectedWeekStart = _primarySelectedWeek?['startDate'];
+                final route = selectedWeekStart is DateTime
+                    ? '/detasseling-map?weekStart=${Uri.encodeComponent(selectedWeekStart.toIso8601String())}'
+                    : '/detasseling-map';
+                context.push(route);
+              },
+            ),
           _CompactSegmentButton(
             icon: Icons.touch_app_outlined,
             isActive: _workMode == _WorkMode.single,
@@ -1571,20 +1761,6 @@ class _QAScreenState extends ConsumerState<QAScreen>
               icon: Icons.checklist_rtl_outlined,
               isActive: _workMode == _WorkMode.mass,
               onTap: () => setState(() => _workMode = _WorkMode.mass),
-            ),
-          if (canSeeCoverage)
-            _CompactSegmentButton(
-              icon: Icons.analytics_outlined,
-              isActive: false,
-              isWarning: true,
-              onTap: () => context.push('/coverage'),
-            ),
-          if (canSeeDetasseling)
-            _CompactSegmentButton(
-              icon: Icons.yard_rounded,
-              isActive: false,
-              isWarning: true,
-              onTap: () => context.push('/detasseling-map'),
             ),
         ],
       ),
@@ -1940,7 +2116,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
       selectedKey.join(','),
       _workMode,
       _activePhaseView,
-      _selectedWeek['label'],
+      _selectedWeekCacheKey,
       projectionDeltaDays,
       stackDefaultMarkers,
     ].join('|');
@@ -4873,195 +5049,25 @@ class _CompactSegmentButton extends StatelessWidget {
 }
 
 class _NewWeekPickerChip extends StatelessWidget {
-  final Map<String, dynamic> selectedWeek;
-  final List<Map<String, dynamic>> workWeeks;
-  final Function(Map<String, dynamic>) onSelected;
+  final List<Map<String, dynamic>> selectedWeeks;
+  final VoidCallback onTap;
 
   const _NewWeekPickerChip({
-    required this.selectedWeek,
-    required this.workWeeks,
-    required this.onSelected,
+    required this.selectedWeeks,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Format tanggal hari ini seperti di gambar: "Rab, 22 Apr"
     final todayStr = DateFormat('E, d MMM', 'id_ID').format(DateTime.now());
+    final displayText = selectedWeeks.isEmpty
+        ? 'Semua Minggu'
+        : selectedWeeks.length == 1
+            ? '$todayStr • ${selectedWeeks.first['label']}'
+            : '$todayStr • ${selectedWeeks.length} Minggu';
 
-    // Teks yang tampil di Chip
-    final displayText = selectedWeek.isNotEmpty && selectedWeek['label'] != null
-        ? '$todayStr • ${selectedWeek['label']}'
-        : 'Semua Minggu';
-
-    return PopupMenuButton<Map<String, dynamic>>(
-      color: const Color(0xFF132A1C),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.white.withAlpha(20)),
-      ),
-      offset: const Offset(0, 45),
-      elevation: 12,
-      onSelected: onSelected,
-      itemBuilder: (BuildContext context) {
-        return [
-          // 1. HEADER DROPDOWN
-          PopupMenuItem<Map<String, dynamic>>(
-            enabled: false,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Pilih Minggu',
-                  style: AdvantaText.bodyBold.copyWith(color: Colors.white),
-                ),
-                Text(
-                  'Berdasarkan minggu kerja / tanggal',
-                  style: AdvantaText.caption
-                      .copyWith(color: Colors.white54, fontSize: 11),
-                ),
-                const SizedBox(height: 8),
-                Divider(color: Colors.white.withAlpha(20), height: 1),
-              ],
-            ),
-          ),
-
-          // 2. OPSI "SEMUA MINGGU" (TOMBOL RESET)
-          PopupMenuItem<Map<String, dynamic>>(
-            value: const {}, // Kirim Map kosong sebagai penanda "Semua"
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: selectedWeek.isEmpty
-                    ? AdvantaColors.primaryGreen.withAlpha(40)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: selectedWeek.isEmpty
-                      ? AdvantaColors.lightGreen.withAlpha(100)
-                      : Colors.transparent,
-                ),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 40,
-                    child: Icon(Icons.all_inclusive_rounded,
-                        color: selectedWeek.isEmpty
-                            ? AdvantaColors.lightGreen
-                            : Colors.white,
-                        size: 20),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Semua Minggu',
-                      style: AdvantaText.bodyBold.copyWith(
-                        color: selectedWeek.isEmpty
-                            ? AdvantaColors.lightGreen
-                            : Colors.white70,
-                      ),
-                    ),
-                  ),
-                  if (selectedWeek.isEmpty)
-                    const Icon(Icons.check_circle_rounded,
-                        color: AdvantaColors.lightGreen, size: 18),
-                ],
-              ),
-            ),
-          ),
-
-          // Garis pemisah tipis antara "Semua" dan List Minggu Kalender
-          const PopupMenuItem<Map<String, dynamic>>(
-            enabled: false,
-            height: 10,
-            child: Divider(color: Colors.white12, height: 1),
-          ),
-
-          // TOMBOL MANUAL
-          PopupMenuItem<Map<String, dynamic>>(
-            value: const {
-              'action': 'manual'
-            }, // Map penanda untuk memicu bottom sheet
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha(10),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.search_rounded,
-                      color: Colors.white70, size: 18),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Pilih Minggu Lainnya...',
-                    style: AdvantaText.body2.copyWith(color: Colors.white70),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 3. LIST MINGGU KALENDER (W15, W16, W17, dst)
-          ...workWeeks.map((week) {
-            final isSelected = selectedWeek.isNotEmpty &&
-                selectedWeek['label'] == week['label'];
-            return PopupMenuItem<Map<String, dynamic>>(
-              value: week,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-              child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 4),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AdvantaColors.primaryGreen.withAlpha(40)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isSelected
-                        ? AdvantaColors.lightGreen.withAlpha(100)
-                        : Colors.transparent,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 40,
-                      child: Text(
-                        week['label'],
-                        style: AdvantaText.bodyBold.copyWith(
-                          color: isSelected
-                              ? AdvantaColors.lightGreen
-                              : Colors.white,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        week['date'],
-                        style: AdvantaText.body2.copyWith(
-                          color: isSelected
-                              ? AdvantaColors.lightGreen
-                              : Colors.white70,
-                        ),
-                      ),
-                    ),
-                    if (isSelected)
-                      const Icon(Icons.check_circle_rounded,
-                          color: AdvantaColors.lightGreen, size: 18),
-                  ],
-                ),
-              ),
-            );
-          }),
-        ];
-      },
-      // Desain Chip Utama yang bisa diklik
+    return GestureDetector(
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
@@ -5072,8 +5078,13 @@ class _NewWeekPickerChip extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.calendar_today_outlined,
-                color: Colors.white, size: 14),
+            Icon(
+              selectedWeeks.length > 1
+                  ? Icons.event_available_rounded
+                  : Icons.calendar_today_outlined,
+              color: Colors.white,
+              size: 14,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(

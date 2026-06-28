@@ -58,6 +58,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
   String _searchQuery = '';
   DateTime? _selectedPlanningDate;
   String? _selectedGroupKey;
+  String? _appliedInitialWeekStartParam;
   bool _isExportingPicture = false;
   bool _isExportingPdf = false;
 
@@ -82,8 +83,43 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     super.dispose();
   }
 
+  void _syncInitialWeekFromRoute() {
+    final weekStartParam =
+        GoRouterState.of(context).uri.queryParameters['weekStart'];
+    if (weekStartParam == null ||
+        weekStartParam == _appliedInitialWeekStartParam) {
+      return;
+    }
+
+    _appliedInitialWeekStartParam = weekStartParam;
+    final parsed = DateTime.tryParse(weekStartParam);
+    if (parsed == null) return;
+
+    final targetStart = startOfWorkWeek(parsed);
+    final targetWeek = _weeks.firstWhere(
+      (week) => week.startDate == targetStart,
+      orElse: () => DetasselingWeekOption(
+        label: 'W${isoWeekNumber(targetStart)}',
+        startDate: targetStart,
+        endDate: targetStart.add(const Duration(days: 6)),
+      ),
+    );
+
+    if (targetWeek.startDate == _selectedWeek.startDate) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _selectedWeek = targetWeek;
+        _selectedPlanningDate = null;
+        _selectedGroupKey = null;
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    _syncInitialWeekFromRoute();
     final userAsync = ref.watch(currentUserProvider);
     final regionsAsync = ref.watch(
       activeMasterFieldRegionsProvider(const MasterFieldMapScope.all()),
