@@ -1748,6 +1748,18 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 context.push(route);
               },
             ),
+          if (canSeeDetasseling)
+            _CompactSegmentButton(
+              icon: Icons.event_note_rounded,
+              isActive: false,
+              isWarning: true,
+              onTap: () {
+                final week = _primarySelectedWeek?['startDate'];
+                context.push(week is DateTime
+                    ? '/audit-planning?weekStart=${Uri.encodeComponent(week.toIso8601String())}'
+                    : '/audit-planning');
+              },
+            ),
           _CompactSegmentButton(
             icon: Icons.touch_app_outlined,
             isActive: _workMode == _WorkMode.single,

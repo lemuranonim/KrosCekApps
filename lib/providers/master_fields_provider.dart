@@ -402,6 +402,9 @@ class ParsedFieldData {
 // 5. FUNGSI TOP-LEVEL UNTUK ISOLATE
 // (Syarat Isolate: fungsi harus di luar class atau berupa static)
 // ============================================================
+Future<List<ParsedFieldData>> parseMasterFieldMapRows(
+    List<Map<String, dynamic>> rows) => compute(_parseMapFieldsInIsolate, rows);
+
 List<ParsedFieldData> _parseMapFieldsInIsolate(
     List<Map<String, dynamic>> rawFields) {
   // ── Helper: validasi koordinat wilayah Indonesia ──────────

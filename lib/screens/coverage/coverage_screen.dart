@@ -15,7 +15,6 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -24,7 +23,9 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../providers/master_fields_provider.dart';
 import '../../services/session_manager.dart';
-import '../../utils/audit_status_helper.dart';
+import 'package:go_router/go_router.dart';
+import '../../utils/weekly_audit.dart';
+import '../../widgets/weekly_audit_widgets.dart';
 import '../../utils/dap_helper.dart';
 
 // PENTING: Sesuaikan path import ini dengan struktur project-mu
@@ -36,134 +37,27 @@ import '../../theme/app_theme.dart';
 // SECTION A — DATA MODELS
 // ============================================================
 
-Map<String, dynamic>? _firstRow(dynamic val) {
-  if (val is List && val.isNotEmpty) {
-    final first = val.first;
-    if (first is Map) return Map<String, dynamic>.from(first);
-  }
-  if (val is Map) return Map<String, dynamic>.from(val);
-  return null;
-}
-
 String _cleanText(dynamic val) => val?.toString().trim() ?? '';
 
-double _readDouble(dynamic val) {
-  if (val is num) return val.toDouble();
-  return double.tryParse(_cleanText(val).replaceAll(',', '.')) ?? 0.0;
-}
-
-String? _firstText(Iterable<dynamic> values) {
-  for (final value in values) {
-    final text = _cleanText(value);
-    if (text.isNotEmpty) return text;
-  }
-  return null;
-}
-
-DateTime? _parseDate(dynamic value) {
-  final text = _cleanText(value);
-  if (text.isEmpty) return null;
-  return DateTime.tryParse(text);
-}
-
-String _phaseLabel(String key) {
-  switch (key) {
-    case 'vegetative':
-      return 'Vegetative';
-    case 'generative_1':
-      return 'Gen 1';
-    case 'generative_2':
-      return 'Gen 2';
-    case 'generative_3':
-      return 'Gen 3';
-    case 'generative_4':
-      return 'Gen 4';
-    case 'generative_5':
-      return 'Gen 5';
-    case 'pre_harvest':
-      return 'Pre-Harvest';
-    case 'harvest':
-      return 'Harvest';
-    default:
-      return key;
-  }
-}
-
-bool _isNeutralAction(dynamic value) {
-  final code = _cleanText(value).toUpperCase();
-  if (code.isEmpty) return true;
-  return const {'A', 'N', 'NO', 'NONE', 'PASS', 'GF'}.contains(code);
-}
-
-bool _isRiskDecision(dynamic value) {
-  final code = _cleanText(value).toUpperCase();
-  if (code.isEmpty) return false;
-  return const {
-    'C',
-    'D',
-    'HOLD',
-    'PLD',
-    'DISCARD',
-    'RFD',
-    'BF',
-  }.contains(code);
-}
-
-bool _isExcludedCoverageRegion(String? region) {
-  return region?.trim().toLowerCase() == 'region tester';
-}
-
-bool _isPldDiscardCoverageValue(dynamic value) {
-  final raw = value?.toString().trim();
-  if (raw == null || raw.isEmpty) return false;
-  final normalized = raw.toLowerCase();
-  if (normalized.contains('pld') || normalized.contains('discard')) {
-    return true;
-  }
-  return normalized == 'd' || normalized == 'f' || normalized == 'g';
-}
-
-bool _hasCoveragePldDiscardValue(Map<String, dynamic> raw) {
-  final veg = _firstRow(raw['audit_vegetative']);
-  final gen = _firstRow(raw['audit_generative']);
-  final ph = _firstRow(raw['audit_pre_harvest']);
-  final hv = _firstRow(raw['audit_harvest']);
-
-  final values = <dynamic>[
-    raw['flagging_final'],
-    veg?['decision'],
-    veg?['action_needed'],
-    veg?['flagging'],
-    ph?['final_decision'],
-    ph?['final_flagging'],
-    hv?['status_downgrade'],
-    hv?['final_flagging'],
-    hv?['downgrade_flagging'],
-    gen?['flagging'],
-    gen?['final_flagging_5'],
-  ];
-
-  for (var i = 1; i <= 5; i++) {
-    values.add(gen?['action_needed_$i']);
-    values.add(gen?['final_decision_$i']);
-    values.add(gen?['final_flagging_$i']);
-  }
-
-  return values.any(_isPldDiscardCoverageValue);
-}
+bool _isExcludedCoverageRegion(String? region) =>
+    region?.trim().toLowerCase() == 'region tester';
 
 List<FieldCoverageStatus> _applyCoverageVisibilityFilters(
   List<FieldCoverageStatus> fields, {
-  required bool showPldDiscard,
-}) {
-  return fields
-      .where((f) => !_isExcludedCoverageRegion(f.region))
-      .where((f) => showPldDiscard || !f.hasPldDiscardValue)
-      .toList(growable: false);
-}
+  required DateTime weekStart,
+  required Set<String> flags,
+}) =>
+    fields
+        .where((f) => !_isExcludedCoverageRegion(f.region))
+        .map((f) => f.weekly.weekStart == weekStart
+            ? f
+            : FieldCoverageStatus.fromRaw(f.raw, weekStart: weekStart))
+        .where((f) => flags.contains(f.weekly.flag))
+        .toList(growable: false);
 
 /// Status coverage untuk satu field, dihitung dari data audit.
 class FieldCoverageStatus {
+  final WeeklyAuditField weekly;
   final Map<String, dynamic> raw; // DISIMPAN UNTUK MENGIRIM KE DETAIL SHEET
   final String fieldNumber;
   final String qaFi;
@@ -207,6 +101,7 @@ class FieldCoverageStatus {
   final bool isOverdue;
 
   const FieldCoverageStatus({
+    required this.weekly,
     required this.raw,
     required this.fieldNumber,
     required this.qaFi,
@@ -246,22 +141,17 @@ class FieldCoverageStatus {
     required this.isOverdue,
   });
 
-  List<String> get phaseKeys =>
-      DapHelper.getPhaseRules(hybrid: hybrid).map((r) => r.key).toList();
+  List<String> get phaseKeys => DapHelper.getPhaseRules(
+          hybrid: hybrid,
+          district: district,
+          region: region,
+          subDistrict: subDistrict)
+      .map((r) => r.key)
+      .toList();
 
-  List<String> get duePhaseKeys {
-    return phaseKeys.where((phase) {
-      final badge = DapHelper.getDapBadgeLabel(dap, phase, hybrid: hybrid);
-      return badge == 'On Going' || badge == 'Overdue';
-    }).toList();
-  }
-
-  List<String> get overduePhaseKeys {
-    return phaseKeys.where((phase) {
-      final badge = DapHelper.getDapBadgeLabel(dap, phase, hybrid: hybrid);
-      return badge == 'Overdue' && !_isPhaseComplete(phase);
-    }).toList();
-  }
+  List<String> get duePhaseKeys => weekly.targets.map((t) => t.phase).toList();
+  List<String> get overduePhaseKeys =>
+      weekly.targets.where((t) => t.overdue).map((t) => t.phase).toList();
 
   bool get isAuditTarget => duePhaseKeys.isNotEmpty;
 
@@ -308,7 +198,7 @@ class FieldCoverageStatus {
 
   /// Coverage score 0-100 berdasarkan fase yang sudah On Going / Overdue.
   double get coverageScore {
-    if (targetPhaseCount == 0) return 100.0;
+    if (targetPhaseCount == 0) return 0.0;
     return (completedTargetPhaseWeight / targetPhaseCount) * 100;
   }
 
@@ -321,8 +211,7 @@ class FieldCoverageStatus {
   }
 
   double _phaseCompletionWeight(String phase) {
-    if (phase == 'vegetative') return vegetativeCompletionFraction;
-    return _isPhaseComplete(phase) ? 1.0 : 0.0;
+    return weekly.phaseCompletions[phase] ?? 0.0;
   }
 
   bool _isPhaseComplete(String phase) {
@@ -366,117 +255,32 @@ class FieldCoverageStatus {
     }
   }
 
-  factory FieldCoverageStatus.fromRaw(Map<String, dynamic> raw) {
-    final veg = _firstRow(raw['audit_vegetative']);
-    final gen = _firstRow(raw['audit_generative']);
-    final ph = _firstRow(raw['audit_pre_harvest']);
-    final hv = _firstRow(raw['audit_harvest']);
-
+  factory FieldCoverageStatus.fromRaw(Map<String, dynamic> raw,
+      {DateTime? weekStart, DateTime? now}) {
+    final weekly = WeeklyAuditField.fromRaw(raw,
+        weekStart: weekStart ?? auditWeekStart(now ?? DateTime.now()),
+        now: now);
+    final veg = auditRow(raw['audit_vegetative']);
     final hybrid = _cleanText(raw['hybrid']);
-    final isSc = DapHelper.isSweetCorn(hybrid);
-    final plantingDate = _firstText([
-      veg?['rev_planting_date'],
-      raw['planting_date_pdn'],
-    ]);
-    final dap = DapHelper.calculateDAP(plantingDate);
-    final auditStatus = AuditStatusHelper.fromRaw(raw);
-    final registeredArea = _readDouble(raw['effective_area_ha']);
-    final auditArea = _readDouble(veg?['field_size_by_audit_ha']);
-    final effectiveArea = registeredArea;
-
-    bool isComplete(String phase) {
-      switch (phase) {
-        case 'vegetative':
-          return auditStatus.vegetative == SingleAuditStatus.sampun;
-        case 'generative_1':
-          return auditStatus.gen1Done;
-        case 'generative_2':
-          return auditStatus.gen2Done;
-        case 'generative_3':
-          return auditStatus.gen3Done;
-        case 'generative_4':
-          return auditStatus.gen4Done;
-        case 'generative_5':
-          return auditStatus.gen5Done;
-        case 'pre_harvest':
-          return auditStatus.preHarvest == SingleAuditStatus.sampun;
-        case 'harvest':
-          return auditStatus.harvest == SingleAuditStatus.sampun;
-        default:
-          return false;
-      }
-    }
-
-    final phaseKeys = DapHelper.getPhaseRules(hybrid: hybrid)
-        .map((rule) => rule.key)
-        .toList(growable: false);
-    final overdue = phaseKeys.any((phase) =>
-        DapHelper.getDapBadgeLabel(dap, phase, hybrid: hybrid) == 'Overdue' &&
-        !isComplete(phase));
-    final activePhaseKey = DapHelper.getRecommendedPhase(dap, hybrid: hybrid);
-    final activePhaseBadge = DapHelper.getDapBadgeLabel(
-      dap,
-      activePhaseKey,
-      hybrid: hybrid,
-      isDone: isComplete(activePhaseKey),
-    );
-
-    final auditEvents = <({String date, String? week, String? auditor})>[];
-    void addAuditEvent(dynamic date, dynamic week, dynamic auditor) {
-      final dateText = _cleanText(date);
-      if (dateText.isEmpty) return;
-      auditEvents.add((
-        date: dateText,
-        week: _firstText([week]),
-        auditor: _firstText([auditor]),
-      ));
-    }
-
-    addAuditEvent(veg?['audit_date_user'] ?? veg?['date_of_audit'],
-        veg?['audit_week'], veg?['qa_fi']);
-    for (var i = 1; i <= (isSc ? 5 : 3); i++) {
-      addAuditEvent(gen?['date_of_audit_$i'], gen?['week_of_audit_$i'],
-          gen?['qa_fi_$i'] ?? gen?['qa_fi']);
-    }
-    addAuditEvent(ph?['audit_date'], ph?['audit_week'], ph?['qa_fi']);
-    addAuditEvent(hv?['date_of_audit'], hv?['audit_week'], hv?['qa_fi']);
-    auditEvents.sort((a, b) {
-      final ad = _parseDate(a.date);
-      final bd = _parseDate(b.date);
-      if (ad == null && bd == null) return a.date.compareTo(b.date);
-      if (ad == null) return -1;
-      if (bd == null) return 1;
-      return ad.compareTo(bd);
-    });
-    final latest = auditEvents.isEmpty ? null : auditEvents.last;
-
-    ({String phase, String code})? action;
-    void pickAction(String phase, dynamic value, {bool decision = false}) {
-      if (action != null) return;
-      final code = _cleanText(value).toUpperCase();
-      if (code.isEmpty) return;
-      final isRisk = decision ? _isRiskDecision(code) : !_isNeutralAction(code);
-      if (isRisk) action = (phase: phase, code: code);
-    }
-
-    pickAction('Veg', veg?['action_needed']);
-    pickAction('Veg', veg?['decision'], decision: true);
-    for (var i = 1; i <= (isSc ? 5 : 3); i++) {
-      pickAction('G$i', gen?['action_needed_$i']);
-      pickAction('G$i', gen?['final_decision_$i'], decision: true);
-    }
-    pickAction('Pre-H', ph?['final_decision'], decision: true);
-    pickAction('Harvest', hv?['status_downgrade'], decision: true);
-    pickAction('Harvest', hv?['final_flagging'], decision: true);
-
-    final correction = _firstText([
-      veg?['correction_tagging'],
-      raw['correction_tagging'],
-    ]);
-
+    final psp = DapHelper.isPsp(hybrid);
+    bool complete(String phase) => (weekly.phaseCompletions[phase] ?? 0) >= 1;
+    final activePhase = DapHelper.getRecommendedPhase(weekly.dap,
+        hybrid: hybrid,
+        district: raw['district_kab']?.toString(),
+        region: raw['region']?.toString(),
+        subDistrict: raw['sub_district_kec']?.toString());
+    final last = weekly.observations.isEmpty ? null : weekly.observations.last;
+    final actions = <String>[
+      if (weekly.roguingNegative) 'Roguing',
+      if (weekly.lsvNegative) 'LSV',
+      if (weekly.isolationNegative) 'Isolasi',
+      if (const {'RFI', 'RFD', 'BF', 'OF', 'RF', 'PLD'}.contains(weekly.flag))
+        weekly.flag,
+    ];
     return FieldCoverageStatus(
+      weekly: weekly,
       raw: raw,
-      fieldNumber: raw['field_number']?.toString() ?? '',
+      fieldNumber: _cleanText(raw['field_number']),
       qaFi: _cleanText(raw['qa_fi']),
       qaSpv: _cleanText(raw['qa_spv']),
       farmerName: _cleanText(raw['farmer_name']),
@@ -485,33 +289,44 @@ class FieldCoverageStatus {
       district: _cleanText(raw['district_kab']),
       village: _cleanText(raw['village_desa']),
       subDistrict: _cleanText(raw['sub_district_kec']),
-      registeredAreaHa: registeredArea,
-      auditAreaHa: auditArea,
-      effectiveAreaHa: effectiveArea,
-      dap: dap,
-      isSweetCorn: isSc,
-      isPsp: DapHelper.isPsp(hybrid),
-      vegetativeDone: auditStatus.vegetative == SingleAuditStatus.sampun,
-      vegetativeAuditDoneCount: auditStatus.vegetativeDoneCount,
-      vegetativeAuditTotalCount: auditStatus.vegetativeTotalCount,
-      gen1Done: auditStatus.gen1Done,
-      gen2Done: auditStatus.gen2Done,
-      gen3Done: auditStatus.gen3Done,
-      gen4Done: auditStatus.gen4Done,
-      gen5Done: auditStatus.gen5Done,
-      preHarvestDone: auditStatus.preHarvest == SingleAuditStatus.sampun,
-      harvestDone: auditStatus.harvest == SingleAuditStatus.sampun,
-      activePhaseKey: activePhaseKey,
-      activePhaseLabel: _phaseLabel(activePhaseKey),
-      activePhaseBadge: activePhaseBadge,
-      latestAuditDate: latest?.date,
-      latestAuditWeek: latest?.week,
-      latestAuditor: latest?.auditor,
-      actionCode: action?.code,
-      actionPhase: action?.phase,
-      hasCorrectionTagging: correction != null,
-      hasPldDiscardValue: _hasCoveragePldDiscardValue(raw),
-      isOverdue: overdue,
+      registeredAreaHa: weekly.areaHa,
+      auditAreaHa: auditArea(veg['field_size_by_audit_ha']),
+      effectiveAreaHa: weekly.areaHa,
+      dap: weekly.dap,
+      isSweetCorn: DapHelper.isSweetCorn(hybrid),
+      isPsp: psp,
+      vegetativeDone: complete('vegetative'),
+      vegetativeAuditDoneCount:
+          ((weekly.phaseCompletions['vegetative'] ?? 0) * (psp ? 4 : 1))
+              .round(),
+      vegetativeAuditTotalCount: psp ? 4 : 1,
+      gen1Done: complete('generative_1'),
+      gen2Done: complete('generative_2'),
+      gen3Done: complete('generative_3'),
+      gen4Done: complete('generative_4'),
+      gen5Done: complete('generative_5'),
+      preHarvestDone: complete('pre_harvest'),
+      harvestDone: complete('harvest'),
+      activePhaseKey: activePhase,
+      activePhaseLabel: auditStageLabels[weekly.stage]!,
+      activePhaseBadge: DapHelper.getDapBadgeLabel(weekly.dap, activePhase,
+          hybrid: hybrid,
+          district: raw['district_kab']?.toString(),
+          region: raw['region']?.toString(),
+          subDistrict: raw['sub_district_kec']?.toString(),
+          isDone: complete(activePhase)),
+      latestAuditDate:
+          last == null ? null : DateFormat('yyyy-MM-dd').format(last.date),
+      latestAuditWeek: null,
+      latestAuditor: _cleanText(raw['qa_fi']),
+      actionCode: actions.isEmpty ? null : actions.join(', '),
+      actionPhase:
+          last == null ? null : auditStageLabels[auditStage(last.phase)],
+      hasCorrectionTagging:
+          _cleanText(veg['correction_tagging'] ?? raw['correction_tagging'])
+              .isNotEmpty,
+      hasPldDiscardValue: weekly.flag == 'PLD',
+      isOverdue: weekly.overdue,
     );
   }
 }
@@ -568,13 +383,8 @@ class FICoverage {
     final totalTargets = fields.fold(0, (s, f) => s + f.targetPhaseCount);
     final completedTargets =
         fields.fold(0, (s, f) => s + f.completedTargetPhaseCount);
-    final completedTargetWeight =
-        fields.fold(0.0, (s, f) => s + f.completedTargetPhaseWeight);
-    final avgScore = totalTargets > 0
-        ? (completedTargetWeight / totalTargets) * 100
-        : fields.isEmpty
-            ? 0.0
-            : 100.0;
+    final avgScore =
+        WeeklyAuditSummary(fields.map((f) => f.weekly)).achievementPercent;
     final overdue = fields.where((f) => f.isOverdue).length;
     final action = fields.where((f) => f.hasActionRequired).length;
     return FICoverage(
@@ -602,7 +412,10 @@ class PhaseCoverage {
   final int total;
   final int done;
   final int overdue;
-  double get pct => total == 0 ? 0 : (done / total) * 100;
+  final double totalHa;
+  final double doneHa;
+  final double overdueHa;
+  double get pct => totalHa == 0 ? 0 : (doneHa / totalHa) * 100;
 
   const PhaseCoverage({
     required this.label,
@@ -611,10 +424,16 @@ class PhaseCoverage {
     required this.total,
     required this.done,
     required this.overdue,
+    required this.totalHa,
+    required this.doneHa,
+    required this.overdueHa,
   });
 }
 
 class PhaseSummary {
+  final double targetAreaHa;
+  final double achievedAreaHa;
+  final double overdueAreaHa;
   final List<PhaseCoverage> phases;
   final int totalFields;
   final int targetFields;
@@ -629,6 +448,9 @@ class PhaseSummary {
   final double effectiveAreaHa;
 
   const PhaseSummary({
+    required this.targetAreaHa,
+    required this.achievedAreaHa,
+    required this.overdueAreaHa,
     required this.phases,
     required this.totalFields,
     required this.targetFields,
@@ -644,124 +466,66 @@ class PhaseSummary {
   });
 
   double get targetCompletionPct =>
-      totalTargets == 0 ? 0 : (completedTargets / totalTargets) * 100;
+      targetAreaHa == 0 ? 0 : achievedAreaHa / targetAreaHa * 100;
 }
 
 // ============================================================
 // FUNGSI HELPER UNTUK MENGHITUNG FASE DINAMIS (TERFILTER)
 // ============================================================
-PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields,
-    {bool includeUpcoming = false}) {
-  final buckets = <String, ({String label, String short, Color color})>{
-    'vegetative': (
-      label: 'Vegetative',
-      short: 'Veg',
-      color: AdvantaColors.lightGreen,
-    ),
-    'generative': (
-      label: 'Generative',
-      short: 'Gen',
-      color: AdvantaColors.gold,
-    ),
-    'pre_harvest': (
-      label: 'Pre-Harvest',
-      short: 'Pre-H',
-      color: AdvantaColors.midGreen,
-    ),
-    'harvest': (
-      label: 'Harvest',
-      short: 'Harv',
-      color: AdvantaColors.error,
-    ),
-  };
-  final totals = <String, int>{
-    for (final key in buckets.keys) key: 0,
-  };
-  final dones = <String, int>{
-    for (final key in buckets.keys) key: 0,
-  };
-  final overdues = <String, int>{
-    for (final key in buckets.keys) key: 0,
-  };
-
-  var totalTargets = 0;
-  var completedTargets = 0;
-  var overdueTargets = 0;
-  var targetCount = 0;
-  var upcomingCount = 0;
-  var actionFields = 0;
-  var correctedFields = 0;
-  var auditAreaOverrides = 0;
-  var registeredArea = 0.0;
-  var effectiveArea = 0.0;
-
-  String bucketFor(String phase) {
-    if (phase.startsWith('generative_')) return 'generative';
-    return phase;
+PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields) {
+  final fields = filteredFields.where((f) => f.isAuditTarget).toList();
+  final weekly = WeeklyAuditSummary(fields.map((f) => f.weekly));
+  final colors = [
+    AdvantaColors.lightGreen,
+    AdvantaColors.gold,
+    AdvantaColors.midGreen,
+    AdvantaColors.error
+  ];
+  final phases = <PhaseCoverage>[];
+  var index = 0;
+  for (final entry in auditStageLabels.entries) {
+    final phaseFields = fields
+        .where((f) =>
+            f.weekly.targets.any((t) => auditStage(t.phase) == entry.key))
+        .toList();
+    bool done(FieldCoverageStatus f) => f.weekly.targets
+        .where((t) => auditStage(t.phase) == entry.key)
+        .every((t) => t.done);
+    bool overdue(FieldCoverageStatus f) => f.weekly.targets
+        .any((t) => auditStage(t.phase) == entry.key && t.overdue);
+    phases.add(PhaseCoverage(
+        label: entry.value,
+        shortLabel: entry.value,
+        color: colors[index++],
+        total: phaseFields.length,
+        done: phaseFields.where(done).length,
+        overdue: phaseFields.where(overdue).length,
+        totalHa: phaseFields.fold(0.0, (sum, f) => sum + f.effectiveAreaHa),
+        doneHa: phaseFields
+            .where(done)
+            .fold(0.0, (sum, f) => sum + f.effectiveAreaHa),
+        overdueHa: phaseFields
+            .where(overdue)
+            .fold(0.0, (sum, f) => sum + f.effectiveAreaHa)));
   }
-
-  for (final f in filteredFields) {
-    if (f.isAuditTarget) {
-      targetCount++;
-    } else {
-      upcomingCount++;
-    }
-    if (f.hasActionRequired) actionFields++;
-    if (f.hasCorrectionTagging) correctedFields++;
-    if (f.hasAuditAreaOverride) auditAreaOverrides++;
-    registeredArea += f.registeredAreaHa;
-    effectiveArea += f.effectiveAreaHa;
-
-    for (final phase in f.phaseKeys) {
-      final badge = DapHelper.getDapBadgeLabel(f.dap, phase, hybrid: f.hybrid);
-      final isDue = badge == 'On Going' || badge == 'Overdue';
-      final includePhase = includeUpcoming || isDue;
-      if (!includePhase) continue;
-
-      final bucket = bucketFor(phase);
-      final done = f._isPhaseComplete(phase);
-      totals[bucket] = (totals[bucket] ?? 0) + 1;
-      if (done) dones[bucket] = (dones[bucket] ?? 0) + 1;
-
-      if (isDue) {
-        totalTargets++;
-        if (done) completedTargets++;
-        if (badge == 'Overdue' && !done) {
-          overdueTargets++;
-          overdues[bucket] = (overdues[bucket] ?? 0) + 1;
-        }
-      }
-    }
-  }
-
   return PhaseSummary(
-    phases: buckets.entries
-        .map((entry) => PhaseCoverage(
-              label: entry.value.label,
-              shortLabel: entry.value.short,
-              color: entry.value.color,
-              total: totals[entry.key] ?? 0,
-              done: dones[entry.key] ?? 0,
-              overdue: overdues[entry.key] ?? 0,
-            ))
-        .toList(growable: false),
-    totalFields: filteredFields.length,
-    targetFields: targetCount,
-    upcomingFields: upcomingCount,
-    completedTargets: completedTargets,
-    totalTargets: totalTargets,
-    overdueTargets: overdueTargets,
-    actionFields: actionFields,
-    correctedFields: correctedFields,
-    auditAreaOverrides: auditAreaOverrides,
-    registeredAreaHa: registeredArea,
-    effectiveAreaHa: effectiveArea,
-  );
+      phases: phases,
+      totalFields: fields.length,
+      targetFields: fields.length,
+      upcomingFields: 0,
+      completedTargets:
+          fields.fold(0, (sum, f) => sum + f.completedTargetPhaseCount),
+      totalTargets: fields.fold(0, (sum, f) => sum + f.targetPhaseCount),
+      overdueTargets: fields.fold(0, (sum, f) => sum + f.overdueTargetCount),
+      actionFields: fields.where((f) => f.hasActionRequired).length,
+      correctedFields: fields.where((f) => f.hasCorrectionTagging).length,
+      auditAreaOverrides: fields.where((f) => f.hasAuditAreaOverride).length,
+      registeredAreaHa: weekly.targetHa,
+      effectiveAreaHa: weekly.targetHa,
+      targetAreaHa: weekly.targetHa,
+      achievedAreaHa: weekly.achievedHa,
+      overdueAreaHa: weekly.overdueHa);
 }
-
-// ============================================================
-// SECTION B — PROVIDERS
-// ============================================================
 
 final coverageStatusListProvider =
     FutureProvider<List<FieldCoverageStatus>>((ref) async {
@@ -776,35 +540,8 @@ final coverageStatusListScopedProvider =
   final rawFields =
       await ref.watch(masterFieldCoverageScopedProvider(scope).future);
 
-  if (kDebugMode) {
-    print('=== COVERAGE DEBUG ===');
-    print('Raw fields count: ${rawFields.length}');
-    if (rawFields.isNotEmpty) {
-      final f = rawFields.first;
-      print(
-          'First: ${f['field_number']} | qa_fi: ${f['qa_fi']} | area: ${f['effective_area_ha']} | planting: ${f['planting_date_pdn']}');
-      print(
-          'audit_vegetative: ${f['audit_vegetative'].runtimeType} = ${f['audit_vegetative']}');
-      print(
-          'audit_generative: ${f['audit_generative'].runtimeType} = ${f['audit_generative']}');
-      print(
-          'audit_pre_harvest: ${f['audit_pre_harvest'].runtimeType} = ${f['audit_pre_harvest']}');
-      print(
-          'audit_harvest: ${f['audit_harvest'].runtimeType} = ${f['audit_harvest']}');
-    }
-  }
-
   final parsed =
       rawFields.map((raw) => FieldCoverageStatus.fromRaw(raw)).toList();
-
-  if (kDebugMode) {
-    final totalArea = parsed.fold(0.0, (s, f) => s + f.effectiveAreaHa);
-    final overdueCount = parsed.where((f) => f.isOverdue).length;
-    final vegDoneCount = parsed.where((f) => f.vegetativeDone).length;
-    print(
-        'Parsed: ${parsed.length} | Area: ${totalArea.toStringAsFixed(1)} ha | Overdue: $overdueCount | VegDone: $vegDoneCount');
-    print('======================');
-  }
 
   return parsed;
 });
@@ -827,14 +564,8 @@ List<FICoverage> buildFiCoverageList(List<FieldCoverageStatus> fields) {
   return list;
 }
 
-double aggregateCoverageScore(List<FieldCoverageStatus> fields) {
-  if (fields.isEmpty) return 0;
-  final totalTargets = fields.fold(0, (s, f) => s + f.targetPhaseCount);
-  if (totalTargets == 0) return 100;
-  final completed =
-      fields.fold(0.0, (s, f) => s + f.completedTargetPhaseWeight);
-  return (completed / totalTargets) * 100;
-}
+double aggregateCoverageScore(List<FieldCoverageStatus> fields) =>
+    WeeklyAuditSummary(fields.map((f) => f.weekly)).achievementPercent;
 
 final fiCoverageListProvider = FutureProvider<List<FICoverage>>((ref) async {
   final fields = await ref.watch(coverageStatusListProvider.future);
@@ -1019,8 +750,8 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
   String? _selectedDistrict; // cascade dari region
   String? _selectedSpv;
   int _expandedAreaIndex = -1;
-  bool _showAllRegisteredFields = false; // Default: hanya yang wajib audit
-  bool _showPldDiscardFields = false;
+  DateTime _weekStart = auditWeekStart(DateTime.now());
+  Set<String> _selectedFlags = {...defaultAuditFlags};
 
   @override
   Widget build(BuildContext context) {
@@ -1092,7 +823,8 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
       data: (allFields) {
         final visibleFields = _applyCoverageVisibilityFilters(
           allFields,
-          showPldDiscard: _showPldDiscardFields,
+          weekStart: _weekStart,
+          flags: _selectedFlags,
         );
 
         // CASCADING LOGIC — Region → District → SPV
@@ -1140,15 +872,12 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
           if (_selectedSpv != null && f.qaSpv != _selectedSpv) return false;
           return true;
         }).toList();
-        final dashboardFields = _showAllRegisteredFields
-            ? filtered
-            : filtered.where((f) => f.isAuditTarget).toList();
+        final dashboardFields = filtered.where((f) => f.isAuditTarget).toList();
 
         final filteredFIList = buildFiCoverageList(dashboardFields);
 
         final summary = calculateFilteredPhases(
           dashboardFields,
-          includeUpcoming: _showAllRegisteredFields,
         );
         final uniqueSpv = dashboardFields
             .map((f) => f.qaSpv)
@@ -1177,6 +906,13 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
               ),
+            SliverToBoxAdapter(
+                child: _WeeklyCoverageControls(
+              weekStart: _weekStart,
+              flags: _selectedFlags,
+              onWeekChanged: (week) => setState(() => _weekStart = week),
+              onFlagsChanged: (flags) => setState(() => _selectedFlags = flags),
+            )),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -1212,33 +948,6 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     onSelected: (v) => setState(
                         () => _selectedSpv = v == 'All QA SPV' ? null : v),
                   ),
-                  // Di dalam Row filter:
-                  PremiumFilterChip(
-                    label: _showAllRegisteredFields
-                        ? 'Semua Lahan'
-                        : 'Target Audit',
-                    options: const ['Target Audit', 'Semua Lahan'],
-                    selected: _showAllRegisteredFields
-                        ? 'Semua Lahan'
-                        : 'Target Audit',
-                    icon: Icons.visibility_rounded,
-                    onSelected: (v) => setState(
-                        () => _showAllRegisteredFields = v == 'Semua Lahan'),
-                  ),
-                  PremiumFilterChip(
-                    label: _showPldDiscardFields
-                        ? 'PLD/Discard'
-                        : 'PLD Disembunyikan',
-                    options: const ['PLD Disembunyikan', 'PLD/Discard'],
-                    selected: _showPldDiscardFields
-                        ? 'PLD/Discard'
-                        : 'PLD Disembunyikan',
-                    icon: _showPldDiscardFields
-                        ? Icons.visibility_rounded
-                        : Icons.visibility_off_rounded,
-                    onSelected: (v) => setState(
-                        () => _showPldDiscardFields = v == 'PLD/Discard'),
-                  ),
                 ],
                 onRefresh: () => _refreshCoverage(ref, coverageScope),
               ),
@@ -1249,14 +958,14 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                   icon: Icons.inventory_2_rounded,
                   iconColor: AdvantaColors.deepForest,
                   bgColor: Colors.grey[200]!,
-                  value: filtered.length.toString(),
+                  value: dashboardFields.length.toString(),
                   label: 'Lahan Filter',
                 ),
                 _StatCard(
                     icon: Icons.fact_check_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.paleGreen,
-                    value: summary.targetFields.toString(),
+                    value: _formatHa(summary.targetAreaHa),
                     label: 'Target Audit'),
                 _StatCard(
                     icon: Icons.landscape_rounded,
@@ -1282,12 +991,30 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     bgColor: AdvantaColors.errorLight,
                     value: summary.overdueTargets.toString(),
                     label: 'Overdue Target',
+                    onTap: () => _showWeeklyFields(
+                        context,
+                        'Overdue',
+                        dashboardFields
+                            .where((f) => f.isOverdue)
+                            .map((f) => f.weekly)
+                            .toList(),
+                        onChanged: () => _refreshCoverage(ref, coverageScope)),
                     highlight: summary.overdueTargets > 0),
               ]),
             ),
             SliverToBoxAdapter(
-              child: _PhaseProgressSection(summary: summary),
+              child: _PhaseProgressSection(
+                  summary: summary,
+                  fields: dashboardFields,
+                  onChanged: () => _refreshCoverage(ref, coverageScope)),
             ),
+            SliverToBoxAdapter(
+                child: WeeklyAuditCards(
+              summary: WeeklyAuditSummary(dashboardFields.map((f) => f.weekly)),
+              onDetail: (title, fields) => _showWeeklyFields(
+                  context, title, fields,
+                  onChanged: () => _refreshCoverage(ref, coverageScope)),
+            )),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -1371,8 +1098,8 @@ class _SPVViewState extends ConsumerState<_SPVView> {
   String? _selectedDistrict;
   String? _selectedFi;
   int _expandedDistrictIndex = -1;
-  bool _showAllRegisteredFields = false; // Default: hanya yang wajib audit
-  bool _showPldDiscardFields = false;
+  DateTime _weekStart = auditWeekStart(DateTime.now());
+  Set<String> _selectedFlags = {...defaultAuditFlags};
 
   @override
   Widget build(BuildContext context) {
@@ -1391,7 +1118,8 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                 .toList();
         final visibleSpvFields = _applyCoverageVisibilityFilters(
           mySpvFields,
-          showPldDiscard: _showPldDiscardFields,
+          weekStart: _weekStart,
+          flags: _selectedFlags,
         );
 
         // 2. CASCADING LOGIC SPV (Berdasarkan lahan milik SPV ini saja)
@@ -1428,14 +1156,11 @@ class _SPVViewState extends ConsumerState<_SPVView> {
           if (_selectedFi != null && f.qaFi != _selectedFi) return false;
           return true;
         }).toList();
-        final dashboardFields = _showAllRegisteredFields
-            ? fields
-            : fields.where((f) => f.isAuditTarget).toList();
+        final dashboardFields = fields.where((f) => f.isAuditTarget).toList();
 
         // Hitung Statistik
         final summary = calculateFilteredPhases(
           dashboardFields,
-          includeUpcoming: _showAllRegisteredFields,
         );
         final uniqueFI = dashboardFields
             .map((f) => f.qaFi)
@@ -1479,6 +1204,13 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                 ),
               ),
             SliverToBoxAdapter(
+                child: _WeeklyCoverageControls(
+              weekStart: _weekStart,
+              flags: _selectedFlags,
+              onWeekChanged: (week) => setState(() => _weekStart = week),
+              onFlagsChanged: (flags) => setState(() => _selectedFlags = flags),
+            )),
+            SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
                   if (widget.isDevPreview)
@@ -1511,33 +1243,6 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     onSelected: (v) => setState(
                         () => _selectedFi = v == 'All QA FI' ? null : v),
                   ),
-                  // Di dalam Row filter:
-                  PremiumFilterChip(
-                    label: _showAllRegisteredFields
-                        ? 'Semua Lahan'
-                        : 'Target Audit',
-                    options: const ['Target Audit', 'Semua Lahan'],
-                    selected: _showAllRegisteredFields
-                        ? 'Semua Lahan'
-                        : 'Target Audit',
-                    icon: Icons.visibility_rounded,
-                    onSelected: (v) => setState(
-                        () => _showAllRegisteredFields = v == 'Semua Lahan'),
-                  ),
-                  PremiumFilterChip(
-                    label: _showPldDiscardFields
-                        ? 'PLD/Discard'
-                        : 'PLD Disembunyikan',
-                    options: const ['PLD Disembunyikan', 'PLD/Discard'],
-                    selected: _showPldDiscardFields
-                        ? 'PLD/Discard'
-                        : 'PLD Disembunyikan',
-                    icon: _showPldDiscardFields
-                        ? Icons.visibility_rounded
-                        : Icons.visibility_off_rounded,
-                    onSelected: (v) => setState(
-                        () => _showPldDiscardFields = v == 'PLD/Discard'),
-                  ),
                 ],
                 onRefresh: () => _refreshCoverage(ref),
               ),
@@ -1548,14 +1253,14 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                   icon: Icons.inventory_2_rounded,
                   iconColor: AdvantaColors.deepForest,
                   bgColor: Colors.grey[200]!,
-                  value: fields.length.toString(),
+                  value: dashboardFields.length.toString(),
                   label: 'Lahan Tim',
                 ),
                 _StatCard(
                     icon: Icons.fact_check_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.paleGreen,
-                    value: summary.targetFields.toString(),
+                    value: _formatHa(summary.targetAreaHa),
                     label: 'Target Audit'),
                 _StatCard(
                     icon: Icons.landscape_rounded,
@@ -1581,12 +1286,30 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     bgColor: AdvantaColors.errorLight,
                     value: needsAttention.toString(),
                     label: 'Needs Attention',
+                    onTap: () => _showWeeklyFields(
+                        context,
+                        'Needs Attention',
+                        dashboardFields
+                            .where((f) => f.needsAttention)
+                            .map((f) => f.weekly)
+                            .toList(),
+                        onChanged: () => _refreshCoverage(ref)),
                     highlight: needsAttention > 0),
               ]),
             ),
             SliverToBoxAdapter(
-              child: _PhaseProgressSection(summary: summary),
+              child: _PhaseProgressSection(
+                  summary: summary,
+                  fields: dashboardFields,
+                  onChanged: () => _refreshCoverage(ref)),
             ),
+            SliverToBoxAdapter(
+                child: WeeklyAuditCards(
+              summary: WeeklyAuditSummary(dashboardFields.map((f) => f.weekly)),
+              onDetail: (title, fields) => _showWeeklyFields(
+                  context, title, fields,
+                  onChanged: () => _refreshCoverage(ref)),
+            )),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -1662,8 +1385,8 @@ class _FIViewState extends ConsumerState<_FIView> {
   String? _selectedVillage;
   String? _selectedPhase;
   int _expandedVillageIndex = -1;
-  bool _showAllRegisteredFields = false;
-  bool _showPldDiscardFields = false;
+  DateTime _weekStart = auditWeekStart(DateTime.now());
+  Set<String> _selectedFlags = {...defaultAuditFlags};
 
   @override
   Widget build(BuildContext context) {
@@ -1682,7 +1405,8 @@ class _FIViewState extends ConsumerState<_FIView> {
                 .toList();
         final visibleFiFields = _applyCoverageVisibilityFilters(
           myFiFields,
-          showPldDiscard: _showPldDiscardFields,
+          weekStart: _weekStart,
+          flags: _selectedFlags,
         );
 
         // 2. CASCADING LOGIC FI (Gunakan myFiFields)
@@ -1718,56 +1442,20 @@ class _FIViewState extends ConsumerState<_FIView> {
           if (_selectedVillage != null && f.village != _selectedVillage) {
             return false;
           }
-          if (_selectedPhase != null && _selectedPhase != 'All Phase') {
-            switch (_selectedPhase) {
-              case 'Vegetative':
-                return DapHelper.getDapBadgeLabel(f.dap, 'vegetative',
-                            hybrid: f.hybrid) ==
-                        'On Going' ||
-                    DapHelper.getDapBadgeLabel(f.dap, 'vegetative',
-                            hybrid: f.hybrid) ==
-                        'Overdue';
-              case 'Generative':
-                return ['generative_1', 'generative_2', 'generative_3']
-                        .any((p) {
-                      final b = DapHelper.getDapBadgeLabel(f.dap, p,
-                          hybrid: f.hybrid);
-                      return b == 'On Going' || b == 'Overdue';
-                    }) ||
-                    (f.isSweetCorn &&
-                        ['generative_4', 'generative_5'].any((p) {
-                          final b = DapHelper.getDapBadgeLabel(f.dap, p,
-                              hybrid: f.hybrid);
-                          return b == 'On Going' || b == 'Overdue';
-                        }));
-              case 'Pre-Harvest':
-                return DapHelper.getDapBadgeLabel(f.dap, 'pre_harvest',
-                            hybrid: f.hybrid) ==
-                        'On Going' ||
-                    DapHelper.getDapBadgeLabel(f.dap, 'pre_harvest',
-                            hybrid: f.hybrid) ==
-                        'Overdue';
-              case 'Harvest':
-                return DapHelper.getDapBadgeLabel(f.dap, 'harvest',
-                            hybrid: f.hybrid) ==
-                        'On Going' ||
-                    DapHelper.getDapBadgeLabel(f.dap, 'harvest',
-                            hybrid: f.hybrid) ==
-                        'Overdue';
-            }
+          if (_selectedPhase != null) {
+            final selected =
+                _selectedPhase == 'Pre-Harvest' ? 'PreHarvest' : _selectedPhase;
+            return auditStageLabels[f.weekly.stage] == selected;
           }
           return true;
         }).toList();
-        final dashboardFields = _showAllRegisteredFields
-            ? fields
-            : fields.where((f) => f.isAuditTarget).toList();
+        final dashboardFields = fields.where((f) => f.isAuditTarget).toList();
 
         final summary = calculateFilteredPhases(
           dashboardFields,
-          includeUpcoming: _showAllRegisteredFields,
         );
         final villagesCount = dashboardFields
-            .map((f) => f.village)
+            .map((f) => f.weekly.villageKey)
             .where((v) => v.isNotEmpty)
             .toSet()
             .length;
@@ -1775,7 +1463,7 @@ class _FIViewState extends ConsumerState<_FIView> {
 
         final villageMap = <String, List<FieldCoverageStatus>>{};
         for (final f in dashboardFields) {
-          final key = f.village.isEmpty ? 'Unknown' : f.village;
+          final key = f.weekly.villageKey;
           villageMap.putIfAbsent(key, () => []).add(f);
         }
 
@@ -1799,6 +1487,13 @@ class _FIViewState extends ConsumerState<_FIView> {
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
               ),
+            SliverToBoxAdapter(
+                child: _WeeklyCoverageControls(
+              weekStart: _weekStart,
+              flags: _selectedFlags,
+              onWeekChanged: (week) => setState(() => _weekStart = week),
+              onFlagsChanged: (flags) => setState(() => _selectedFlags = flags),
+            )),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -1846,32 +1541,6 @@ class _FIViewState extends ConsumerState<_FIView> {
                     onSelected: (v) => setState(
                         () => _selectedPhase = v == 'All Phase' ? null : v),
                   ),
-                  PremiumFilterChip(
-                    label: _showAllRegisteredFields
-                        ? 'Semua Lahan'
-                        : 'Target Audit',
-                    options: const ['Target Audit', 'Semua Lahan'],
-                    selected: _showAllRegisteredFields
-                        ? 'Semua Lahan'
-                        : 'Target Audit',
-                    icon: Icons.visibility_rounded,
-                    onSelected: (v) => setState(
-                        () => _showAllRegisteredFields = v == 'Semua Lahan'),
-                  ),
-                  PremiumFilterChip(
-                    label: _showPldDiscardFields
-                        ? 'PLD/Discard'
-                        : 'PLD Disembunyikan',
-                    options: const ['PLD Disembunyikan', 'PLD/Discard'],
-                    selected: _showPldDiscardFields
-                        ? 'PLD/Discard'
-                        : 'PLD Disembunyikan',
-                    icon: _showPldDiscardFields
-                        ? Icons.visibility_rounded
-                        : Icons.visibility_off_rounded,
-                    onSelected: (v) => setState(
-                        () => _showPldDiscardFields = v == 'PLD/Discard'),
-                  ),
                 ],
                 onRefresh: () => _refreshCoverage(ref),
               ),
@@ -1894,8 +1563,7 @@ class _FIViewState extends ConsumerState<_FIView> {
                     icon: Icons.fact_check_rounded,
                     iconColor: AdvantaColors.gold,
                     bgColor: AdvantaColors.goldPale,
-                    value:
-                        '${summary.completedTargets}/${summary.totalTargets}',
+                    value: _formatHa(summary.achievedAreaHa),
                     label: 'Target Done'),
                 _StatCard(
                     icon: Icons.assignment_late_rounded,
@@ -1903,6 +1571,14 @@ class _FIViewState extends ConsumerState<_FIView> {
                     bgColor: AdvantaColors.goldPale,
                     value: summary.actionFields.toString(),
                     label: 'Action Item',
+                    onTap: () => _showWeeklyFields(
+                        context,
+                        'Action Item',
+                        dashboardFields
+                            .where((f) => f.hasActionRequired)
+                            .map((f) => f.weekly)
+                            .toList(),
+                        onChanged: () => _refreshCoverage(ref)),
                     highlight: summary.actionFields > 0),
                 _StatCard(
                     icon: Icons.running_with_errors_rounded,
@@ -1910,12 +1586,30 @@ class _FIViewState extends ConsumerState<_FIView> {
                     bgColor: AdvantaColors.errorLight,
                     value: overdueFields.toString(),
                     label: 'Overdue',
+                    onTap: () => _showWeeklyFields(
+                        context,
+                        'Overdue',
+                        dashboardFields
+                            .where((f) => f.isOverdue)
+                            .map((f) => f.weekly)
+                            .toList(),
+                        onChanged: () => _refreshCoverage(ref)),
                     highlight: overdueFields > 0),
               ]),
             ),
             SliverToBoxAdapter(
-              child: _PhaseProgressSection(summary: summary),
+              child: _PhaseProgressSection(
+                  summary: summary,
+                  fields: dashboardFields,
+                  onChanged: () => _refreshCoverage(ref)),
             ),
+            SliverToBoxAdapter(
+                child: WeeklyAuditCards(
+              summary: WeeklyAuditSummary(dashboardFields.map((f) => f.weekly)),
+              onDetail: (title, fields) => _showWeeklyFields(
+                  context, title, fields,
+                  onChanged: () => _refreshCoverage(ref)),
+            )),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -1941,7 +1635,8 @@ class _FIViewState extends ConsumerState<_FIView> {
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                     child: _VillageCard(
-                      villageName: entry.key,
+                      villageName:
+                          '${entry.value.first.village} · ${entry.value.first.subDistrict}',
                       fields: entry.value,
                       isExpanded: _expandedVillageIndex == i,
                       onTap: () => setState(() => _expandedVillageIndex =
@@ -2507,32 +2202,25 @@ class _RefreshButtonState extends State<_RefreshButton> {
 class _StatsRow extends StatelessWidget {
   final List<_StatCard> stats;
   const _StatsRow({required this.stats});
-
   @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 720;
-        final children = stats.map((s) {
-          final padded = Padding(
-            padding: EdgeInsets.only(right: s == stats.last ? 0 : 8),
-            child: compact ? SizedBox(width: 124, child: s) : s,
-          );
-          return compact ? padded : Expanded(child: padded);
-        }).toList();
-
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: compact
-              ? SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(children: children),
-                )
-              : Row(children: children),
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 1000
+            ? stats.length
+            : constraints.maxWidth >= 600
+                ? 3
+                : 2;
+        return Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: stats
+                .map((card) => SizedBox(
+                    width: (constraints.maxWidth - (columns - 1) * 8) / columns,
+                    height: 114,
+                    child: card))
+                .toList());
+      }));
 }
 
 class _StatCard extends StatelessWidget {
@@ -2542,305 +2230,140 @@ class _StatCard extends StatelessWidget {
   final String value;
   final String label;
   final bool highlight;
+  final VoidCallback? onTap;
   const _StatCard(
       {required this.icon,
       required this.iconColor,
       required this.bgColor,
       required this.value,
       required this.label,
-      this.highlight = false});
+      this.highlight = false,
+      this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 86),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: highlight
-              ? iconColor.withValues(alpha: 0.35)
-              : AdvantaColors.dividerGrey.withValues(alpha: 0.6),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AdvantaColors.deepForest.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          width: 30,
-          height: 30,
+    return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 86),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-              color: bgColor, borderRadius: BorderRadius.circular(9)),
-          child: Icon(icon, size: 16, color: iconColor),
-        ),
-        const Spacer(),
-        Text(
-          value,
-          style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: highlight ? iconColor : AdvantaColors.deepForest),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(
-              fontSize: 9,
-              color: AdvantaColors.mutedGrey,
-              fontWeight: FontWeight.w700),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ]),
-    );
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: highlight
+                  ? iconColor.withValues(alpha: 0.35)
+                  : AdvantaColors.dividerGrey.withValues(alpha: 0.6),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AdvantaColors.deepForest.withValues(alpha: 0.06),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                  color: bgColor, borderRadius: BorderRadius.circular(9)),
+              child: Icon(icon, size: 16, color: iconColor),
+            ),
+            const Spacer(),
+            Text(
+              value,
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: highlight ? iconColor : AdvantaColors.deepForest),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: const TextStyle(
+                  fontSize: 9,
+                  color: AdvantaColors.mutedGrey,
+                  fontWeight: FontWeight.w700),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ]),
+        ));
   }
 }
 
 class _PhaseProgressSection extends StatelessWidget {
   final PhaseSummary summary;
-  const _PhaseProgressSection({required this.summary});
-
+  final List<FieldCoverageStatus> fields;
+  final VoidCallback onChanged;
+  const _PhaseProgressSection(
+      {required this.summary, required this.fields, required this.onChanged});
   @override
-  Widget build(BuildContext context) {
-    final phases = summary.phases;
-    return Container(
+  Widget build(BuildContext context) => Container(
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 6,
-                offset: const Offset(0, 2))
-          ]),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            const Text('Coverage Progress',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AdvantaColors.deepForest)),
-            const Spacer(),
-            GestureDetector(
-              onTap: () => _showDetailSheet(context),
-              child: const Text('Lihat Detail',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: AdvantaColors.deepForest,
-                      fontWeight: FontWeight.w600)),
-            ),
-          ]),
-          const SizedBox(height: 12),
-
-          // INFO RINGKASAN LAHAN
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: AdvantaColors.softGrey,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey[200]!),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildMiniInfo('Lahan', summary.totalFields.toString(),
-                    AdvantaColors.deepForest),
-                _buildDivider(),
-                _buildMiniInfo('Target Audit', summary.targetFields.toString(),
-                    AdvantaColors.midGreen),
-                _buildDivider(),
-                _buildMiniInfo(
-                    'Selesai',
-                    '${summary.completedTargets}/${summary.totalTargets}',
-                    AdvantaColors.success),
-                _buildDivider(),
-                _buildMiniInfo(
-                    'Overdue',
-                    summary.overdueTargets.toString(),
-                    summary.overdueTargets > 0
-                        ? AdvantaColors.error
-                        : Colors.grey[600]!),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _SignalChip(
-                icon: Icons.assignment_late_rounded,
-                label: 'Action ${summary.actionFields}',
-                color: summary.actionFields > 0
-                    ? AdvantaColors.error
-                    : AdvantaColors.midGreen,
-              ),
-              _SignalChip(
-                icon: Icons.my_location_rounded,
-                label: 'GPS koreksi ${summary.correctedFields}',
-                color: AdvantaColors.deepForest,
-              ),
-              _SignalChip(
-                icon: Icons.straighten_rounded,
-                label: 'Area audit ${summary.auditAreaOverrides}',
-                color: AdvantaColors.gold,
-              ),
-              _SignalChip(
-                icon: Icons.landscape_rounded,
-                label: _formatHa(summary.effectiveAreaHa),
-                color: AdvantaColors.midGreen,
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-          Row(
-              children: phases
-                  .map((p) => Expanded(
-                      child: Padding(
-                          padding:
-                              EdgeInsets.only(right: p == phases.last ? 0 : 12),
-                          child: _PhaseBar(phase: p))))
-                  .toList()),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMiniInfo(String label, String value, Color color) {
-    return Column(
-      children: [
-        Text(value,
-            style: TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w900, color: color)),
-        const SizedBox(height: 2),
+              const Text('Area coverage',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AdvantaColors.deepForest)),
+              TextButton(
+                  onPressed: () => _showWeeklyFields(
+                      context,
+                      'Target audit minggu terpilih',
+                      fields.map((f) => f.weekly).toList(),
+                      onChanged: onChanged),
+                  child: const Text('Lihat detail')),
+            ]),
+        Text('${summary.targetCompletionPct.toStringAsFixed(1)}%',
+            style: const TextStyle(
+                fontSize: 30,
+                fontWeight: FontWeight.w900,
+                color: AdvantaColors.midGreen)),
+        const SizedBox(height: 8),
+        Wrap(spacing: 16, runSpacing: 8, children: [
+          _value('Target audit', summary.targetAreaHa),
+          _value('Achievement', summary.achievedAreaHa),
+          _value('Overdue', summary.overdueAreaHa),
+        ]),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+            builder: (context, box) => Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: summary.phases
+                    .map((phase) => SizedBox(
+                        width:
+                            (box.maxWidth - (box.maxWidth >= 720 ? 48 : 16)) /
+                                (box.maxWidth >= 720 ? 4 : 2),
+                        child: _PhaseBar(phase: phase)))
+                    .toList())),
+        const SizedBox(height: 12),
+        const Text(
+            'Luas dihitung sekali per lahan. Achievement jika seluruh target audit lahan pada minggu ini selesai. Target yang selesai sebelum minggu ini tidak ditargetkan ulang.',
+            style: TextStyle(fontSize: 11, color: AdvantaColors.mutedGrey)),
+      ]));
+  Widget _value(String label, double area) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(_formatHa(area),
+            style: const TextStyle(
+                fontWeight: FontWeight.w800, color: AdvantaColors.deepForest)),
         Text(label,
-            style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[600])),
-      ],
-    );
-  }
-
-  Widget _buildDivider() {
-    return Container(width: 1, height: 20, color: Colors.grey[300]);
-  }
-
-  void _showDetailSheet(BuildContext context) {
-    final phases = summary.phases;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => Container(
-        constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.75),
-        decoration: const BoxDecoration(
-          color: AdvantaColors.softGrey,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-                child: Container(
-                    width: 48,
-                    height: 5,
-                    decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(4)))),
-            const SizedBox(height: 20),
-            const Text('Statistik Cakupan per Fase',
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: AdvantaColors.deepForest)),
-            const SizedBox(height: 4),
-            Text('Berdasarkan filter wilayah & personel aktif',
-                style: TextStyle(fontSize: 12, color: Colors.grey[500])),
-            const SizedBox(height: 24),
-            ...phases.map((p) => Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(children: [
-                            Container(
-                                width: 12,
-                                height: 12,
-                                decoration: BoxDecoration(
-                                    color: p.color,
-                                    borderRadius: BorderRadius.circular(3))),
-                            const SizedBox(width: 10),
-                            Text(p.label,
-                                style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: AdvantaColors.deepForest)),
-                          ]),
-                          // 👇 MENAMPILKAN PERSENTASE BESAR
-                          Text('${p.pct.toStringAsFixed(1)}%',
-                              style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
-                                  color: p.color)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                            value: p.pct / 100,
-                            backgroundColor: p.color.withValues(alpha: 0.15),
-                            valueColor: AlwaysStoppedAnimation<Color>(p.color),
-                            minHeight: 12),
-                      ),
-                      const SizedBox(height: 6),
-                      // 👇 MENAMPILKAN JUMLAH LAHAN DENGAN TEKS DESKRIPTIF
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                              '${p.done} dari ${p.total} target selesai diaudit',
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: AdvantaColors.charcoal)),
-                          if (p.overdue > 0)
-                            Text('${p.overdue} overdue',
-                                style: const TextStyle(
-                                    fontSize: 11,
-                                    color: AdvantaColors.error,
-                                    fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ],
-                  ),
-                )),
-          ],
-        ),
-      ),
-    );
-  }
+            style:
+                const TextStyle(fontSize: 11, color: AdvantaColors.mutedGrey)),
+      ]);
 }
 
 class _PhaseBar extends StatelessWidget {
@@ -2875,51 +2398,12 @@ class _PhaseBar extends StatelessWidget {
       const SizedBox(height: 3),
 
       // 👇 JUMLAH LAHAN (RIIL)
-      Text('${phase.done}/${phase.total} Target',
+      Text('${_formatHa(phase.doneHa)} / ${_formatHa(phase.totalHa)}',
           style: TextStyle(
               fontSize: 9,
               color: Colors.grey[600],
               fontWeight: FontWeight.w600)),
     ]);
-  }
-}
-
-class _SignalChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  const _SignalChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.18)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: color),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              color: color,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -3282,7 +2766,7 @@ class _FIDetailSheet extends StatelessWidget {
     // Kelompokkan lahan berdasarkan desa
     final villageMap = <String, List<FieldCoverageStatus>>{};
     for (final f in fi.fields) {
-      final key = f.village.isEmpty ? 'Unknown' : f.village;
+      final key = f.weekly.villageKey;
       villageMap.putIfAbsent(key, () => []).add(f);
     }
     final villageEntries = villageMap.entries.toList()
@@ -5355,4 +4839,74 @@ String _formatHa(double ha) {
       ? _idWholeNumber.format(ha)
       : _idDecimalNumber.format(ha);
   return '$value ha';
+}
+
+class _WeeklyCoverageControls extends StatelessWidget {
+  final DateTime weekStart;
+  final Set<String> flags;
+  final ValueChanged<DateTime> onWeekChanged;
+  final ValueChanged<Set<String>> onFlagsChanged;
+  const _WeeklyCoverageControls(
+      {required this.weekStart,
+      required this.flags,
+      required this.onWeekChanged,
+      required this.onFlagsChanged});
+  @override
+  Widget build(BuildContext context) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        AuditWeekSelector(weekStart: weekStart, onChanged: onWeekChanged),
+        Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              AuditFlagFilter(selected: flags, onChanged: onFlagsChanged),
+              TextButton.icon(
+                  icon: const Icon(Icons.event_note_rounded, size: 18),
+                  label: const Text('Planning Vege / PH / H'),
+                  onPressed: () => context.push(
+                      '/audit-planning?weekStart=${Uri.encodeComponent(weekStart.toIso8601String())}')),
+            ]),
+      ]));
+}
+
+void _showWeeklyFields(
+    BuildContext context, String title, List<WeeklyAuditField> fields,
+    {VoidCallback? onChanged}) {
+  showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => SizedBox(
+          height: MediaQuery.sizeOf(context).height * .75,
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('$title · ${fields.length} lahan',
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w800))),
+            if (fields.isEmpty)
+              const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('Tidak ada lahan untuk kategori ini.')),
+            Expanded(
+                child: ListView.builder(
+                    itemCount: fields.length,
+                    itemBuilder: (_, index) {
+                      final field = fields[index];
+                      return ListTile(
+                          title: Text(
+                              '${field.raw['field_number']} · ${field.raw['farmer_name'] ?? ''}'),
+                          subtitle: Text(
+                              '${field.village} · ${field.raw['qa_fi'] ?? ''}\n${auditHa(field.areaHa)} · ${field.flag} · ${auditStageLabels[field.stage]}'),
+                          isThreeLine: true,
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => FieldDetailBottomSheet.show(
+                              sheetContext, field.raw,
+                              dapReferenceDate:
+                                  field.weekStart.add(const Duration(days: 6)),
+                              onInspectDone: (_) => onChanged?.call()));
+                    })),
+          ])));
 }

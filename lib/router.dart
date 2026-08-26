@@ -38,6 +38,7 @@ import 'screens/attendance/check_in_screen.dart';
 import 'screens/attendance/check_out_screen.dart';
 import 'screens/coverage/coverage_screen.dart';
 import 'screens/qa/detasseling_map_screen.dart';
+import 'screens/qa/audit_planning_screen.dart';
 import 'screens/qa/detailed_map_screen.dart';
 import 'screens/settings/user_settings_screen.dart';
 import 'screens/settings/qa_mapping_screen.dart';
@@ -221,6 +222,12 @@ final router = GoRouter(
       path: '/detasseling-map',
       builder: (context, state) => const DetasselingMapScreen(),
     ),
+    GoRoute(
+      path: '/audit-planning',
+      builder: (context, state) => AuditPlanningScreen(
+        initialWeek: DateTime.tryParse(state.uri.queryParameters['weekStart'] ?? ''),
+      ),
+    ),
 
     // --- SWEET CORN (SC) INSPECTION ROUTES ---
     GoRoute(
@@ -306,7 +313,7 @@ final router = GoRouter(
       return await _homeForActiveSession();
     }
 
-    if (path == '/detasseling-map' &&
+    if ((path == '/detasseling-map' || path == '/audit-planning') &&
         !canAccessDetasselingMapForRole(
           role: userRole,
           action: userAction,
