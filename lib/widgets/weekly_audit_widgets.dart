@@ -16,30 +16,87 @@ class AuditWeekSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final end = weekStart.add(const Duration(days: 6));
-    return Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
-      IconButton(
-          tooltip: 'Minggu sebelumnya',
-          icon: const Icon(Icons.chevron_left),
-          onPressed: () =>
-              onChanged(weekStart.subtract(const Duration(days: 7)))),
-      TextButton.icon(
-          icon: const Icon(Icons.date_range_rounded, size: 18),
-          label: Text(
-              '${DateFormat('d MMM', 'id_ID').format(weekStart)} – ${DateFormat('d MMM yyyy', 'id_ID').format(end)}'),
-          onPressed: () async {
-            final date = await showDatePicker(
-                context: context,
-                initialDate: weekStart,
-                firstDate: DateTime(2000),
-                lastDate: DateTime(2100));
-            if (date != null) onChanged(auditWeekStart(date));
-          }),
-      IconButton(
-          tooltip: 'Minggu berikutnya',
-          icon: const Icon(Icons.chevron_right),
-          onPressed: () => onChanged(weekStart.add(const Duration(days: 7)))),
-    ]);
+    return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AdvantaColors.dividerGrey),
+            boxShadow: AdvantaShadows.card(false)),
+        child: Row(children: [
+          _weekButton(
+              tooltip: 'Minggu sebelumnya',
+              icon: Icons.chevron_left_rounded,
+              onPressed: () =>
+                  onChanged(weekStart.subtract(const Duration(days: 7)))),
+          Expanded(
+              child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () async {
+                    final date = await showDatePicker(
+                        context: context,
+                        initialDate: weekStart,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100));
+                    if (date != null) onChanged(auditWeekStart(date));
+                  },
+                  child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                    color: AdvantaColors.paleGreen,
+                                    borderRadius: BorderRadius.circular(10)),
+                                child: const Icon(Icons.date_range_rounded,
+                                    size: 17,
+                                    color: AdvantaColors.primaryGreen)),
+                            const SizedBox(width: 9),
+                            Flexible(
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                  const Text('MINGGU AUDIT',
+                                      style: TextStyle(
+                                          fontSize: 9,
+                                          letterSpacing: .7,
+                                          fontWeight: FontWeight.w800,
+                                          color: AdvantaColors.mutedGrey)),
+                                  const SizedBox(height: 1),
+                                  Text(
+                                      '${DateFormat('d MMM', 'id_ID').format(weekStart)} – ${DateFormat('d MMM yyyy', 'id_ID').format(end)}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          color: AdvantaColors.deepForest))
+                                ]))
+                          ])))),
+          _weekButton(
+              tooltip: 'Minggu berikutnya',
+              icon: Icons.chevron_right_rounded,
+              onPressed: () =>
+                  onChanged(weekStart.add(const Duration(days: 7)))),
+        ]));
   }
+
+  Widget _weekButton(
+          {required String tooltip,
+          required IconData icon,
+          required VoidCallback onPressed}) =>
+      IconButton(
+          tooltip: tooltip,
+          visualDensity: VisualDensity.compact,
+          style: IconButton.styleFrom(
+              backgroundColor: AdvantaColors.softGrey,
+              foregroundColor: AdvantaColors.primaryGreen),
+          icon: Icon(icon),
+          onPressed: onPressed);
 }
 
 class AuditFlagFilter extends StatelessWidget {
@@ -50,13 +107,23 @@ class AuditFlagFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ActionChip(
+        backgroundColor: Colors.white,
+        side:
+            BorderSide(color: AdvantaColors.deepForest.withValues(alpha: .16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
         avatar: Icon(
             selected.contains('PLD')
                 ? Icons.flag_outlined
                 : Icons.visibility_off_outlined,
-            size: 16),
+            color: AdvantaColors.primaryGreen,
+            size: 17),
         label: Text(
-            'Flagging ${selected.length}/${auditFlagLabels.length}${selected.contains('PLD') ? '' : ' · PLD hide'}'),
+            'Flagging ${selected.length}/${auditFlagLabels.length}${selected.contains('PLD') ? '' : ' · PLD hide'}',
+            style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AdvantaColors.deepForest)),
         onPressed: () async {
           final draft = {...selected};
           final result = await showDialog<Set<String>>(

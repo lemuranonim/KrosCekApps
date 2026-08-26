@@ -91,107 +91,270 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
           title: const Text('Planning Audit'),
           backgroundColor: AdvantaColors.deepForest,
           foregroundColor: Colors.white,
+          elevation: 0,
+          scrolledUnderElevation: 0,
           actions: [
             IconButton(
                 tooltip: 'Muat ulang',
                 onPressed: _refresh,
-                icon: const Icon(Icons.refresh))
+                icon: const Icon(Icons.refresh_rounded))
           ]),
       body: RefreshIndicator(
           onRefresh: _refresh,
-          child: ListView(padding: const EdgeInsets.all(16), children: [
-            const Text('Target audit per desa',
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AdvantaColors.deepForest)),
-            const SizedBox(height: 4),
-            const Text('Planning berdasarkan jendela DAP pada minggu terpilih.',
-                style: TextStyle(color: AdvantaColors.mutedGrey)),
-            const SizedBox(height: 12),
-            Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: auditPlanningPhases
-                    .map((phase) => ChoiceChip(
-                        label: Text(auditStageLabels[phase]!),
-                        selected: _phase == phase,
-                        onSelected: (_) => setState(() => _phase = phase)))
-                    .toList()),
-            AuditWeekSelector(
-                weekStart: _week,
-                onChanged: (week) => setState(() => _week = week)),
-            Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  _filter(_showAllRegions ? 'All Region' : _region ?? 'Region',
-                      ['All Region', ...regions], (value) {
-                    _showAllRegions = value == 'All Region';
-                    _region = _showAllRegions ? null : value;
-                    _expandedVillages.clear();
-                  }),
-                  _filter(_crop, const ['All Crop', 'FC', 'SC', 'PSP'],
-                      (value) => _crop = value),
-                  _filter(_status, const ['Semua Status', 'Pending', 'Done'],
-                      (value) => _status = value),
-                  AuditFlagFilter(
-                      selected: _flags,
-                      onChanged: (flags) => setState(() => _flags = flags)),
-                ]),
-            const SizedBox(height: 12),
-            TextField(
-                controller: _searchController,
-                onChanged: (value) =>
-                    setState(() => _search = value.trim().toLowerCase()),
-                decoration: InputDecoration(
-                    hintText: 'Cari desa, lahan, petani, atau QA FI',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none))),
-            const SizedBox(height: 16),
-            plan.when(
-                loading: () => Center(
-                    child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(children: [
-                          const CircularProgressIndicator(),
-                          const SizedBox(height: 12),
-                          Text(
-                              canLoadPlan
-                                  ? 'Memuat target audit minggu terpilih…'
-                                  : 'Memuat daftar region…',
-                              textAlign: TextAlign.center),
-                        ]))),
-                error: (_, __) => Column(children: [
-                      const Text('Data planning belum dapat dimuat.'),
-                      const SizedBox(height: 8),
-                      const Text(
-                          'Periksa koneksi atau pilih satu region, lalu coba lagi.',
-                          textAlign: TextAlign.center),
-                      TextButton(
-                          onPressed: _refresh, child: const Text('Coba lagi'))
-                    ]),
-                data: (all) => _content(all)),
-          ])),
+          child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+              children: [
+                _intro(),
+                const SizedBox(height: 18),
+                _phaseSelector(),
+                const SizedBox(height: 12),
+                AuditWeekSelector(
+                    weekStart: _week,
+                    onChanged: (week) => setState(() => _week = week)),
+                const SizedBox(height: 18),
+                _filterBar(regions),
+                const SizedBox(height: 12),
+                _searchBox(),
+                const SizedBox(height: 16),
+                plan.when(
+                    loading: () => _loadingState(canLoadPlan),
+                    error: (_, __) => _errorState(),
+                    data: (all) => _content(all)),
+              ])),
     );
   }
 
-  Widget _filter(
-          String selected, List<String> options, ValueChanged<String> change) =>
+  Widget _intro() =>
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+                color: AdvantaColors.paleGreen,
+                borderRadius: BorderRadius.circular(14)),
+            child: const Icon(Icons.route_rounded,
+                color: AdvantaColors.primaryGreen, size: 24)),
+        const SizedBox(width: 12),
+        const Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Target audit per desa',
+              style: TextStyle(
+                  fontSize: 21,
+                  height: 1.2,
+                  fontWeight: FontWeight.w800,
+                  color: AdvantaColors.deepForest)),
+          SizedBox(height: 4),
+          Text('Planning dari target DAP pada minggu terpilih.',
+              style: TextStyle(
+                  fontSize: 13, color: AdvantaColors.mutedGrey, height: 1.4)),
+        ]))
+      ]);
+
+  Widget _phaseSelector() => Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AdvantaColors.dividerGrey),
+          boxShadow: AdvantaShadows.card(false)),
+      child: Row(
+          children: auditPlanningPhases
+              .map((phase) => Expanded(
+                  child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: ChoiceChip(
+                          label: SizedBox(
+                              width: double.infinity,
+                              child: Text(auditStageLabels[phase]!,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis)),
+                          selected: _phase == phase,
+                          showCheckmark: false,
+                          selectedColor: AdvantaColors.gold,
+                          backgroundColor: Colors.transparent,
+                          side: BorderSide.none,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          labelStyle: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: _phase == phase
+                                  ? AdvantaColors.deepForest
+                                  : AdvantaColors.mutedGrey),
+                          onSelected: (_) => setState(() => _phase = phase)))))
+              .toList()));
+
+  bool get _hasActiveFilters =>
+      _crop != 'All Crop' ||
+      _status != 'Semua Status' ||
+      !_flags.containsAll(defaultAuditFlags) ||
+      _flags.length != defaultAuditFlags.length ||
+      _search.isNotEmpty;
+
+  void _resetFilters() {
+    _searchController.clear();
+    setState(() {
+      _crop = 'All Crop';
+      _status = 'Semua Status';
+      _flags = {...defaultAuditFlags};
+      _search = '';
+    });
+  }
+
+  Widget _filterBar(List<String> regions) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('Filter data',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: AdvantaColors.deepForest)),
+          const Spacer(),
+          if (_hasActiveFilters)
+            TextButton.icon(
+                onPressed: _resetFilters,
+                icon: const Icon(Icons.restart_alt_rounded, size: 16),
+                label: const Text('Reset'),
+                style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: AdvantaColors.primaryGreen,
+                    textStyle: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w700)))
+        ]),
+        const SizedBox(height: 7),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          _filter(_showAllRegions ? 'All Region' : _region ?? 'Region',
+              ['All Region', ...regions], Icons.location_on_outlined, (value) {
+            _showAllRegions = value == 'All Region';
+            _region = _showAllRegions ? null : value;
+            _expandedVillages.clear();
+          }),
+          _filter(_crop, const ['All Crop', 'FC', 'SC', 'PSP'],
+              Icons.eco_outlined, (value) => _crop = value),
+          _filter(_status, const ['Semua Status', 'Pending', 'Done'],
+              Icons.task_alt_rounded, (value) => _status = value),
+          AuditFlagFilter(
+              selected: _flags,
+              onChanged: (flags) => setState(() => _flags = flags)),
+        ]),
+      ]);
+
+  Widget _filter(String selected, List<String> options, IconData icon,
+          ValueChanged<String> change) =>
       PopupMenuButton<String>(
           initialValue: selected,
           onSelected: (value) => setState(() => change(value)),
+          color: Colors.white,
+          elevation: 8,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           itemBuilder: (_) => options
               .map((value) => PopupMenuItem(value: value, child: Text(value)))
               .toList(),
           child: Chip(
-              label: Text(selected),
-              avatar: const Icon(Icons.expand_more, size: 18)));
+              backgroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+              side: BorderSide(
+                  color: AdvantaColors.deepForest.withValues(alpha: .16)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              avatar: Icon(icon, size: 17, color: AdvantaColors.primaryGreen),
+              label: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(selected,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AdvantaColors.deepForest)),
+                const SizedBox(width: 5),
+                const Icon(Icons.keyboard_arrow_down_rounded,
+                    size: 16, color: AdvantaColors.mutedGrey)
+              ])));
+
+  Widget _searchBox() => Container(
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: AdvantaShadows.card(false)),
+      child: TextField(
+          controller: _searchController,
+          textInputAction: TextInputAction.search,
+          onChanged: (value) =>
+              setState(() => _search = value.trim().toLowerCase()),
+          decoration: InputDecoration(
+              hintText: 'Cari desa, lahan, petani, atau QA FI',
+              hintStyle: const TextStyle(fontSize: 13),
+              prefixIcon: const Icon(Icons.search_rounded,
+                  color: AdvantaColors.primaryGreen),
+              suffixIcon: _search.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Hapus pencarian',
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _search = '');
+                      },
+                      icon: const Icon(Icons.close_rounded, size: 19)),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none))));
+
+  Widget _loadingState(bool canLoadPlan) => Container(
+      padding: const EdgeInsets.symmetric(vertical: 38, horizontal: 24),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AdvantaColors.dividerGrey)),
+      child: Column(children: [
+        const SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(strokeWidth: 3)),
+        const SizedBox(height: 14),
+        Text(
+            canLoadPlan
+                ? 'Memuat target audit minggu terpilih…'
+                : 'Memuat daftar region…',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                fontWeight: FontWeight.w700, color: AdvantaColors.deepForest)),
+        const SizedBox(height: 4),
+        const Text('Menyiapkan data berdasarkan target DAP.',
+            style: TextStyle(fontSize: 12, color: AdvantaColors.mutedGrey))
+      ]));
+
+  Widget _errorState() => Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AdvantaColors.error.withValues(alpha: .2))),
+      child: Column(children: [
+        Container(
+            width: 48,
+            height: 48,
+            decoration: const BoxDecoration(
+                color: AdvantaColors.errorLight, shape: BoxShape.circle),
+            child: const Icon(Icons.cloud_off_rounded,
+                color: AdvantaColors.error)),
+        const SizedBox(height: 12),
+        const Text('Data planning belum dapat dimuat.',
+            style: TextStyle(
+                fontWeight: FontWeight.w800, color: AdvantaColors.deepForest)),
+        const SizedBox(height: 5),
+        const Text('Periksa koneksi atau pilih satu region, lalu coba lagi.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: AdvantaColors.mutedGrey)),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+            onPressed: _refresh,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Coba lagi'))
+      ]));
 
   WeeklyAuditTarget _target(AuditPlanField field) =>
       field.weekly.targets.firstWhere((t) => t.phase == _phase);
@@ -227,134 +390,374 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
     final doneHa = fields
         .where((f) => _target(f).done)
         .fold(0.0, (sum, f) => sum + f.weekly.areaHa);
+    final achievement = targetHa == 0 ? 0.0 : doneHa / targetHa * 100;
+    final pendingHa = (targetHa - doneHa).clamp(0.0, double.infinity);
     final mappedGroups =
         groups.where((g) => g.any((f) => !f.parsed.isDefault)).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-              color: AdvantaColors.deepForest,
-              borderRadius: BorderRadius.circular(16)),
+              gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AdvantaColors.deepForest,
+                    AdvantaColors.primaryGreen
+                  ]),
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                    color: AdvantaColors.deepForest.withValues(alpha: .2),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8))
+              ]),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(
-                '${auditStageLabels[_phase]} · ${groups.length} desa · ${fields.length} lahan',
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w700)),
+            Row(children: [
+              Expanded(
+                  child: Text(
+                      '${auditStageLabels[_phase]} · ${groups.length} desa · ${fields.length} lahan',
+                      style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800))),
+              Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(20)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.auto_graph_rounded,
+                        size: 14, color: AdvantaColors.goldLight),
+                    const SizedBox(width: 4),
+                    Text('${achievement.toStringAsFixed(1)}%',
+                        style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800))
+                  ]))
+            ]),
+            const SizedBox(height: 20),
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Expanded(
+                  child: _summaryMetric(
+                      'TARGET AREA', auditHa(targetHa), Colors.white)),
+              Container(
+                  width: 1,
+                  height: 42,
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  color: Colors.white.withValues(alpha: .18)),
+              Expanded(
+                  child: _summaryMetric(
+                      'ACHIEVED', auditHa(doneHa), AdvantaColors.goldLight))
+            ]),
+            const SizedBox(height: 18),
+            ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: LinearProgressIndicator(
+                    value: (achievement / 100).clamp(0.0, 1.0),
+                    minHeight: 8,
+                    backgroundColor: Colors.white.withValues(alpha: .14),
+                    color: AdvantaColors.goldLight)),
             const SizedBox(height: 8),
-            Text('Target ${auditHa(targetHa)}',
-                style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white)),
-            Text(
-                'Achievement ${auditHa(doneHa)} · ${targetHa == 0 ? '0' : (doneHa / targetHa * 100).toStringAsFixed(1)}%',
-                style: const TextStyle(color: Colors.white)),
+            Row(children: [
+              Text('${achievement.toStringAsFixed(1)}% selesai',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white.withValues(alpha: .8),
+                      fontWeight: FontWeight.w700)),
+              const Spacer(),
+              Text('${auditHa(pendingHa)} pending',
+                  style: TextStyle(
+                      fontSize: 11, color: Colors.white.withValues(alpha: .8)))
+            ])
           ])),
-      const SizedBox(height: 8),
-      Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-              onPressed: () => setState(() => _showMap = !_showMap),
-              icon: const Icon(Icons.map_outlined),
-              label: Text(
-                  _showMap ? 'Sembunyikan peta desa' : 'Tampilkan peta desa'))),
+      const SizedBox(height: 14),
+      Row(children: [
+        const Expanded(
+            child: Text('Daftar desa',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AdvantaColors.deepForest))),
+        TextButton.icon(
+            onPressed: () => setState(() => _showMap = !_showMap),
+            style: TextButton.styleFrom(
+                backgroundColor:
+                    _showMap ? AdvantaColors.paleGreen : Colors.white,
+                foregroundColor: AdvantaColors.primaryGreen,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+            icon: Icon(_showMap ? Icons.map_rounded : Icons.map_outlined,
+                size: 18),
+            label: Text(_showMap ? 'Tutup peta' : 'Lihat peta',
+                style:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)))
+      ]),
       if (_showMap && mappedGroups.isNotEmpty)
-        ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-                height: 260,
-                child: FlutterMap(
-                    key: ValueKey(
-                        '${_week.toIso8601String()}|$_region|$_phase|$_crop|$_status|$_search|${_flags.join(',')}'),
-                    options: MapOptions(
-                        initialCenter: _center(mappedGroups.first),
-                        initialZoom: 10,
-                        maxZoom: 18),
-                    children: [
-                      TileLayer(
-                          urlTemplate:
-                              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-                          userAgentPackageName: 'com.kroscek.app',
-                          maxNativeZoom: 18),
-                      MarkerClusterLayerWidget(
-                          options: MarkerClusterLayerOptions(
-                              maxClusterRadius: 40,
-                              size: const Size(44, 44),
-                              markers: mappedGroups
-                                  .map((group) => Marker(
-                                      point: _center(group),
-                                      width: 110,
-                                      height: 48,
-                                      child: GestureDetector(
-                                          onTap: () => _showVillage(group),
-                                          child: Container(
-                                              alignment: Alignment.center,
-                                              padding: const EdgeInsets.all(6),
-                                              decoration: BoxDecoration(
-                                                  color:
-                                                      AdvantaColors.deepForest,
-                                                  border: Border.all(
-                                                      color: Colors.white,
-                                                      width: 2),
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          12)),
-                                              child: Text(
-                                                  group.first.weekly.village,
-                                                  maxLines: 2,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 11,
-                                                      fontWeight:
-                                                          FontWeight.w700))))))
-                                  .toList(),
-                              builder: (_, markers) =>
-                                  CircleAvatar(backgroundColor: AdvantaColors.gold, child: Text('${markers.length}')))),
-                    ]))),
+        Container(
+            height: 270,
+            margin: const EdgeInsets.only(top: 8),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AdvantaColors.dividerGrey),
+                boxShadow: AdvantaShadows.card(false)),
+            child: Stack(children: [
+              FlutterMap(
+                  key: ValueKey(
+                      '${_week.toIso8601String()}|$_region|$_phase|$_crop|$_status|$_search|${_flags.join(',')}'),
+                  options: MapOptions(
+                      initialCenter: _center(mappedGroups.first),
+                      initialZoom: 10,
+                      maxZoom: 18),
+                  children: [
+                    TileLayer(
+                        urlTemplate:
+                            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                        userAgentPackageName: 'com.kroscek.app',
+                        maxNativeZoom: 18),
+                    MarkerClusterLayerWidget(
+                        options: MarkerClusterLayerOptions(
+                            maxClusterRadius: 40,
+                            size: const Size(44, 44),
+                            markers: mappedGroups
+                                .map((group) => Marker(
+                                    point: _center(group),
+                                    width: 110,
+                                    height: 48,
+                                    child: GestureDetector(
+                                        onTap: () => _showVillage(group),
+                                        child: Container(
+                                            alignment: Alignment.center,
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                                color: AdvantaColors.deepForest,
+                                                border: Border.all(
+                                                    color: Colors.white,
+                                                    width: 2),
+                                                borderRadius:
+                                                    BorderRadius.circular(12)),
+                                            child: Text(
+                                                group.first.weekly.village,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                    fontWeight:
+                                                        FontWeight.w700))))))
+                                .toList(),
+                            builder: (_, markers) => CircleAvatar(
+                                backgroundColor: AdvantaColors.gold,
+                                child: Text('${markers.length}')))),
+                  ]),
+              Positioned(
+                  top: 10,
+                  left: 10,
+                  child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                          color: AdvantaColors.deepForest.withValues(alpha: .9),
+                          borderRadius: BorderRadius.circular(20)),
+                      child: Text('${mappedGroups.length} desa terpetakan',
+                          style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700))))
+            ])),
       if (_showMap && fields.any((f) => f.parsed.isDefault))
         Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-                '${fields.where((f) => f.parsed.isDefault).length} lahan tanpa koordinat valid tetap masuk target.',
-                style: const TextStyle(fontSize: 11))),
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(children: [
+              const Icon(Icons.info_outline_rounded,
+                  size: 14, color: AdvantaColors.mutedGrey),
+              const SizedBox(width: 6),
+              Expanded(
+                  child: Text(
+                      '${fields.where((f) => f.parsed.isDefault).length} lahan tanpa koordinat valid tetap masuk target.',
+                      style: const TextStyle(
+                          fontSize: 11, color: AdvantaColors.mutedGrey)))
+            ])),
       if (fields.isEmpty)
-        const Padding(
-            padding: EdgeInsets.all(24),
-            child: Text(
-                'Tidak ada target audit untuk fase, minggu, dan filter ini.',
-                textAlign: TextAlign.center)),
+        Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.symmetric(vertical: 34, horizontal: 20),
+            decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AdvantaColors.dividerGrey)),
+            child: const Column(children: [
+              Icon(Icons.inbox_outlined,
+                  size: 38, color: AdvantaColors.mutedGrey),
+              SizedBox(height: 10),
+              Text('Belum ada target audit',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: AdvantaColors.deepForest)),
+              SizedBox(height: 3),
+              Text('Tidak ada target untuk fase, minggu, dan filter ini.',
+                  textAlign: TextAlign.center,
+                  style:
+                      TextStyle(fontSize: 12, color: AdvantaColors.mutedGrey))
+            ])),
       const SizedBox(height: 12),
-      ...groups.map((group) => Card(
-          color: Colors.white,
-          margin: const EdgeInsets.only(bottom: 10),
-          child: ExpansionTile(
-              key: ValueKey(group.first.weekly.villageKey),
-              initiallyExpanded:
-                  _expandedVillages.contains(group.first.weekly.villageKey),
-              onExpansionChanged: (expanded) => setState(() {
-                    final key = group.first.weekly.villageKey;
-                    expanded
-                        ? _expandedVillages.add(key)
-                        : _expandedVillages.remove(key);
-                  }),
-              title: Text(group.first.weekly.village,
-                  style: const TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: Text(
-                  '${group.first.weekly.raw['sub_district_kec'] ?? ''} · ${group.first.weekly.raw['district_kab'] ?? ''}\n'
-                  '${group.length} lahan · ${auditHa(group.fold(0.0, (sum, f) => sum + f.weekly.areaHa))}'),
-              children:
-                  _expandedVillages.contains(group.first.weekly.villageKey)
-                      ? group.map(_fieldTile).toList()
-                      : const []))),
-      const Text(
-          'Target: jendela On Going DAP beririsan dengan minggu terpilih. Audit fase yang selesai sebelum minggu ini tidak ditargetkan ulang.',
-          style: TextStyle(fontSize: 11, color: AdvantaColors.mutedGrey)),
+      ...groups.map(_villageCard),
+      Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+              color: AdvantaColors.paleGreen.withValues(alpha: .7),
+              borderRadius: BorderRadius.circular(14)),
+          child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.lightbulb_outline_rounded,
+                    size: 16, color: AdvantaColors.primaryGreen),
+                SizedBox(width: 8),
+                Expanded(
+                    child: Text(
+                        'Target mengikuti jendela On Going DAP pada minggu terpilih. Audit yang selesai sebelumnya tidak ditargetkan ulang.',
+                        style: TextStyle(
+                            fontSize: 11,
+                            height: 1.4,
+                            color: AdvantaColors.primaryGreen)))
+              ])),
     ]);
   }
+
+  Widget _summaryMetric(String label, String value, Color valueColor) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label,
+            style: TextStyle(
+                fontSize: 10,
+                letterSpacing: .8,
+                fontWeight: FontWeight.w800,
+                color: Colors.white.withValues(alpha: .65))),
+        const SizedBox(height: 3),
+        Text(value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: 22,
+                height: 1.1,
+                fontWeight: FontWeight.w900,
+                color: valueColor))
+      ]);
+
+  Widget _villageCard(List<AuditPlanField> group) {
+    final first = group.first.weekly;
+    final key = first.villageKey;
+    final expanded = _expandedVillages.contains(key);
+    final totalArea = group.fold(0.0, (sum, f) => sum + f.weekly.areaHa);
+    final done = group.where((field) => _target(field).done).length;
+    final overdue = group.where((field) => _target(field).overdue).length;
+    final letter = first.village.isEmpty ? '?' : first.village[0].toUpperCase();
+    return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+                color: expanded
+                    ? AdvantaColors.primaryGreen.withValues(alpha: .28)
+                    : AdvantaColors.dividerGrey),
+            boxShadow: AdvantaShadows.card(false)),
+        clipBehavior: Clip.antiAlias,
+        child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+                key: ValueKey(key),
+                initiallyExpanded: expanded,
+                tilePadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                onExpansionChanged: (isExpanded) => setState(() {
+                      isExpanded
+                          ? _expandedVillages.add(key)
+                          : _expandedVillages.remove(key);
+                    }),
+                leading: Container(
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [
+                          AdvantaColors.primaryGreen,
+                          AdvantaColors.midGreen
+                        ]),
+                        borderRadius: BorderRadius.circular(13)),
+                    child: Text(letter,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900))),
+                title: Text(first.village,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: AdvantaColors.deepForest)),
+                subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                              '${first.raw['sub_district_kec'] ?? ''} · ${first.raw['district_kab'] ?? ''}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AdvantaColors.mutedGrey)),
+                          const SizedBox(height: 7),
+                          Wrap(spacing: 6, runSpacing: 5, children: [
+                            _microBadge(
+                                Icons.grid_view_rounded,
+                                '${group.length} lahan',
+                                AdvantaColors.midGreen),
+                            _microBadge(Icons.landscape_outlined,
+                                auditHa(totalArea), AdvantaColors.mutedGrey),
+                            if (done > 0)
+                              _microBadge(Icons.check_circle_outline_rounded,
+                                  '$done done', AdvantaColors.success),
+                            if (overdue > 0)
+                              _microBadge(Icons.warning_amber_rounded,
+                                  '$overdue overdue', AdvantaColors.error),
+                          ])
+                        ])),
+                trailing: AnimatedRotation(
+                    turns: expanded ? .5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.keyboard_arrow_down_rounded,
+                        color: AdvantaColors.primaryGreen)),
+                children: expanded
+                    ? [
+                        const Divider(height: 12),
+                        ...group.map(_fieldTile),
+                      ]
+                    : const [])));
+  }
+
+  Widget _microBadge(IconData icon, String label, Color color) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+          color: color.withValues(alpha: .09),
+          borderRadius: BorderRadius.circular(20)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(label,
+            style: TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w700, color: color))
+      ]));
 
   LatLng _center(List<AuditPlanField> group) {
     final valid = group.where((f) => !f.parsed.isDefault).toList();
@@ -366,41 +769,133 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
   Widget _fieldTile(AuditPlanField field) {
     final target = _target(field);
     final f = field.weekly;
-    return ListTile(
-        isThreeLine: true,
-        leading: Icon(
-            target.done
-                ? Icons.check_circle
-                : target.overdue
-                    ? Icons.warning_amber
-                    : Icons.schedule,
-            color: target.done
-                ? AdvantaColors.midGreen
-                : target.overdue
-                    ? AdvantaColors.error
-                    : AdvantaColors.gold),
-        title: Text('${f.raw['field_number']} · ${f.raw['farmer_name'] ?? ''}',
-            maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-            '${auditHa(f.areaHa)} · ${f.flag} · ${target.done ? 'Done' : 'Pending'}\n'
-            '${DateFormat('d MMM', 'id_ID').format(target.plannedDate)} – ${DateFormat('d MMM', 'id_ID').format(target.deadline)} · ${f.raw['qa_fi'] ?? ''}'),
-        onTap: () => FieldDetailBottomSheet.show(context, f.raw,
-            dapReferenceDate: target.plannedDate,
-            onInspectDone: (_) => _refresh()));
+    final statusColor = target.done
+        ? AdvantaColors.success
+        : target.overdue
+            ? AdvantaColors.error
+            : AdvantaColors.gold;
+    final statusIcon = target.done
+        ? Icons.check_rounded
+        : target.overdue
+            ? Icons.priority_high_rounded
+            : Icons.schedule_rounded;
+    final statusLabel = target.done
+        ? 'Done'
+        : target.overdue
+            ? 'Overdue'
+            : 'Pending';
+    return Container(
+        margin: const EdgeInsets.only(top: 8),
+        decoration: BoxDecoration(
+            color: AdvantaColors.softGrey.withValues(alpha: .75),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: AdvantaColors.dividerGrey)),
+        child: InkWell(
+            borderRadius: BorderRadius.circular(15),
+            onTap: () => FieldDetailBottomSheet.show(context, f.raw,
+                dapReferenceDate: target.plannedDate,
+                onInspectDone: (_) => _refresh()),
+            child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: .12),
+                              borderRadius: BorderRadius.circular(12)),
+                          child:
+                              Icon(statusIcon, size: 20, color: statusColor)),
+                      const SizedBox(width: 11),
+                      Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                            Text(
+                                '${f.raw['field_number']} · ${f.raw['farmer_name'] ?? ''}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    height: 1.25,
+                                    fontWeight: FontWeight.w800,
+                                    color: AdvantaColors.deepForest)),
+                            const SizedBox(height: 7),
+                            Wrap(spacing: 6, runSpacing: 5, children: [
+                              _microBadge(Icons.landscape_outlined,
+                                  auditHa(f.areaHa), AdvantaColors.mutedGrey),
+                              _microBadge(
+                                  Icons.flag_outlined,
+                                  f.flag,
+                                  f.flag == 'GF'
+                                      ? AdvantaColors.success
+                                      : f.flag == 'Belum ada'
+                                          ? AdvantaColors.mutedGrey
+                                          : AdvantaColors.gold),
+                              _microBadge(statusIcon, statusLabel, statusColor),
+                            ]),
+                            const SizedBox(height: 8),
+                            Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.calendar_today_outlined,
+                                      size: 13, color: AdvantaColors.mutedGrey),
+                                  const SizedBox(width: 5),
+                                  Expanded(
+                                      child: Text(
+                                          '${DateFormat('d MMM', 'id_ID').format(target.plannedDate)} – ${DateFormat('d MMM', 'id_ID').format(target.deadline)} · ${f.raw['qa_fi'] ?? ''}',
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                              fontSize: 11,
+                                              height: 1.35,
+                                              color: AdvantaColors.mutedGrey)))
+                                ])
+                          ])),
+                      const Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Icon(Icons.chevron_right_rounded,
+                              size: 20, color: AdvantaColors.mutedGrey))
+                    ]))));
   }
 
   void _showVillage(List<AuditPlanField> group) => showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => SizedBox(
-          height: MediaQuery.sizeOf(context).height * .65,
-          child: Column(children: [
-            Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(group.first.weekly.village,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w800))),
-            Expanded(child: ListView(children: group.map(_fieldTile).toList()))
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+          height: MediaQuery.sizeOf(context).height * .72,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          decoration: const BoxDecoration(
+              color: AdvantaColors.softGrey,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(
+                child: Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                        color: AdvantaColors.dividerGrey,
+                        borderRadius: BorderRadius.circular(10)))),
+            const SizedBox(height: 16),
+            Text(group.first.weekly.village,
+                style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                    color: AdvantaColors.deepForest)),
+            const SizedBox(height: 3),
+            Text(
+                '${group.length} lahan · ${auditHa(group.fold(0.0, (sum, field) => sum + field.weekly.areaHa))}',
+                style: const TextStyle(
+                    fontSize: 12, color: AdvantaColors.mutedGrey)),
+            const SizedBox(height: 8),
+            Expanded(
+                child: ListView(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    children: group.map(_fieldTile).toList()))
           ])));
 }

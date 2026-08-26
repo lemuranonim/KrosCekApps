@@ -274,6 +274,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Data planning belum dapat dimuat.'), findsOneWidget);
     expect(attempts, 1);
+    await tester.ensureVisible(find.text('Coba lagi'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Coba lagi'));
     await tester.pumpAndSettle();
     expect(attempts, 2);
