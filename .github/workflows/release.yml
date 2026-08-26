@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write  # ← tambahkan ini
 
+env:
+  # Keep dependency resolution and Shorebird builds on the tested Flutter SDK.
+  FLUTTER_VERSION: '3.35.7'
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
@@ -31,7 +35,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.x'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
 
       - name: Create .env file
@@ -62,7 +66,7 @@ jobs:
           cache: true
 
       - name: Build APK release via Shorebird
-        run: shorebird release android --artifact apk
+        run: shorebird release android --artifact apk --flutter-version="$FLUTTER_VERSION"
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
 
