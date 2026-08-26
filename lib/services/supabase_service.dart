@@ -1,8 +1,41 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  final SupabaseClient _supabase;
+  final Duration _auditPlanningTimeout;
+
+  SupabaseService({
+    SupabaseClient? client,
+    Duration auditPlanningTimeout = const Duration(seconds: 45),
+  })  : _supabase = client ?? Supabase.instance.client,
+        _auditPlanningTimeout = auditPlanningTimeout;
+
+  // Eligibility only: no geometry, crop monitoring or flagging payloads.
+  // Keep revised planting dates and PSP passes so weekly targets stay exact.
+  static const String _auditPlanningIndexSelect = '''
+    field_number,
+    hybrid,
+    planting_date_pdn,
+    region,
+    district_kab,
+    sub_district_kec,
+    qa_fi,
+    qa_spv,
+    audit_vegetative(
+      rev_planting_date,
+      date_of_audit,
+      audit_date_user,
+      date_of_inspeksi_roguing_1,
+      date_of_inspeksi_roguing_2,
+      date_of_inspeksi_roguing_3,
+      date_of_inspeksi_roguing_4
+    ),
+    audit_pre_harvest(audit_date),
+    audit_harvest(date_of_audit)
+  ''';
 
   static const String _masterFieldMapSelect = '''
     field_number,
@@ -540,6 +573,93 @@ class SupabaseService {
     } catch (e) {
       throw Exception('Gagal mengambil data coverage Supabase: $e');
     }
+  }
+
+  /// A small, reusable index for weekly planning, scoped before downloading.
+  /// Full coverage rows are fetched separately, only for eligible field numbers.
+  Future<List<Map<String, dynamic>>> getAuditPlanningIndex({
+    String? qaFi,
+    String? qaSpv,
+    String? region,
+  }) async {
+    final timer = Stopwatch()..start();
+    final rows = <Map<String, dynamic>>[];
+    const pageSize = 1000;
+    for (var from = 0;; from += pageSize) {
+      final remaining = _auditPlanningTimeRemaining(timer);
+      final page = await _auditPlanningQuery(
+        _auditPlanningIndexSelect,
+        qaFi: qaFi,
+        qaSpv: qaSpv,
+        region: region,
+      )
+          .order('field_number', ascending: true)
+          .range(from, from + pageSize - 1)
+          .timeout(remaining);
+      rows.addAll(page);
+      if (page.length < pageSize) break;
+    }
+    return rows;
+  }
+
+  Future<List<Map<String, dynamic>>> getAuditPlanningFields(
+    List<String> fieldNumbers, {
+    String? qaFi,
+    String? qaSpv,
+    String? region,
+  }) async {
+    final numbers = fieldNumbers
+        .map((number) => number.trim())
+        .where((number) => number.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    final timer = Stopwatch()..start();
+    final rows = <Map<String, dynamic>>[];
+    const chunkSize = 100;
+    for (var i = 0; i < numbers.length; i += chunkSize) {
+      final end = (i + chunkSize).clamp(0, numbers.length);
+      final remaining = _auditPlanningTimeRemaining(timer);
+      final page = await _auditPlanningQuery(
+        _masterFieldCoverageSelect,
+        qaFi: qaFi,
+        qaSpv: qaSpv,
+        region: region,
+      )
+          .inFilter('field_number', numbers.sublist(i, end))
+          .order('field_number', ascending: true)
+          .timeout(remaining);
+      rows.addAll(page);
+    }
+    return rows;
+  }
+
+  PostgrestFilterBuilder<List<Map<String, dynamic>>> _auditPlanningQuery(
+    String columns, {
+    String? qaFi,
+    String? qaSpv,
+    String? region,
+  }) {
+    var query =
+        _supabase.from('master_fields').select(columns).eq('is_active', true);
+    if (qaFi != null && qaFi.trim().isNotEmpty) {
+      query = query.ilike('qa_fi', '%${qaFi.trim()}%');
+    }
+    if (qaSpv != null && qaSpv.trim().isNotEmpty) {
+      query = query.ilike('qa_spv', '%${qaSpv.trim()}%');
+    }
+    if (region != null && region.trim().isNotEmpty) {
+      query = query.eq('region', region.trim());
+    }
+    return query;
+  }
+
+  Duration _auditPlanningTimeRemaining(Stopwatch timer) {
+    final remaining = _auditPlanningTimeout - timer.elapsed;
+    if (remaining <= Duration.zero) {
+      throw TimeoutException(
+          'Pengambilan data planning terlalu lama.', _auditPlanningTimeout);
+    }
+    return remaining;
   }
 
   /// Mengambil data master fields beserta semua data audit terkait.

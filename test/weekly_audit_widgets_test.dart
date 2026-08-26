@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -186,9 +188,9 @@ void main() {
         .map((f) => AuditPlanField(
             ParsedFieldData(
                 raw: f,
-                lat: 0,
-                lng: 0,
-                isDefault: true,
+                lat: -7.6,
+                lng: 112.1,
+                isDefault: false,
                 isCorrected: false,
                 isFromPolygon: false,
                 dap: 20),
@@ -196,23 +198,87 @@ void main() {
         .toList();
     await tester.pumpWidget(ProviderScope(
         overrides: [
-          auditPlanningProvider((weekStart: fixtures.week, region: null))
+          auditPlanningProvider((weekStart: fixtures.week, region: 'East'))
               .overrideWith((ref) async => fields),
-          activeMasterFieldRegionsProvider(const MasterFieldMapScope.all())
-              .overrideWith((ref) async => ['East']),
+          auditPlanningRegionsProvider.overrideWith((ref) async => ['East']),
         ],
         child: MaterialApp(
             home: AuditPlanningScreen(initialWeek: fixtures.week))));
     await tester.pumpAndSettle();
     expect(find.text('Vegetative · 1 desa · 2 lahan'), findsOneWidget);
     expect(find.textContaining('Codet'), findsNothing);
+    expect(find.byType(FlutterMap), findsNothing);
+    expect(find.textContaining('V1 ·'), findsNothing);
+    await tester.scrollUntilVisible(find.text('Sumber'), 180,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sumber'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('V1 ·'), findsOneWidget);
     expect(tester.takeException(), isNull);
+    await tester.scrollUntilVisible(
+        find.widgetWithText(ChoiceChip, 'PreHarvest'), -180,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(ChoiceChip, 'PreHarvest'));
     await tester.pumpAndSettle();
     expect(find.text('PreHarvest · 1 desa · 1 lahan'), findsOneWidget);
     await tester.tap(find.widgetWithText(ChoiceChip, 'Harvest'));
     await tester.pumpAndSettle();
     expect(find.text('Harvest · 1 desa · 1 lahan'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('planning waits for region scope and All Region is opt-in',
+      (tester) async {
+    final ready = Completer<List<String>>();
+    final requestedRegions = <String?>[];
+    await tester.pumpWidget(ProviderScope(
+        overrides: [
+          auditPlanningRegionsProvider.overrideWith((ref) => ready.future),
+          auditPlanningProvider.overrideWith((ref, params) async {
+            requestedRegions.add(params.region);
+            return [];
+          }),
+        ],
+        child: MaterialApp(
+            home: AuditPlanningScreen(initialWeek: fixtures.week))));
+    await tester.pump();
+    expect(requestedRegions, isEmpty);
+    expect(find.text('Memuat daftar region…'), findsOneWidget);
+    ready.complete(['East', 'West']);
+    await tester.pumpAndSettle();
+    expect(requestedRegions, ['East']);
+    await tester.tap(find.widgetWithText(Chip, 'East'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('All Region').last);
+    await tester.pumpAndSettle();
+    expect(requestedRegions, ['East', null]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('planning shows fetch failures and retry can recover',
+      (tester) async {
+    var attempts = 0;
+    await tester.pumpWidget(ProviderScope(
+        overrides: [
+          auditPlanningRegionsProvider.overrideWith((ref) async => ['East']),
+          auditPlanningProvider.overrideWith((ref, params) async {
+            attempts++;
+            if (attempts == 1) throw StateError('Network unavailable');
+            return [];
+          }),
+        ],
+        child: MaterialApp(
+            home: AuditPlanningScreen(initialWeek: fixtures.week))));
+    await tester.pumpAndSettle();
+    expect(find.text('Data planning belum dapat dimuat.'), findsOneWidget);
+    expect(attempts, 1);
+    await tester.tap(find.text('Coba lagi'));
+    await tester.pumpAndSettle();
+    expect(attempts, 2);
+    expect(find.text('Data planning belum dapat dimuat.'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../providers/audit_plan_provider.dart';
-import '../../providers/master_fields_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/dap_helper.dart';
 import '../../utils/weekly_audit.dart';
@@ -25,11 +24,13 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
   late DateTime _week;
   String _phase = 'vegetative';
   String? _region;
+  bool _showAllRegions = false;
   String _crop = 'All Crop';
   String _status = 'Semua Status';
   String _search = '';
   Set<String> _flags = {...defaultAuditFlags};
-  bool _showMap = true;
+  bool _showMap = false;
+  final Set<String> _expandedVillages = {};
   final _searchController = TextEditingController();
 
   @override
@@ -46,23 +47,44 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
   }
 
   Future<void> _refresh() async {
-    final scope = MasterFieldMapScope(region: _region);
-    ref.invalidate(masterFieldCoverageScopedProvider(scope));
-    await ref.read(
-        auditPlanningProvider((weekStart: _week, region: _region)).future);
+    try {
+      if (!_showAllRegions && _region == null) {
+        ref.invalidate(auditPlanningRegionsProvider);
+        await ref.read(auditPlanningRegionsProvider.future);
+      } else {
+        final params = (weekStart: _week, region: _region);
+        ref.invalidate(auditPlanningIndexProvider(_region));
+        ref.invalidate(auditPlanningProvider(params));
+        await ref.read(auditPlanningProvider(params).future);
+      }
+    } catch (_) {
+      // The provider renders the error and retry button; do not leave an
+      // unhandled future from the refresh icon or pull-to-refresh gesture.
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final regions = (ref
-                .watch(activeMasterFieldRegionsProvider(
-                    const MasterFieldMapScope.all()))
-                .value ??
-            <String>[])
-        .where((r) => r.trim().toLowerCase() != 'region tester')
-        .toList();
-    final plan =
-        ref.watch(auditPlanningProvider((weekStart: _week, region: _region)));
+    final regionsAsync = ref.watch(auditPlanningRegionsProvider);
+    final regions = regionsAsync.value ?? const <String>[];
+    final needsDefaultRegion =
+        !_showAllRegions && _region == null && regions.isNotEmpty;
+    if (needsDefaultRegion) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _showAllRegions || _region != null) return;
+        setState(() => _region = regions.first);
+      });
+    }
+    // Do not start an All Region fetch while the region list is still loading.
+    final canLoadPlan = _showAllRegions || _region != null;
+    final AsyncValue<List<AuditPlanField>> plan = canLoadPlan
+        ? ref.watch(auditPlanningProvider((weekStart: _week, region: _region)))
+        : regionsAsync.when(
+            loading: () => const AsyncLoading(),
+            error: (error, stack) => AsyncError(error, stack),
+            data: (_) => needsDefaultRegion
+                ? const AsyncLoading()
+                : const AsyncData([]));
     return Scaffold(
       backgroundColor: AdvantaColors.softGrey,
       appBar: AppBar(
@@ -90,7 +112,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
             Wrap(
                 spacing: 8,
                 runSpacing: 6,
-                children: ['vegetative', 'pre_harvest', 'harvest']
+                children: auditPlanningPhases
                     .map((phase) => ChoiceChip(
                         label: Text(auditStageLabels[phase]!),
                         selected: _phase == phase,
@@ -104,11 +126,12 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  _filter(
-                      _region ?? 'All Region',
-                      ['All Region', ...regions],
-                      (value) =>
-                          _region = value == 'All Region' ? null : value),
+                  _filter(_showAllRegions ? 'All Region' : _region ?? 'Region',
+                      ['All Region', ...regions], (value) {
+                    _showAllRegions = value == 'All Region';
+                    _region = _showAllRegions ? null : value;
+                    _expandedVillages.clear();
+                  }),
                   _filter(_crop, const ['All Crop', 'FC', 'SC', 'PSP'],
                       (value) => _crop = value),
                   _filter(_status, const ['Semua Status', 'Pending', 'Done'],
@@ -132,12 +155,24 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                         borderSide: BorderSide.none))),
             const SizedBox(height: 16),
             plan.when(
-                loading: () => const Center(
+                loading: () => Center(
                     child: Padding(
-                        padding: EdgeInsets.all(40),
-                        child: CircularProgressIndicator())),
+                        padding: const EdgeInsets.all(32),
+                        child: Column(children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 12),
+                          Text(
+                              canLoadPlan
+                                  ? 'Memuat target audit minggu terpilih…'
+                                  : 'Memuat daftar region…',
+                              textAlign: TextAlign.center),
+                        ]))),
                 error: (_, __) => Column(children: [
                       const Text('Data planning belum dapat dimuat.'),
+                      const SizedBox(height: 8),
+                      const Text(
+                          'Periksa koneksi atau pilih satu region, lalu coba lagi.',
+                          textAlign: TextAlign.center),
                       TextButton(
                           onPressed: _refresh, child: const Text('Coba lagi'))
                     ]),
@@ -297,12 +332,24 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
           color: Colors.white,
           margin: const EdgeInsets.only(bottom: 10),
           child: ExpansionTile(
+              key: ValueKey(group.first.weekly.villageKey),
+              initiallyExpanded:
+                  _expandedVillages.contains(group.first.weekly.villageKey),
+              onExpansionChanged: (expanded) => setState(() {
+                    final key = group.first.weekly.villageKey;
+                    expanded
+                        ? _expandedVillages.add(key)
+                        : _expandedVillages.remove(key);
+                  }),
               title: Text(group.first.weekly.village,
                   style: const TextStyle(fontWeight: FontWeight.w800)),
               subtitle: Text(
                   '${group.first.weekly.raw['sub_district_kec'] ?? ''} · ${group.first.weekly.raw['district_kab'] ?? ''}\n'
                   '${group.length} lahan · ${auditHa(group.fold(0.0, (sum, f) => sum + f.weekly.areaHa))}'),
-              children: group.map(_fieldTile).toList()))),
+              children:
+                  _expandedVillages.contains(group.first.weekly.villageKey)
+                      ? group.map(_fieldTile).toList()
+                      : const []))),
       const Text(
           'Target: jendela On Going DAP beririsan dengan minggu terpilih. Audit fase yang selesai sebelum minggu ini tidak ditargetkan ulang.',
           style: TextStyle(fontSize: 11, color: AdvantaColors.mutedGrey)),
