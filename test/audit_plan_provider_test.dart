@@ -110,6 +110,11 @@ void main() {
       expect(request.url.queryParameters['region'], 'eq.East');
       expect(request.url.queryParameters['qa_spv'], 'ilike.%SPV 1%');
       expect(request.url.queryParameters['is_active'], 'eq.true');
+      // This column is referenced by an old SC form but is not present in the
+      // production audit_generative schema. Including it rejects the complete
+      // embedded select with PostgREST 42703.
+      expect(request.url.queryParameters['select'],
+          isNot(contains('roguing_status_3')));
     }
   });
 

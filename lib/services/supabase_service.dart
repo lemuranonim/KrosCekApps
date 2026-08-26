@@ -214,7 +214,6 @@ class SupabaseService {
       date_of_audit_3,
       week_of_audit_3,
       qa_fi_3,
-      roguing_status_3,
       lsv_status_3,
       crop_uniformity_3,
       crop_health_3,
