@@ -43,6 +43,7 @@ import '../../utils/pld_visibility_helper.dart';
 import '../../utils/qa_name_helper.dart';
 import '../../widgets/audit_status_widgets.dart';
 import '../../widgets/phase_asset_icon.dart';
+import '../../models/audit_planning_filters.dart';
 
 // ─── Work mode enum ──────────────────────────────────────
 enum _WorkMode { single, mass }
@@ -1309,6 +1310,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 canSeeCoverage,
                 canUseMassInspect,
                 canSeeDetasseling,
+                _showAllSeasons
+                    ? null
+                    : (_selectedSeason ??
+                        (seasonOptions.isEmpty ? null : seasonOptions.first)),
               ),
             ),
 
@@ -1717,6 +1722,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     bool canSeeCoverage,
     bool canUseMassInspect,
     bool canSeeDetasseling,
+    String? planningSeason,
   ) {
     return Container(
       decoration: BoxDecoration(
@@ -1755,9 +1761,43 @@ class _QAScreenState extends ConsumerState<QAScreen>
               isWarning: true,
               onTap: () {
                 final week = _primarySelectedWeek?['startDate'];
-                context.push(week is DateTime
-                    ? '/audit-planning?weekStart=${Uri.encodeComponent(week.toIso8601String())}'
-                    : '/audit-planning');
+                final phase = switch (_activePhaseView) {
+                  ActivePhaseView.vegetative => 'vegetative',
+                  ActivePhaseView.generative => 'generative',
+                  ActivePhaseView.preHarvest => 'pre_harvest',
+                  ActivePhaseView.harvest => 'harvest',
+                  ActivePhaseView.auto => null,
+                };
+                final status = switch (_auditFilter) {
+                  _AuditFilter.sampun => 'Done',
+                  _AuditFilter.partial => 'Progress',
+                  _AuditFilter.dereng => 'Pending',
+                  _AuditFilter.all => null,
+                };
+                final initialFilters = AuditPlanningInitialFilters(
+                  region: _showAllRegions ? null : _selectedRegion,
+                  district: _showAllRegions ? null : _selectedDistrict,
+                  season: _showAllSeasons ? null : planningSeason,
+                  phase: phase,
+                  status: status,
+                  allRegions: _showAllRegions || _selectedRegion == null,
+                  allSeasons: _showAllSeasons,
+                  showPld: _showPldDiscardFields,
+                  textFilters: _activeFilters
+                      .where((filter) => filter.value.trim().isNotEmpty)
+                      .map((filter) => AuditPlanningTextFilter(
+                            fieldKey: filter.param.fieldKey,
+                            label: filter.param.label,
+                            value: filter.value.trim(),
+                          ))
+                      .toList(growable: false),
+                );
+                context.push(
+                  week is DateTime
+                      ? '/audit-planning?weekStart=${Uri.encodeComponent(week.toIso8601String())}'
+                      : '/audit-planning',
+                  extra: initialFilters,
+                );
               },
             ),
           _CompactSegmentButton(

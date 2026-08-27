@@ -17,6 +17,7 @@ class SupabaseService {
   // Keep revised planting dates and PSP passes so weekly targets stay exact.
   static const String _auditPlanningIndexSelect = '''
     field_number,
+    season,
     hybrid,
     planting_date_pdn,
     region,
@@ -580,6 +581,8 @@ class SupabaseService {
     String? qaFi,
     String? qaSpv,
     String? region,
+    String? district,
+    String? season,
   }) async {
     final timer = Stopwatch()..start();
     final rows = <Map<String, dynamic>>[];
@@ -591,6 +594,8 @@ class SupabaseService {
         qaFi: qaFi,
         qaSpv: qaSpv,
         region: region,
+        district: district,
+        season: season,
       )
           .order('field_number', ascending: true)
           .range(from, from + pageSize - 1)
@@ -606,6 +611,8 @@ class SupabaseService {
     String? qaFi,
     String? qaSpv,
     String? region,
+    String? district,
+    String? season,
   }) async {
     final numbers = fieldNumbers
         .map((number) => number.trim())
@@ -623,6 +630,8 @@ class SupabaseService {
         qaFi: qaFi,
         qaSpv: qaSpv,
         region: region,
+        district: district,
+        season: season,
       )
           .inFilter('field_number', numbers.sublist(i, end))
           .order('field_number', ascending: true)
@@ -637,6 +646,8 @@ class SupabaseService {
     String? qaFi,
     String? qaSpv,
     String? region,
+    String? district,
+    String? season,
   }) {
     var query =
         _supabase.from('master_fields').select(columns).eq('is_active', true);
@@ -648,6 +659,12 @@ class SupabaseService {
     }
     if (region != null && region.trim().isNotEmpty) {
       query = query.eq('region', region.trim());
+    }
+    if (district != null && district.trim().isNotEmpty) {
+      query = query.eq('district_kab', district.trim());
+    }
+    if (season != null && season.trim().isNotEmpty) {
+      query = query.eq('season', season.trim());
     }
     return query;
   }

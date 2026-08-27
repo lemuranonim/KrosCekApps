@@ -2526,22 +2526,23 @@ class _DapCalculationBox extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // ── BAGIAN INI YANG BERUBAH ──
-              _buildNode(
-                  Icons.eco_rounded,
-                  isRevisied
-                      ? 'Tgl Tanam (Rev)'
-                      : 'Tgl Tanam', // Ganti label jika direvisi
-                  dateStr,
-                  themeColor: isRevisied
-                      ? AdvantaColors.gold
-                      : (isDark ? Colors.white : Colors.black87)),
-              _buildMath('+ $dap Hari', badgeColor),
-              _buildNode(
-                  Icons.event_available_rounded, referenceLabel, referenceStr,
-                  themeColor: isDark ? Colors.white : Colors.black87),
+              Expanded(
+                child: _buildNode(Icons.eco_rounded,
+                    isRevisied ? 'Tgl Tanam (Rev)' : 'Tgl Tanam', dateStr,
+                    themeColor: isRevisied
+                        ? AdvantaColors.gold
+                        : (isDark ? Colors.white : Colors.black87)),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: _buildMath('+ $dap Hari', badgeColor),
+              ),
+              Expanded(
+                child: _buildNode(
+                    Icons.event_available_rounded, referenceLabel, referenceStr,
+                    themeColor: isDark ? Colors.white : Colors.black87),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -2572,13 +2573,20 @@ class _DapCalculationBox extends StatelessWidget {
   Widget _buildNode(IconData icon, String title, String value,
       {required Color themeColor}) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Icon(icon, size: 18, color: AdvantaColors.mutedGrey),
         const SizedBox(height: 4),
         Text(title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: AdvantaText.caption
                 .copyWith(color: AdvantaColors.mutedGrey, fontSize: 10)),
         Text(value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style:
                 AdvantaText.bodyBold.copyWith(fontSize: 12, color: themeColor)),
       ],

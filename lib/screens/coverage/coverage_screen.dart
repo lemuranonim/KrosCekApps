@@ -668,13 +668,10 @@ class _CoverageScreenState extends ConsumerState<CoverageScreen>
   @override
   Widget build(BuildContext context) {
     if (!_sessionLoaded) {
-      return const Scaffold(
-        backgroundColor: AdvantaColors.softGrey,
-        body: AdvantaLoadingState(
-          title: 'Memuat coverage',
-          subtitle: 'Membaca sesi pengguna',
-          icon: Icons.verified_user_rounded,
-        ),
+      return const _SkeletonLoader(
+        title: 'Membuka Coverage',
+        subtitle: 'Membaca sesi dan hak akses pengguna',
+        icon: Icons.verified_user_rounded,
       );
     }
     return Scaffold(
@@ -4759,7 +4756,15 @@ class _CoverageErrorWidget extends StatelessWidget {
 }
 
 class _SkeletonLoader extends StatefulWidget {
-  const _SkeletonLoader();
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  const _SkeletonLoader({
+    this.title = 'Menyiapkan dashboard',
+    this.subtitle = 'Menghitung target, achievement, dan coverage area',
+    this.icon = Icons.analytics_rounded,
+  });
   @override
   State<_SkeletonLoader> createState() => _SkeletonLoaderState();
 }
@@ -4785,50 +4790,151 @@ class _SkeletonLoaderState extends State<_SkeletonLoader>
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-      animation: _anim,
-      builder: (_, __) => CustomScrollView(slivers: [
-            SliverToBoxAdapter(child: _shimmerBox(height: 80)),
-            SliverToBoxAdapter(child: _shimmerBox(height: 48)),
-            SliverToBoxAdapter(
-                child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                        children: List.generate(
-                            4,
-                            (_) => Expanded(
-                                child: Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: _shimmerBox(height: 80))))))),
-            SliverToBoxAdapter(child: _shimmerBox(height: 120)),
-            SliverToBoxAdapter(
-                child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _shimmerBox(height: 220),
-                          _shimmerBox(height: 280),
-                        ])))
-          ]));
-  Widget _shimmerBox({required double height}) => Container(
-      height: height,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
+  Widget build(BuildContext context) => Scaffold(
+      backgroundColor: AdvantaColors.softGrey,
+      body: AnimatedBuilder(
+          animation: _anim,
+          builder: (_, __) => CustomScrollView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(child: _loadingHeader(context)),
+                    SliverToBoxAdapter(
+                        child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+                            child: AdvantaLoadingState(
+                                title: widget.title,
+                                subtitle: widget.subtitle,
+                                icon: widget.icon,
+                                accentColor: AdvantaColors.primaryGreen,
+                                padding: EdgeInsets.zero))),
+                    const SliverToBoxAdapter(
+                        child: Padding(
+                            padding: EdgeInsets.fromLTRB(18, 0, 18, 10),
+                            child: Text('MENYIAPKAN RINGKASAN',
+                                style: TextStyle(
+                                    color: AdvantaColors.mutedGrey,
+                                    fontSize: 10,
+                                    letterSpacing: 1.1,
+                                    fontWeight: FontWeight.w800)))),
+                    SliverToBoxAdapter(
+                        child: SizedBox(
+                            height: 92,
+                            child: ListView.separated(
+                                physics: const NeverScrollableScrollPhysics(),
+                                scrollDirection: Axis.horizontal,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 16),
+                                itemCount: 3,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(width: 10),
+                                itemBuilder: (_, index) => SizedBox(
+                                    width: 116,
+                                    child: _shimmerBox(height: 92))))),
+                    const SliverToBoxAdapter(child: SizedBox(height: 18)),
+                    SliverToBoxAdapter(
+                        child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: _shimmerBox(height: 124))),
+                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                    SliverToBoxAdapter(
+                        child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: _shimmerBox(height: 190))),
+                  ])));
+
+  Widget _loadingHeader(BuildContext context) => Container(
+      decoration: const BoxDecoration(
           gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              stops: [
-                math.max(0.0, _anim.value - 0.3),
-                _anim.value.clamp(0.0, 1.0),
-                math.min(1.0, _anim.value + 0.3)
-              ],
-              colors: [
-                AdvantaColors.paleGreen,
-                AdvantaColors.softGrey,
-                AdvantaColors.paleGreen
-              ])));
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AdvantaColors.deepForest, AdvantaColors.primaryGreen])),
+      child: SafeArea(
+          bottom: false,
+          child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 10, 18, 22),
+              child: Row(children: [
+                IconButton(
+                    tooltip: 'Kembali',
+                    onPressed: () => Navigator.maybePop(context),
+                    icon: const Icon(Icons.arrow_back_rounded,
+                        color: Colors.white)),
+                const SizedBox(width: 4),
+                const Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text('Coverage Monitoring',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900)),
+                      SizedBox(height: 3),
+                      Text('Sinkronisasi data audit lapangan',
+                          style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600))
+                    ])),
+                Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: .12),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: .2))),
+                    child: const Icon(Icons.monitor_heart_rounded,
+                        color: AdvantaColors.goldLight, size: 20))
+              ]))));
+
+  Widget _shimmerBox({required double height}) {
+    final pulse = (math.sin(_ctrl.value * math.pi * 2) + 1) / 2;
+    return Container(
+        height: height,
+        decoration: BoxDecoration(
+            color: Color.lerp(Colors.white, AdvantaColors.paleGreen, pulse),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+                color: AdvantaColors.primaryGreen
+                    .withValues(alpha: .08 + (pulse * .07))),
+            boxShadow: [
+              BoxShadow(
+                  color: AdvantaColors.deepForest
+                      .withValues(alpha: .035 + (pulse * .025)),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8))
+            ]),
+        child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                      width: 34,
+                      height: 10,
+                      decoration: BoxDecoration(
+                          color: AdvantaColors.primaryGreen
+                              .withValues(alpha: .10 + (pulse * .08)),
+                          borderRadius: BorderRadius.circular(20))),
+                  const Spacer(),
+                  Container(
+                      width: double.infinity,
+                      height: 8,
+                      decoration: BoxDecoration(
+                          color: AdvantaColors.deepForest
+                              .withValues(alpha: .05 + (pulse * .04)),
+                          borderRadius: BorderRadius.circular(20))),
+                  const SizedBox(height: 7),
+                  FractionallySizedBox(
+                      widthFactor: .62,
+                      child: Container(
+                          height: 8,
+                          decoration: BoxDecoration(
+                              color: AdvantaColors.deepForest
+                                  .withValues(alpha: .04 + (pulse * .035)),
+                              borderRadius: BorderRadius.circular(20))))
+                ])));
+  }
 }
 
 final _idWholeNumber = NumberFormat('#,##0', 'id_ID');

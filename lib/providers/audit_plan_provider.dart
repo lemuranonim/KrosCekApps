@@ -6,7 +6,17 @@ import '../utils/weekly_audit.dart';
 import 'detasseling_plan_provider.dart';
 import 'master_fields_provider.dart';
 
-typedef AuditPlanningParams = ({DateTime weekStart, String? region});
+typedef AuditPlanningScope = ({
+  String? region,
+  String? district,
+  String? season,
+});
+typedef AuditPlanningParams = ({
+  DateTime weekStart,
+  String? region,
+  String? district,
+  String? season,
+});
 const auditPlanningPhases = {'vegetative', 'pre_harvest', 'harvest'};
 
 final auditPlanningRegionsProvider = FutureProvider<List<String>>((ref) async {
@@ -32,23 +42,26 @@ final auditPlanningRegionsProvider = FutureProvider<List<String>>((ref) async {
 // Reused when changing the week: only dates/phase completion, not map geometry
 // or all audit observations for every active field.
 final auditPlanningIndexProvider = FutureProvider.autoDispose
-    .family<List<Map<String, dynamic>>, String?>((ref, region) async {
+    .family<List<Map<String, dynamic>>, AuditPlanningScope>(
+        (ref, planningScope) async {
   final service = ref.watch(supabaseServiceProvider);
   final user = await ref
       .watch(currentUserProvider.future)
       .timeout(const Duration(seconds: 30));
-  final scope = detasselingRoleScopeFor(user);
+  final roleScope = detasselingRoleScopeFor(user);
   if (!ref.mounted ||
-      !scope.canView ||
-      (scope.isRestricted && scope.name.isEmpty)) {
+      !roleScope.canView ||
+      (roleScope.isRestricted && roleScope.name.isEmpty)) {
     return [];
   }
   final rows = await service.getAuditPlanningIndex(
-    region: region,
-    qaFi: scope.type == DetasselingScopeType.fi ? scope.name : null,
-    qaSpv: scope.type == DetasselingScopeType.spv ? scope.name : null,
+    region: planningScope.region,
+    district: planningScope.district,
+    season: planningScope.season,
+    qaFi: roleScope.type == DetasselingScopeType.fi ? roleScope.name : null,
+    qaSpv: roleScope.type == DetasselingScopeType.spv ? roleScope.name : null,
   );
-  return rows.where((row) => _visibleToPlanning(row, scope)).toList();
+  return rows.where((row) => _visibleToPlanning(row, roleScope)).toList();
 }, retry: (_, __) => null);
 
 class AuditPlanField {
@@ -63,14 +76,19 @@ final auditPlanningProvider = FutureProvider.autoDispose
   final user = await ref
       .watch(currentUserProvider.future)
       .timeout(const Duration(seconds: 30));
-  final scope = detasselingRoleScopeFor(user);
+  final roleScope = detasselingRoleScopeFor(user);
   if (!ref.mounted ||
-      !scope.canView ||
-      (scope.isRestricted && scope.name.isEmpty)) {
+      !roleScope.canView ||
+      (roleScope.isRestricted && roleScope.name.isEmpty)) {
     return [];
   }
+  final planningScope = (
+    region: params.region,
+    district: params.district,
+    season: params.season,
+  );
   final index =
-      await ref.watch(auditPlanningIndexProvider(params.region).future);
+      await ref.watch(auditPlanningIndexProvider(planningScope).future);
   if (!ref.mounted) return [];
   final now = DateTime.now();
   final numbers = await compute(_planningTargetNumbers,
@@ -79,13 +97,15 @@ final auditPlanningProvider = FutureProvider.autoDispose
   final raw = await service.getAuditPlanningFields(
     numbers,
     region: params.region,
-    qaFi: scope.type == DetasselingScopeType.fi ? scope.name : null,
-    qaSpv: scope.type == DetasselingScopeType.spv ? scope.name : null,
+    district: params.district,
+    season: params.season,
+    qaFi: roleScope.type == DetasselingScopeType.fi ? roleScope.name : null,
+    qaSpv: roleScope.type == DetasselingScopeType.spv ? roleScope.name : null,
   );
   if (!ref.mounted) return [];
   // Recheck scope and eligibility in case a field changed between requests.
   final weekly = await compute(_planningTargets, (
-    rows: raw.where((row) => _visibleToPlanning(row, scope)).toList(),
+    rows: raw.where((row) => _visibleToPlanning(row, roleScope)).toList(),
     weekStart: params.weekStart,
     now: now,
   ));

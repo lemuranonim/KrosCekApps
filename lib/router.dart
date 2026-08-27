@@ -39,6 +39,7 @@ import 'screens/attendance/check_out_screen.dart';
 import 'screens/coverage/coverage_screen.dart';
 import 'screens/qa/detasseling_map_screen.dart';
 import 'screens/qa/audit_planning_screen.dart';
+import 'models/audit_planning_filters.dart';
 import 'screens/qa/detailed_map_screen.dart';
 import 'screens/settings/user_settings_screen.dart';
 import 'screens/settings/qa_mapping_screen.dart';
@@ -226,6 +227,9 @@ final router = GoRouter(
       path: '/audit-planning',
       builder: (context, state) => AuditPlanningScreen(
         initialWeek: DateTime.tryParse(state.uri.queryParameters['weekStart'] ?? ''),
+        initialFilters: state.extra is AuditPlanningInitialFilters
+            ? state.extra as AuditPlanningInitialFilters
+            : null,
       ),
     ),
 

@@ -47,8 +47,12 @@ ProviderContainer planningContainer(SupabaseService service,
 
 Future<List<AuditPlanField>> loadPlan(ProviderContainer container,
     {DateTime? week}) {
-  final provider =
-      auditPlanningProvider((weekStart: week ?? fixtures.week, region: 'East'));
+  final provider = auditPlanningProvider((
+    weekStart: week ?? fixtures.week,
+    region: 'East',
+    district: null,
+    season: null,
+  ));
   final subscription = container.listen(provider, (_, __) {});
   addTearDown(subscription.close);
   return container.read(provider.future);
@@ -72,7 +76,11 @@ void main() {
       return response(List.generate(count, (i) => {'field_number': 'F$i'}));
     });
     final rows = await service.getAuditPlanningIndex(
-        region: 'East', qaFi: 'FI 1', qaSpv: 'SPV 1');
+        region: 'East',
+        district: 'Blitar',
+        season: 'S1',
+        qaFi: 'FI 1',
+        qaSpv: 'SPV 1');
     expect(rows, hasLength(1001));
     expect(requests, hasLength(2));
     expect(requests.last.url.queryParameters['offset'], '1000');
@@ -80,6 +88,8 @@ void main() {
       final params = request.url.queryParameters;
       expect(params['is_active'], 'eq.true');
       expect(params['region'], 'eq.East');
+      expect(params['district_kab'], 'eq.Blitar');
+      expect(params['season'], 'eq.S1');
       expect(params['qa_fi'], 'ilike.%FI 1%');
       expect(params['qa_spv'], 'ilike.%SPV 1%');
       expect(params['select'], contains('rev_planting_date'));
@@ -103,11 +113,13 @@ void main() {
     expect(requests, isEmpty);
     final rows = await service.getAuditPlanningFields(
         [...List.generate(121, (i) => 'F$i'), ' F0 '],
-        region: 'East', qaSpv: 'SPV 1');
+        region: 'East', district: 'Blitar', season: 'S1', qaSpv: 'SPV 1');
     expect(rows, hasLength(121));
     expect(requests.map((r) => requestedNumbers(r).length), [100, 21]);
     for (final request in requests) {
       expect(request.url.queryParameters['region'], 'eq.East');
+      expect(request.url.queryParameters['district_kab'], 'eq.Blitar');
+      expect(request.url.queryParameters['season'], 'eq.S1');
       expect(request.url.queryParameters['qa_spv'], 'ilike.%SPV 1%');
       expect(request.url.queryParameters['is_active'], 'eq.true');
       // This column is referenced by an old SC form but is not present in the
@@ -193,8 +205,12 @@ void main() {
       return response([fixtures.fieldAt(20)]);
     });
     final container = planningContainer(service);
-    final firstProvider =
-        auditPlanningProvider((weekStart: fixtures.week, region: 'East'));
+    final firstProvider = auditPlanningProvider((
+      weekStart: fixtures.week,
+      region: 'East',
+      district: null,
+      season: null,
+    ));
     final subscription = container.listen(firstProvider, (_, __) {});
     expect(await container.read(firstProvider.future), hasLength(1));
     // The screen replaces its old week subscription; it does not keep both
@@ -258,8 +274,12 @@ void main() {
     expect(requests, 1);
     expect(
         container
-            .read(auditPlanningProvider(
-                (weekStart: fixtures.week, region: 'East')))
+            .read(auditPlanningProvider((
+              weekStart: fixtures.week,
+              region: 'East',
+              district: null,
+              season: null,
+            )))
             .hasError,
         true);
   });

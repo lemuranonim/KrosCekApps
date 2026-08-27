@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:kroscek/providers/audit_plan_provider.dart';
 import 'package:kroscek/providers/master_fields_provider.dart';
+import 'package:kroscek/models/audit_planning_filters.dart';
 import 'package:kroscek/screens/qa/audit_planning_screen.dart';
 import 'package:kroscek/screens/coverage/coverage_screen.dart';
 import 'package:kroscek/services/session_manager.dart';
@@ -77,6 +78,35 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('Coverage shows a branded loading shell while data is fetched',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({
+      SessionKeys.activeUserId: 'test-user',
+      SessionKeys.activeUserRole: 'FI',
+      SessionKeys.activeUserName: 'FI 1',
+    });
+    final ready = Completer<List<FieldCoverageStatus>>();
+    await tester.pumpWidget(ProviderScope(overrides: [
+      coverageStatusListProvider.overrideWith((ref) => ready.future),
+    ], child: const MaterialApp(home: CoverageScreen())));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Coverage Monitoring'), findsOneWidget);
+    expect(find.text('Menyiapkan dashboard'), findsOneWidget);
+    expect(find.text('Data'), findsOneWidget);
+    expect(find.text('Map'), findsOneWidget);
+    expect(find.text('Audit'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    ready.complete([]);
+    await tester.pumpAndSettle();
+  });
 
   testWidgets(
       'flag filter keeps PLD hidden by default, supports selecting nothing',
@@ -198,8 +228,12 @@ void main() {
         .toList();
     await tester.pumpWidget(ProviderScope(
         overrides: [
-          auditPlanningProvider((weekStart: fixtures.week, region: 'East'))
-              .overrideWith((ref) async => fields),
+          auditPlanningProvider((
+            weekStart: fixtures.week,
+            region: 'East',
+            district: null,
+            season: null,
+          )).overrideWith((ref) async => fields),
           auditPlanningRegionsProvider.overrideWith((ref) async => ['East']),
         ],
         child: MaterialApp(
@@ -215,6 +249,11 @@ void main() {
     await tester.tap(find.text('Sumber'));
     await tester.pumpAndSettle();
     expect(find.textContaining('V1 ·'), findsOneWidget);
+    await tester.tap(find.textContaining('V1 ·'));
+    await tester.pumpAndSettle();
+    expect(find.text('Hari Ini'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Hari Ini'))).pop();
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     await tester.scrollUntilVisible(
         find.widgetWithText(ChoiceChip, 'PreHarvest'), -180,
@@ -254,6 +293,68 @@ void main() {
     await tester.tap(find.text('All Region').last);
     await tester.pumpAndSettle();
     expect(requestedRegions, ['East', null]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('planning starts with the active Home Map filter context',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    AuditPlanningParams? requested;
+    final raw = {
+      ...fixtures.fieldAt(95, hv: {
+        'date_of_audit': '2026-08-24',
+        'final_flagging': 'PLD',
+      }),
+      'season': 'S1',
+      'farmer_name': 'Pak Budi',
+    };
+    final field = AuditPlanField(
+        ParsedFieldData(
+            raw: raw,
+            lat: -7.6,
+            lng: 112.1,
+            isDefault: false,
+            isCorrected: false,
+            isFromPolygon: false,
+            dap: 95),
+        fixtures.project(raw));
+
+    await tester.pumpWidget(ProviderScope(
+        overrides: [
+          auditPlanningRegionsProvider.overrideWith((ref) async => ['East']),
+          auditPlanningProvider.overrideWith((ref, params) async {
+            requested = params;
+            return [field];
+          }),
+        ],
+        child: MaterialApp(
+            home: AuditPlanningScreen(
+          initialWeek: fixtures.week,
+          initialFilters: const AuditPlanningInitialFilters(
+            region: 'East',
+            district: 'Blitar',
+            season: 'S1',
+            phase: 'harvest',
+            status: 'Done',
+            showPld: true,
+            textFilters: [
+              AuditPlanningTextFilter(
+                  fieldKey: 'farmer_name',
+                  label: 'Nama Petani',
+                  value: 'Pak Budi'),
+            ],
+          ),
+        ))));
+    await tester.pumpAndSettle();
+
+    expect(requested?.region, 'East');
+    expect(requested?.district, 'Blitar');
+    expect(requested?.season, 'S1');
+    expect(find.text('Harvest · 1 desa · 1 lahan'), findsOneWidget);
+    expect(find.text('Nama Petani: Pak Budi'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

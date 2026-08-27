@@ -5,16 +5,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../models/audit_planning_filters.dart';
 import '../../providers/audit_plan_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/dap_helper.dart';
+import '../../utils/qa_name_helper.dart';
 import '../../utils/weekly_audit.dart';
 import '../../widgets/field_detail_bottom_sheet.dart';
 import '../../widgets/weekly_audit_widgets.dart';
 
 class AuditPlanningScreen extends ConsumerStatefulWidget {
   final DateTime? initialWeek;
-  const AuditPlanningScreen({super.key, this.initialWeek});
+  final AuditPlanningInitialFilters? initialFilters;
+  const AuditPlanningScreen({
+    super.key,
+    this.initialWeek,
+    this.initialFilters,
+  });
   @override
   ConsumerState<AuditPlanningScreen> createState() =>
       _AuditPlanningScreenState();
@@ -24,11 +31,14 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
   late DateTime _week;
   String _phase = 'vegetative';
   String? _region;
+  String? _district;
+  String? _season;
   bool _showAllRegions = false;
   String _crop = 'All Crop';
   String _status = 'Semua Status';
   String _search = '';
   Set<String> _flags = {...defaultAuditFlags};
+  List<AuditPlanningTextFilter> _textFilters = [];
   bool _showMap = false;
   final Set<String> _expandedVillages = {};
   final _searchController = TextEditingController();
@@ -38,7 +48,32 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
     super.initState();
     _week = auditWeekStart(
         widget.initialWeek ?? DateTime.now().add(const Duration(days: 7)));
+    final initial = widget.initialFilters;
+    if (initial != null) {
+      _showAllRegions = initial.allRegions;
+      _region = initial.allRegions ? null : initial.region;
+      _district = initial.allRegions ? null : initial.district;
+      _season = initial.allSeasons ? null : initial.season;
+      if (initial.phase != null &&
+          auditPlanningPhases.contains(initial.phase)) {
+        _phase = initial.phase!;
+      }
+      if (const {'Pending', 'Progress', 'Done'}.contains(initial.status)) {
+        _status = initial.status!;
+      }
+      if (initial.showPld) _flags.add('PLD');
+      _textFilters = initial.textFilters
+          .where((filter) => filter.value.trim().isNotEmpty)
+          .toList(growable: true);
+    }
   }
+
+  AuditPlanningParams get _params => (
+        weekStart: _week,
+        region: _region,
+        district: _district,
+        season: _season,
+      );
 
   @override
   void dispose() {
@@ -52,10 +87,14 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
         ref.invalidate(auditPlanningRegionsProvider);
         await ref.read(auditPlanningRegionsProvider.future);
       } else {
-        final params = (weekStart: _week, region: _region);
-        ref.invalidate(auditPlanningIndexProvider(_region));
-        ref.invalidate(auditPlanningProvider(params));
-        await ref.read(auditPlanningProvider(params).future);
+        final scope = (
+          region: _region,
+          district: _district,
+          season: _season,
+        );
+        ref.invalidate(auditPlanningIndexProvider(scope));
+        ref.invalidate(auditPlanningProvider(_params));
+        await ref.read(auditPlanningProvider(_params).future);
       }
     } catch (_) {
       // The provider renders the error and retry button; do not leave an
@@ -78,7 +117,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
     // Do not start an All Region fetch while the region list is still loading.
     final canLoadPlan = _showAllRegions || _region != null;
     final AsyncValue<List<AuditPlanField>> plan = canLoadPlan
-        ? ref.watch(auditPlanningProvider((weekStart: _week, region: _region)))
+        ? ref.watch(auditPlanningProvider(_params))
         : regionsAsync.when(
             loading: () => const AsyncLoading(),
             error: (error, stack) => AsyncError(error, stack),
@@ -188,18 +227,24 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
               .toList()));
 
   bool get _hasActiveFilters =>
+      _district != null ||
+      _season != null ||
       _crop != 'All Crop' ||
       _status != 'Semua Status' ||
       !_flags.containsAll(defaultAuditFlags) ||
       _flags.length != defaultAuditFlags.length ||
+      _textFilters.isNotEmpty ||
       _search.isNotEmpty;
 
   void _resetFilters() {
     _searchController.clear();
     setState(() {
+      _district = null;
+      _season = null;
       _crop = 'All Crop';
       _status = 'Semua Status';
       _flags = {...defaultAuditFlags};
+      _textFilters.clear();
       _search = '';
     });
   }
@@ -230,17 +275,61 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
               ['All Region', ...regions], Icons.location_on_outlined, (value) {
             _showAllRegions = value == 'All Region';
             _region = _showAllRegions ? null : value;
+            _district = null;
             _expandedVillages.clear();
           }),
+          if (_district != null)
+            _removableFilter(Icons.location_city_outlined, _district!,
+                () => _district = null),
+          if (_season != null)
+            _removableFilter(
+                Icons.calendar_today_outlined, _season!, () => _season = null),
           _filter(_crop, const ['All Crop', 'FC', 'SC', 'PSP'],
               Icons.eco_outlined, (value) => _crop = value),
-          _filter(_status, const ['Semua Status', 'Pending', 'Done'],
-              Icons.task_alt_rounded, (value) => _status = value),
+          _filter(
+              _status,
+              const ['Semua Status', 'Pending', 'Progress', 'Done'],
+              Icons.task_alt_rounded,
+              (value) => _status = value),
           AuditFlagFilter(
               selected: _flags,
               onChanged: (flags) => setState(() => _flags = flags)),
         ]),
+        if (_textFilters.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: _textFilters
+                  .map((filter) => InputChip(
+                      avatar: const Icon(Icons.manage_search_rounded,
+                          size: 16, color: AdvantaColors.primaryGreen),
+                      label: Text('${filter.label}: ${filter.value}'),
+                      labelStyle: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AdvantaColors.deepForest),
+                      backgroundColor: AdvantaColors.paleGreen,
+                      side: BorderSide.none,
+                      deleteIcon: const Icon(Icons.close_rounded, size: 16),
+                      onDeleted: () =>
+                          setState(() => _textFilters.remove(filter))))
+                  .toList()),
+        ],
       ]);
+
+  Widget _removableFilter(IconData icon, String label, VoidCallback remove) =>
+      InputChip(
+          avatar: Icon(icon, size: 17, color: AdvantaColors.primaryGreen),
+          label: Text(label),
+          labelStyle: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AdvantaColors.deepForest),
+          backgroundColor: AdvantaColors.paleGreen,
+          side: BorderSide.none,
+          deleteIcon: const Icon(Icons.close_rounded, size: 17),
+          onDeleted: () => setState(remove));
 
   Widget _filter(String selected, List<String> options, IconData icon,
           ValueChanged<String> change) =>
@@ -359,6 +448,20 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
   WeeklyAuditTarget _target(AuditPlanField field) =>
       field.weekly.targets.firstWhere((t) => t.phase == _phase);
 
+  bool _matchesTextFilters(Map<String, dynamic> raw) {
+    for (final filter in _textFilters) {
+      final query = filter.value.trim().toLowerCase();
+      if (query.isEmpty) continue;
+      if (filter.fieldKey == 'qa_fi') {
+        if (!QaNameHelper.fieldMatchesFiSearch(raw, query)) return false;
+        continue;
+      }
+      final value = raw[filter.fieldKey]?.toString().trim().toLowerCase() ?? '';
+      if (!value.contains(query)) return false;
+    }
+    return true;
+  }
+
   Widget _content(List<AuditPlanField> all) {
     final fields = all.where((field) {
       final f = field.weekly;
@@ -366,6 +469,17 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
           !_flags.contains(f.flag)) {
         return false;
       }
+      if (_district != null &&
+          f.raw['district_kab']?.toString().trim().toLowerCase() !=
+              _district!.trim().toLowerCase()) {
+        return false;
+      }
+      if (_season != null &&
+          f.raw['season']?.toString().trim().toLowerCase() !=
+              _season!.trim().toLowerCase()) {
+        return false;
+      }
+      if (!_matchesTextFilters(f.raw)) return false;
       final hybrid = f.raw['hybrid']?.toString();
       final crop = DapHelper.isPsp(hybrid)
           ? 'PSP'
@@ -375,6 +489,10 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
       if (_crop != 'All Crop' && crop != _crop) return false;
       if (_status == 'Done' && !_target(field).done) return false;
       if (_status == 'Pending' && _target(field).done) return false;
+      if (_status == 'Progress' &&
+          (_target(field).completion <= 0 || _target(field).done)) {
+        return false;
+      }
       return _search.isEmpty ||
           ['village_desa', 'field_number', 'farmer_name', 'qa_fi'].any((key) =>
               f.raw[key]?.toString().toLowerCase().contains(_search) ?? false);
@@ -793,7 +911,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
         child: InkWell(
             borderRadius: BorderRadius.circular(15),
             onTap: () => FieldDetailBottomSheet.show(context, f.raw,
-                dapReferenceDate: target.plannedDate,
+                dapReferenceDate: DateTime.now(),
                 onInspectDone: (_) => _refresh()),
             child: Padding(
                 padding: const EdgeInsets.all(12),
