@@ -565,6 +565,11 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
   bool _targetOverdue(AuditPlanField field) =>
       _phaseTargets(field).any((target) => target.overdue);
 
+  bool _isProjectedOnWeekday(AuditPlanField field, int weekday) {
+    final date = field.weekly.weekStart.add(Duration(days: weekday - 1));
+    return _phaseTargets(field).any((target) => target.includesDate(date));
+  }
+
   DateTime _targetPlannedDate(AuditPlanField field) => _phaseTargets(field)
       .map((target) => target.plannedDate)
       .reduce((a, b) => a.isBefore(b) ? a : b);
@@ -587,43 +592,46 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
     return true;
   }
 
+  bool _matchesPlanningFilters(AuditPlanField field) {
+    final f = field.weekly;
+    if (!f.targets.any((t) => auditStage(t.phase) == _phase) ||
+        !_flags.contains(f.flag)) {
+      return false;
+    }
+    if (_district != null &&
+        f.raw['district_kab']?.toString().trim().toLowerCase() !=
+            _district!.trim().toLowerCase()) {
+      return false;
+    }
+    if (_season != null &&
+        f.raw['season']?.toString().trim().toLowerCase() !=
+            _season!.trim().toLowerCase()) {
+      return false;
+    }
+    if (!_matchesTextFilters(f.raw)) return false;
+    final hybrid = f.raw['hybrid']?.toString();
+    final crop = DapHelper.isPsp(hybrid)
+        ? 'PSP'
+        : DapHelper.isSweetCorn(hybrid)
+            ? 'SC'
+            : 'FC';
+    if (_crop != 'All Crop' && crop != _crop) return false;
+    if (_status == 'Completed' && !_targetDone(field)) return false;
+    if (_status == 'Pending' && _targetDone(field)) return false;
+    if (_status == 'Overdue' && !_targetOverdue(field)) return false;
+    return _search.isEmpty ||
+        ['village_desa', 'field_number', 'farmer_name', 'qa_fi'].any((key) =>
+            f.raw[key]?.toString().toLowerCase().contains(_search) ?? false);
+  }
+
   Widget _content(List<AuditPlanField> all) {
-    final fields = all.where((field) {
-      final f = field.weekly;
-      if (!f.targets.any((t) => auditStage(t.phase) == _phase) ||
-          !_flags.contains(f.flag)) {
-        return false;
-      }
-      if (_district != null &&
-          f.raw['district_kab']?.toString().trim().toLowerCase() !=
-              _district!.trim().toLowerCase()) {
-        return false;
-      }
-      if (_season != null &&
-          f.raw['season']?.toString().trim().toLowerCase() !=
-              _season!.trim().toLowerCase()) {
-        return false;
-      }
-      if (!_matchesTextFilters(f.raw)) return false;
-      final hybrid = f.raw['hybrid']?.toString();
-      final crop = DapHelper.isPsp(hybrid)
-          ? 'PSP'
-          : DapHelper.isSweetCorn(hybrid)
-              ? 'SC'
-              : 'FC';
-      if (_crop != 'All Crop' && crop != _crop) return false;
-      if (_status == 'Completed' && !_targetDone(field)) return false;
-      if (_status == 'Pending' && _targetDone(field)) return false;
-      if (_status == 'Overdue' && !_targetOverdue(field)) return false;
-      if (_selectedWeekday != null &&
-          !_phaseTargets(field).any(
-              (target) => target.plannedDate.weekday == _selectedWeekday)) {
-        return false;
-      }
-      return _search.isEmpty ||
-          ['village_desa', 'field_number', 'farmer_name', 'qa_fi'].any((key) =>
-              f.raw[key]?.toString().toLowerCase().contains(_search) ?? false);
-    }).toList();
+    final projected =
+        all.where(_matchesPlanningFilters).toList(growable: false);
+    final fields = _selectedWeekday == null
+        ? projected
+        : projected
+            .where((field) => _isProjectedOnWeekday(field, _selectedWeekday!))
+            .toList(growable: false);
     final grouped = <String, List<AuditPlanField>>{};
     for (final field in fields) {
       grouped.putIfAbsent(field.weekly.villageKey, () => []).add(field);
@@ -640,7 +648,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
     final mappedGroups =
         groups.where((g) => g.any((f) => !f.parsed.isDefault)).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _daySelector(),
+      _daySelector(projected),
       const SizedBox(height: 8),
       Container(
           padding: const EdgeInsets.all(16),
@@ -896,28 +904,110 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
     return '${labels[_selectedWeekday! - 1]} · ${_weeks.length} Weeks';
   }
 
-  Widget _daySelector() {
-    const labels = ['ALL', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
-    return SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-            children: List.generate(labels.length, (index) {
-          final weekday = index == 0 ? null : index;
-          return Padding(
-              padding: const EdgeInsets.only(right: 5),
-              child: ChoiceChip(
-                  label: Text(labels[index]),
-                  selected: _selectedWeekday == weekday,
-                  showCheckmark: false,
-                  selectedColor: AdvantaColors.gold,
-                  visualDensity: VisualDensity.compact,
-                  labelStyle: const TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w800),
-                  onSelected: (_) => setState(() {
-                        _selectedWeekday = weekday;
-                        _selectedFieldNumbers.clear();
-                      })));
-        })));
+  Widget _daySelector(List<AuditPlanField> projected) {
+    const labels = ['ALL', 'SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB', 'MIN'];
+    return SizedBox(
+        key: const ValueKey('audit-day-strip'),
+        height: 116,
+        child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: labels.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            itemBuilder: (_, index) {
+              final weekday = index == 0 ? null : index;
+              final fields = weekday == null
+                  ? projected
+                  : projected
+                      .where((field) => _isProjectedOnWeekday(field, weekday))
+                      .toList(growable: false);
+              final targetHa =
+                  fields.fold(0.0, (sum, field) => sum + field.weekly.areaHa);
+              final audited = fields.where(_targetDone).length;
+              final percentage =
+                  fields.isEmpty ? 0.0 : audited / fields.length * 100;
+              final selected = _selectedWeekday == weekday;
+              final date = weekday == null
+                  ? null
+                  : _week.add(Duration(days: weekday - 1));
+              final title = weekday == null
+                  ? (_weeks.length == 1 ? 'ALL Week' : 'ALL Weeks')
+                  : _weeks.length == 1
+                      ? '${labels[index]} ${date!.day}'
+                      : labels[index];
+              return SizedBox(
+                  width: weekday == null ? 106 : 98,
+                  child: Material(
+                      key: ValueKey('audit-day-${weekday ?? 'all'}'),
+                      color: selected
+                          ? weekday == null
+                              ? AdvantaColors.deepForest
+                              : AdvantaColors.goldPale
+                          : Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          side: BorderSide(
+                              color: selected
+                                  ? weekday == null
+                                      ? AdvantaColors.deepForest
+                                      : AdvantaColors.gold
+                                  : AdvantaColors.dividerGrey,
+                              width: selected ? 1.5 : 1)),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                          onTap: () => setState(() {
+                                _selectedWeekday = weekday;
+                                _selectedFieldNumbers.clear();
+                              }),
+                          child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 9, vertical: 9),
+                              child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w900,
+                                            color: selected && weekday == null
+                                                ? Colors.white
+                                                : AdvantaColors.deepForest)),
+                                    const Spacer(),
+                                    FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                            auditWorkload(
+                                                targetHa, fields.length),
+                                            maxLines: 1,
+                                            style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w800,
+                                                color:
+                                                    selected && weekday == null
+                                                        ? Colors.white
+                                                        : AdvantaColors
+                                                            .primaryGreen))),
+                                    const SizedBox(height: 4),
+                                    Text('$audited / ${fields.length} Audited',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                            fontSize: 9,
+                                            color: selected && weekday == null
+                                                ? Colors.white70
+                                                : AdvantaColors.mutedGrey)),
+                                    const SizedBox(height: 3),
+                                    Text('${percentage.toStringAsFixed(0)}%',
+                                        style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w900,
+                                            color: selected && weekday == null
+                                                ? AdvantaColors.goldLight
+                                                : AdvantaColors.deepForest)),
+                                  ])))));
+            }));
   }
 
   Widget _selectionActions(

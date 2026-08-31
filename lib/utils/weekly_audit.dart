@@ -112,6 +112,15 @@ class WeeklyAuditTarget {
       required this.overdue});
 
   bool get done => completion >= 1;
+
+  /// A planning target remains available on every date inside its DAP
+  /// window. [plannedDate] is the first eligible date in the selected week,
+  /// not the only date on which the target can be planned.
+  bool includesDate(DateTime date) {
+    final day = auditDateOnly(date);
+    return !day.isBefore(auditDateOnly(plannedDate)) &&
+        !day.isAfter(auditDateOnly(deadline));
+  }
 }
 
 /// One field is counted once in area/flag/stage totals, even when a week

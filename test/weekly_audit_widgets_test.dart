@@ -328,6 +328,48 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('planning day projection uses the full eligible DAP window',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final raw = [
+      fixtures.fieldAt(20, id: 'FULL-WEEK', area: 10),
+      fixtures.fieldAt(2, id: 'WEEKEND', area: 5),
+    ];
+    final fields = raw
+        .map((field) => AuditPlanField(
+            ParsedFieldData(
+                raw: field,
+                lat: -7.6,
+                lng: 112.1,
+                isDefault: false,
+                isCorrected: false,
+                isFromPolygon: false,
+                dap: 20),
+            fixtures.project(field)))
+        .toList(growable: false);
+
+    await tester.pumpWidget(ProviderScope(
+        overrides: [
+          auditPlanningProvider.overrideWith((ref, params) async => fields),
+          auditPlanningRegionsProvider.overrideWith((ref) async => ['East']),
+        ],
+        child: MaterialApp(
+            home: AuditPlanningScreen(initialWeek: fixtures.week))));
+    await tester.pumpAndSettle();
+
+    expect(find.text('15.0 Ha | 2 FN'), findsWidgets);
+    await tester.tap(find.byKey(const ValueKey('audit-day-2')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('SEL 25 · Vegetative'), findsOneWidget);
+    expect(find.text('Select visible (1)'), findsOneWidget);
+    expect(find.text('10.0 Ha | 1 FN'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('planning starts with the active Home Map filter context',
       (tester) async {
     tester.view.physicalSize = const Size(390, 1000);

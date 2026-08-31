@@ -55,6 +55,10 @@ void main() {
     final f = project(fieldAt(2));
     expect(f.targets.single.phase, 'vegetative');
     expect(f.targets.single.plannedDate, DateTime(2026, 8, 29));
+    expect(f.targets.single.includesDate(DateTime(2026, 8, 28)), false);
+    expect(f.targets.single.includesDate(DateTime(2026, 8, 29)), true);
+    expect(f.targets.single.includesDate(DateTime(2026, 8, 30)), true);
+    expect(f.targets.single.includesDate(DateTime(2026, 8, 31)), false);
     expect(project(fieldAt(0)).isTarget, false);
     expect(project(fieldAt(200)).isTarget, false);
   });
