@@ -34,6 +34,15 @@ class SupabaseService {
       date_of_inspeksi_roguing_3,
       date_of_inspeksi_roguing_4
     ),
+    audit_generative(
+      date_of_audit_1,
+      date_of_audit_2,
+      date_of_audit_3,
+      date_of_audit_4,
+      date_of_audit_5,
+      date_of_inspeksi_roguing_5,
+      date_of_inspeksi_roguing_6
+    ),
     audit_pre_harvest(audit_date),
     audit_harvest(date_of_audit)
   ''';

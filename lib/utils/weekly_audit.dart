@@ -8,6 +8,16 @@ DateTime auditWeekStart(DateTime date) {
   return day.subtract(Duration(days: day.weekday - DateTime.monday));
 }
 
+int auditIsoWeekNumber(DateTime date) {
+  final day = auditDateOnly(date);
+  final thursday = day.add(Duration(days: DateTime.thursday - day.weekday));
+  final fourthOfJanuary = DateTime(thursday.year, 1, 4);
+  final firstWeekStart = fourthOfJanuary.subtract(
+    Duration(days: fourthOfJanuary.weekday - DateTime.monday),
+  );
+  return thursday.difference(firstWeekStart).inDays ~/ 7 + 1;
+}
+
 DateTime? parseAuditDate(dynamic value) {
   final text = value?.toString().trim() ?? '';
   final slash = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})$').firstMatch(text);
@@ -57,17 +67,9 @@ const auditStageLabels = {
   'harvest': 'Harvest',
 };
 
-const auditFlagLabels = [
-  'GF',
-  'RFI',
-  'RFD',
-  'BF',
-  'OF',
-  'RF',
-  'PLD',
-  'Belum ada'
-];
-const defaultAuditFlags = {'GF', 'RFI', 'RFD', 'BF', 'OF', 'RF', 'Belum ada'};
+const auditNotYetFlagging = 'Not Yet Flagging';
+const auditFlagLabels = ['GF', 'RFI', 'RFD', 'PLD', auditNotYetFlagging];
+const defaultAuditFlags = {'GF', 'RFI', 'RFD', 'PLD', auditNotYetFlagging};
 
 class AuditObservation {
   final int sequence;
@@ -271,12 +273,12 @@ class WeeklyAuditField {
       final phaseOrder = _phaseOrder(a.phase).compareTo(_phaseOrder(b.phase));
       return phaseOrder != 0 ? phaseOrder : a.sequence.compareTo(b.sequence);
     });
-    var flag = 'Belum ada';
+    var flag = auditNotYetFlagging;
     for (final observation in observations) {
       if (observation.flag != null) flag = observation.flag!;
     }
     // Undated master status cannot reconstruct a historical week.
-    if (flag == 'Belum ada' && !end.isBefore(today)) {
+    if (flag == auditNotYetFlagging && !end.isBefore(today)) {
       flag = _flag(raw['flagging_final']) ?? flag;
     }
     final rules = DapHelper.getPhaseRules(
@@ -392,8 +394,11 @@ class WeeklyAuditSummary {
       fields.where((f) => f.done).fold(0.0, (sum, f) => sum + f.areaHa);
   double get overdueHa =>
       fields.where((f) => f.overdue).fold(0.0, (sum, f) => sum + f.areaHa);
+  int get targetFn => fields.length;
+  int get auditedFn => fields.where((f) => f.done).length;
+  int get overdueFn => fields.where((f) => f.overdue).length;
   double get achievementPercent =>
-      targetHa > 0 ? achievedHa / targetHa * 100 : 0;
+      targetFn > 0 ? auditedFn / targetFn * 100 : 0;
 
   Map<String, AuditAreaMetric> composition(
       String Function(WeeklyAuditField) key) {

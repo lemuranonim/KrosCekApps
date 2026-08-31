@@ -7,6 +7,114 @@ import '../utils/weekly_audit.dart';
 String auditHa(double value) =>
     '${NumberFormat('#,##0.##', 'id_ID').format(value)} ha';
 
+String auditWorkload(double areaHa, int fn) =>
+    '${areaHa.toStringAsFixed(1)} Ha | $fn FN';
+
+class AuditWeekFilter extends StatelessWidget {
+  final Set<DateTime> selectedWeeks;
+  final bool allWeeks;
+  final String allLabel;
+  final String allDescription;
+  final void Function(Set<DateTime> weeks, bool allWeeks) onChanged;
+
+  const AuditWeekFilter({
+    super.key,
+    required this.selectedWeeks,
+    required this.allWeeks,
+    required this.onChanged,
+    this.allLabel = 'All Coverage',
+    this.allDescription = 'Seluruh coverage dalam scope user',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = selectedWeeks.toList()..sort();
+    final label = allWeeks
+        ? allLabel
+        : sorted.length == 1
+            ? _weekLabel(sorted.single)
+            : '${sorted.length} Weeks';
+    return ActionChip(
+      avatar: const Icon(Icons.date_range_rounded,
+          size: 17, color: AdvantaColors.primaryGreen),
+      label: Text(label,
+          style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: AdvantaColors.deepForest)),
+      backgroundColor: Colors.white,
+      side: BorderSide(color: AdvantaColors.deepForest.withValues(alpha: .16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      onPressed: () => _openPicker(context),
+    );
+  }
+
+  String _weekLabel(DateTime start) {
+    final end = start.add(const Duration(days: 6));
+    final range = start.month == end.month
+        ? '${start.day}–${DateFormat('d MMM yyyy', 'id_ID').format(end)}'
+        : '${DateFormat('d MMM', 'id_ID').format(start)} – ${DateFormat('d MMM yyyy', 'id_ID').format(end)}';
+    return 'W${auditIsoWeekNumber(start)} · $range';
+  }
+
+  Future<void> _openPicker(BuildContext context) async {
+    final anchor = selectedWeeks.isEmpty
+        ? auditWeekStart(DateTime.now())
+        : (selectedWeeks.toList()..sort()).last;
+    final options = List.generate(
+        13, (index) => anchor.add(Duration(days: (index - 6) * 7)));
+    final draft = {...selectedWeeks};
+    var draftAll = allWeeks;
+    final result = await showDialog<(Set<DateTime>, bool)>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+            builder: (context, update) => AlertDialog(
+                  title: const Text('Filter week'),
+                  content: SizedBox(
+                      width: 340,
+                      child: SingleChildScrollView(
+                          child:
+                              Column(mainAxisSize: MainAxisSize.min, children: [
+                        CheckboxListTile(
+                            dense: true,
+                            title: Text(allLabel),
+                            subtitle: Text(allDescription),
+                            value: draftAll,
+                            onChanged: (checked) => update(() {
+                                  draftAll = checked == true;
+                                  if (draftAll) draft.clear();
+                                })),
+                        const Divider(),
+                        ...options.map((week) {
+                          final end = week.add(const Duration(days: 6));
+                          return CheckboxListTile(
+                              dense: true,
+                              title: Text(
+                                  '${DateFormat('d MMM', 'id_ID').format(week)} – ${DateFormat('d MMM yyyy', 'id_ID').format(end)}'),
+                              value: !draftAll && draft.contains(week),
+                              onChanged: (checked) => update(() {
+                                    draftAll = false;
+                                    checked == true
+                                        ? draft.add(week)
+                                        : draft.remove(week);
+                                  }));
+                        }),
+                      ]))),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Batal')),
+                    FilledButton(
+                        onPressed: draftAll || draft.isNotEmpty
+                            ? () => Navigator.pop(context, (draft, draftAll))
+                            : null,
+                        child: const Text('Terapkan'))
+                  ],
+                )));
+    if (result != null) onChanged(result.$1, result.$2);
+  }
+}
+
 class AuditWeekSelector extends StatelessWidget {
   final DateTime weekStart;
   final ValueChanged<DateTime> onChanged;
@@ -68,7 +176,7 @@ class AuditWeekSelector extends StatelessWidget {
                                           color: AdvantaColors.mutedGrey)),
                                   const SizedBox(height: 1),
                                   Text(
-                                      '${DateFormat('d MMM', 'id_ID').format(weekStart)} – ${DateFormat('d MMM yyyy', 'id_ID').format(end)}',
+                                      'W${auditIsoWeekNumber(weekStart)} · ${DateFormat('d MMM', 'id_ID').format(weekStart)} – ${DateFormat('d MMM yyyy', 'id_ID').format(end)}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
@@ -156,8 +264,8 @@ class AuditFlagFilter extends StatelessWidget {
                                             draft.clear();
                                             draft.addAll(defaultAuditFlags);
                                           }),
-                                      child: const Text(
-                                          'Reset · PLD disembunyikan')),
+                                      child:
+                                          const Text('Reset semua kategori')),
                                 ]))),
                         actions: [
                           TextButton(
@@ -205,8 +313,6 @@ class WeeklyAuditCards extends StatelessWidget {
                 () => _open('NC · LSV', (f) => f.lsvNegative)),
             _metric('Isolasi bermasalah', isolation, AdvantaColors.error,
                 () => _open('NC · Isolasi', (f) => f.isolationNegative)),
-            _note(
-                'Setiap indikator dihitung sendiri; satu lahan dapat memiliki beberapa NC.'),
           ]),
           _card('Komposisi flagging', Icons.flag_rounded, [
             if (flags.isEmpty)
@@ -218,56 +324,65 @@ class WeeklyAuditCards extends StatelessWidget {
                     ? AdvantaColors.midGreen
                     : flag == 'RFI'
                         ? AdvantaColors.gold
-                        : flag == 'Belum ada'
+                        : flag == auditNotYetFlagging
                             ? AdvantaColors.mutedGrey
                             : AdvantaColors.error,
-                () => _open('Flagging · $flag', (f) => f.flag == flag),
-                assessed: false)),
-            _note(
-                'Persentase dihitung ulang dari luas kategori yang dipilih. Belum ada flagging tetap ditampilkan terpisah.'),
+                () => _open('Flagging · $flag', (f) => f.flag == flag))),
           ]),
-          _card('Crop monitoring', Icons.eco_outlined, [
-            _metric(
-                'CU oke · Fair / Good / Best',
-                cu,
-                AdvantaColors.midGreen,
-                () => _open(
-                    'CU oke',
-                    (f) =>
-                        _cropOk(f.latest((o) => o.cu)?.toLowerCase() ?? ''))),
-            _metric(
-                'CH oke · Fair / Good / Best',
-                ch,
-                AdvantaColors.midGreen,
-                () => _open(
-                    'CH oke',
-                    (f) =>
-                        _cropOk(f.latest((o) => o.ch)?.toLowerCase() ?? ''))),
-          ]),
-          _card('Male chopping', Icons.content_cut_rounded, [
-            _metric(
-                'Done / Complete',
-                chopping,
-                AdvantaColors.midGreen,
-                () => _open(
-                    'Male chopping · Done',
-                    (f) => _choppingDone(
-                        f.latest((o) => o.maleChopping)?.toLowerCase() ?? ''))),
-          ]),
-          _card('Stage', Icons.timeline_rounded, [
-            ...auditStageLabels.entries.map((stage) => _metric(
-                stage.value,
-                stages[stage.key] ??
-                    AuditAreaMetric(0, summary.targetHa, summary.targetHa),
-                AdvantaColors.midGreen,
-                () => _open(
-                    'Stage · ${stage.value}', (f) => f.stage == stage.key),
-                assessed: false)),
-            _note(
-                'Fase berdasarkan DAP akhir minggu terpilih; setiap lahan dihitung satu kali.'),
-          ]),
-          _note(
-              'Basis: ${auditHa(summary.targetHa)} target minggu terpilih. Kondisi memakai hasil audit terakhir sampai akhir minggu (maksimal hari ini). Data kosong tidak dianggap oke.'),
+          Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AdvantaColors.dividerGrey)),
+              child: ExpansionTile(
+                  title: const Text('Detail analytics',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: AdvantaColors.deepForest)),
+                  childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  children: [
+                    _card('Crop monitoring', Icons.eco_outlined, [
+                      _metric(
+                          'CU oke · Fair / Good / Best',
+                          cu,
+                          AdvantaColors.midGreen,
+                          () => _open(
+                              'CU oke',
+                              (f) => _cropOk(
+                                  f.latest((o) => o.cu)?.toLowerCase() ?? ''))),
+                      _metric(
+                          'CH oke · Fair / Good / Best',
+                          ch,
+                          AdvantaColors.midGreen,
+                          () => _open(
+                              'CH oke',
+                              (f) => _cropOk(
+                                  f.latest((o) => o.ch)?.toLowerCase() ?? ''))),
+                    ]),
+                    _card('Male chopping', Icons.content_cut_rounded, [
+                      _metric(
+                          'Done / Complete',
+                          chopping,
+                          AdvantaColors.midGreen,
+                          () => _open(
+                              'Male chopping · Done',
+                              (f) => _choppingDone(f
+                                      .latest((o) => o.maleChopping)
+                                      ?.toLowerCase() ??
+                                  ''))),
+                    ]),
+                    _card('Stage', Icons.timeline_rounded, [
+                      ...auditStageLabels.entries.map((stage) => _metric(
+                          stage.value,
+                          stages[stage.key] ??
+                              AuditAreaMetric(
+                                  0, summary.targetHa, summary.targetHa),
+                          AdvantaColors.midGreen,
+                          () => _open('Stage · ${stage.value}',
+                              (f) => f.stage == stage.key))),
+                    ]),
+                  ])),
         ]));
   }
 
@@ -299,9 +414,8 @@ class WeeklyAuditCards extends StatelessWidget {
         ...children,
       ]));
 
-  Widget _metric(
-          String label, AuditAreaMetric metric, Color color, VoidCallback onTap,
-          {bool assessed = true}) =>
+  Widget _metric(String label, AuditAreaMetric metric, Color color,
+          VoidCallback onTap) =>
       InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
@@ -310,21 +424,42 @@ class WeeklyAuditCards extends StatelessWidget {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        spacing: 12,
-                        runSpacing: 4,
-                        children: [
-                          Text(label,
-                              style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w600)),
-                          Text(
-                              '${metric.percent.toStringAsFixed(2)}% · ${auditHa(metric.areaHa)}',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                  color: color)),
-                        ]),
+                    LayoutBuilder(builder: (context, constraints) {
+                      final value =
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text(
+                            '${metric.percent.toStringAsFixed(2)}% · ${auditHa(metric.areaHa)}',
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: color)),
+                        const SizedBox(width: 2),
+                        Icon(Icons.chevron_right_rounded,
+                            size: 18, color: color),
+                      ]);
+                      final title = Text(label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600));
+                      if (constraints.maxWidth < 280) {
+                        return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              title,
+                              const SizedBox(height: 2),
+                              FittedBox(
+                                  alignment: Alignment.centerRight,
+                                  fit: BoxFit.scaleDown,
+                                  child: value),
+                            ]);
+                      }
+                      return Row(children: [
+                        Expanded(child: title),
+                        const SizedBox(width: 10),
+                        value,
+                      ]);
+                    }),
                     const SizedBox(height: 6),
                     LinearProgressIndicator(
                         value: (metric.percent / 100).clamp(0.0, 1.0),
@@ -332,9 +467,6 @@ class WeeklyAuditCards extends StatelessWidget {
                         backgroundColor: color.withValues(alpha: .12),
                         minHeight: 5,
                         borderRadius: BorderRadius.circular(8)),
-                    if (assessed)
-                      _note(
-                          'Ada data ${auditHa(metric.assessedHa)} / ${auditHa(metric.baseHa)} target'),
                   ])));
 
   Widget _note(String text) => Padding(

@@ -796,9 +796,15 @@ LatLng _calculateCenter(List<DetasselingPlanField> fields) {
 
 String _readCodet(Map<String, dynamic> raw) {
   final veg = _firstRow(raw['audit_vegetative']);
-  final codet = _readText(veg?['co_detasseling']);
-  if (codet.isNotEmpty) return codet;
-  return 'Belum ada Codet';
+  for (final value in [
+    veg?['co_detasseling'],
+    raw['co_detasseling'],
+    raw['codet'],
+  ]) {
+    final codet = _readText(value);
+    if (codet.isNotEmpty) return codet;
+  }
+  return 'Belum ada CODET';
 }
 
 bool _hasDetasselingAssessment(Map<String, dynamic> raw) {

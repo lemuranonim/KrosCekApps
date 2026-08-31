@@ -17,7 +17,12 @@ typedef AuditPlanningParams = ({
   String? district,
   String? season,
 });
-const auditPlanningPhases = {'vegetative', 'pre_harvest', 'harvest'};
+const auditPlanningPhases = {
+  'vegetative',
+  'generative',
+  'pre_harvest',
+  'harvest'
+};
 
 final auditPlanningRegionsProvider = FutureProvider<List<String>>((ref) async {
   final service = ref.watch(supabaseServiceProvider);
@@ -139,8 +144,8 @@ typedef _PlanningProjection = ({
 List<WeeklyAuditField> _planningTargets(_PlanningProjection input) => input.rows
     .map((row) => WeeklyAuditField.fromRaw(row,
         weekStart: input.weekStart, now: input.now))
-    .where((field) => field.targets
-        .any((target) => auditPlanningPhases.contains(target.phase)))
+    .where((field) => field.targets.any(
+        (target) => auditPlanningPhases.contains(auditStage(target.phase))))
     .toList();
 
 List<String> _planningTargetNumbers(_PlanningProjection input) =>

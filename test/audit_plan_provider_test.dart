@@ -96,7 +96,8 @@ void main() {
       expect(params['select'], contains('date_of_inspeksi_roguing_4'));
       expect(params['select'], isNot(contains('geometry_wkt')));
       expect(params['select'], isNot(contains('crop_uniformity')));
-      expect(params['select'], isNot(contains('audit_generative')));
+      expect(params['select'], contains('audit_generative'));
+      expect(params['select'], contains('date_of_audit_5'));
     }
   });
 
@@ -178,7 +179,14 @@ void main() {
       return response(rows);
     });
     final fields = await loadPlan(planningContainer(service));
-    const targets = ['veg', 'ph', 'harvest', 'revised', 'psp-partial'];
+    const targets = [
+      'veg',
+      'ph',
+      'harvest',
+      'generative-only',
+      'revised',
+      'psp-partial'
+    ];
     expect(detailNumbers, unorderedEquals(targets));
     expect(fields.map((field) => field.weekly.raw['field_number']),
         unorderedEquals(targets));

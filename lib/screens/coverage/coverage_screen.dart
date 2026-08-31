@@ -22,9 +22,11 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../providers/master_fields_provider.dart';
+import '../../providers/audit_filter_provider.dart';
 import '../../services/session_manager.dart';
 import 'package:go_router/go_router.dart';
 import '../../utils/weekly_audit.dart';
+import '../../utils/qa_name_helper.dart';
 import '../../widgets/weekly_audit_widgets.dart';
 import '../../utils/dap_helper.dart';
 
@@ -42,18 +44,32 @@ String _cleanText(dynamic val) => val?.toString().trim() ?? '';
 bool _isExcludedCoverageRegion(String? region) =>
     region?.trim().toLowerCase() == 'region tester';
 
-List<FieldCoverageStatus> _applyCoverageVisibilityFilters(
+List<FieldCoverageStatus> _projectCoverageWeeks(
   List<FieldCoverageStatus> fields, {
-  required DateTime weekStart,
+  required Set<DateTime> weeks,
   required Set<String> flags,
-}) =>
+}) {
+  final selected = weeks.isEmpty ? {auditWeekStart(DateTime.now())} : weeks;
+  return [
+    for (final week in selected)
+      ...fields
+          .where((field) => !_isExcludedCoverageRegion(field.region))
+          .map((field) => FieldCoverageStatus.fromRaw(field.raw,
+              weekStart: auditWeekStart(week)))
+          .where((field) => flags.contains(field.weekly.flag)),
+  ];
+}
+
+List<FieldCoverageStatus> _filterAllCoverage(
+        List<FieldCoverageStatus> fields, Set<String> flags) =>
     fields
-        .where((f) => !_isExcludedCoverageRegion(f.region))
-        .map((f) => f.weekly.weekStart == weekStart
-            ? f
-            : FieldCoverageStatus.fromRaw(f.raw, weekStart: weekStart))
-        .where((f) => flags.contains(f.weekly.flag))
+        .where((field) =>
+            !_isExcludedCoverageRegion(field.region) &&
+            flags.contains(field.weekly.flag))
         .toList(growable: false);
+
+double _coverageArea(Iterable<FieldCoverageStatus> fields) =>
+    fields.fold(0.0, (sum, field) => sum + field.effectiveAreaHa);
 
 /// Status coverage untuk satu field, dihitung dari data audit.
 class FieldCoverageStatus {
@@ -195,6 +211,9 @@ class FieldCoverageStatus {
     }
     return count;
   }
+
+  bool get allRequiredPhasesDone =>
+      phaseKeys.isNotEmpty && donePhasesCount == phaseKeys.length;
 
   /// Coverage score 0-100 berdasarkan fase yang sudah On Going / Overdue.
   double get coverageScore {
@@ -380,9 +399,8 @@ class FICoverage {
 
   static FICoverage fromFields(String name, List<FieldCoverageStatus> fields) {
     final totalArea = fields.fold(0.0, (s, f) => s + f.effectiveAreaHa);
-    final totalTargets = fields.fold(0, (s, f) => s + f.targetPhaseCount);
-    final completedTargets =
-        fields.fold(0, (s, f) => s + f.completedTargetPhaseCount);
+    final totalTargets = fields.where((field) => field.isAuditTarget).length;
+    final completedTargets = fields.where((field) => field.weekly.done).length;
     final avgScore =
         WeeklyAuditSummary(fields.map((f) => f.weekly)).achievementPercent;
     final overdue = fields.where((f) => f.isOverdue).length;
@@ -415,7 +433,7 @@ class PhaseCoverage {
   final double totalHa;
   final double doneHa;
   final double overdueHa;
-  double get pct => totalHa == 0 ? 0 : (doneHa / totalHa) * 100;
+  double get pct => total == 0 ? 0 : (done / total) * 100;
 
   const PhaseCoverage({
     required this.label,
@@ -466,7 +484,7 @@ class PhaseSummary {
   });
 
   double get targetCompletionPct =>
-      targetAreaHa == 0 ? 0 : achievedAreaHa / targetAreaHa * 100;
+      totalTargets == 0 ? 0 : completedTargets / totalTargets * 100;
 }
 
 // ============================================================
@@ -513,10 +531,9 @@ PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields) {
       totalFields: fields.length,
       targetFields: fields.length,
       upcomingFields: 0,
-      completedTargets:
-          fields.fold(0, (sum, f) => sum + f.completedTargetPhaseCount),
-      totalTargets: fields.fold(0, (sum, f) => sum + f.targetPhaseCount),
-      overdueTargets: fields.fold(0, (sum, f) => sum + f.overdueTargetCount),
+      completedTargets: fields.where((field) => field.weekly.done).length,
+      totalTargets: fields.length,
+      overdueTargets: fields.where((field) => field.weekly.overdue).length,
       actionFields: fields.where((f) => f.hasActionRequired).length,
       correctedFields: fields.where((f) => f.hasCorrectionTagging).length,
       auditAreaOverrides: fields.where((f) => f.hasAuditAreaOverride).length,
@@ -554,8 +571,8 @@ final phaseSummaryProvider = FutureProvider<PhaseSummary>((ref) async {
 List<FICoverage> buildFiCoverageList(List<FieldCoverageStatus> fields) {
   final grouped = <String, List<FieldCoverageStatus>>{};
   for (final f in fields) {
-    if (f.qaFi.isEmpty) continue;
-    grouped.putIfAbsent(f.qaFi, () => []).add(f);
+    final owner = f.qaFi.isEmpty ? 'Unmapped / Need Mapping' : f.qaFi;
+    grouped.putIfAbsent(owner, () => []).add(f);
   }
   final list = grouped.entries
       .map((e) => FICoverage.fromFields(e.key, e.value))
@@ -564,8 +581,16 @@ List<FICoverage> buildFiCoverageList(List<FieldCoverageStatus> fields) {
   return list;
 }
 
-double aggregateCoverageScore(List<FieldCoverageStatus> fields) =>
-    WeeklyAuditSummary(fields.map((f) => f.weekly)).achievementPercent;
+double aggregateCoverageScore(List<FieldCoverageStatus> fields) {
+  if (fields.any((field) => field.isAuditTarget)) {
+    return WeeklyAuditSummary(fields.map((field) => field.weekly))
+        .achievementPercent;
+  }
+  if (fields.isEmpty) return 0;
+  return fields.where((field) => field.allRequiredPhasesDone).length /
+      fields.length *
+      100;
+}
 
 final fiCoverageListProvider = FutureProvider<List<FICoverage>>((ref) async {
   final fields = await ref.watch(coverageStatusListProvider.future);
@@ -582,6 +607,7 @@ Future<void> _refreshCoverage(
   ref.invalidate(phaseSummaryProvider);
   ref.invalidate(fiCoverageListProvider);
   await ref.read(coverageStatusListScopedProvider(scope).future);
+  ref.read(auditDashboardFilterProvider.notifier).markUpdated();
 }
 
 // ============================================================
@@ -747,11 +773,19 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
   String? _selectedDistrict; // cascade dari region
   String? _selectedSpv;
   int _expandedAreaIndex = -1;
-  DateTime _weekStart = auditWeekStart(DateTime.now());
-  Set<String> _selectedFlags = {...defaultAuditFlags};
+
+  @override
+  void initState() {
+    super.initState();
+    final filters = ref.read(auditDashboardFilterProvider);
+    _selectedRegion = filters.region;
+    _selectedDistrict = filters.district;
+    _showAllRegions = filters.region == null;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final sharedFilters = ref.watch(auditDashboardFilterProvider);
     final regionOptionsAsync = ref.watch(
       activeMasterFieldRegionsProvider(const MasterFieldMapScope.all()),
     );
@@ -818,22 +852,21 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
       loading: () => const _SkeletonLoader(),
       error: (e, _) => _CoverageErrorWidget(error: e.toString()),
       data: (allFields) {
-        final visibleFields = _applyCoverageVisibilityFilters(
-          allFields,
-          weekStart: _weekStart,
-          flags: _selectedFlags,
-        );
+        final allCoverageFields =
+            _filterAllCoverage(allFields, sharedFilters.flags);
+        final weeklyFields = _projectCoverageWeeks(allFields,
+            weeks: sharedFilters.weeks, flags: sharedFilters.flags);
 
         // CASCADING LOGIC — Region → District → SPV
         final regions = regionOptions.isNotEmpty
             ? regionOptions
-            : (visibleFields
+            : (allCoverageFields
                 .map((f) => f.region)
                 .where((r) => r.isNotEmpty)
                 .toSet()
                 .toList()
               ..sort());
-        final districtOptions = visibleFields
+        final districtOptions = allCoverageFields
             .where(
                 (f) => _selectedRegion == null || f.region == _selectedRegion)
             .map((f) => f.district)
@@ -841,7 +874,7 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
             .toSet()
             .toList()
           ..sort();
-        final spvOptions = visibleFields
+        final spvOptions = allCoverageFields
             .where((f) {
               if (_selectedRegion != null && f.region != _selectedRegion) {
                 return false;
@@ -858,8 +891,7 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
             .toList()
           ..sort();
 
-        // Apply filters
-        final filtered = visibleFields.where((f) {
+        bool matchesScope(FieldCoverageStatus f) {
           if (_selectedRegion != null && f.region != _selectedRegion) {
             return false;
           }
@@ -868,34 +900,31 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
           }
           if (_selectedSpv != null && f.qaSpv != _selectedSpv) return false;
           return true;
-        }).toList();
-        final dashboardFields = filtered.where((f) => f.isAuditTarget).toList();
+        }
 
-        final filteredFIList = buildFiCoverageList(dashboardFields);
+        final coverageFields =
+            allCoverageFields.where(matchesScope).toList(growable: false);
+        final targetFields = weeklyFields
+            .where(matchesScope)
+            .where((field) => field.isAuditTarget)
+            .toList(growable: false);
+        final dashboardFields =
+            sharedFilters.coverageMode == CoverageDisplayMode.allCoverage
+                ? coverageFields
+                : targetFields;
+
+        final filteredFIList = buildFiCoverageList(targetFields);
 
         final summary = calculateFilteredPhases(
-          dashboardFields,
+          targetFields,
         );
-        final uniqueSpv = dashboardFields
-            .map((f) => f.qaSpv)
-            .where((s) => s.isNotEmpty)
-            .toSet();
-        final uniqueFI = dashboardFields
-            .map((f) => f.qaFi)
-            .where((s) => s.isNotEmpty)
-            .toSet();
-
         final regionMap = _buildRegionMap(dashboardFields);
 
         return CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
                 child: _CoverageHeader(
-                    title: 'Coverage Monitoring',
-                    subtitle: widget.isDevPreview
-                        ? 'Dev Preview - Manager View'
-                        : 'Manager View',
-                    session: widget.session)),
+                    title: 'Coverage Monitoring', session: widget.session)),
             if (widget.isDevPreview)
               SliverToBoxAdapter(
                 child: _DevRolePreviewBar(
@@ -903,13 +932,7 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
               ),
-            SliverToBoxAdapter(
-                child: _WeeklyCoverageControls(
-              weekStart: _weekStart,
-              flags: _selectedFlags,
-              onWeekChanged: (week) => setState(() => _weekStart = week),
-              onFlagsChanged: (flags) => setState(() => _selectedFlags = flags),
-            )),
+            SliverToBoxAdapter(child: const _WeeklyCoverageControls()),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -925,6 +948,9 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                       _selectedRegion = v == 'All Region' ? null : v;
                       _selectedDistrict = null;
                       _selectedSpv = null;
+                      ref
+                          .read(auditDashboardFilterProvider.notifier)
+                          .setRegion(_selectedRegion);
                     }),
                   ),
                   PremiumFilterChip(
@@ -935,6 +961,9 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     onSelected: (v) => setState(() {
                       _selectedDistrict = v == 'All Kabupaten' ? null : v;
                       _selectedSpv = null;
+                      ref
+                          .read(auditDashboardFilterProvider.notifier)
+                          .setDistrict(_selectedDistrict);
                     }),
                   ),
                   PremiumFilterChip(
@@ -952,36 +981,27 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
             SliverToBoxAdapter(
               child: _StatsRow(stats: [
                 _StatCard(
-                  icon: Icons.inventory_2_rounded,
+                  icon: Icons.landscape_rounded,
                   iconColor: AdvantaColors.deepForest,
                   bgColor: Colors.grey[200]!,
-                  value: dashboardFields.length.toString(),
-                  label: 'Lahan Filter',
+                  value: auditWorkload(
+                      _coverageArea(coverageFields), coverageFields.length),
+                  label: 'Total Coverage',
                 ),
                 _StatCard(
                     icon: Icons.fact_check_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.paleGreen,
-                    value: _formatHa(summary.targetAreaHa),
+                    value: auditWorkload(
+                        summary.targetAreaHa, summary.totalTargets),
                     label: 'Target Audit'),
                 _StatCard(
-                    icon: Icons.landscape_rounded,
+                    icon: Icons.task_alt_rounded,
                     iconColor: AdvantaColors.midGreen,
-                    bgColor: AdvantaColors.paleGreen,
-                    value: _formatHa(summary.effectiveAreaHa),
-                    label: 'Coverage Area'),
-                _StatCard(
-                    icon: Icons.supervisor_account_rounded,
-                    iconColor: AdvantaColors.midGreen,
-                    bgColor: AdvantaColors.paleGreen,
-                    value: uniqueSpv.length.toString(),
-                    label: 'Active SPV'),
-                _StatCard(
-                    icon: Icons.person_rounded,
-                    iconColor: AdvantaColors.gold,
-                    bgColor: AdvantaColors.goldPale,
-                    value: uniqueFI.length.toString(),
-                    label: 'Active FI'),
+                    bgColor: AdvantaColors.successLight,
+                    value:
+                        '${summary.completedTargets} / ${summary.totalTargets} FN · ${summary.targetCompletionPct.toStringAsFixed(0)}%',
+                    label: 'Achieved'),
                 _StatCard(
                     icon: Icons.warning_amber_rounded,
                     iconColor: AdvantaColors.error,
@@ -991,7 +1011,7 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     onTap: () => _showWeeklyFields(
                         context,
                         'Overdue',
-                        dashboardFields
+                        targetFields
                             .where((f) => f.isOverdue)
                             .map((f) => f.weekly)
                             .toList(),
@@ -1002,12 +1022,12 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
             SliverToBoxAdapter(
               child: _PhaseProgressSection(
                   summary: summary,
-                  fields: dashboardFields,
+                  fields: targetFields,
                   onChanged: () => _refreshCoverage(ref, coverageScope)),
             ),
             SliverToBoxAdapter(
                 child: WeeklyAuditCards(
-              summary: WeeklyAuditSummary(dashboardFields.map((f) => f.weekly)),
+              summary: WeeklyAuditSummary(targetFields.map((f) => f.weekly)),
               onDetail: (title, fields) => _showWeeklyFields(
                   context, title, fields,
                   onChanged: () => _refreshCoverage(ref, coverageScope)),
@@ -1095,11 +1115,16 @@ class _SPVViewState extends ConsumerState<_SPVView> {
   String? _selectedDistrict;
   String? _selectedFi;
   int _expandedDistrictIndex = -1;
-  DateTime _weekStart = auditWeekStart(DateTime.now());
-  Set<String> _selectedFlags = {...defaultAuditFlags};
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDistrict = ref.read(auditDashboardFilterProvider).district;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final sharedFilters = ref.watch(auditDashboardFilterProvider);
     final fieldsAsync = ref.watch(coverageStatusListProvider);
 
     return fieldsAsync.when(
@@ -1111,25 +1136,24 @@ class _SPVViewState extends ConsumerState<_SPVView> {
         final mySpvFields = widget.isDevPreview
             ? allFields
             : allFields
-                .where((f) => f.qaSpv.trim().toLowerCase() == myName)
+                .where((f) => QaNameHelper.containsExactName(f.qaSpv, myName))
                 .toList();
-        final visibleSpvFields = _applyCoverageVisibilityFilters(
-          mySpvFields,
-          weekStart: _weekStart,
-          flags: _selectedFlags,
-        );
+        final allCoverageFields =
+            _filterAllCoverage(mySpvFields, sharedFilters.flags);
+        final weeklyFields = _projectCoverageWeeks(mySpvFields,
+            weeks: sharedFilters.weeks, flags: sharedFilters.flags);
 
         // 2. CASCADING LOGIC SPV (Berdasarkan lahan milik SPV ini saja)
-        final spvOptions = visibleSpvFields
+        final spvOptions = allCoverageFields
             .map((f) => f.qaSpv)
             .where((s) => s.isNotEmpty)
             .toSet()
             .toList()
           ..sort();
-        final spvScopedFields = visibleSpvFields
+        final spvScopedFields = allCoverageFields
             .where((f) => _selectedSpv == null || f.qaSpv == _selectedSpv)
             .toList();
-        final districts = visibleSpvFields
+        final districts = allCoverageFields
             .where((f) => _selectedSpv == null || f.qaSpv == _selectedSpv)
             .map((f) => f.district)
             .where((d) => d.isNotEmpty)
@@ -1146,35 +1170,34 @@ class _SPVViewState extends ConsumerState<_SPVView> {
           ..sort();
 
         // 3. APPLY FILTER DROPDOWN USER
-        final fields = spvScopedFields.where((f) {
+        bool matchesScope(FieldCoverageStatus f) {
+          if (_selectedSpv != null && f.qaSpv != _selectedSpv) return false;
           if (_selectedDistrict != null && f.district != _selectedDistrict) {
             return false;
           }
           if (_selectedFi != null && f.qaFi != _selectedFi) return false;
           return true;
-        }).toList();
-        final dashboardFields = fields.where((f) => f.isAuditTarget).toList();
+        }
+
+        final coverageFields =
+            allCoverageFields.where(matchesScope).toList(growable: false);
+        final targetFields = weeklyFields
+            .where(matchesScope)
+            .where((field) => field.isAuditTarget)
+            .toList(growable: false);
+        final dashboardFields =
+            sharedFilters.coverageMode == CoverageDisplayMode.allCoverage
+                ? coverageFields
+                : targetFields;
 
         // Hitung Statistik
         final summary = calculateFilteredPhases(
-          dashboardFields,
+          targetFields,
         );
-        final uniqueFI = dashboardFields
-            .map((f) => f.qaFi)
-            .where((s) => s.isNotEmpty)
-            .toSet();
-        final onTrack = uniqueFI.where((fi) {
-          final fiFields = dashboardFields.where((f) => f.qaFi == fi).toList();
-          final score = aggregateCoverageScore(fiFields);
-          return score >= 85;
-        }).length;
-        final needsAttention = dashboardFields
-            .where((f) => f.needsAttention)
-            .map((f) => f.qaFi)
-            .toSet()
-            .length;
+        final needsAttention =
+            targetFields.where((f) => f.needsAttention).length;
 
-        final fiList = buildFiCoverageList(dashboardFields);
+        final fiList = buildFiCoverageList(targetFields);
 
         final districtMap = <String, List<FieldCoverageStatus>>{};
         for (final f in dashboardFields) {
@@ -1188,11 +1211,7 @@ class _SPVViewState extends ConsumerState<_SPVView> {
           slivers: [
             SliverToBoxAdapter(
                 child: _CoverageHeader(
-                    title: 'Coverage Monitoring',
-                    subtitle: widget.isDevPreview
-                        ? 'Dev Preview - QA SPV View'
-                        : 'QA SPV — ${widget.session.name}',
-                    session: widget.session)),
+                    title: 'Coverage Monitoring', session: widget.session)),
             if (widget.isDevPreview)
               SliverToBoxAdapter(
                 child: _DevRolePreviewBar(
@@ -1200,28 +1219,21 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
               ),
-            SliverToBoxAdapter(
-                child: _WeeklyCoverageControls(
-              weekStart: _weekStart,
-              flags: _selectedFlags,
-              onWeekChanged: (week) => setState(() => _weekStart = week),
-              onFlagsChanged: (flags) => setState(() => _selectedFlags = flags),
-            )),
+            SliverToBoxAdapter(child: const _WeeklyCoverageControls()),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
-                  if (widget.isDevPreview)
-                    PremiumFilterChip(
-                      label: _selectedSpv ?? 'All QA SPV',
-                      options: ['All QA SPV', ...spvOptions],
-                      selected: _selectedSpv,
-                      icon: Icons.supervisor_account_rounded,
-                      onSelected: (v) => setState(() {
-                        _selectedSpv = v == 'All QA SPV' ? null : v;
-                        _selectedDistrict = null;
-                        _selectedFi = null;
-                      }),
-                    ),
+                  PremiumFilterChip(
+                    label: _selectedSpv ?? 'All QA SPV',
+                    options: ['All QA SPV', ...spvOptions],
+                    selected: _selectedSpv,
+                    icon: Icons.supervisor_account_rounded,
+                    onSelected: (v) => setState(() {
+                      _selectedSpv = v == 'All QA SPV' ? null : v;
+                      _selectedDistrict = null;
+                      _selectedFi = null;
+                    }),
+                  ),
                   PremiumFilterChip(
                     label: _selectedDistrict ?? 'All Kabupaten',
                     options: ['All Kabupaten', ...districts],
@@ -1230,6 +1242,9 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     onSelected: (v) => setState(() {
                       _selectedDistrict = v == 'All Kabupaten' ? null : v;
                       _selectedFi = null; // Reset FI jika Kabupaten berubah
+                      ref
+                          .read(auditDashboardFilterProvider.notifier)
+                          .setDistrict(_selectedDistrict);
                     }),
                   ),
                   PremiumFilterChip(
@@ -1247,36 +1262,27 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             SliverToBoxAdapter(
               child: _StatsRow(stats: [
                 _StatCard(
-                  icon: Icons.inventory_2_rounded,
+                  icon: Icons.landscape_rounded,
                   iconColor: AdvantaColors.deepForest,
                   bgColor: Colors.grey[200]!,
-                  value: dashboardFields.length.toString(),
-                  label: 'Lahan Tim',
+                  value: auditWorkload(
+                      _coverageArea(coverageFields), coverageFields.length),
+                  label: 'Total Coverage',
                 ),
                 _StatCard(
                     icon: Icons.fact_check_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.paleGreen,
-                    value: _formatHa(summary.targetAreaHa),
+                    value: auditWorkload(
+                        summary.targetAreaHa, summary.totalTargets),
                     label: 'Target Audit'),
                 _StatCard(
-                    icon: Icons.landscape_rounded,
-                    iconColor: AdvantaColors.midGreen,
-                    bgColor: AdvantaColors.paleGreen,
-                    value: _formatHa(summary.effectiveAreaHa),
-                    label: 'Coverage Area'),
-                _StatCard(
-                    icon: Icons.people_rounded,
-                    iconColor: AdvantaColors.midGreen,
-                    bgColor: AdvantaColors.paleGreen,
-                    value: uniqueFI.length.toString(),
-                    label: 'Active FI'),
-                _StatCard(
-                    icon: Icons.check_circle_rounded,
+                    icon: Icons.task_alt_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.successLight,
-                    value: onTrack.toString(),
-                    label: 'On Track FI'),
+                    value:
+                        '${summary.completedTargets} / ${summary.totalTargets} FN · ${summary.targetCompletionPct.toStringAsFixed(0)}%',
+                    label: 'Achieved'),
                 _StatCard(
                     icon: Icons.warning_amber_rounded,
                     iconColor: AdvantaColors.error,
@@ -1286,7 +1292,7 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     onTap: () => _showWeeklyFields(
                         context,
                         'Needs Attention',
-                        dashboardFields
+                        targetFields
                             .where((f) => f.needsAttention)
                             .map((f) => f.weekly)
                             .toList(),
@@ -1297,12 +1303,12 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             SliverToBoxAdapter(
               child: _PhaseProgressSection(
                   summary: summary,
-                  fields: dashboardFields,
+                  fields: targetFields,
                   onChanged: () => _refreshCoverage(ref)),
             ),
             SliverToBoxAdapter(
                 child: WeeklyAuditCards(
-              summary: WeeklyAuditSummary(dashboardFields.map((f) => f.weekly)),
+              summary: WeeklyAuditSummary(targetFields.map((f) => f.weekly)),
               onDetail: (title, fields) => _showWeeklyFields(
                   context, title, fields,
                   onChanged: () => _refreshCoverage(ref)),
@@ -1382,11 +1388,18 @@ class _FIViewState extends ConsumerState<_FIView> {
   String? _selectedVillage;
   String? _selectedPhase;
   int _expandedVillageIndex = -1;
-  DateTime _weekStart = auditWeekStart(DateTime.now());
-  Set<String> _selectedFlags = {...defaultAuditFlags};
+
+  @override
+  void initState() {
+    super.initState();
+    final filters = ref.read(auditDashboardFilterProvider);
+    _selectedDistrict = filters.district;
+    _selectedVillage = filters.village;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final sharedFilters = ref.watch(auditDashboardFilterProvider);
     final fieldsAsync = ref.watch(coverageStatusListProvider);
 
     return fieldsAsync.when(
@@ -1398,22 +1411,21 @@ class _FIViewState extends ConsumerState<_FIView> {
         final myFiFields = widget.isDevPreview
             ? allFields
             : allFields
-                .where((f) => f.qaFi.trim().toLowerCase() == myName)
+                .where((f) => QaNameHelper.containsExactName(f.qaFi, myName))
                 .toList();
-        final visibleFiFields = _applyCoverageVisibilityFilters(
-          myFiFields,
-          weekStart: _weekStart,
-          flags: _selectedFlags,
-        );
+        final allCoverageFields =
+            _filterAllCoverage(myFiFields, sharedFilters.flags);
+        final weeklyFields = _projectCoverageWeeks(myFiFields,
+            weeks: sharedFilters.weeks, flags: sharedFilters.flags);
 
         // 2. CASCADING LOGIC FI (Gunakan myFiFields)
-        final fiOptions = visibleFiFields
+        final fiOptions = allCoverageFields
             .map((f) => f.qaFi)
             .where((s) => s.isNotEmpty)
             .toSet()
             .toList()
           ..sort();
-        final fiScopedFields = visibleFiFields
+        final fiScopedFields = allCoverageFields
             .where((f) => _selectedFi == null || f.qaFi == _selectedFi)
             .toList();
         final districts = fiScopedFields
@@ -1432,7 +1444,8 @@ class _FIViewState extends ConsumerState<_FIView> {
           ..sort();
 
         // 3. APPLY FILTERS DROPDOWN USER
-        final fields = fiScopedFields.where((f) {
+        bool matchesScope(FieldCoverageStatus f) {
+          if (_selectedFi != null && f.qaFi != _selectedFi) return false;
           if (_selectedDistrict != null && f.district != _selectedDistrict) {
             return false;
           }
@@ -1445,18 +1458,23 @@ class _FIViewState extends ConsumerState<_FIView> {
             return auditStageLabels[f.weekly.stage] == selected;
           }
           return true;
-        }).toList();
-        final dashboardFields = fields.where((f) => f.isAuditTarget).toList();
+        }
+
+        final coverageFields =
+            allCoverageFields.where(matchesScope).toList(growable: false);
+        final targetFields = weeklyFields
+            .where(matchesScope)
+            .where((field) => field.isAuditTarget)
+            .toList(growable: false);
+        final dashboardFields =
+            sharedFilters.coverageMode == CoverageDisplayMode.allCoverage
+                ? coverageFields
+                : targetFields;
 
         final summary = calculateFilteredPhases(
-          dashboardFields,
+          targetFields,
         );
-        final villagesCount = dashboardFields
-            .map((f) => f.weekly.villageKey)
-            .where((v) => v.isNotEmpty)
-            .toSet()
-            .length;
-        final overdueFields = dashboardFields.where((f) => f.isOverdue).length;
+        final overdueFields = targetFields.where((f) => f.isOverdue).length;
 
         final villageMap = <String, List<FieldCoverageStatus>>{};
         for (final f in dashboardFields) {
@@ -1472,11 +1490,7 @@ class _FIViewState extends ConsumerState<_FIView> {
           slivers: [
             SliverToBoxAdapter(
                 child: _CoverageHeader(
-                    title: 'Coverage Monitoring',
-                    subtitle: widget.isDevPreview
-                        ? 'Dev Preview - QA FI View'
-                        : 'QA FI — ${widget.session.name}',
-                    session: widget.session)),
+                    title: 'Coverage Monitoring', session: widget.session)),
             if (widget.isDevPreview)
               SliverToBoxAdapter(
                 child: _DevRolePreviewBar(
@@ -1484,13 +1498,7 @@ class _FIViewState extends ConsumerState<_FIView> {
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
               ),
-            SliverToBoxAdapter(
-                child: _WeeklyCoverageControls(
-              weekStart: _weekStart,
-              flags: _selectedFlags,
-              onWeekChanged: (week) => setState(() => _weekStart = week),
-              onFlagsChanged: (flags) => setState(() => _selectedFlags = flags),
-            )),
+            SliverToBoxAdapter(child: const _WeeklyCoverageControls()),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -1514,6 +1522,9 @@ class _FIViewState extends ConsumerState<_FIView> {
                     onSelected: (v) => setState(() {
                       _selectedDistrict = v == 'All Kabupaten' ? null : v;
                       _selectedVillage = null;
+                      ref
+                          .read(auditDashboardFilterProvider.notifier)
+                          .setDistrict(_selectedDistrict);
                     }),
                   ),
                   PremiumFilterChip(
@@ -1521,8 +1532,12 @@ class _FIViewState extends ConsumerState<_FIView> {
                     options: ['All Desa', ...villageOptions],
                     selected: _selectedVillage,
                     icon: Icons.holiday_village_rounded,
-                    onSelected: (v) => setState(
-                        () => _selectedVillage = v == 'All Desa' ? null : v),
+                    onSelected: (v) => setState(() {
+                      _selectedVillage = v == 'All Desa' ? null : v;
+                      ref
+                          .read(auditDashboardFilterProvider.notifier)
+                          .setVillage(_selectedVillage);
+                    }),
                   ),
                   PremiumFilterChip(
                     label: _selectedPhase ?? 'All Phase',
@@ -1548,61 +1563,49 @@ class _FIViewState extends ConsumerState<_FIView> {
                     icon: Icons.landscape_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.paleGreen,
-                    value: _formatHa(summary.effectiveAreaHa),
-                    label: 'Assigned Area'),
-                _StatCard(
-                    icon: Icons.location_city_rounded,
-                    iconColor: AdvantaColors.midGreen,
-                    bgColor: AdvantaColors.paleGreen,
-                    value: villagesCount.toString(),
-                    label: 'Villages'),
+                    value: auditWorkload(
+                        _coverageArea(coverageFields), coverageFields.length),
+                    label: 'Coverage'),
                 _StatCard(
                     icon: Icons.fact_check_rounded,
-                    iconColor: AdvantaColors.gold,
-                    bgColor: AdvantaColors.goldPale,
-                    value: _formatHa(summary.achievedAreaHa),
-                    label: 'Target Done'),
+                    iconColor: AdvantaColors.midGreen,
+                    bgColor: AdvantaColors.paleGreen,
+                    value: auditWorkload(
+                        summary.targetAreaHa, summary.totalTargets),
+                    label: 'Target'),
+                _StatCard(
+                    icon: Icons.task_alt_rounded,
+                    iconColor: AdvantaColors.midGreen,
+                    bgColor: AdvantaColors.successLight,
+                    value:
+                        '${summary.completedTargets} / ${summary.totalTargets} FN · ${summary.targetCompletionPct.toStringAsFixed(0)}%',
+                    label: 'Achieved'),
                 _StatCard(
                     icon: Icons.assignment_late_rounded,
-                    iconColor: AdvantaColors.gold,
-                    bgColor: AdvantaColors.goldPale,
-                    value: summary.actionFields.toString(),
-                    label: 'Action Item',
-                    onTap: () => _showWeeklyFields(
-                        context,
-                        'Action Item',
-                        dashboardFields
-                            .where((f) => f.hasActionRequired)
-                            .map((f) => f.weekly)
-                            .toList(),
-                        onChanged: () => _refreshCoverage(ref)),
-                    highlight: summary.actionFields > 0),
-                _StatCard(
-                    icon: Icons.running_with_errors_rounded,
                     iconColor: AdvantaColors.error,
                     bgColor: AdvantaColors.errorLight,
-                    value: overdueFields.toString(),
-                    label: 'Overdue',
+                    value: '${summary.actionFields + overdueFields} FN',
+                    label: 'Need Attention / Overdue',
                     onTap: () => _showWeeklyFields(
                         context,
-                        'Overdue',
-                        dashboardFields
-                            .where((f) => f.isOverdue)
+                        'Need Attention / Overdue',
+                        targetFields
+                            .where((f) => f.needsAttention)
                             .map((f) => f.weekly)
                             .toList(),
                         onChanged: () => _refreshCoverage(ref)),
-                    highlight: overdueFields > 0),
+                    highlight: summary.actionFields + overdueFields > 0),
               ]),
             ),
             SliverToBoxAdapter(
               child: _PhaseProgressSection(
                   summary: summary,
-                  fields: dashboardFields,
+                  fields: targetFields,
                   onChanged: () => _refreshCoverage(ref)),
             ),
             SliverToBoxAdapter(
                 child: WeeklyAuditCards(
-              summary: WeeklyAuditSummary(dashboardFields.map((f) => f.weekly)),
+              summary: WeeklyAuditSummary(targetFields.map((f) => f.weekly)),
               onDetail: (title, fields) => _showWeeklyFields(
                   context, title, fields,
                   onChanged: () => _refreshCoverage(ref)),
@@ -1612,12 +1615,15 @@ class _FIViewState extends ConsumerState<_FIView> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: Row(
                   children: [
-                    const Text('Village Coverage List',
-                        style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AdvantaColors.deepForest)),
-                    const Spacer(),
+                    const Expanded(
+                        child: Text('Village Coverage List',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: AdvantaColors.deepForest))),
+                    const SizedBox(width: 8),
                     Text('${villageEntries.length} desa',
                         style:
                             TextStyle(fontSize: 12, color: Colors.grey[600])),
@@ -1897,11 +1903,9 @@ class _PremiumFilterModalState extends State<_PremiumFilterModal> {
 // Komponen Header dan Utilities Lainnya tetap sama
 class _CoverageHeader extends StatelessWidget {
   final String title;
-  final String subtitle;
   final ActiveSession session;
 
-  const _CoverageHeader(
-      {required this.title, required this.subtitle, required this.session});
+  const _CoverageHeader({required this.title, required this.session});
 
   @override
   Widget build(BuildContext context) {
@@ -1935,19 +1939,11 @@ class _CoverageHeader extends StatelessWidget {
                               fontSize: 16)))),
               const SizedBox(width: 12),
               Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(title,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700)),
-                    Text(subtitle,
-                        style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.75),
-                            fontSize: 12))
-                  ])),
+                  child: Text(title,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700))),
               Stack(children: [
                 IconButton(
                     icon: const Icon(Icons.notifications_outlined,
@@ -2273,10 +2269,10 @@ class _StatCard extends StatelessWidget {
             Text(
               value,
               style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w900,
                   color: highlight ? iconColor : AdvantaColors.deepForest),
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 2),
@@ -2311,7 +2307,7 @@ class _PhaseProgressSection extends StatelessWidget {
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Text('Area coverage',
+              const Text('Target achievement per phase',
                   style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -2331,9 +2327,10 @@ class _PhaseProgressSection extends StatelessWidget {
                 color: AdvantaColors.midGreen)),
         const SizedBox(height: 8),
         Wrap(spacing: 16, runSpacing: 8, children: [
-          _value('Target audit', summary.targetAreaHa),
-          _value('Achievement', summary.achievedAreaHa),
-          _value('Overdue', summary.overdueAreaHa),
+          _value('Target audit', summary.targetAreaHa, summary.totalTargets),
+          _value(
+              'Achievement', summary.achievedAreaHa, summary.completedTargets),
+          _value('Overdue', summary.overdueAreaHa, summary.overdueTargets),
         ]),
         const SizedBox(height: 16),
         LayoutBuilder(
@@ -2345,16 +2342,23 @@ class _PhaseProgressSection extends StatelessWidget {
                         width:
                             (box.maxWidth - (box.maxWidth >= 720 ? 48 : 16)) /
                                 (box.maxWidth >= 720 ? 4 : 2),
-                        child: _PhaseBar(phase: phase)))
+                        child: _PhaseBar(
+                            phase: phase,
+                            onTap: () => _showWeeklyFields(
+                                context,
+                                phase.label,
+                                fields
+                                    .where((field) => field.weekly.targets.any(
+                                        (target) =>
+                                            auditStage(target.phase) == auditStageLabels.entries.firstWhere((entry) => entry.value == phase.label).key))
+                                    .map((field) => field.weekly)
+                                    .toList(),
+                                onChanged: onChanged))))
                     .toList())),
-        const SizedBox(height: 12),
-        const Text(
-            'Luas dihitung sekali per lahan. Achievement jika seluruh target audit lahan pada minggu ini selesai. Target yang selesai sebelum minggu ini tidak ditargetkan ulang.',
-            style: TextStyle(fontSize: 11, color: AdvantaColors.mutedGrey)),
       ]));
-  Widget _value(String label, double area) =>
+  Widget _value(String label, double area, int fn) =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(_formatHa(area),
+        Text(auditWorkload(area, fn),
             style: const TextStyle(
                 fontWeight: FontWeight.w800, color: AdvantaColors.deepForest)),
         Text(label,
@@ -2365,42 +2369,52 @@ class _PhaseProgressSection extends StatelessWidget {
 
 class _PhaseBar extends StatelessWidget {
   final PhaseCoverage phase;
-  const _PhaseBar({required this.phase});
+  final VoidCallback onTap;
+  const _PhaseBar({required this.phase, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      // Label Fase (Veg, Gen, dst)
-      Text(phase.shortLabel,
-          style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: AdvantaColors.charcoal)),
-      const SizedBox(height: 2),
+    return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+            padding: const EdgeInsets.all(4),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Label Fase (Veg, Gen, dst)
+              Text(phase.shortLabel,
+                  style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AdvantaColors.charcoal)),
+              const SizedBox(height: 2),
 
-      // Persentase
-      Text('${phase.pct.toStringAsFixed(0)}%',
-          style: TextStyle(
-              fontSize: 13, fontWeight: FontWeight.w800, color: phase.color)),
-      const SizedBox(height: 4),
+              // Persentase
+              Text('${phase.pct.toStringAsFixed(0)}%',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: phase.color)),
+              const SizedBox(height: 4),
 
-      // Progress Bar
-      ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-              value: phase.pct / 100,
-              backgroundColor: phase.color.withValues(alpha: 0.15),
-              valueColor: AlwaysStoppedAnimation<Color>(phase.color),
-              minHeight: 6)),
-      const SizedBox(height: 3),
+              // Progress Bar
+              ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                      value: phase.pct / 100,
+                      backgroundColor: phase.color.withValues(alpha: 0.15),
+                      valueColor: AlwaysStoppedAnimation<Color>(phase.color),
+                      minHeight: 6)),
+              const SizedBox(height: 3),
 
-      // 👇 JUMLAH LAHAN (RIIL)
-      Text('${_formatHa(phase.doneHa)} / ${_formatHa(phase.totalHa)}',
-          style: TextStyle(
-              fontSize: 9,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w600)),
-    ]);
+              // 👇 JUMLAH LAHAN (RIIL)
+              Text(
+                  '${phase.done} / ${phase.total} FN · ${_formatHa(phase.totalHa)}',
+                  style: TextStyle(
+                      fontSize: 9,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w600)),
+            ])));
   }
 }
 
@@ -3413,9 +3427,13 @@ class _RegionAccordion extends StatelessWidget {
                                               fontWeight: FontWeight.w700,
                                               color: AdvantaColors.deepForest)),
                                       const SizedBox(height: 2),
-                                      if (f.farmerName.isNotEmpty)
+                                      if (f.farmerName.isNotEmpty ||
+                                          f.hybrid.isNotEmpty)
                                         Text(
-                                          f.farmerName,
+                                          [f.farmerName, f.hybrid]
+                                              .where(
+                                                  (value) => value.isNotEmpty)
+                                              .join(' · '),
                                           style: TextStyle(
                                               fontSize: 11,
                                               fontWeight: FontWeight.w700,
@@ -3423,7 +3441,8 @@ class _RegionAccordion extends StatelessWidget {
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
-                                      if (f.farmerName.isNotEmpty)
+                                      if (f.farmerName.isNotEmpty ||
+                                          f.hybrid.isNotEmpty)
                                         const SizedBox(height: 1),
                                       Text(
                                         '${f.activePhaseLabel} - DAP ${f.dap}${f.isOverdue ? ' - Overdue' : ''}',
@@ -3950,6 +3969,20 @@ class _VillageCard extends StatelessWidget {
                                               fontWeight: FontWeight.w700,
                                               color: AdvantaColors.deepForest)),
                                       const SizedBox(height: 2),
+                                      if (f.farmerName.isNotEmpty ||
+                                          f.hybrid.isNotEmpty)
+                                        Text(
+                                          [f.farmerName, f.hybrid]
+                                              .where(
+                                                  (value) => value.isNotEmpty)
+                                              .join(' · '),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.grey[700]),
+                                        ),
                                       Text(
                                         '${f.activePhaseLabel} - DAP ${f.dap}${f.isOverdue ? ' - Overdue' : ''}',
                                         style: TextStyle(
@@ -4111,22 +4144,23 @@ class _VillageCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
             child: Row(
               children: [
-                _MicroStat(
-                    label: _formatHa(totalArea),
-                    icon: Icons.landscape_rounded,
-                    color: AdvantaColors.mutedGrey),
-                const SizedBox(width: 12),
-                _MicroStat(
-                    label: '${fields.length} Lahan',
-                    icon: Icons.grid_view_rounded,
-                    color: AdvantaColors.lightGreen),
-                const SizedBox(width: 12),
-                _MicroStat(
-                    label: 'Overdue $overdueCount',
-                    icon: Icons.warning_amber_rounded,
-                    color:
-                        overdueCount > 0 ? AdvantaColors.error : Colors.grey),
-                const Spacer(),
+                Expanded(
+                    child: Wrap(spacing: 10, runSpacing: 5, children: [
+                  _MicroStat(
+                      label: _formatHa(totalArea),
+                      icon: Icons.landscape_rounded,
+                      color: AdvantaColors.mutedGrey),
+                  _MicroStat(
+                      label: '${fields.length} FN',
+                      icon: Icons.grid_view_rounded,
+                      color: AdvantaColors.lightGreen),
+                  _MicroStat(
+                      label: 'Overdue $overdueCount',
+                      icon: Icons.warning_amber_rounded,
+                      color:
+                          overdueCount > 0 ? AdvantaColors.error : Colors.grey),
+                ])),
+                const SizedBox(width: 6),
                 GestureDetector(
                     onTap: () => _showFieldList(context),
                     child: Container(
@@ -4208,8 +4242,11 @@ class _FieldMiniRow extends StatelessWidget {
                             fontSize: 12,
                             color: AdvantaColors.charcoal,
                             fontWeight: FontWeight.w700)),
-                    if (field.farmerName.isNotEmpty)
-                      Text(field.farmerName,
+                    if (field.farmerName.isNotEmpty || field.hybrid.isNotEmpty)
+                      Text(
+                          [field.farmerName, field.hybrid]
+                              .where((value) => value.isNotEmpty)
+                              .join(' · '),
                           style: TextStyle(
                               fontSize: 10,
                               color: Colors.grey[700],
@@ -4328,15 +4365,18 @@ class _OpenRouteButton extends StatelessWidget {
           children: [
             Icon(Icons.route_rounded, color: Colors.white, size: 22),
             SizedBox(width: 10),
-            Text(
+            Expanded(
+                child: Text(
               'Rekomendasi Rute (Smart Route)',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.3,
               ),
-            ),
+            )),
           ],
         ),
       ),
@@ -4524,7 +4564,7 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  '${f.village} - ${f.activePhaseLabel} - DAP ${f.dap}',
+                  '${f.village} · ${f.hybrid.isEmpty ? '-' : f.hybrid} · ${f.activePhaseLabel} · DAP ${f.dap}',
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -4906,34 +4946,33 @@ class _SkeletonLoaderState extends State<_SkeletonLoader>
             ]),
         child: Padding(
             padding: const EdgeInsets.all(14),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                      width: 34,
-                      height: 10,
-                      decoration: BoxDecoration(
-                          color: AdvantaColors.primaryGreen
-                              .withValues(alpha: .10 + (pulse * .08)),
-                          borderRadius: BorderRadius.circular(20))),
-                  const Spacer(),
-                  Container(
-                      width: double.infinity,
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                  width: 34,
+                  height: 10,
+                  decoration: BoxDecoration(
+                      color: AdvantaColors.primaryGreen
+                          .withValues(alpha: .10 + (pulse * .08)),
+                      borderRadius: BorderRadius.circular(20))),
+              const Spacer(),
+              Container(
+                  width: double.infinity,
+                  height: 8,
+                  decoration: BoxDecoration(
+                      color: AdvantaColors.deepForest
+                          .withValues(alpha: .05 + (pulse * .04)),
+                      borderRadius: BorderRadius.circular(20))),
+              const SizedBox(height: 7),
+              FractionallySizedBox(
+                  widthFactor: .62,
+                  child: Container(
                       height: 8,
                       decoration: BoxDecoration(
                           color: AdvantaColors.deepForest
-                              .withValues(alpha: .05 + (pulse * .04)),
-                          borderRadius: BorderRadius.circular(20))),
-                  const SizedBox(height: 7),
-                  FractionallySizedBox(
-                      widthFactor: .62,
-                      child: Container(
-                          height: 8,
-                          decoration: BoxDecoration(
-                              color: AdvantaColors.deepForest
-                                  .withValues(alpha: .04 + (pulse * .035)),
-                              borderRadius: BorderRadius.circular(20))))
-                ])));
+                              .withValues(alpha: .04 + (pulse * .035)),
+                          borderRadius: BorderRadius.circular(20))))
+            ])));
   }
 }
 
@@ -4947,33 +4986,66 @@ String _formatHa(double ha) {
   return '$value ha';
 }
 
-class _WeeklyCoverageControls extends StatelessWidget {
-  final DateTime weekStart;
-  final Set<String> flags;
-  final ValueChanged<DateTime> onWeekChanged;
-  final ValueChanged<Set<String>> onFlagsChanged;
-  const _WeeklyCoverageControls(
-      {required this.weekStart,
-      required this.flags,
-      required this.onWeekChanged,
-      required this.onFlagsChanged});
+class _WeeklyCoverageControls extends ConsumerWidget {
+  const _WeeklyCoverageControls();
+
   @override
-  Widget build(BuildContext context) => Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        AuditWeekSelector(weekStart: weekStart, onChanged: onWeekChanged),
-        Wrap(
-            spacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              AuditFlagFilter(selected: flags, onChanged: onFlagsChanged),
-              TextButton.icon(
-                  icon: const Icon(Icons.event_note_rounded, size: 18),
-                  label: const Text('Planning Vege / PH / H'),
-                  onPressed: () => context.push(
-                      '/audit-planning?weekStart=${Uri.encodeComponent(weekStart.toIso8601String())}')),
-            ]),
-      ]));
+  Widget build(BuildContext context, WidgetRef ref) {
+    final filters = ref.watch(auditDashboardFilterProvider);
+    final notifier = ref.read(auditDashboardFilterProvider.notifier);
+    return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AdvantaColors.dividerGrey)),
+              child: Row(children: [
+                for (final mode in CoverageDisplayMode.values)
+                  Expanded(
+                      child: ChoiceChip(
+                    label: SizedBox(
+                        width: double.infinity,
+                        child: Text(
+                            mode == CoverageDisplayMode.allCoverage
+                                ? 'All Coverage'
+                                : 'Target Audit',
+                            textAlign: TextAlign.center)),
+                    selected: filters.coverageMode == mode,
+                    showCheckmark: false,
+                    selectedColor: AdvantaColors.gold,
+                    side: BorderSide.none,
+                    onSelected: (_) => notifier.setCoverageMode(mode),
+                  )),
+              ])),
+          const SizedBox(height: 8),
+          Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                AuditWeekFilter(
+                    selectedWeeks: filters.weeks,
+                    allWeeks:
+                        filters.coverageMode == CoverageDisplayMode.allCoverage,
+                    onChanged: (weeks, all) {
+                      notifier.setWeeks(weeks, all: all);
+                      notifier.setCoverageMode(all
+                          ? CoverageDisplayMode.allCoverage
+                          : CoverageDisplayMode.targetAudit);
+                    }),
+                AuditFlagFilter(
+                    selected: filters.flags, onChanged: notifier.setFlags),
+                TextButton.icon(
+                    icon: const Icon(Icons.event_note_rounded, size: 18),
+                    label: const Text('Planning Semua Fase'),
+                    onPressed: () => context.push(
+                        '/audit-planning?weekStart=${Uri.encodeComponent(filters.primaryWeek.toIso8601String())}')),
+              ]),
+        ]));
+  }
 }
 
 void _showWeeklyFields(
@@ -4983,36 +5055,193 @@ void _showWeeklyFields(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (sheetContext) => SizedBox(
-          height: MediaQuery.sizeOf(context).height * .75,
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text('$title · ${fields.length} lahan',
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w800))),
-            if (fields.isEmpty)
-              const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text('Tidak ada lahan untuk kategori ini.')),
+      builder: (_) => _WeeklyFieldSelectionSheet(
+          title: title, fields: fields, onChanged: onChanged));
+}
+
+class _WeeklyFieldSelectionSheet extends StatefulWidget {
+  final String title;
+  final List<WeeklyAuditField> fields;
+  final VoidCallback? onChanged;
+
+  const _WeeklyFieldSelectionSheet(
+      {required this.title, required this.fields, this.onChanged});
+
+  @override
+  State<_WeeklyFieldSelectionSheet> createState() =>
+      _WeeklyFieldSelectionSheetState();
+}
+
+class _WeeklyFieldSelectionSheetState
+    extends State<_WeeklyFieldSelectionSheet> {
+  final Set<String> _selected = {};
+  String _status = 'All';
+  String _search = '';
+
+  List<WeeklyAuditField> get _visible => widget.fields.where((field) {
+        if (_status == 'Pending' && field.done) return false;
+        if (_status == 'Completed' && !field.done) return false;
+        if (_status == 'Overdue' && !field.overdue) return false;
+        if (_search.isEmpty) return true;
+        final haystack = [
+          field.raw['field_number'],
+          field.raw['farmer_name'],
+          field.raw['village_desa'],
+          field.raw['qa_fi'],
+        ].join(' ').toLowerCase();
+        return haystack.contains(_search);
+      }).toList(growable: false);
+
+  String _number(WeeklyAuditField field) =>
+      field.raw['field_number']?.toString().trim() ?? '';
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = _visible;
+    return SizedBox(
+        height: MediaQuery.sizeOf(context).height * .82,
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${widget.title} · ${widget.fields.length} FN',
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 10),
+                    TextField(
+                        onChanged: (value) => setState(
+                            () => _search = value.trim().toLowerCase()),
+                        decoration: const InputDecoration(
+                            isDense: true,
+                            prefixIcon: Icon(Icons.search_rounded),
+                            hintText: 'Cari FN, petani, desa, atau FI')),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                            children: ['All', 'Pending', 'Completed', 'Overdue']
+                                .map((status) => Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: ChoiceChip(
+                                        label: Text(status),
+                                        selected: _status == status,
+                                        onSelected: (_) =>
+                                            setState(() => _status = status))))
+                                .toList())),
+                    Wrap(spacing: 8, runSpacing: 4, children: [
+                      TextButton(
+                          onPressed: visible.isEmpty
+                              ? null
+                              : () => setState(() => _selected.addAll(visible
+                                  .map(_number)
+                                  .where((value) => value.isNotEmpty))),
+                          child: Text('Select visible (${visible.length})')),
+                      TextButton(
+                          onPressed: widget.fields.isEmpty
+                              ? null
+                              : () => setState(() => _selected.addAll(widget
+                                  .fields
+                                  .map(_number)
+                                  .where((value) => value.isNotEmpty))),
+                          child: Text(
+                              'Select all target (${widget.fields.length})')),
+                      if (_selected.isNotEmpty)
+                        TextButton(
+                            onPressed: () => setState(_selected.clear),
+                            child: const Text('Clear')),
+                    ]),
+                    if (_selected.isNotEmpty)
+                      Row(children: [
+                        Expanded(
+                            child: Text('${_selected.length} FN selected',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w900))),
+                        FilledButton.icon(
+                            onPressed: _startMassInspection,
+                            icon:
+                                const Icon(Icons.play_arrow_rounded, size: 18),
+                            label: const Text('Mass Inspection')),
+                      ])
+                  ])),
+          const Divider(height: 1),
+          if (visible.isEmpty)
+            const Expanded(
+                child: Center(child: Text('Tidak ada FN untuk filter ini.')))
+          else
             Expanded(
                 child: ListView.builder(
-                    itemCount: fields.length,
+                    itemCount: visible.length,
                     itemBuilder: (_, index) {
-                      final field = fields[index];
-                      return ListTile(
-                          title: Text(
-                              '${field.raw['field_number']} · ${field.raw['farmer_name'] ?? ''}'),
+                      final field = visible[index];
+                      final number = _number(field);
+                      final fi = field.raw['qa_fi']?.toString().trim() ?? '';
+                      final farmer =
+                          field.raw['farmer_name']?.toString().trim() ?? '';
+                      final hybrid =
+                          field.raw['hybrid']?.toString().trim() ?? '';
+                      return CheckboxListTile(
+                          value: _selected.contains(number),
+                          onChanged: (checked) => setState(() {
+                                checked == true
+                                    ? _selected.add(number)
+                                    : _selected.remove(number);
+                              }),
+                          title: Text([
+                            number,
+                            if (farmer.isNotEmpty) farmer,
+                            if (hybrid.isNotEmpty) hybrid,
+                          ].join(' · ')),
                           subtitle: Text(
-                              '${field.village} · ${field.raw['qa_fi'] ?? ''}\n${auditHa(field.areaHa)} · ${field.flag} · ${auditStageLabels[field.stage]}'),
+                              '${field.village} · ${fi.isEmpty ? 'Unmapped / Need Mapping' : fi}\n${auditWorkload(field.areaHa, 1)} · ${field.flag} · ${field.done ? 'Completed' : field.overdue ? 'Overdue' : 'Pending'}'),
                           isThreeLine: true,
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => FieldDetailBottomSheet.show(
-                              sheetContext, field.raw,
-                              dapReferenceDate:
-                                  field.weekStart.add(const Duration(days: 6)),
-                              onInspectDone: (_) => onChanged?.call()));
+                          secondary: IconButton(
+                              tooltip: 'Detail dan single inspection',
+                              icon: const Icon(Icons.chevron_right),
+                              onPressed: () => FieldDetailBottomSheet.show(
+                                  context, field.raw,
+                                  dapReferenceDate: field.weekStart
+                                      .add(const Duration(days: 6)),
+                                  onInspectDone: (_) =>
+                                      widget.onChanged?.call())));
                     })),
-          ])));
+        ]));
+  }
+
+  Future<void> _startMassInspection() async {
+    final selectedFields = widget.fields
+        .where((field) => _selected.contains(_number(field)))
+        .toList(growable: false);
+    final phases = selectedFields
+        .expand((field) => field.targets.map((target) => target.phase))
+        .toSet()
+        .toList()
+      ..sort();
+    if (widget.title.contains(auditNotYetFlagging) &&
+        !phases.any((phase) => phase.startsWith('generative'))) {
+      phases.add('generative_1');
+    }
+    if (phases.isEmpty) return;
+    final phase = phases.length == 1
+        ? phases.single
+        : await showModalBottomSheet<String>(
+            context: context,
+            builder: (context) => SafeArea(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const ListTile(
+                      title: Text('Pilih fase Mass Inspection',
+                          style: TextStyle(fontWeight: FontWeight.w900))),
+                  ...phases.map((phase) => ListTile(
+                      title: Text(phase.replaceAll('_', ' ').toUpperCase()),
+                      onTap: () => Navigator.pop(context, phase))),
+                ])));
+    if (phase == null || !mounted) return;
+    await context.push('/inspect/mass', extra: {
+      'fieldNumbers': selectedFields.map(_number).toSet().toList(),
+      'phase': phase,
+    });
+    widget.onChanged?.call();
+  }
 }

@@ -38,6 +38,8 @@ void main() {
   test('week is Monday to Sunday including ISO year boundary', () {
     expect(auditWeekStart(DateTime(2027, 1, 1)), DateTime(2026, 12, 28));
     expect(auditWeekStart(end), week);
+    expect(auditIsoWeekNumber(week), 35);
+    expect(auditIsoWeekNumber(DateTime(2027, 1, 1)), 53);
     expect(parseAuditDate('2026-08-24T00:00:00+07:00'), week);
   });
 
@@ -88,7 +90,7 @@ void main() {
     });
     final f = project(raw, now: DateTime(2026, 8, 26));
     expect(f.done, false);
-    expect(f.flag, 'Belum ada');
+    expect(f.flag, auditNotYetFlagging);
     expect(f.latest((o) => o.ch), null);
     final historical = project(
         fieldAt(20, veg: {'date_of_audit': '2026-08-31'}),
@@ -128,8 +130,8 @@ void main() {
     ];
     final full = WeeklyAuditSummary(all).composition((f) => f.flag);
     expect(full['PLD']!.percent, 2);
-    final filtered = WeeklyAuditSummary(
-        all.where((f) => defaultAuditFlags.contains(f.flag)));
+    expect(defaultAuditFlags, contains('PLD'));
+    final filtered = WeeklyAuditSummary(all.where((f) => f.flag != 'PLD'));
     final flags = filtered.composition((f) => f.flag);
     expect(filtered.targetHa, 98);
     expect(flags['GF']!.areaHa, 95);
@@ -141,9 +143,9 @@ void main() {
 
   test('missing flagging is explicit and is never silently good', () {
     final f = project(fieldAt(20));
-    expect(f.flag, 'Belum ada');
-    expect(
-        WeeklyAuditSummary([f]).composition((f) => f.flag).keys, ['Belum ada']);
+    expect(f.flag, auditNotYetFlagging);
+    expect(WeeklyAuditSummary([f]).composition((f) => f.flag).keys,
+        [auditNotYetFlagging]);
   });
 
   test('latest dated flagging wins; old PLD does not permanently hide a field',
@@ -160,7 +162,7 @@ void main() {
         project(fieldAt(50,
                 gen: {'date_of_audit_1': '2026-08-24', 'action_needed_1': 'D'}))
             .flag,
-        'Belum ada');
+        auditNotYetFlagging);
     expect(
         project(fieldAt(71,
             ph: {'audit_date': '2026-08-24', 'final_decision': 'D'})).flag,
@@ -170,7 +172,7 @@ void main() {
   test('undated master flag does not leak into historical weeks', () {
     final raw = {...fieldAt(20), 'flagging_final': 'RFD'};
     expect(project(raw).flag, 'RFD');
-    expect(project(raw, now: DateTime(2026, 9, 1)).flag, 'Belum ada');
+    expect(project(raw, now: DateTime(2026, 9, 1)).flag, auditNotYetFlagging);
   });
 
   test('multiple generative checkpoints count field area only once', () {
@@ -197,7 +199,7 @@ void main() {
     expect(WeeklyAuditSummary([f]).achievedHa, 0);
   });
 
-  test('area weighted achievement matches FI and phase ratings', () {
+  test('FN achievement is not distorted by field area', () {
     final fields = [
       FieldCoverageStatus.fromRaw(
           fieldAt(20, area: 95, veg: {'date_of_audit': '2026-08-24'}),
@@ -206,9 +208,9 @@ void main() {
       FieldCoverageStatus.fromRaw(fieldAt(20, id: 'F2', area: 5),
           weekStart: week, now: end),
     ];
-    expect(aggregateCoverageScore(fields), 95);
-    expect(FICoverage.fromFields('FI 1', fields).coverageScore, 95);
-    expect(calculateFilteredPhases(fields).targetCompletionPct, 95);
+    expect(aggregateCoverageScore(fields), 50);
+    expect(FICoverage.fromFields('FI 1', fields).coverageScore, 50);
+    expect(calculateFilteredPhases(fields).targetCompletionPct, 50);
   });
 
   test('SC highland rules use location, PSP has no PreHarvest', () {

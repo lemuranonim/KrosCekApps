@@ -42,6 +42,7 @@ void main() {
       final monday = auditWeekStart(DateTime.now());
       Map<String, dynamic> raw(String id, double area, String flag) => {
             ...fixtures.fieldAt(20, id: id, area: area),
+            if (id == 'GF1') 'farmer_name': 'Pak Tani',
             'planting_date_pdn':
                 monday.subtract(const Duration(days: 20)).toIso8601String(),
             'flagging_final': flag,
@@ -64,15 +65,22 @@ void main() {
       ], child: const MaterialApp(home: CoverageScreen())));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.scrollUntilVisible(find.text('Area coverage'), 220,
+      if (role == 'SPV') {
+        expect(find.text('All QA SPV'), findsOneWidget);
+      }
+      await tester.scrollUntilVisible(
+          find.text('Target achievement per phase'), 220,
           scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.text(role == 'MANAGER' ? '148 ha' : '98 ha'), findsWidgets);
+      expect(
+          find.text(role == 'MANAGER' ? '150.0 Ha | 4 FN' : '100.0 Ha | 3 FN'),
+          findsWidgets);
       await tester.ensureVisible(find.text('Lihat detail'));
       await tester.tap(find.text('Lihat detail'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('PLD1'), findsNothing);
+      expect(find.text('GF1 · Pak Tani · FC'), findsOneWidget);
+      expect(find.textContaining('PLD1'), findsOneWidget);
       expect(find.textContaining('Other-team'),
           role == 'MANAGER' ? findsOneWidget : findsNothing);
       expect(tester.takeException(), isNull);
@@ -109,7 +117,7 @@ void main() {
   });
 
   testWidgets(
-      'flag filter keeps PLD hidden by default, supports selecting nothing',
+      'flag filter includes all required categories and supports selecting nothing',
       (tester) async {
     Set<String>? chosen;
     await tester.pumpWidget(MaterialApp(
@@ -124,11 +132,11 @@ void main() {
             .widget<CheckboxListTile>(
                 find.widgetWithText(CheckboxListTile, 'PLD'))
             .value,
-        false);
+        true);
     await tester.tap(find.text('PLD').last);
     await tester.tap(find.text('Terapkan'));
     await tester.pumpAndSettle();
-    expect(chosen, contains('PLD'));
+    expect(chosen, isNot(contains('PLD')));
 
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -193,6 +201,9 @@ void main() {
     await tester.tap(find.text('Roguing belum Done'));
     expect(detail, 'NC · Roguing');
     expect(detailFields!.single.raw['field_number'], 'F1');
+    await tester.ensureVisible(find.text('Detail analytics'));
+    await tester.tap(find.text('Detail analytics'));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Stage'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
@@ -200,6 +211,10 @@ void main() {
     expect(find.text('Generative'), findsOneWidget);
     expect(find.text('PreHarvest'), findsOneWidget);
     expect(find.text('Harvest'), findsOneWidget);
+    expect(
+        find.textContaining('Setiap indikator dihitung sendiri'), findsNothing);
+    expect(find.textContaining('Komposisi menampilkan'), findsNothing);
+    expect(find.textContaining('Basis:'), findsNothing);
   });
 
   testWidgets('planning tabs filter phases and group by village without Codet',
@@ -209,8 +224,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final raw = [
-      fixtures.fieldAt(20, id: 'V1'),
+      {...fixtures.fieldAt(20, id: 'V1'), 'farmer_name': 'Pak Budi'},
       fixtures.fieldAt(20, id: 'V2'),
+      fixtures.fieldAt(50, id: 'G'),
       fixtures.fieldAt(71, id: 'PH'),
       fixtures.fieldAt(95, id: 'H')
     ];
@@ -228,18 +244,45 @@ void main() {
         .toList();
     await tester.pumpWidget(ProviderScope(
         overrides: [
-          auditPlanningProvider((
-            weekStart: fixtures.week,
-            region: 'East',
-            district: null,
-            season: null,
-          )).overrideWith((ref) async => fields),
+          auditPlanningProvider.overrideWith((ref, params) async => fields),
           auditPlanningRegionsProvider.overrideWith((ref) async => ['East']),
         ],
         child: MaterialApp(
             home: AuditPlanningScreen(initialWeek: fixtures.week))));
     await tester.pumpAndSettle();
-    expect(find.text('Vegetative · 1 desa · 2 lahan'), findsOneWidget);
+    expect(find.textContaining('W35'), findsOneWidget);
+    final phaseY = [
+      'Vegetative',
+      'Generative',
+      'PreHarvest',
+      'Harvest',
+    ]
+        .map((label) =>
+            tester.getCenter(find.widgetWithText(ChoiceChip, label)).dy)
+        .toList();
+    expect(phaseY.toSet(), hasLength(1));
+    expect(find.text('ALL Week · Vegetative'), findsOneWidget);
+    expect(find.text('20.0 Ha | 2 FN'), findsWidgets);
+    expect(find.text('Select visible (2)'), findsOneWidget);
+    await tester.ensureVisible(find.text('Select visible (2)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Select visible (2)'));
+    await tester.pumpAndSettle();
+    expect(find.text('2 FN selected'), findsOneWidget);
+    await tester.fling(
+        find.byType(Scrollable).first, const Offset(0, 1400), 1800);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Generative'));
+    await tester.pumpAndSettle();
+    expect(find.text('ALL Week · Generative'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'PreHarvest'));
+    await tester.pumpAndSettle();
+    expect(find.text('ALL Week · PreHarvest'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Harvest'));
+    await tester.pumpAndSettle();
+    expect(find.text('ALL Week · Harvest'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Vegetative'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('Codet'), findsNothing);
     expect(find.byType(FlutterMap), findsNothing);
     expect(find.textContaining('V1 ·'), findsNothing);
@@ -248,6 +291,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Sumber'));
     await tester.pumpAndSettle();
+    expect(find.textContaining('V1 · Pak Budi'), findsOneWidget);
+    expect(find.text('FC'), findsWidgets);
     expect(find.textContaining('V1 ·'), findsOneWidget);
     await tester.tap(find.textContaining('V1 ·'));
     await tester.pumpAndSettle();
@@ -255,21 +300,9 @@ void main() {
     Navigator.of(tester.element(find.text('Hari Ini'))).pop();
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    await tester.scrollUntilVisible(
-        find.widgetWithText(ChoiceChip, 'PreHarvest'), -180,
-        scrollable: find.byType(Scrollable).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, 'PreHarvest'));
-    await tester.pumpAndSettle();
-    expect(find.text('PreHarvest · 1 desa · 1 lahan'), findsOneWidget);
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Harvest'));
-    await tester.pumpAndSettle();
-    expect(find.text('Harvest · 1 desa · 1 lahan'), findsOneWidget);
-    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('planning waits for region scope and All Region is opt-in',
-      (tester) async {
+  testWidgets('planning defaults to the complete user scope', (tester) async {
     final ready = Completer<List<String>>();
     final requestedRegions = <String?>[];
     await tester.pumpWidget(ProviderScope(
@@ -283,16 +316,15 @@ void main() {
         child: MaterialApp(
             home: AuditPlanningScreen(initialWeek: fixtures.week))));
     await tester.pump();
-    expect(requestedRegions, isEmpty);
-    expect(find.text('Memuat daftar region…'), findsOneWidget);
+    expect(requestedRegions, [null]);
     ready.complete(['East', 'West']);
     await tester.pumpAndSettle();
-    expect(requestedRegions, ['East']);
-    await tester.tap(find.widgetWithText(Chip, 'East'));
+    expect(requestedRegions, [null]);
+    await tester.tap(find.widgetWithText(Chip, 'All Region'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('All Region').last);
+    await tester.tap(find.text('East').last);
     await tester.pumpAndSettle();
-    expect(requestedRegions, ['East', null]);
+    expect(requestedRegions, [null, 'East']);
     expect(tester.takeException(), isNull);
   });
 
@@ -338,7 +370,7 @@ void main() {
             district: 'Blitar',
             season: 'S1',
             phase: 'harvest',
-            status: 'Done',
+            status: 'Completed',
             showPld: true,
             textFilters: [
               AuditPlanningTextFilter(
@@ -353,7 +385,7 @@ void main() {
     expect(requested?.region, 'East');
     expect(requested?.district, 'Blitar');
     expect(requested?.season, 'S1');
-    expect(find.text('Harvest · 1 desa · 1 lahan'), findsOneWidget);
+    expect(find.text('ALL Week · Harvest'), findsOneWidget);
     expect(find.text('Nama Petani: Pak Budi'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../models/audit_planning_filters.dart';
 import '../../providers/audit_plan_provider.dart';
+import '../../providers/audit_filter_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/dap_helper.dart';
 import '../../utils/qa_name_helper.dart';
@@ -29,25 +31,37 @@ class AuditPlanningScreen extends ConsumerStatefulWidget {
 
 class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
   late DateTime _week;
+  late Set<DateTime> _weeks;
+  late bool _allWeeks;
   String _phase = 'vegetative';
   String? _region;
   String? _district;
   String? _season;
   bool _showAllRegions = false;
   String _crop = 'All Crop';
-  String _status = 'Semua Status';
+  String _status = 'Pending';
   String _search = '';
   Set<String> _flags = {...defaultAuditFlags};
   List<AuditPlanningTextFilter> _textFilters = [];
   bool _showMap = false;
+  int? _selectedWeekday;
+  final Set<String> _selectedFieldNumbers = {};
   final Set<String> _expandedVillages = {};
   final _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _week = auditWeekStart(
-        widget.initialWeek ?? DateTime.now().add(const Duration(days: 7)));
+    final shared = ref.read(auditDashboardFilterProvider);
+    _week = auditWeekStart(widget.initialWeek ?? shared.primaryWeek);
+    _weeks = widget.initialWeek == null ? {...shared.weeks} : {_week};
+    _allWeeks = widget.initialWeek == null && shared.allWeeks;
+    if (_weeks.isEmpty) _weeks = {_week};
+    _region = shared.region;
+    _district = shared.district;
+    _showAllRegions = shared.region == null;
+    _status = shared.status;
+    _flags = {...shared.flags};
     final initial = widget.initialFilters;
     if (initial != null) {
       _showAllRegions = initial.allRegions;
@@ -58,7 +72,8 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
           auditPlanningPhases.contains(initial.phase)) {
         _phase = initial.phase!;
       }
-      if (const {'Pending', 'Progress', 'Done'}.contains(initial.status)) {
+      if (const {'All', 'Pending', 'Completed', 'Overdue'}
+          .contains(initial.status)) {
         _status = initial.status!;
       }
       if (initial.showPld) _flags.add('PLD');
@@ -68,8 +83,8 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
     }
   }
 
-  AuditPlanningParams get _params => (
-        weekStart: _week,
+  AuditPlanningParams _paramsFor(DateTime week) => (
+        weekStart: week,
         region: _region,
         district: _district,
         season: _season,
@@ -93,8 +108,12 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
           season: _season,
         );
         ref.invalidate(auditPlanningIndexProvider(scope));
-        ref.invalidate(auditPlanningProvider(_params));
-        await ref.read(auditPlanningProvider(_params).future);
+        for (final week in _weeks) {
+          ref.invalidate(auditPlanningProvider(_paramsFor(week)));
+        }
+        await Future.wait(_weeks.map((week) =>
+            ref.read(auditPlanningProvider(_paramsFor(week)).future)));
+        ref.read(auditDashboardFilterProvider.notifier).markUpdated();
       }
     } catch (_) {
       // The provider renders the error and retry button; do not leave an
@@ -116,8 +135,22 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
     }
     // Do not start an All Region fetch while the region list is still loading.
     final canLoadPlan = _showAllRegions || _region != null;
+    final planParts = canLoadPlan
+        ? _weeks
+            .map((week) => ref.watch(auditPlanningProvider(_paramsFor(week))))
+            .toList(growable: false)
+        : const <AsyncValue<List<AuditPlanField>>>[];
     final AsyncValue<List<AuditPlanField>> plan = canLoadPlan
-        ? ref.watch(auditPlanningProvider(_params))
+        ? planParts.any((part) => part.hasError)
+            ? AsyncError(
+                planParts.firstWhere((part) => part.hasError).error!,
+                planParts.firstWhere((part) => part.hasError).stackTrace ??
+                    StackTrace.current)
+            : planParts.any((part) => part.isLoading)
+                ? const AsyncLoading()
+                : AsyncData(planParts
+                    .expand((part) => part.value ?? const <AuditPlanField>[])
+                    .toList(growable: false))
         : regionsAsync.when(
             loading: () => const AsyncLoading(),
             error: (error, stack) => AsyncError(error, stack),
@@ -142,20 +175,18 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
           onRefresh: _refresh,
           child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
               children: [
                 _intro(),
-                const SizedBox(height: 18),
+                const SizedBox(height: 10),
                 _phaseSelector(),
-                const SizedBox(height: 12),
-                AuditWeekSelector(
-                    weekStart: _week,
-                    onChanged: (week) => setState(() => _week = week)),
-                const SizedBox(height: 18),
+                const SizedBox(height: 8),
+                _planningWeekControl(),
+                const SizedBox(height: 10),
                 _filterBar(regions),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 _searchBox(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 plan.when(
                     loading: () => _loadingState(canLoadPlan),
                     error: (_, __) => _errorState(),
@@ -192,16 +223,16 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
       ]);
 
   Widget _phaseSelector() => Container(
-      padding: const EdgeInsets.all(5),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AdvantaColors.dividerGrey),
           boxShadow: AdvantaShadows.card(false)),
       child: Row(
           children: auditPlanningPhases
               .map((phase) => Expanded(
-                  child: Padding(
+                    child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 2),
                       child: ChoiceChip(
                           label: SizedBox(
@@ -216,21 +247,89 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                           backgroundColor: Colors.transparent,
                           side: BorderSide.none,
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                              borderRadius: BorderRadius.circular(10)),
                           labelStyle: TextStyle(
-                              fontSize: 12,
+                              fontSize: 10.5,
                               fontWeight: FontWeight.w800,
                               color: _phase == phase
                                   ? AdvantaColors.deepForest
                                   : AdvantaColors.mutedGrey),
-                          onSelected: (_) => setState(() => _phase = phase)))))
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          visualDensity: VisualDensity.compact,
+                          onSelected: (_) => setState(() {
+                                _phase = phase;
+                                _selectedFieldNumbers.clear();
+                              })),
+                    ),
+                  ))
               .toList()));
+
+  Widget _planningWeekControl() => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AdvantaColors.dividerGrey)),
+      child: Row(children: [
+        IconButton(
+            tooltip: 'Minggu sebelumnya',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _shiftPlanningWeeks(-7),
+            icon: const Icon(Icons.chevron_left_rounded,
+                color: AdvantaColors.primaryGreen)),
+        Expanded(
+            child: Center(
+                child: AuditWeekFilter(
+                    selectedWeeks: _weeks,
+                    allWeeks: _allWeeks,
+                    allLabel: 'All Weeks',
+                    allDescription:
+                        'Target 6 minggu sebelum dan sesudah week aktif',
+                    onChanged: _setPlanningWeeks))),
+        IconButton(
+            tooltip: 'Minggu berikutnya',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _shiftPlanningWeeks(7),
+            icon: const Icon(Icons.chevron_right_rounded,
+                color: AdvantaColors.primaryGreen)),
+      ]));
+
+  void _setPlanningWeeks(Set<DateTime> weeks, bool all) {
+    final selected = all
+        ? List.generate(
+            13, (index) => _week.add(Duration(days: (index - 6) * 7))).toSet()
+        : weeks.map(auditWeekStart).toSet();
+    if (selected.isEmpty) return;
+    final sorted = selected.toList()..sort();
+    setState(() {
+      _weeks = selected;
+      _allWeeks = all;
+      _week = all ? auditWeekStart(_week) : sorted.last;
+      _selectedFieldNumbers.clear();
+    });
+    ref
+        .read(auditDashboardFilterProvider.notifier)
+        .setWeeks(selected, all: all);
+  }
+
+  void _shiftPlanningWeeks(int days) {
+    final shifted =
+        _weeks.map((week) => week.add(Duration(days: days))).toSet();
+    setState(() {
+      _weeks = shifted;
+      _week = _week.add(Duration(days: days));
+      _selectedFieldNumbers.clear();
+    });
+    ref
+        .read(auditDashboardFilterProvider.notifier)
+        .setWeeks(shifted, all: _allWeeks);
+  }
 
   bool get _hasActiveFilters =>
       _district != null ||
       _season != null ||
       _crop != 'All Crop' ||
-      _status != 'Semua Status' ||
+      _status != 'All' ||
       !_flags.containsAll(defaultAuditFlags) ||
       _flags.length != defaultAuditFlags.length ||
       _textFilters.isNotEmpty ||
@@ -242,11 +341,15 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
       _district = null;
       _season = null;
       _crop = 'All Crop';
-      _status = 'Semua Status';
+      _status = 'All';
       _flags = {...defaultAuditFlags};
       _textFilters.clear();
       _search = '';
     });
+    final notifier = ref.read(auditDashboardFilterProvider.notifier);
+    notifier.setDistrict(null);
+    notifier.setStatus('All');
+    notifier.setFlags(defaultAuditFlags);
   }
 
   Widget _filterBar(List<String> regions) =>
@@ -277,6 +380,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
             _region = _showAllRegions ? null : value;
             _district = null;
             _expandedVillages.clear();
+            ref.read(auditDashboardFilterProvider.notifier).setRegion(_region);
           }),
           if (_district != null)
             _removableFilter(Icons.location_city_outlined, _district!,
@@ -286,14 +390,17 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                 Icons.calendar_today_outlined, _season!, () => _season = null),
           _filter(_crop, const ['All Crop', 'FC', 'SC', 'PSP'],
               Icons.eco_outlined, (value) => _crop = value),
-          _filter(
-              _status,
-              const ['Semua Status', 'Pending', 'Progress', 'Done'],
-              Icons.task_alt_rounded,
-              (value) => _status = value),
+          _filter(_status, const ['All', 'Pending', 'Completed', 'Overdue'],
+              Icons.task_alt_rounded, (value) {
+            _status = value;
+            ref.read(auditDashboardFilterProvider.notifier).setStatus(value);
+          }),
           AuditFlagFilter(
               selected: _flags,
-              onChanged: (flags) => setState(() => _flags = flags)),
+              onChanged: (flags) {
+                setState(() => _flags = flags);
+                ref.read(auditDashboardFilterProvider.notifier).setFlags(flags);
+              }),
         ]),
         if (_textFilters.isNotEmpty) ...[
           const SizedBox(height: 10),
@@ -445,8 +552,26 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
             label: const Text('Coba lagi'))
       ]));
 
-  WeeklyAuditTarget _target(AuditPlanField field) =>
-      field.weekly.targets.firstWhere((t) => t.phase == _phase);
+  List<WeeklyAuditTarget> _phaseTargets(AuditPlanField field) =>
+      field.weekly.targets
+          .where((target) => auditStage(target.phase) == _phase)
+          .toList(growable: false);
+
+  bool _targetDone(AuditPlanField field) {
+    final targets = _phaseTargets(field);
+    return targets.isNotEmpty && targets.every((target) => target.done);
+  }
+
+  bool _targetOverdue(AuditPlanField field) =>
+      _phaseTargets(field).any((target) => target.overdue);
+
+  DateTime _targetPlannedDate(AuditPlanField field) => _phaseTargets(field)
+      .map((target) => target.plannedDate)
+      .reduce((a, b) => a.isBefore(b) ? a : b);
+
+  DateTime _targetDeadline(AuditPlanField field) => _phaseTargets(field)
+      .map((target) => target.deadline)
+      .reduce((a, b) => a.isAfter(b) ? a : b);
 
   bool _matchesTextFilters(Map<String, dynamic> raw) {
     for (final filter in _textFilters) {
@@ -465,7 +590,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
   Widget _content(List<AuditPlanField> all) {
     final fields = all.where((field) {
       final f = field.weekly;
-      if (!f.targets.any((t) => t.phase == _phase) ||
+      if (!f.targets.any((t) => auditStage(t.phase) == _phase) ||
           !_flags.contains(f.flag)) {
         return false;
       }
@@ -487,10 +612,12 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
               ? 'SC'
               : 'FC';
       if (_crop != 'All Crop' && crop != _crop) return false;
-      if (_status == 'Done' && !_target(field).done) return false;
-      if (_status == 'Pending' && _target(field).done) return false;
-      if (_status == 'Progress' &&
-          (_target(field).completion <= 0 || _target(field).done)) {
+      if (_status == 'Completed' && !_targetDone(field)) return false;
+      if (_status == 'Pending' && _targetDone(field)) return false;
+      if (_status == 'Overdue' && !_targetOverdue(field)) return false;
+      if (_selectedWeekday != null &&
+          !_phaseTargets(field).any(
+              (target) => target.plannedDate.weekday == _selectedWeekday)) {
         return false;
       }
       return _search.isEmpty ||
@@ -505,16 +632,18 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
       ..sort(
           (a, b) => a.first.weekly.village.compareTo(b.first.weekly.village));
     final targetHa = fields.fold(0.0, (sum, f) => sum + f.weekly.areaHa);
-    final doneHa = fields
-        .where((f) => _target(f).done)
-        .fold(0.0, (sum, f) => sum + f.weekly.areaHa);
-    final achievement = targetHa == 0 ? 0.0 : doneHa / targetHa * 100;
-    final pendingHa = (targetHa - doneHa).clamp(0.0, double.infinity);
+    final doneHa =
+        fields.where(_targetDone).fold(0.0, (sum, f) => sum + f.weekly.areaHa);
+    final targetFn = fields.length;
+    final doneFn = fields.where(_targetDone).length;
+    final achievement = targetFn == 0 ? 0.0 : doneFn / targetFn * 100;
     final mappedGroups =
         groups.where((g) => g.any((f) => !f.parsed.isDefault)).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _daySelector(),
+      const SizedBox(height: 8),
       Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
               gradient: const LinearGradient(
                   begin: Alignment.topLeft,
@@ -523,7 +652,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                     AdvantaColors.deepForest,
                     AdvantaColors.primaryGreen
                   ]),
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(18),
               boxShadow: [
                 BoxShadow(
                     color: AdvantaColors.deepForest.withValues(alpha: .2),
@@ -535,7 +664,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
             Row(children: [
               Expanded(
                   child: Text(
-                      '${auditStageLabels[_phase]} · ${groups.length} desa · ${fields.length} lahan',
+                      '${_planningPeriodLabel()} · ${auditStageLabels[_phase]}',
                       style: const TextStyle(
                           fontSize: 13,
                           color: Colors.white,
@@ -557,21 +686,19 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                             fontWeight: FontWeight.w800))
                   ]))
             ]),
-            const SizedBox(height: 20),
-            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(
-                  child: _summaryMetric(
-                      'TARGET AREA', auditHa(targetHa), Colors.white)),
-              Container(
-                  width: 1,
-                  height: 42,
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  color: Colors.white.withValues(alpha: .18)),
-              Expanded(
-                  child: _summaryMetric(
-                      'ACHIEVED', auditHa(doneHa), AdvantaColors.goldLight))
-            ]),
-            const SizedBox(height: 18),
+            const SizedBox(height: 10),
+            Text(auditWorkload(targetHa, targetFn),
+                style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white)),
+            const SizedBox(height: 4),
+            Text('$doneFn / $targetFn Audited',
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AdvantaColors.goldLight)),
+            const SizedBox(height: 12),
             ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: LinearProgressIndicator(
@@ -581,18 +708,25 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                     color: AdvantaColors.goldLight)),
             const SizedBox(height: 8),
             Row(children: [
-              Text('${achievement.toStringAsFixed(1)}% selesai',
+              Text('${achievement.toStringAsFixed(0)}% selesai',
                   style: TextStyle(
                       fontSize: 11,
                       color: Colors.white.withValues(alpha: .8),
                       fontWeight: FontWeight.w700)),
               const Spacer(),
-              Text('${auditHa(pendingHa)} pending',
-                  style: TextStyle(
-                      fontSize: 11, color: Colors.white.withValues(alpha: .8)))
+              Expanded(
+                  child: Text(
+                      '${targetFn - doneFn} FN pending · ${auditHa(doneHa)} done',
+                      textAlign: TextAlign.end,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white.withValues(alpha: .8))))
             ])
           ])),
-      const SizedBox(height: 14),
+      _selectionActions(fields, all),
+      const SizedBox(height: 10),
       Row(children: [
         const Expanded(
             child: Text('Daftar desa',
@@ -726,7 +860,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                   style:
                       TextStyle(fontSize: 12, color: AdvantaColors.mutedGrey))
             ])),
-      const SizedBox(height: 12),
+      const SizedBox(height: 8),
       ...groups.map(_villageCard),
       Container(
           padding: const EdgeInsets.all(12),
@@ -750,35 +884,165 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
     ]);
   }
 
-  Widget _summaryMetric(String label, String value, Color valueColor) =>
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label,
-            style: TextStyle(
-                fontSize: 10,
-                letterSpacing: .8,
-                fontWeight: FontWeight.w800,
-                color: Colors.white.withValues(alpha: .65))),
-        const SizedBox(height: 3),
-        Text(value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-                fontSize: 22,
-                height: 1.1,
-                fontWeight: FontWeight.w900,
-                color: valueColor))
-      ]);
+  String _planningPeriodLabel() {
+    if (_selectedWeekday == null) {
+      return _weeks.length == 1 ? 'ALL Week' : 'ALL · ${_weeks.length} Weeks';
+    }
+    const labels = ['SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB', 'MIN'];
+    if (_weeks.length == 1) {
+      final date = _week.add(Duration(days: _selectedWeekday! - 1));
+      return '${labels[_selectedWeekday! - 1]} ${date.day}';
+    }
+    return '${labels[_selectedWeekday! - 1]} · ${_weeks.length} Weeks';
+  }
+
+  Widget _daySelector() {
+    const labels = ['ALL', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+    return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+            children: List.generate(labels.length, (index) {
+          final weekday = index == 0 ? null : index;
+          return Padding(
+              padding: const EdgeInsets.only(right: 5),
+              child: ChoiceChip(
+                  label: Text(labels[index]),
+                  selected: _selectedWeekday == weekday,
+                  showCheckmark: false,
+                  selectedColor: AdvantaColors.gold,
+                  visualDensity: VisualDensity.compact,
+                  labelStyle: const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w800),
+                  onSelected: (_) => setState(() {
+                        _selectedWeekday = weekday;
+                        _selectedFieldNumbers.clear();
+                      })));
+        })));
+  }
+
+  Widget _selectionActions(
+      List<AuditPlanField> visible, List<AuditPlanField> all) {
+    final allTargets = all
+        .where((field) => _phaseTargets(field).isNotEmpty)
+        .where((field) => _flags.contains(field.weekly.flag))
+        .toList(growable: false);
+    final visibleNumbers = visible
+        .map((field) => field.weekly.raw['field_number']?.toString() ?? '')
+        .where((number) => number.isNotEmpty)
+        .toSet();
+    final allNumbers = allTargets
+        .map((field) => field.weekly.raw['field_number']?.toString() ?? '')
+        .where((number) => number.isNotEmpty)
+        .toSet();
+    return Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AdvantaColors.dividerGrey)),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Wrap(spacing: 8, runSpacing: 6, children: [
+            OutlinedButton.icon(
+                onPressed: visibleNumbers.isEmpty
+                    ? null
+                    : () => setState(
+                        () => _selectedFieldNumbers.addAll(visibleNumbers)),
+                icon: const Icon(Icons.select_all_rounded, size: 17),
+                label: Text('Select visible (${visibleNumbers.length})')),
+            OutlinedButton.icon(
+                onPressed: allNumbers.isEmpty
+                    ? null
+                    : () => setState(
+                        () => _selectedFieldNumbers.addAll(allNumbers)),
+                icon: const Icon(Icons.done_all_rounded, size: 17),
+                label: Text('Select all target (${allNumbers.length})')),
+          ]),
+          if (_selectedFieldNumbers.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(
+                  child: Text('${_selectedFieldNumbers.length} FN selected',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: AdvantaColors.deepForest))),
+              TextButton(
+                  onPressed: () =>
+                      setState(() => _selectedFieldNumbers.clear()),
+                  child: const Text('Clear')),
+            ]),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                  onPressed: () => _startMassInspection(allTargets),
+                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                  label: const Text('Mass Inspection')),
+            )
+          ]
+        ]));
+  }
+
+  Future<void> _startMassInspection(List<AuditPlanField> candidates) async {
+    final selected = candidates.where((field) {
+      final number = field.weekly.raw['field_number']?.toString() ?? '';
+      return _selectedFieldNumbers.contains(number);
+    }).toList(growable: false);
+    final phases = selected
+        .expand(_phaseTargets)
+        .map((target) => target.phase)
+        .toSet()
+        .toList()
+      ..sort();
+    if (phases.isEmpty) return;
+    String? phase;
+    if (phases.length == 1) {
+      phase = phases.single;
+    } else {
+      phase = await showModalBottomSheet<String>(
+          context: context,
+          builder: (context) => SafeArea(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const ListTile(
+                    title: Text('Pilih checkpoint',
+                        style: TextStyle(fontWeight: FontWeight.w900)),
+                    subtitle: Text(
+                        'Hanya FN yang memiliki target checkpoint terpilih yang dieksekusi.')),
+                ...phases.map((value) => ListTile(
+                    title: Text(value.replaceAll('_', ' ').toUpperCase()),
+                    trailing: Text(
+                        '${selected.where((field) => _phaseTargets(field).any((target) => target.phase == value)).length} FN'),
+                    onTap: () => Navigator.pop(context, value))),
+              ])));
+    }
+    if (phase == null || !mounted) return;
+    final numbers = selected
+        .where((field) =>
+            _phaseTargets(field).any((target) => target.phase == phase))
+        .map((field) => field.weekly.raw['field_number']?.toString() ?? '')
+        .where((number) => number.isNotEmpty)
+        .toSet()
+        .toList();
+    if (numbers.isEmpty) return;
+    await context.push('/inspect/mass',
+        extra: {'fieldNumbers': numbers, 'phase': phase});
+    if (mounted) {
+      setState(() => _selectedFieldNumbers.clear());
+      await _refresh();
+    }
+  }
 
   Widget _villageCard(List<AuditPlanField> group) {
     final first = group.first.weekly;
     final key = first.villageKey;
     final expanded = _expandedVillages.contains(key);
     final totalArea = group.fold(0.0, (sum, f) => sum + f.weekly.areaHa);
-    final done = group.where((field) => _target(field).done).length;
-    final overdue = group.where((field) => _target(field).overdue).length;
+    final done = group.where(_targetDone).length;
+    final overdue = group.where(_targetOverdue).length;
+    final achievement = group.isEmpty ? 0.0 : done / group.length * 100;
     final letter = first.village.isEmpty ? '?' : first.village[0].toUpperCase();
     return Container(
-        margin: const EdgeInsets.only(bottom: 12),
+        margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(18),
@@ -838,14 +1102,13 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                           const SizedBox(height: 7),
                           Wrap(spacing: 6, runSpacing: 5, children: [
                             _microBadge(
-                                Icons.grid_view_rounded,
-                                '${group.length} lahan',
-                                AdvantaColors.midGreen),
-                            _microBadge(Icons.landscape_outlined,
-                                auditHa(totalArea), AdvantaColors.mutedGrey),
-                            if (done > 0)
-                              _microBadge(Icons.check_circle_outline_rounded,
-                                  '$done done', AdvantaColors.success),
+                                Icons.landscape_outlined,
+                                auditWorkload(totalArea, group.length),
+                                AdvantaColors.mutedGrey),
+                            _microBadge(
+                                Icons.check_circle_outline_rounded,
+                                '$done / ${group.length} Audited · ${achievement.toStringAsFixed(0)}%',
+                                AdvantaColors.success),
                             if (overdue > 0)
                               _microBadge(Icons.warning_amber_rounded,
                                   '$overdue overdue', AdvantaColors.error),
@@ -872,9 +1135,12 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 12, color: color),
         const SizedBox(width: 4),
-        Text(label,
-            style: TextStyle(
-                fontSize: 10, fontWeight: FontWeight.w700, color: color))
+        Flexible(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700, color: color)))
       ]));
 
   LatLng _center(List<AuditPlanField> group) {
@@ -885,21 +1151,26 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
   }
 
   Widget _fieldTile(AuditPlanField field) {
-    final target = _target(field);
     final f = field.weekly;
-    final statusColor = target.done
+    final done = _targetDone(field);
+    final overdue = _targetOverdue(field);
+    final plannedDate = _targetPlannedDate(field);
+    final deadline = _targetDeadline(field);
+    final fieldNumber = f.raw['field_number']?.toString() ?? '';
+    final selected = _selectedFieldNumbers.contains(fieldNumber);
+    final statusColor = done
         ? AdvantaColors.success
-        : target.overdue
+        : overdue
             ? AdvantaColors.error
             : AdvantaColors.gold;
-    final statusIcon = target.done
+    final statusIcon = done
         ? Icons.check_rounded
-        : target.overdue
+        : overdue
             ? Icons.priority_high_rounded
             : Icons.schedule_rounded;
-    final statusLabel = target.done
-        ? 'Done'
-        : target.overdue
+    final statusLabel = done
+        ? 'Completed'
+        : overdue
             ? 'Overdue'
             : 'Pending';
     return Container(
@@ -918,14 +1189,13 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                 child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                              color: statusColor.withValues(alpha: .12),
-                              borderRadius: BorderRadius.circular(12)),
-                          child:
-                              Icon(statusIcon, size: 20, color: statusColor)),
+                      Checkbox(
+                          value: selected,
+                          onChanged: (checked) => setState(() {
+                                checked == true
+                                    ? _selectedFieldNumbers.add(fieldNumber)
+                                    : _selectedFieldNumbers.remove(fieldNumber);
+                              })),
                       const SizedBox(width: 11),
                       Expanded(
                           child: Column(
@@ -944,12 +1214,18 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                             Wrap(spacing: 6, runSpacing: 5, children: [
                               _microBadge(Icons.landscape_outlined,
                                   auditHa(f.areaHa), AdvantaColors.mutedGrey),
+                              if ((f.raw['hybrid']?.toString().trim() ?? '')
+                                  .isNotEmpty)
+                                _microBadge(
+                                    Icons.eco_outlined,
+                                    f.raw['hybrid'].toString().trim(),
+                                    AdvantaColors.primaryGreen),
                               _microBadge(
                                   Icons.flag_outlined,
                                   f.flag,
                                   f.flag == 'GF'
                                       ? AdvantaColors.success
-                                      : f.flag == 'Belum ada'
+                                      : f.flag == auditNotYetFlagging
                                           ? AdvantaColors.mutedGrey
                                           : AdvantaColors.gold),
                               _microBadge(statusIcon, statusLabel, statusColor),
@@ -963,7 +1239,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                                   const SizedBox(width: 5),
                                   Expanded(
                                       child: Text(
-                                          '${DateFormat('d MMM', 'id_ID').format(target.plannedDate)} – ${DateFormat('d MMM', 'id_ID').format(target.deadline)} · ${f.raw['qa_fi'] ?? ''}',
+                                          '${DateFormat('d MMM', 'id_ID').format(plannedDate)} – ${DateFormat('d MMM', 'id_ID').format(deadline)} · ${f.raw['qa_fi'] ?? 'Unmapped / Need Mapping'}',
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
