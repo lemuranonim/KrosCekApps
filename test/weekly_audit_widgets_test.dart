@@ -370,6 +370,48 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('planning percentage includes completed and pending targets',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final raw = [
+      fixtures.fieldAt(20,
+          id: 'AUDITED',
+          area: 10,
+          veg: {'date_of_audit': '2026-08-24', 'flagging': 'GF'}),
+      fixtures.fieldAt(20, id: 'PENDING', area: 5),
+    ];
+    final fields = raw
+        .map((field) => AuditPlanField(
+            ParsedFieldData(
+                raw: field,
+                lat: -7.6,
+                lng: 112.1,
+                isDefault: false,
+                isCorrected: false,
+                isFromPolygon: false,
+                dap: 20),
+            fixtures.project(field)))
+        .toList(growable: false);
+
+    await tester.pumpWidget(ProviderScope(
+        overrides: [
+          auditPlanningProvider.overrideWith((ref, params) async => fields),
+          auditPlanningRegionsProvider.overrideWith((ref) async => ['East']),
+        ],
+        child: MaterialApp(
+            home: AuditPlanningScreen(initialWeek: fixtures.week))));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(Chip, 'All'), findsOneWidget);
+    expect(find.text('1 / 2 Audited'), findsWidgets);
+    expect(find.text('50%'), findsWidgets);
+    expect(find.text('Select visible (2)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('planning starts with the active Home Map filter context',
       (tester) async {
     tester.view.physicalSize = const Size(390, 1000);

@@ -39,7 +39,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
   String? _season;
   bool _showAllRegions = false;
   String _crop = 'All Crop';
-  String _status = 'Pending';
+  String _status = 'All';
   String _search = '';
   Set<String> _flags = {...defaultAuditFlags};
   List<AuditPlanningTextFilter> _textFilters = [];

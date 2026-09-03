@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 class AdvantaColors {
   AdvantaColors._();
 
+  static const Color kcNavy       = Color(0xFF0D3A62);
   static const Color deepForest   = Color(0xFF0D3D2B);
   static const Color primaryGreen = Color(0xFF1A5E3F);
   static const Color midGreen     = Color(0xFF2E7D52);

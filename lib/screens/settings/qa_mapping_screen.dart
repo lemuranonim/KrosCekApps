@@ -1249,6 +1249,12 @@ class _CoverageCard extends StatelessWidget {
                               label: 'SPV ${item.qaSpv}',
                               color: AdvantaColors.gold,
                             ),
+                          if (item.fieldSpv.isNotEmpty)
+                            _Badge(
+                              icon: Icons.badge_outlined,
+                              label: 'Field SPV ${item.fieldSpv}',
+                              color: AdvantaColors.midGreen,
+                            ),
                           _Badge(
                             icon: Icons.crop_square,
                             label: '${_formatHa(item.ha ?? 0)} ha',
@@ -1276,6 +1282,9 @@ class _CoverageCard extends StatelessWidget {
                           Icons.public, 'Region', _dash(item.region), theme),
                       _subtitleRow(Icons.location_city, 'Kabupaten',
                           _dash(item.districtKab), theme),
+                      if (item.fieldSpv.isNotEmpty)
+                        _subtitleRow(Icons.badge_outlined, 'Field SPV',
+                            item.fieldSpv, theme),
                       _subtitleRow(
                           Icons.agriculture, 'FA', _dash(item.fa), theme),
                     ],
@@ -1605,6 +1614,7 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
   late TextEditingController _qaSpvCtrl;
   late TextEditingController _qaFiCtrl;
   late TextEditingController _faCtrl;
+  late TextEditingController _fieldSpvCtrl;
   bool _saving = false;
 
   @override
@@ -1616,6 +1626,7 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
     _qaSpvCtrl = TextEditingController(text: existing?.qaSpv ?? '');
     _qaFiCtrl = TextEditingController(text: existing?.qaFi ?? '');
     _faCtrl = TextEditingController(text: existing?.fa ?? '');
+    _fieldSpvCtrl = TextEditingController(text: existing?.fieldSpv ?? '');
     _regionCtrl.addListener(_onRegionChanged);
   }
 
@@ -1627,6 +1638,7 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
     _qaSpvCtrl.dispose();
     _qaFiCtrl.dispose();
     _faCtrl.dispose();
+    _fieldSpvCtrl.dispose();
     super.dispose();
   }
 
@@ -1708,6 +1720,10 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
     final qaSpvName = _qaSpvCtrl.text.trim();
     final qaFiName = _qaFiCtrl.text.trim();
     final faName = _faCtrl.text.trim();
+    final fieldSpvName = _fieldSpvCtrl.text.trim();
+    final normalizedRegion = regionName.toLowerCase();
+    final requiresFieldSpv =
+        normalizedRegion == 'region 4' || normalizedRegion == 'region 5';
 
     if (!isRestricted && regionName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1757,6 +1773,15 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
       return;
     }
 
+    if (!isRestricted && requiresFieldSpv && fieldSpvName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Field SPV wajib diisi untuk Region 4 dan Region 5.'),
+        ),
+      );
+      return;
+    }
+
     if (!isRestricted && qaFiName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('QA FI wajib diisi untuk SPV/Admin.')),
@@ -1778,6 +1803,7 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
       dataToSave['region'] = regionName;
       dataToSave['qa_spv'] = qaSpvName;
       dataToSave['qa_fi'] = qaFiName;
+      dataToSave['field_spv'] = fieldSpvName;
     }
 
     setState(() => _saving = true);
@@ -1836,6 +1862,8 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
     final qaFiOptions =
         _uniqueOptions(relatedMappings.map((item) => item.qaFi));
     final faOptions = _uniqueOptions(relatedMappings.map((item) => item.fa));
+    final fieldSpvOptions =
+        _uniqueOptions(relatedMappings.map((item) => item.fieldSpv));
     final districtAsync = districtOptions.isNotEmpty
         ? AsyncValue.data(_wilayahOptions(districtOptions))
         : kabupatenAsync;
@@ -1907,6 +1935,8 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
                     _ReadOnlyField(label: 'Region', value: _regionCtrl.text),
                     _ReadOnlyField(
                         label: 'QA Supervisor', value: _qaSpvCtrl.text),
+                    _ReadOnlyField(
+                        label: 'Field SPV', value: _fieldSpvCtrl.text),
                   ],
                   _buildOptionField(
                     'Field Assistant (FA)',
@@ -1923,6 +1953,12 @@ class _WilayahFormSheetState extends ConsumerState<_WilayahFormSheet> {
                 ] else ...[
                   _buildOptionField(
                       'Region', _regionCtrl, theme, regionOptions),
+                  _buildOptionField(
+                    'Field SPV',
+                    _fieldSpvCtrl,
+                    theme,
+                    fieldSpvOptions,
+                  ),
                   _buildOptionField(
                     'QA Supervisor',
                     _qaSpvCtrl,

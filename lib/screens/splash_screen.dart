@@ -862,7 +862,7 @@ class SplashScreenState extends State<SplashScreen>
             child: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white,
+                color: AdvantaColors.kcNavy,
                 boxShadow: [
                   BoxShadow(
                     color: AdvantaColors.lightGreen.withAlpha(isDark ? 60 : 20),

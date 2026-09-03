@@ -35,7 +35,7 @@ class AuditDashboardFilters {
         region: null,
         district: null,
         village: null,
-        status: 'Pending',
+        status: 'All',
         lastUpdated: DateTime.now(),
       );
 

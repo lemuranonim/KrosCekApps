@@ -79,6 +79,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   // Search & filter — Multi-param (Supabase-style)
   final List<SearchFilter> _activeFilters = [];
+  Timer? _searchFocusDebounce;
 
   // Region / District quick-filter (tetap dipertahankan)
   String? _selectedRegion;
@@ -623,6 +624,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   @override
   void dispose() {
+    _searchFocusDebounce?.cancel();
     _positionSub?.cancel();
     _polygonHitNotifier.removeListener(_handlePolygonHit);
     _polygonHitNotifier.dispose();
@@ -792,6 +794,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
   List<ParsedFieldData> _filterFields(List<ParsedFieldData> allParsed) {
     final selRegion = _selectedRegion?.trim().toLowerCase();
     final selDistrict = _selectedDistrict?.trim().toLowerCase();
+    final directFieldNumberSearch =
+        homeMapHasActiveFieldNumberSearch(_activeFilters);
 
     return allParsed.where((f) {
       if (_isExcludedRegion(f.raw['region'])) return false;
@@ -814,18 +818,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
             f.raw['district_kab']?.toString().trim().toLowerCase() ?? '';
         if (dbDistrict != selDistrict) return false;
       }
-      for (final filter in _activeFilters) {
-        if (filter.value.trim().isEmpty) continue;
-        final q = filter.value.trim().toLowerCase();
-        if (filter.param == SearchParam.qaFI) {
-          if (!QaNameHelper.fieldMatchesFiSearch(f.raw, q)) return false;
-        } else {
-          final dbVal =
-              f.raw[filter.param.fieldKey]?.toString().toLowerCase().trim() ??
-                  '';
-          if (!dbVal.contains(q)) return false;
-        }
-      }
+      if (!homeMapMatchesSearchFilters(f.raw, _activeFilters)) return false;
+
+      // An explicit FN search is a lookup, not a phase/status exploration.
+      // Keep database, user, season, region, district and PLD visibility scope,
+      // but do not hide an already matched FN because of operational filters.
+      if (directFieldNumberSearch) return true;
 
       // ── LOGIKA BARU: FILTER FASE & MINGGU (SIMULASI DAP) ──
       if (_selectedWeeks.isNotEmpty) {
@@ -851,6 +849,56 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
       return true;
     }).toList();
+  }
+
+  void _handleSearchFiltersChanged() {
+    if (!mounted) return;
+    setState(_clearMapCaches);
+    _searchFocusDebounce?.cancel();
+    if (!_activeFilters.any((filter) => filter.value.trim().isNotEmpty)) return;
+    _searchFocusDebounce =
+        Timer(const Duration(milliseconds: 350), _focusActiveSearchResults);
+  }
+
+  void _focusActiveSearchResults() {
+    unawaited(_loadAndFocusActiveSearchResults());
+  }
+
+  Future<void> _loadAndFocusActiveSearchResults() async {
+    if (!mounted) return;
+    final scope = _currentMapScope;
+    final searchKey = _activeFilters
+        .map((filter) => '${filter.param.fieldKey}:${filter.value.trim()}')
+        .join('|');
+    final List<ParsedFieldData> allFields;
+    try {
+      allFields =
+          await ref.read(parsedMasterFieldMapScopedProvider(scope).future);
+    } catch (_) {
+      return;
+    }
+    if (!mounted || scope != _currentMapScope) return;
+    final currentSearchKey = _activeFilters
+        .map((filter) => '${filter.param.fieldKey}:${filter.value.trim()}')
+        .join('|');
+    if (searchKey != currentSearchKey) return;
+    final results = _filterFields(allFields);
+    if (results.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        if (results.length == 1) {
+          final field = results.single;
+          final zoom = math.max(_mapController.camera.zoom, 15.0).toDouble();
+          _mapController.move(LatLng(field.lat, field.lng), zoom);
+        } else {
+          _fitBounds(results);
+        }
+      } catch (_) {
+        // The map may still be attaching during the first provider frame.
+      }
+    });
   }
 
   bool _matchesAuditFilter(
@@ -1042,12 +1090,18 @@ class _QAScreenState extends ConsumerState<QAScreen>
     required bool allSeasons,
     String? season,
   }) {
+    final nextScope = resolveHomeMapSeasonScope(
+      allSeasons: allSeasons,
+      season: season,
+      selectedRegion: _selectedRegion,
+      showAllRegions: _showAllRegions,
+    );
     setState(() {
-      _showAllSeasons = allSeasons;
-      _selectedSeason = allSeasons ? null : season;
-      _selectedRegion = null;
+      _showAllSeasons = nextScope.allSeasons;
+      _selectedSeason = nextScope.season;
+      _selectedRegion = nextScope.region;
       _selectedDistrict = null;
-      _showAllRegions = false;
+      _showAllRegions = nextScope.allRegions;
       _clearMapCaches();
     });
   }
@@ -3964,7 +4018,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                             _SmartSearchBar(
                               filters: _activeFilters,
                               allFields: allFields, // <--- Data List
-                              onFiltersChanged: () => setState(() {}),
+                              onFiltersChanged: _handleSearchFiltersChanged,
                             ),
                           ],
                         ),
@@ -5751,6 +5805,49 @@ class SearchFilter {
   SearchFilter({required this.param, this.value = ''});
 }
 
+typedef HomeMapSeasonScope = ({
+  bool allSeasons,
+  String? season,
+  String? region,
+  bool allRegions,
+});
+
+HomeMapSeasonScope resolveHomeMapSeasonScope({
+  required bool allSeasons,
+  String? season,
+  String? selectedRegion,
+  required bool showAllRegions,
+}) =>
+    (
+      allSeasons: allSeasons,
+      season: allSeasons ? null : season,
+      region: selectedRegion,
+      allRegions: showAllRegions,
+    );
+
+bool homeMapHasActiveFieldNumberSearch(Iterable<SearchFilter> filters) =>
+    filters.any((filter) =>
+        filter.param == SearchParam.fieldNumber &&
+        filter.value.trim().isNotEmpty);
+
+bool homeMapMatchesSearchFilters(
+  Map<String, dynamic> raw,
+  Iterable<SearchFilter> filters,
+) {
+  for (final filter in filters) {
+    final query = filter.value.trim().toLowerCase();
+    if (query.isEmpty) continue;
+    if (filter.param == SearchParam.qaFI) {
+      if (!QaNameHelper.fieldMatchesFiSearch(raw, query)) return false;
+      continue;
+    }
+    final value =
+        raw[filter.param.fieldKey]?.toString().trim().toLowerCase() ?? '';
+    if (!value.contains(query)) return false;
+  }
+  return true;
+}
+
 /// Modern Supabase-style multi-param search bar
 class _SmartSearchBar extends StatefulWidget {
   final List<SearchFilter> filters;
@@ -7247,7 +7344,7 @@ class _MapLoadingScreenState extends State<_MapLoadingScreen>
                   width: 96,
                   height: 96,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AdvantaColors.kcNavy,
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: AdvantaColors.lightGreen.withAlpha(80),

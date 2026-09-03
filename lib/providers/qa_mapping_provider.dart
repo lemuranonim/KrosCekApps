@@ -30,6 +30,7 @@ class QaMappingItem {
   final String qaSpv;
   final String qaFi;
   final String fa;
+  final String fieldSpv;
   final double? ha;
   final String status;
   final String approvalStatus;
@@ -46,6 +47,7 @@ class QaMappingItem {
     required this.qaSpv,
     required this.qaFi,
     required this.fa,
+    required this.fieldSpv,
     required this.ha,
     required this.status,
     required this.approvalStatus,
@@ -72,6 +74,9 @@ class QaMappingItem {
       qaSpv: _readString(json['qa_spv']),
       qaFi: _readString(json['qa_fi']),
       fa: _readString(json['fa']),
+      fieldSpv: _readString(json['field_spv']).isNotEmpty
+          ? _readString(json['field_spv'])
+          : _readString(json['supervisor']),
       ha: _readDouble(json['ha']),
       status: normalizedStatus,
       approvalStatus:
@@ -96,6 +101,7 @@ class QaMappingItem {
       qaSpv,
       qaFi,
       fa,
+      fieldSpv,
       status,
       approvalStatus,
       ha?.toString() ?? '',
@@ -121,6 +127,20 @@ class QaMappingItem {
         fa,
       ]);
 
+  String get fieldSpvOwnerKey => _normalizeKey([
+        region,
+        districtKab,
+        fieldSpv,
+      ]);
+
+  String get fiBreakdownKey => _normalizeKey([
+        region,
+        districtKab,
+        subDistrictKec,
+        villageDesa,
+        qaSpv,
+      ]);
+
   Map<String, dynamic> toMap() => Map<String, dynamic>.from(raw);
 
   static String _normalizeKey(List<String> parts) {
@@ -142,28 +162,57 @@ class QaMappingConflictIndex {
 }
 
 QaMappingConflictIndex buildQaMappingConflictIndex(List<QaMappingItem> items) {
-  final villageOwners = <String, Set<String>>{};
-  final villageFaOwners = <String, Set<String>>{};
+  final qaSpvOwnersByFieldSpv = <String, Set<String>>{};
+  final fiOwnersByBreakdown = <String, Set<String>>{};
+  final legacyVillageOwners = <String, Set<String>>{};
+  final legacyVillageFaOwners = <String, Set<String>>{};
 
   for (final item in items) {
     final fi = item.qaFi.trim().toLowerCase();
-    if (fi.isEmpty) continue;
+    final qaSpv = item.qaSpv.trim().toLowerCase();
 
-    if (item.villageKey.isNotEmpty) {
-      villageOwners.putIfAbsent(item.villageKey, () => <String>{}).add(fi);
+    if (item.fieldSpv.isNotEmpty) {
+      if (item.fieldSpvOwnerKey.isNotEmpty && qaSpv.isNotEmpty) {
+        qaSpvOwnersByFieldSpv
+            .putIfAbsent(item.fieldSpvOwnerKey, () => <String>{})
+            .add(qaSpv);
+      }
+      if (item.fiBreakdownKey.isNotEmpty && fi.isNotEmpty) {
+        fiOwnersByBreakdown
+            .putIfAbsent(item.fiBreakdownKey, () => <String>{})
+            .add(fi);
+      }
+      continue;
     }
-    if (item.villageFaKey.isNotEmpty) {
-      villageFaOwners.putIfAbsent(item.villageFaKey, () => <String>{}).add(fi);
+
+    if (fi.isNotEmpty && item.villageKey.isNotEmpty) {
+      legacyVillageOwners
+          .putIfAbsent(item.villageKey, () => <String>{})
+          .add(fi);
+    }
+    if (fi.isNotEmpty && item.villageFaKey.isNotEmpty) {
+      legacyVillageFaOwners
+          .putIfAbsent(item.villageFaKey, () => <String>{})
+          .add(fi);
     }
   }
 
   final conflictedIds = <int>{};
   for (final item in items) {
-    final villageConflict = item.villageKey.isNotEmpty &&
-        (villageOwners[item.villageKey]?.length ?? 0) > 1;
-    final villageFaConflict = item.villageFaKey.isNotEmpty &&
-        (villageFaOwners[item.villageFaKey]?.length ?? 0) > 1;
-    if (villageConflict || villageFaConflict) {
+    final ownershipConflict = item.fieldSpv.isNotEmpty &&
+        (qaSpvOwnersByFieldSpv[item.fieldSpvOwnerKey]?.length ?? 0) > 1;
+    final fiConflict = item.fieldSpv.isNotEmpty &&
+        (fiOwnersByBreakdown[item.fiBreakdownKey]?.length ?? 0) > 1;
+    final legacyVillageConflict = item.fieldSpv.isEmpty &&
+        item.villageKey.isNotEmpty &&
+        (legacyVillageOwners[item.villageKey]?.length ?? 0) > 1;
+    final legacyVillageFaConflict = item.fieldSpv.isEmpty &&
+        item.villageFaKey.isNotEmpty &&
+        (legacyVillageFaOwners[item.villageFaKey]?.length ?? 0) > 1;
+    if (ownershipConflict ||
+        fiConflict ||
+        legacyVillageConflict ||
+        legacyVillageFaConflict) {
       conflictedIds.add(item.id);
     }
   }
@@ -484,6 +533,7 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
       'qa_spv',
       'qa_fi',
       'fa',
+      'field_spv',
       'ha',
       'status',
       'approval_status',

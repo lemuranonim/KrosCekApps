@@ -17,6 +17,9 @@ android/key.properties
 assets/credentials.json
 assets/config.json
 
+# SQL files
+*.sql
+
 # IntelliJ related
 *.iml
 *.ipr
