@@ -209,7 +209,10 @@ class WeeklyAuditField {
       final date = parseAuditDate(dateValue);
       if (date == null) return;
       if (countForCompletion) phaseDates.putIfAbsent(phase, () => []).add(date);
-      if (date.isAfter(asOf)) return;
+      // A selected week defines when the target was due. Its resolution always
+      // follows data available through today, so a late audit can close an old
+      // target instead of leaving it permanently overdue.
+      if (date.isAfter(today)) return;
       final isGen = phase.startsWith('generative');
       final flagValue = roguing
           ? row['flagging$suffix']
@@ -282,14 +285,6 @@ class WeeklyAuditField {
       final phaseOrder = _phaseOrder(a.phase).compareTo(_phaseOrder(b.phase));
       return phaseOrder != 0 ? phaseOrder : a.sequence.compareTo(b.sequence);
     });
-    var flag = auditNotYetFlagging;
-    for (final observation in observations) {
-      if (observation.flag != null) flag = observation.flag!;
-    }
-    // Undated master status cannot reconstruct a historical week.
-    if (flag == auditNotYetFlagging && !end.isBefore(today)) {
-      flag = _flag(raw['flagging_final']) ?? flag;
-    }
     final rules = DapHelper.getPhaseRules(
         hybrid: hybrid,
         district: raw['district_kab']?.toString(),
@@ -314,7 +309,7 @@ class WeeklyAuditField {
 
     for (final rule in rules) {
       phaseCompletions[rule.key] = ((phaseDates[rule.key] ?? const <DateTime>[])
-                  .where((d) => !d.isAfter(asOf))
+                  .where((d) => !d.isAfter(today))
                   .length /
               requiredPasses(rule.key))
           .clamp(0.0, 1.0);
@@ -338,6 +333,24 @@ class WeeklyAuditField {
             completion: completion,
             overdue: completion < 1 && deadline.isBefore(today)));
       }
+    }
+    var flag = auditNotYetFlagging;
+    Iterable<AuditObservation> flagObservations = observations;
+    if (targets.isNotEmpty) {
+      final targetPhases = targets.map((target) => target.phase).toSet();
+      flagObservations = observations
+          .where((observation) => targetPhases.contains(observation.phase));
+    }
+    for (final observation in flagObservations) {
+      if (observation.flag != null) flag = observation.flag!;
+    }
+    // An undated master flag is only safe as a current overall snapshot when
+    // no dated phase can contradict it. It must not be attributed to a target
+    // when an older phase is the known source of that flag.
+    if (flag == auditNotYetFlagging &&
+        !end.isBefore(today) &&
+        (targets.isEmpty || observations.isEmpty)) {
+      flag = _flag(raw['flagging_final']) ?? flag;
     }
     final dap = planting == null ? 0 : end.difference(planting).inDays;
     final stage = auditStage(DapHelper.getRecommendedPhase(dap,

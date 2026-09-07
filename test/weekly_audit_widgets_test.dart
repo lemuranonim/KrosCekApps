@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:kroscek/providers/audit_plan_provider.dart';
+import 'package:kroscek/providers/audit_filter_provider.dart';
 import 'package:kroscek/providers/master_fields_provider.dart';
 import 'package:kroscek/models/audit_planning_filters.dart';
 import 'package:kroscek/screens/qa/audit_planning_screen.dart';
@@ -86,6 +87,44 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('coverage mode keeps the same week filter', (tester) async {
+    tester.view.physicalSize = const Size(360, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({
+      SessionKeys.activeUserId: 'test-user',
+      SessionKeys.activeUserRole: 'MANAGER',
+      SessionKeys.activeUserName: 'Manager',
+    });
+    final fields = [
+      FieldCoverageStatus.fromRaw(fixtures.fieldAt(20),
+          weekStart: fixtures.week, now: fixtures.end),
+    ];
+    final container = ProviderContainer(overrides: [
+      coverageStatusListProvider.overrideWith((ref) async => fields),
+      coverageStatusListScopedProvider(const MasterFieldMapScope.all())
+          .overrideWith((ref) async => fields),
+      activeMasterFieldRegionsProvider(const MasterFieldMapScope.all())
+          .overrideWith((ref) async => ['East']),
+    ]);
+    addTearDown(container.dispose);
+    container
+        .read(auditDashboardFilterProvider.notifier)
+        .setWeeks({fixtures.week});
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: CoverageScreen())));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('W35'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Target Audit'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('W35'), findsOneWidget);
+    expect(container.read(auditDashboardFilterProvider).weeks, {fixtures.week});
+  });
 
   testWidgets('Coverage shows a branded loading shell while data is fetched',
       (tester) async {

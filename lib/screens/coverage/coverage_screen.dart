@@ -60,13 +60,21 @@ List<FieldCoverageStatus> _projectCoverageWeeks(
   ];
 }
 
-List<FieldCoverageStatus> _filterAllCoverage(
-        List<FieldCoverageStatus> fields, Set<String> flags) =>
-    fields
-        .where((field) =>
-            !_isExcludedCoverageRegion(field.region) &&
-            flags.contains(field.weekly.flag))
-        .toList(growable: false);
+List<FieldCoverageStatus> _projectAllCoverage(
+  List<FieldCoverageStatus> fields, {
+  required Set<DateTime> weeks,
+  required Set<String> flags,
+}) {
+  final selected = weeks.isEmpty
+      ? auditWeekStart(DateTime.now())
+      : (weeks.toList()..sort()).last;
+  return fields
+      .where((field) => !_isExcludedCoverageRegion(field.region))
+      .map((field) => FieldCoverageStatus.fromRaw(field.raw,
+          weekStart: auditWeekStart(selected)))
+      .where((field) => flags.contains(field.weekly.flag))
+      .toList(growable: false);
+}
 
 double _coverageArea(Iterable<FieldCoverageStatus> fields) =>
     fields.fold(0.0, (sum, field) => sum + field.effectiveAreaHa);
@@ -852,8 +860,8 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
       loading: () => const _SkeletonLoader(),
       error: (e, _) => _CoverageErrorWidget(error: e.toString()),
       data: (allFields) {
-        final allCoverageFields =
-            _filterAllCoverage(allFields, sharedFilters.flags);
+        final allCoverageFields = _projectAllCoverage(allFields,
+            weeks: sharedFilters.weeks, flags: sharedFilters.flags);
         final weeklyFields = _projectCoverageWeeks(allFields,
             weeks: sharedFilters.weeks, flags: sharedFilters.flags);
 
@@ -1138,8 +1146,8 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             : allFields
                 .where((f) => QaNameHelper.containsExactName(f.qaSpv, myName))
                 .toList();
-        final allCoverageFields =
-            _filterAllCoverage(mySpvFields, sharedFilters.flags);
+        final allCoverageFields = _projectAllCoverage(mySpvFields,
+            weeks: sharedFilters.weeks, flags: sharedFilters.flags);
         final weeklyFields = _projectCoverageWeeks(mySpvFields,
             weeks: sharedFilters.weeks, flags: sharedFilters.flags);
 
@@ -1413,8 +1421,8 @@ class _FIViewState extends ConsumerState<_FIView> {
             : allFields
                 .where((f) => QaNameHelper.containsExactName(f.qaFi, myName))
                 .toList();
-        final allCoverageFields =
-            _filterAllCoverage(myFiFields, sharedFilters.flags);
+        final allCoverageFields = _projectAllCoverage(myFiFields,
+            weeks: sharedFilters.weeks, flags: sharedFilters.flags);
         final weeklyFields = _projectCoverageWeeks(myFiFields,
             weeks: sharedFilters.weeks, flags: sharedFilters.flags);
 
@@ -5028,13 +5036,17 @@ class _WeeklyCoverageControls extends ConsumerWidget {
               children: [
                 AuditWeekFilter(
                     selectedWeeks: filters.weeks,
-                    allWeeks:
-                        filters.coverageMode == CoverageDisplayMode.allCoverage,
+                    allWeeks: filters.allWeeks,
+                    allLabel: 'All Weeks',
+                    allDescription: '6 minggu sebelum dan sesudah week aktif',
                     onChanged: (weeks, all) {
-                      notifier.setWeeks(weeks, all: all);
-                      notifier.setCoverageMode(all
-                          ? CoverageDisplayMode.allCoverage
-                          : CoverageDisplayMode.targetAudit);
+                      final selected = all
+                          ? List.generate(
+                              13,
+                              (index) => filters.primaryWeek
+                                  .add(Duration(days: (index - 6) * 7))).toSet()
+                          : weeks;
+                      notifier.setWeeks(selected, all: all);
                     }),
                 AuditFlagFilter(
                     selected: filters.flags, onChanged: notifier.setFlags),
@@ -5044,6 +5056,11 @@ class _WeeklyCoverageControls extends ConsumerWidget {
                     onPressed: () => context.push(
                         '/audit-planning?weekStart=${Uri.encodeComponent(filters.primaryWeek.toIso8601String())}')),
               ]),
+          const SizedBox(height: 6),
+          Text(
+              'Overdue berarti batas target sudah lewat dan fasenya belum diaudit sampai hari ini. Audit yang masuk terlambat otomatis mengubah target lama menjadi Done.',
+              style: TextStyle(
+                  fontSize: 11, height: 1.35, color: AdvantaColors.mutedGrey)),
         ]));
   }
 }

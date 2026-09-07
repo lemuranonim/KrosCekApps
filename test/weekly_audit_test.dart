@@ -86,7 +86,7 @@ void main() {
     expect(WeeklyAuditSummary([f]).achievedHa, 10);
   });
 
-  test('future audit cannot complete the current or historical week', () {
+  test('audit dated after today cannot complete a target yet', () {
     final raw = fieldAt(20, veg: {
       'date_of_audit': '2026-08-29',
       'flagging': 'PLD',
@@ -96,19 +96,15 @@ void main() {
     expect(f.done, false);
     expect(f.flag, auditNotYetFlagging);
     expect(f.latest((o) => o.ch), null);
-    final historical = project(
-        fieldAt(20, veg: {'date_of_audit': '2026-08-31'}),
-        now: DateTime(2026, 9, 5));
-    expect(historical.done, false);
   });
 
-  test(
-      'closed-week pending targets are overdue without leaking later completion',
-      () {
+  test('a late audit closes its earlier target instead of staying overdue', () {
     final f = project(fieldAt(20, veg: {'date_of_audit': '2026-08-31'}),
         now: DateTime(2026, 9, 5));
-    expect(f.overdue, true);
-    expect(WeeklyAuditSummary([f]).overdueHa, 10);
+    expect(f.done, true);
+    expect(f.overdue, false);
+    expect(WeeklyAuditSummary([f]).achievedHa, 10);
+    expect(WeeklyAuditSummary([f]).overdueHa, 0);
   });
 
   test('phase deadline inside current week determines overdue', () {
@@ -261,6 +257,28 @@ void main() {
       'date_of_audit_3': '2026-08-24',
       'flagging': 'RFI',
     }));
+    expect(f.flag, 'RFI');
+  });
+
+  test('target flagging only comes from the phase being evaluated', () {
+    final f = project(
+        fieldAt(60, veg: {'date_of_audit': '2026-08-01', 'flagging': 'GF'}));
+    expect(f.targets.single.phase, 'generative_3');
+    expect(f.flag, auditNotYetFlagging);
+  });
+
+  test('late target audit supplies the resolved target flagging', () {
+    final f = project(
+        fieldAt(60, veg: {
+          'date_of_audit': '2026-08-01',
+          'flagging': 'GF'
+        }, gen: {
+          'date_of_audit_3': '2026-08-31',
+          'flagging': 'RFI',
+        }),
+        now: DateTime(2026, 9, 5));
+    expect(f.done, true);
+    expect(f.overdue, false);
     expect(f.flag, 'RFI');
   });
 
