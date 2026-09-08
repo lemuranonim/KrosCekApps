@@ -195,8 +195,21 @@ void main() {
   test('partial checkpoints do not count a whole field as achieved', () {
     final raw = fieldAt(50, gen: {'date_of_audit_1': '2026-08-24'});
     final f = project(raw);
+    final summary = WeeklyAuditSummary([f]);
+    final coverage = calculateFilteredPhases(
+        [FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end)]);
     expect(f.completion, .5);
-    expect(WeeklyAuditSummary([f]).achievedHa, 0);
+    expect(summary.achievedHa, 0);
+    expect(summary.achievementPercent, 50);
+    expect(coverage.targetCompletionPct, 50);
+    expect(
+        coverage.phases.singleWhere((phase) => phase.label == 'Generative').pct,
+        50);
+    expect(
+        FICoverage.fromFields('FI 1', [
+          FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end),
+        ]).coverageScore,
+        50);
   });
 
   test('FN achievement is not distorted by field area', () {
@@ -236,6 +249,7 @@ void main() {
     }));
     expect(f.targets.single.completion, .25);
     expect(f.done, false);
+    expect(WeeklyAuditSummary([f]).achievementPercent, 25);
     expect(f.latest((o) => o.ch), 'Fair');
     expect(f.lsvNegative, true);
   });

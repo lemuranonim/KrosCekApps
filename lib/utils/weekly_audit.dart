@@ -419,8 +419,15 @@ class WeeklyAuditSummary {
   int get targetFn => fields.length;
   int get auditedFn => fields.where((f) => f.done).length;
   int get overdueFn => fields.where((f) => f.overdue).length;
-  double get achievementPercent =>
-      targetFn > 0 ? auditedFn / targetFn * 100 : 0;
+
+  /// Every FN has the same weight. Multi-phase and PSP targets contribute
+  /// their actual completion fraction instead of dropping to zero until every
+  /// required checkpoint is finished.
+  double get achievementPercent => targetFn > 0
+      ? fields.fold(0.0, (sum, field) => sum + field.completion) /
+          targetFn *
+          100
+      : 0;
 
   Map<String, AuditAreaMetric> composition(
       String Function(WeeklyAuditField) key) {

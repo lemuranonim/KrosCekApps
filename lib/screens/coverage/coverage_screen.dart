@@ -441,7 +441,8 @@ class PhaseCoverage {
   final double totalHa;
   final double doneHa;
   final double overdueHa;
-  double get pct => total == 0 ? 0 : (done / total) * 100;
+  final double completionPercent;
+  double get pct => completionPercent;
 
   const PhaseCoverage({
     required this.label,
@@ -453,6 +454,7 @@ class PhaseCoverage {
     required this.totalHa,
     required this.doneHa,
     required this.overdueHa,
+    required this.completionPercent,
   });
 }
 
@@ -472,6 +474,7 @@ class PhaseSummary {
   final int auditAreaOverrides;
   final double registeredAreaHa;
   final double effectiveAreaHa;
+  final double completionPercent;
 
   const PhaseSummary({
     required this.targetAreaHa,
@@ -489,10 +492,10 @@ class PhaseSummary {
     required this.auditAreaOverrides,
     required this.registeredAreaHa,
     required this.effectiveAreaHa,
+    required this.completionPercent,
   });
 
-  double get targetCompletionPct =>
-      totalTargets == 0 ? 0 : completedTargets / totalTargets * 100;
+  double get targetCompletionPct => completionPercent;
 }
 
 // ============================================================
@@ -519,6 +522,15 @@ PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields) {
         .every((t) => t.done);
     bool overdue(FieldCoverageStatus f) => f.weekly.targets
         .any((t) => auditStage(t.phase) == entry.key && t.overdue);
+    double completion(FieldCoverageStatus f) {
+      final targets = f.weekly.targets
+          .where((target) => auditStage(target.phase) == entry.key)
+          .toList(growable: false);
+      if (targets.isEmpty) return 0;
+      return targets.fold(0.0, (sum, target) => sum + target.completion) /
+          targets.length;
+    }
+
     phases.add(PhaseCoverage(
         label: entry.value,
         shortLabel: entry.value,
@@ -532,7 +544,12 @@ PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields) {
             .fold(0.0, (sum, f) => sum + f.effectiveAreaHa),
         overdueHa: phaseFields
             .where(overdue)
-            .fold(0.0, (sum, f) => sum + f.effectiveAreaHa)));
+            .fold(0.0, (sum, f) => sum + f.effectiveAreaHa),
+        completionPercent: phaseFields.isEmpty
+            ? 0
+            : phaseFields.fold(0.0, (sum, field) => sum + completion(field)) /
+                phaseFields.length *
+                100));
   }
   return PhaseSummary(
       phases: phases,
@@ -547,6 +564,7 @@ PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields) {
       auditAreaOverrides: fields.where((f) => f.hasAuditAreaOverride).length,
       registeredAreaHa: weekly.targetHa,
       effectiveAreaHa: weekly.targetHa,
+      completionPercent: weekly.achievementPercent,
       targetAreaHa: weekly.targetHa,
       achievedAreaHa: weekly.achievedHa,
       overdueAreaHa: weekly.overdueHa);
@@ -1008,7 +1026,7 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.successLight,
                     value:
-                        '${summary.completedTargets} / ${summary.totalTargets} FN · ${summary.targetCompletionPct.toStringAsFixed(0)}%',
+                        '${summary.targetCompletionPct.toStringAsFixed(0)}% · ${summary.completedTargets}/${summary.totalTargets} FN selesai',
                     label: 'Achieved'),
                 _StatCard(
                     icon: Icons.warning_amber_rounded,
@@ -1289,7 +1307,7 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.successLight,
                     value:
-                        '${summary.completedTargets} / ${summary.totalTargets} FN · ${summary.targetCompletionPct.toStringAsFixed(0)}%',
+                        '${summary.targetCompletionPct.toStringAsFixed(0)}% · ${summary.completedTargets}/${summary.totalTargets} FN selesai',
                     label: 'Achieved'),
                 _StatCard(
                     icon: Icons.warning_amber_rounded,
@@ -1586,7 +1604,7 @@ class _FIViewState extends ConsumerState<_FIView> {
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.successLight,
                     value:
-                        '${summary.completedTargets} / ${summary.totalTargets} FN · ${summary.targetCompletionPct.toStringAsFixed(0)}%',
+                        '${summary.targetCompletionPct.toStringAsFixed(0)}% · ${summary.completedTargets}/${summary.totalTargets} FN selesai',
                     label: 'Achieved'),
                 _StatCard(
                     icon: Icons.assignment_late_rounded,
@@ -2745,7 +2763,7 @@ class _FIRatingItem extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
                 Text(
-                    '${fi.targetFields} target field · ${fi.completedTargets}/${fi.totalTargets} target${fi.actionFields > 0 ? ' · ${fi.actionFields} action' : ''}',
+                    '${fi.targetFields} target field · ${fi.completedTargets}/${fi.totalTargets} FN selesai${fi.actionFields > 0 ? ' · ${fi.actionFields} action' : ''}',
                     style: TextStyle(
                         fontSize: 9,
                         color: fi.actionFields > 0
