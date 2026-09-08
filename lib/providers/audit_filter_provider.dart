@@ -42,6 +42,10 @@ class AuditDashboardFilters {
   DateTime get primaryWeek {
     if (weeks.isEmpty) return auditWeekStart(DateTime.now());
     final sorted = weeks.toList()..sort();
+    if (allWeeks &&
+        sorted.length == auditAllWeeksBack + auditAllWeeksAhead + 1) {
+      return sorted[auditAllWeeksBack];
+    }
     return sorted.last;
   }
 

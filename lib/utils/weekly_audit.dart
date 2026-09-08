@@ -8,6 +8,43 @@ DateTime auditWeekStart(DateTime date) {
   return day.subtract(Duration(days: day.weekday - DateTime.monday));
 }
 
+const int auditAllWeeksBack = 20;
+const int auditAllWeeksAhead = 6;
+
+/// Operational coverage window around the week selected by the user.
+/// Twenty historical weeks cover the longest PSP audit cycle (130 DAP).
+Set<DateTime> auditAllWeeksRange(DateTime primaryWeek) => {
+      for (var offset = -auditAllWeeksBack;
+          offset <= auditAllWeeksAhead;
+          offset++)
+        auditWeekStart(primaryWeek).add(Duration(days: offset * 7)),
+    };
+
+String auditFieldIdentity(Map<String, dynamic> raw) {
+  String normalized(dynamic value) =>
+      value?.toString().trim().toLowerCase() ?? '';
+
+  final seasonId = normalized(raw['season_id']);
+  final season = seasonId.isNotEmpty ? seasonId : normalized(raw['season']);
+  final fieldNumber = normalized(raw['field_number']);
+  if (fieldNumber.isNotEmpty) return '$season|$fieldNumber';
+
+  // Old rows should still remain distinct when their FN is incomplete.
+  return [
+    season,
+    normalized(raw['region']),
+    normalized(raw['district_kab']),
+    normalized(raw['sub_district_kec']),
+    normalized(raw['village_desa']),
+    normalized(raw['farmer_name']),
+    normalized(raw['planting_date_pdn']),
+    normalized(raw['hybrid']),
+  ].join('|');
+}
+
+String auditTargetIdentity(Map<String, dynamic> raw, String phase) =>
+    '${auditFieldIdentity(raw)}|${phase.trim().toLowerCase()}';
+
 int auditIsoWeekNumber(DateTime date) {
   final day = auditDateOnly(date);
   final thursday = day.add(Duration(days: DateTime.thursday - day.weekday));
@@ -206,7 +243,7 @@ class WeeklyAuditField {
       const {'RFI', 'RFD', 'BF', 'PLD', 'OF', 'RF'}.contains(flag);
 
   factory WeeklyAuditField.fromRaw(Map<String, dynamic> raw,
-      {required DateTime weekStart, DateTime? now}) {
+      {required DateTime weekStart, DateTime? now, Set<String>? targetPhases}) {
     final start = auditWeekStart(weekStart);
     final end = start.add(const Duration(days: 6));
     final today = auditDateOnly(now ?? DateTime.now());
@@ -339,6 +376,7 @@ class WeeklyAuditField {
         final windowStart = planting.add(Duration(days: rule.onGoingStart));
         final windowEnd = planting.add(Duration(days: rule.onGoingEnd));
         if (windowStart.isAfter(end) || windowEnd.isBefore(start)) continue;
+        if (targetPhases != null && !targetPhases.contains(rule.key)) continue;
         final dates = phaseDates[rule.key] ?? const <DateTime>[];
         if (dates.where((d) => d.isBefore(start) && !d.isAfter(today)).length >=
             requiredPasses(rule.key)) {

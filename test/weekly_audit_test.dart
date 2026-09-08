@@ -43,6 +43,57 @@ void main() {
     expect(parseAuditDate('2026-08-24T00:00:00+07:00'), week);
   });
 
+  test('All Weeks covers the full operational crop lifecycle', () {
+    final weeks = auditAllWeeksRange(week).toList()..sort();
+    expect(weeks.length, 27);
+    expect(weeks.first, week.subtract(const Duration(days: 20 * 7)));
+    expect(weeks[auditAllWeeksBack], week);
+    expect(weeks.last, week.add(const Duration(days: 6 * 7)));
+  });
+
+  test('multi-week coverage counts a season, FN, and phase only once', () {
+    final raw = {...fieldAt(20), 'season': 'S1'};
+    final source = [
+      FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end),
+    ];
+    final projected = projectCoverageWeeks(
+      source,
+      weeks: {
+        week.subtract(const Duration(days: 14)),
+        week.subtract(const Duration(days: 7)),
+        week,
+      },
+      flags: defaultAuditFlags,
+      now: end,
+    );
+
+    expect(projected, hasLength(1));
+    expect(projected.single.weekly.targets.single.phase, 'vegetative');
+    expect(projected.single.weekly.weekStart, week);
+    expect(WeeklyAuditSummary(projected.map((field) => field.weekly)).targetHa,
+        10);
+  });
+
+  test('the same FN in different seasons remains a separate target', () {
+    final raws = [
+      {...fieldAt(20), 'season': 'S1'},
+      {...fieldAt(20), 'season': 'S2'},
+    ];
+    final source = raws
+        .map((raw) =>
+            FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end))
+        .toList();
+    final projected = projectCoverageWeeks(
+      source,
+      weeks: {week.subtract(const Duration(days: 7)), week},
+      flags: defaultAuditFlags,
+      now: end,
+    );
+
+    expect(projected, hasLength(2));
+    expect(projected.map((field) => field.raw['season']).toSet(), {'S1', 'S2'});
+  });
+
   test('generative checkpoint weights follow the crop audit design', () {
     expect(auditTargetWeight('generative_1', hybrid: 'FC'), .25);
     expect(auditTargetWeight('generative_2', hybrid: 'FC'), .25);

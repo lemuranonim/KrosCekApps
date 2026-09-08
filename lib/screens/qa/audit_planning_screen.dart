@@ -284,7 +284,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                     allWeeks: _allWeeks,
                     allLabel: 'All Weeks',
                     allDescription:
-                        'Target 6 minggu sebelum dan sesudah week aktif',
+                        'Target 20 minggu sebelum dan 6 minggu sesudah week aktif',
                     onChanged: _setPlanningWeeks))),
         IconButton(
             tooltip: 'Minggu berikutnya',
@@ -295,10 +295,8 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
       ]));
 
   void _setPlanningWeeks(Set<DateTime> weeks, bool all) {
-    final selected = all
-        ? List.generate(
-            13, (index) => _week.add(Duration(days: (index - 6) * 7))).toSet()
-        : weeks.map(auditWeekStart).toSet();
+    final selected =
+        all ? auditAllWeeksRange(_week) : weeks.map(auditWeekStart).toSet();
     if (selected.isEmpty) return;
     final sorted = selected.toList()..sort();
     setState(() {
