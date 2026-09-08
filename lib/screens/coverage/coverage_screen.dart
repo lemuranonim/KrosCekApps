@@ -201,13 +201,8 @@ class FieldCoverageStatus {
 
   int get generativeTotalCount => isSweetCorn ? 5 : 3;
 
-  int get targetPhaseCount => duePhaseKeys.length;
-
   int get completedTargetPhaseCount =>
       duePhaseKeys.where(_isPhaseComplete).length;
-
-  double get completedTargetPhaseWeight => duePhaseKeys.fold(
-      0.0, (sum, phase) => sum + _phaseCompletionWeight(phase));
 
   int get overdueTargetCount => overduePhaseKeys.length;
 
@@ -224,10 +219,7 @@ class FieldCoverageStatus {
       phaseKeys.isNotEmpty && donePhasesCount == phaseKeys.length;
 
   /// Coverage score 0-100 berdasarkan fase yang sudah On Going / Overdue.
-  double get coverageScore {
-    if (targetPhaseCount == 0) return 0.0;
-    return (completedTargetPhaseWeight / targetPhaseCount) * 100;
-  }
+  double get coverageScore => weekly.completion * 100;
 
   double get vegetativeCompletionFraction {
     if (!isPsp) return vegetativeDone ? 1.0 : 0.0;
@@ -235,10 +227,6 @@ class FieldCoverageStatus {
     return (vegetativeAuditDoneCount / vegetativeAuditTotalCount)
         .clamp(0.0, 1.0)
         .toDouble();
-  }
-
-  double _phaseCompletionWeight(String phase) {
-    return weekly.phaseCompletions[phase] ?? 0.0;
   }
 
   bool _isPhaseComplete(String phase) {
@@ -522,14 +510,12 @@ PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields) {
         .every((t) => t.done);
     bool overdue(FieldCoverageStatus f) => f.weekly.targets
         .any((t) => auditStage(t.phase) == entry.key && t.overdue);
-    double completion(FieldCoverageStatus f) {
-      final targets = f.weekly.targets
-          .where((target) => auditStage(target.phase) == entry.key)
-          .toList(growable: false);
-      if (targets.isEmpty) return 0;
-      return targets.fold(0.0, (sum, target) => sum + target.completion) /
-          targets.length;
-    }
+    final phaseTargets = phaseFields
+        .expand((field) => field.weekly.targets)
+        .where((target) => auditStage(target.phase) == entry.key)
+        .toList(growable: false);
+    final phaseWeight =
+        phaseTargets.fold(0.0, (sum, target) => sum + target.weight);
 
     phases.add(PhaseCoverage(
         label: entry.value,
@@ -547,8 +533,9 @@ PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields) {
             .fold(0.0, (sum, f) => sum + f.effectiveAreaHa),
         completionPercent: phaseFields.isEmpty
             ? 0
-            : phaseFields.fold(0.0, (sum, field) => sum + completion(field)) /
-                phaseFields.length *
+            : phaseTargets.fold(0.0,
+                    (sum, target) => sum + target.completion * target.weight) /
+                phaseWeight *
                 100));
   }
   return PhaseSummary(

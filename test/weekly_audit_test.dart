@@ -43,6 +43,34 @@ void main() {
     expect(parseAuditDate('2026-08-24T00:00:00+07:00'), week);
   });
 
+  test('generative checkpoint weights follow the crop audit design', () {
+    expect(auditTargetWeight('generative_1', hybrid: 'FC'), .25);
+    expect(auditTargetWeight('generative_2', hybrid: 'FC'), .25);
+    expect(auditTargetWeight('generative_3', hybrid: 'FC'), .5);
+    expect(auditTargetWeight('generative_1', hybrid: 'AX01'), .2);
+    expect(auditTargetWeight('generative_5', hybrid: 'ASF123'), 1);
+    expect(auditTargetWeight('vegetative', hybrid: 'FC'), 1);
+  });
+
+  test('FC generative progress is split 25, 25, and 50 percent', () {
+    final earlyChecks = project(fieldAt(54, gen: {
+      'date_of_audit_1': '2026-08-24',
+      'date_of_audit_2': '2026-08-25',
+    }));
+    final finalCheck = project(fieldAt(54, gen: {
+      'date_of_audit_3': '2026-08-30',
+    }));
+    expect(earlyChecks.targets.map((target) => target.phase), [
+      'generative_1',
+      'generative_2',
+      'generative_3',
+    ]);
+    expect(earlyChecks.completion, .5);
+    expect(finalCheck.completion, .5);
+    expect(WeeklyAuditSummary([earlyChecks]).achievementPercent, 50);
+    expect(WeeklyAuditSummary([finalCheck]).achievementPercent, 50);
+  });
+
   test('invalid or missing planting date never creates audit target', () {
     for (final date in [null, '', 'bad-date', '31/02/2026', '2026-02-31']) {
       expect(

@@ -71,6 +71,21 @@ const auditNotYetFlagging = 'Not Yet Flagging';
 const auditFlagLabels = ['GF', 'RFI', 'RFD', 'PLD', auditNotYetFlagging];
 const defaultAuditFlags = {'GF', 'RFI', 'RFD', 'PLD', auditNotYetFlagging};
 
+double auditTargetWeight(String phase, {String? hybrid}) {
+  if (!phase.startsWith('generative_')) return 1;
+  if (DapHelper.isPsp(hybrid)) return 1;
+  if (DapHelper.isSweetCorn(hybrid)) return .2;
+  switch (phase) {
+    case 'generative_1':
+    case 'generative_2':
+      return .25;
+    case 'generative_3':
+      return .5;
+    default:
+      return 1;
+  }
+}
+
 class AuditObservation {
   final int sequence;
   final String phase;
@@ -102,6 +117,7 @@ class WeeklyAuditTarget {
   final DateTime plannedDate;
   final DateTime deadline;
   final double completion;
+  final double weight;
   final bool overdue;
 
   const WeeklyAuditTarget(
@@ -109,6 +125,7 @@ class WeeklyAuditTarget {
       required this.plannedDate,
       required this.deadline,
       required this.completion,
+      required this.weight,
       required this.overdue});
 
   bool get done => completion >= 1;
@@ -151,10 +168,13 @@ class WeeklyAuditField {
   bool get isTarget => targets.isNotEmpty;
   bool get done => isTarget && targets.every((target) => target.done);
   bool get overdue => targets.any((target) => target.overdue);
-  double get completion => !isTarget
+  double get targetWeight =>
+      targets.fold(0.0, (sum, target) => sum + target.weight);
+  double get completion => !isTarget || targetWeight <= 0
       ? 0
-      : targets.fold(0.0, (sum, target) => sum + target.completion) /
-          targets.length;
+      : targets.fold(
+              0.0, (sum, target) => sum + target.completion * target.weight) /
+          targetWeight;
   String get village => _text(raw['village_desa']) ?? 'Desa belum diisi';
   // Same village name in different districts must never be merged.
   String get villageKey => [
@@ -331,6 +351,7 @@ class WeeklyAuditField {
             plannedDate: windowStart.isAfter(start) ? windowStart : start,
             deadline: deadline,
             completion: completion,
+            weight: auditTargetWeight(rule.key, hybrid: hybrid),
             overdue: completion < 1 && deadline.isBefore(today)));
       }
     }
@@ -420,14 +441,15 @@ class WeeklyAuditSummary {
   int get auditedFn => fields.where((f) => f.done).length;
   int get overdueFn => fields.where((f) => f.overdue).length;
 
-  /// Every FN has the same weight. Multi-phase and PSP targets contribute
-  /// their actual completion fraction instead of dropping to zero until every
-  /// required checkpoint is finished.
-  double get achievementPercent => targetFn > 0
-      ? fields.fold(0.0, (sum, field) => sum + field.completion) /
-          targetFn *
-          100
-      : 0;
+  /// Area never changes the score. Audit targets contribute their configured
+  /// phase weight and partial PSP work keeps its actual completion fraction.
+  double get achievementPercent {
+    final weight = fields.fold(0.0, (sum, field) => sum + field.targetWeight);
+    if (weight <= 0) return 0;
+    final completed = fields.fold(
+        0.0, (sum, field) => sum + field.completion * field.targetWeight);
+    return completed / weight * 100;
+  }
 
   Map<String, AuditAreaMetric> composition(
       String Function(WeeklyAuditField) key) {
