@@ -98,7 +98,30 @@ void main() {
     expect(auditTargetWeight('generative_1', hybrid: 'FC'), .25);
     expect(auditTargetWeight('generative_2', hybrid: 'FC'), .25);
     expect(auditTargetWeight('generative_3', hybrid: 'FC'), .5);
-    expect(auditTargetWeight('generative_1', hybrid: 'AX01'), .2);
+    expect(auditTargetWeight('generative_1', hybrid: 'AX01'),
+        closeTo(1 / 6, 1e-9));
+    expect(auditTargetWeight('generative_2', hybrid: 'AX01'),
+        closeTo(1 / 6, 1e-9));
+    expect(auditTargetWeight('generative_3', hybrid: 'AX01'),
+        closeTo(1 / 6, 1e-9));
+    expect(auditTargetWeight('generative_4', hybrid: 'AX01'), .25);
+    expect(auditTargetWeight('generative_5', hybrid: 'AX01'), .25);
+    expect(
+        List.generate(
+                5,
+                (index) => auditTargetWeight('generative_${index + 1}',
+                    hybrid: 'AX01'))
+            .take(3)
+            .fold(0.0, (sum, weight) => sum + weight),
+        closeTo(.5, 1e-9));
+    expect(
+        List.generate(
+                5,
+                (index) => auditTargetWeight('generative_${index + 1}',
+                    hybrid: 'AX01'))
+            .skip(3)
+            .fold(0.0, (sum, weight) => sum + weight),
+        .5);
     expect(auditTargetWeight('generative_5', hybrid: 'ASF123'), 1);
     expect(auditTargetWeight('vegetative', hybrid: 'FC'), 1);
   });
@@ -120,6 +143,41 @@ void main() {
     expect(finalCheck.completion, .5);
     expect(WeeklyAuditSummary([earlyChecks]).achievementPercent, 50);
     expect(WeeklyAuditSummary([finalCheck]).achievementPercent, 50);
+  });
+
+  test('SC CP1-CP3 and CP4-CP5 each contribute half of full progress', () {
+    const firstGroup = {
+      'generative_1',
+      'generative_2',
+      'generative_3',
+    };
+    const secondGroup = {'generative_4', 'generative_5'};
+    final secondWeek = week.add(const Duration(days: 7));
+    final asOf = secondWeek.add(const Duration(days: 6));
+
+    WeeklyAuditSummary summary(Map<String, dynamic> gen) {
+      final raw = fieldAt(47, hybrid: 'AX01', gen: gen);
+      return WeeklyAuditSummary([
+        WeeklyAuditField.fromRaw(raw,
+            weekStart: week, now: asOf, targetPhases: firstGroup),
+        WeeklyAuditField.fromRaw(raw,
+            weekStart: secondWeek, now: asOf, targetPhases: secondGroup),
+      ]);
+    }
+
+    expect(
+        summary({
+          'date_of_audit_1': '2026-08-24',
+          'date_of_audit_2': '2026-08-25',
+          'date_of_audit_3': '2026-08-26',
+        }).achievementPercent,
+        closeTo(50, 1e-9));
+    expect(
+        summary({
+          'date_of_audit_4': '2026-08-31',
+          'date_of_audit_5': '2026-09-01',
+        }).achievementPercent,
+        closeTo(50, 1e-9));
   });
 
   test('invalid or missing planting date never creates audit target', () {

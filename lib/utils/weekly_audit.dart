@@ -111,7 +111,19 @@ const defaultAuditFlags = {'GF', 'RFI', 'RFD', 'PLD', auditNotYetFlagging};
 double auditTargetWeight(String phase, {String? hybrid}) {
   if (!phase.startsWith('generative_')) return 1;
   if (DapHelper.isPsp(hybrid)) return 1;
-  if (DapHelper.isSweetCorn(hybrid)) return .2;
+  if (DapHelper.isSweetCorn(hybrid)) {
+    switch (phase) {
+      case 'generative_1':
+      case 'generative_2':
+      case 'generative_3':
+        return 1 / 6; // CP1-CP3 share the first 50%.
+      case 'generative_4':
+      case 'generative_5':
+        return .25; // CP4-CP5 share the remaining 50%.
+      default:
+        return 1;
+    }
+  }
   switch (phase) {
     case 'generative_1':
     case 'generative_2':
