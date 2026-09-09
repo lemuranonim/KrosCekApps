@@ -15,6 +15,7 @@ class AuditWeekFilter extends StatelessWidget {
   final bool allWeeks;
   final String allLabel;
   final String allDescription;
+  final DateTime? earliestWeek;
   final void Function(Set<DateTime> weeks, bool allWeeks) onChanged;
 
   const AuditWeekFilter({
@@ -24,6 +25,7 @@ class AuditWeekFilter extends StatelessWidget {
     required this.onChanged,
     this.allLabel = 'All Coverage',
     this.allDescription = 'Seluruh coverage dalam scope user',
+    this.earliestWeek,
   });
 
   @override
@@ -58,11 +60,22 @@ class AuditWeekFilter extends StatelessWidget {
   }
 
   Future<void> _openPicker(BuildContext context) async {
-    final anchor = selectedWeeks.isEmpty
+    final sortedWeeks = selectedWeeks.toList()..sort();
+    final anchor = sortedWeeks.isEmpty
         ? auditWeekStart(DateTime.now())
-        : (selectedWeeks.toList()..sort()).last;
+        : allWeeks
+            ? sortedWeeks.first
+            : sortedWeeks.last;
+    final firstOption = earliestWeek == null
+        ? anchor.subtract(const Duration(days: auditWeekPickerFallbackBack * 7))
+        : auditWeekStart(earliestWeek!);
+    final lastOption =
+        anchor.add(const Duration(days: auditWeekPickerAhead * 7));
+    final optionCount = lastOption.isBefore(firstOption)
+        ? 1
+        : lastOption.difference(firstOption).inDays ~/ 7 + 1;
     final options = List.generate(
-        13, (index) => anchor.add(Duration(days: (index - 6) * 7)));
+        optionCount, (index) => firstOption.add(Duration(days: index * 7)));
     final draft = {...selectedWeeks};
     var draftAll = allWeeks;
     final result = await showDialog<(Set<DateTime>, bool)>(

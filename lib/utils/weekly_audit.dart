@@ -8,17 +8,82 @@ DateTime auditWeekStart(DateTime date) {
   return day.subtract(Duration(days: day.weekday - DateTime.monday));
 }
 
-const int auditAllWeeksBack = 20;
-const int auditAllWeeksAhead = 6;
+const int auditWeekPickerFallbackBack = 6;
+const int auditWeekPickerAhead = 1;
 
-/// Operational coverage window around the week selected by the user.
-/// Twenty historical weeks cover the longest PSP audit cycle (130 DAP).
-Set<DateTime> auditAllWeeksRange(DateTime primaryWeek) => {
-      for (var offset = -auditAllWeeksBack;
-          offset <= auditAllWeeksAhead;
-          offset++)
-        auditWeekStart(primaryWeek).add(Duration(days: offset * 7)),
-    };
+/// Weeks retained in filter state while All Weeks is active. Historical target
+/// weeks are derived per field, so a long history never becomes one large
+/// cross-product of every field and every calendar week.
+Set<DateTime> auditAllWeeksRange(DateTime primaryWeek) {
+  final anchor = auditWeekStart(primaryWeek);
+  return {
+    anchor,
+    anchor.add(const Duration(days: auditWeekPickerAhead * 7)),
+  };
+}
+
+({DateTime first, DateTime last})? auditTargetWeekBounds(
+    Map<String, dynamic> raw) {
+  final veg = auditRow(raw['audit_vegetative']);
+  final planting = parseAuditDate(veg['rev_planting_date']) ??
+      parseAuditDate(raw['planting_date_pdn']);
+  if (planting == null) return null;
+
+  final rules = DapHelper.getPhaseRules(
+      hybrid: raw['hybrid']?.toString(),
+      district: raw['district_kab']?.toString(),
+      region: raw['region']?.toString(),
+      subDistrict: raw['sub_district_kec']?.toString());
+  if (rules.isEmpty) return null;
+
+  var first =
+      auditWeekStart(planting.add(Duration(days: rules.first.onGoingStart)));
+  var last =
+      auditWeekStart(planting.add(Duration(days: rules.first.onGoingEnd)));
+  for (final rule in rules.skip(1)) {
+    final ruleFirst =
+        auditWeekStart(planting.add(Duration(days: rule.onGoingStart)));
+    final ruleLast =
+        auditWeekStart(planting.add(Duration(days: rule.onGoingEnd)));
+    if (ruleFirst.isBefore(first)) first = ruleFirst;
+    if (ruleLast.isAfter(last)) last = ruleLast;
+  }
+  return (first: first, last: last);
+}
+
+/// Returns only lifecycle weeks for one field, capped at the active week.
+/// This includes old seasons without imposing an arbitrary historical limit.
+Set<DateTime> auditHistoricalTargetWeeks(
+  Map<String, dynamic> raw, {
+  required DateTime throughWeek,
+}) {
+  final bounds = auditTargetWeekBounds(raw);
+  if (bounds == null) return const {};
+  final limit = auditWeekStart(throughWeek);
+  final last = bounds.last.isBefore(limit) ? bounds.last : limit;
+  if (bounds.first.isAfter(last)) return const {};
+  return {
+    for (var week = bounds.first;
+        !week.isAfter(last);
+        week = week.add(const Duration(days: 7)))
+      week,
+  };
+}
+
+DateTime auditEarliestTargetWeek(
+  Iterable<Map<String, dynamic>> fields, {
+  required DateTime fallback,
+}) {
+  DateTime? earliest;
+  for (final raw in fields) {
+    final bounds = auditTargetWeekBounds(raw);
+    if (bounds != null &&
+        (earliest == null || bounds.first.isBefore(earliest))) {
+      earliest = bounds.first;
+    }
+  }
+  return earliest ?? auditWeekStart(fallback);
+}
 
 String auditFieldIdentity(Map<String, dynamic> raw) {
   String normalized(dynamic value) =>

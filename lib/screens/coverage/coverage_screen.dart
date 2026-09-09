@@ -56,6 +56,8 @@ List<FieldCoverageStatus> projectCoverageWeeks(
   List<FieldCoverageStatus> fields, {
   required Set<DateTime> weeks,
   required Set<String> flags,
+  bool allWeeks = false,
+  DateTime? primaryWeek,
   DateTime? now,
 }) {
   final evaluatedAt = now ?? DateTime.now();
@@ -65,9 +67,13 @@ List<FieldCoverageStatus> projectCoverageWeeks(
     ..sort();
   final latestTarget = <String, _CoverageTargetProjection>{};
 
-  for (final week in selected) {
-    for (final field
-        in fields.where((field) => !_isExcludedCoverageRegion(field.region))) {
+  for (final field
+      in fields.where((field) => !_isExcludedCoverageRegion(field.region))) {
+    final fieldWeeks = allWeeks
+        ? auditHistoricalTargetWeeks(field.raw,
+            throughWeek: primaryWeek ?? evaluatedAt)
+        : selected;
+    for (final week in fieldWeeks) {
       final weekly = WeeklyAuditField.fromRaw(field.raw,
           weekStart: week, now: evaluatedAt);
       for (final target in weekly.targets) {
@@ -922,7 +928,13 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
         final allCoverageFields = _projectAllCoverage(allFields,
             week: sharedFilters.primaryWeek, flags: sharedFilters.flags);
         final weeklyFields = projectCoverageWeeks(allFields,
-            weeks: sharedFilters.weeks, flags: sharedFilters.flags);
+            weeks: sharedFilters.weeks,
+            flags: sharedFilters.flags,
+            allWeeks: sharedFilters.allWeeks,
+            primaryWeek: sharedFilters.primaryWeek);
+        final earliestWeek = auditEarliestTargetWeek(
+            allFields.map((field) => field.raw),
+            fallback: sharedFilters.primaryWeek);
 
         // CASCADING LOGIC — Region → District → SPV
         final regions = regionOptions.isNotEmpty
@@ -999,7 +1011,8 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
               ),
-            SliverToBoxAdapter(child: const _WeeklyCoverageControls()),
+            SliverToBoxAdapter(
+                child: _WeeklyCoverageControls(earliestWeek: earliestWeek)),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -1208,7 +1221,13 @@ class _SPVViewState extends ConsumerState<_SPVView> {
         final allCoverageFields = _projectAllCoverage(mySpvFields,
             week: sharedFilters.primaryWeek, flags: sharedFilters.flags);
         final weeklyFields = projectCoverageWeeks(mySpvFields,
-            weeks: sharedFilters.weeks, flags: sharedFilters.flags);
+            weeks: sharedFilters.weeks,
+            flags: sharedFilters.flags,
+            allWeeks: sharedFilters.allWeeks,
+            primaryWeek: sharedFilters.primaryWeek);
+        final earliestWeek = auditEarliestTargetWeek(
+            mySpvFields.map((field) => field.raw),
+            fallback: sharedFilters.primaryWeek);
 
         // 2. CASCADING LOGIC SPV (Berdasarkan lahan milik SPV ini saja)
         final spvOptions = allCoverageFields
@@ -1286,7 +1305,8 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
               ),
-            SliverToBoxAdapter(child: const _WeeklyCoverageControls()),
+            SliverToBoxAdapter(
+                child: _WeeklyCoverageControls(earliestWeek: earliestWeek)),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -1483,7 +1503,13 @@ class _FIViewState extends ConsumerState<_FIView> {
         final allCoverageFields = _projectAllCoverage(myFiFields,
             week: sharedFilters.primaryWeek, flags: sharedFilters.flags);
         final weeklyFields = projectCoverageWeeks(myFiFields,
-            weeks: sharedFilters.weeks, flags: sharedFilters.flags);
+            weeks: sharedFilters.weeks,
+            flags: sharedFilters.flags,
+            allWeeks: sharedFilters.allWeeks,
+            primaryWeek: sharedFilters.primaryWeek);
+        final earliestWeek = auditEarliestTargetWeek(
+            myFiFields.map((field) => field.raw),
+            fallback: sharedFilters.primaryWeek);
 
         // 2. CASCADING LOGIC FI (Gunakan myFiFields)
         final fiOptions = allCoverageFields
@@ -1565,7 +1591,8 @@ class _FIViewState extends ConsumerState<_FIView> {
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
               ),
-            SliverToBoxAdapter(child: const _WeeklyCoverageControls()),
+            SliverToBoxAdapter(
+                child: _WeeklyCoverageControls(earliestWeek: earliestWeek)),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -5054,7 +5081,9 @@ String _formatHa(double ha) {
 }
 
 class _WeeklyCoverageControls extends ConsumerWidget {
-  const _WeeklyCoverageControls();
+  final DateTime earliestWeek;
+
+  const _WeeklyCoverageControls({required this.earliestWeek});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -5098,7 +5127,8 @@ class _WeeklyCoverageControls extends ConsumerWidget {
                     allWeeks: filters.allWeeks,
                     allLabel: 'All Weeks',
                     allDescription:
-                        '20 minggu sebelum dan 6 minggu sesudah week aktif',
+                        'Seluruh histori sampai week aktif; 1 week ke depan tersedia untuk planning',
+                    earliestWeek: earliestWeek,
                     onChanged: (weeks, all) {
                       final selected =
                           all ? auditAllWeeksRange(filters.primaryWeek) : weeks;

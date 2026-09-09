@@ -282,9 +282,8 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                 child: AuditWeekFilter(
                     selectedWeeks: _weeks,
                     allWeeks: _allWeeks,
-                    allLabel: 'All Weeks',
-                    allDescription:
-                        'Target 20 minggu sebelum dan 6 minggu sesudah week aktif',
+                    allLabel: 'Week aktif + berikutnya',
+                    allDescription: 'Planning week aktif dan 1 minggu ke depan',
                     onChanged: _setPlanningWeeks))),
         IconButton(
             tooltip: 'Minggu berikutnya',

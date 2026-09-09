@@ -43,12 +43,46 @@ void main() {
     expect(parseAuditDate('2026-08-24T00:00:00+07:00'), week);
   });
 
-  test('All Weeks covers the full operational crop lifecycle', () {
+  test('All Weeks filter state keeps the active and next planning week', () {
     final weeks = auditAllWeeksRange(week).toList()..sort();
-    expect(weeks.length, 27);
-    expect(weeks.first, week.subtract(const Duration(days: 20 * 7)));
-    expect(weeks[auditAllWeeksBack], week);
-    expect(weeks.last, week.add(const Duration(days: 6 * 7)));
+    expect(weeks, [week, week.add(const Duration(days: 7))]);
+  });
+
+  test('All Weeks projects unlimited history only through the active week', () {
+    final oldRaw = {...fieldAt(210, id: 'OLD'), 'season': 'OLD-SEASON'};
+    final nextRaw = {...fieldAt(0, id: 'NEXT'), 'season': 'NEW-SEASON'};
+    final source = [oldRaw, nextRaw]
+        .map((raw) =>
+            FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end))
+        .toList();
+
+    final projected = projectCoverageWeeks(
+      source,
+      weeks: auditAllWeeksRange(week),
+      flags: defaultAuditFlags,
+      allWeeks: true,
+      primaryWeek: week,
+      now: end,
+    );
+
+    expect(projected, isNotEmpty);
+    expect(projected.map((field) => field.fieldNumber), contains('OLD'));
+    expect(
+        projected.map((field) => field.fieldNumber), isNot(contains('NEXT')));
+    expect(
+        projected.any((field) => field.weekly.weekStart
+            .isBefore(week.subtract(const Duration(days: 20 * 7)))),
+        true);
+    expect(projected.every((field) => !field.weekly.weekStart.isAfter(week)),
+        true);
+
+    final nextWeek = projectCoverageWeeks(
+      source,
+      weeks: {week.add(const Duration(days: 7))},
+      flags: defaultAuditFlags,
+      now: end,
+    );
+    expect(nextWeek.map((field) => field.fieldNumber), contains('NEXT'));
   });
 
   test('multi-week coverage counts a season, FN, and phase only once', () {
