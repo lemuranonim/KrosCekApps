@@ -43,6 +43,24 @@ class DetasselingIsoExportService {
   static const _line = Color(0xFF8E9892);
   static const _ink = Color(0xFF101915);
 
+  /// Returns the latest completed generative pass based on its audit date.
+  ///
+  /// A pass is considered available only after `date_of_audit_<pass>` has
+  /// been saved. This keeps partial/unfinished forms out of the export while
+  /// allowing users to export P1 or P2 without waiting for P3.
+  static int? latestAvailablePass(
+    Map<String, dynamic>? auditData, {
+    int maxPass = 5,
+  }) {
+    if (auditData == null || maxPass < 1) return null;
+
+    for (var pass = maxPass; pass >= 1; pass--) {
+      final value = auditData['date_of_audit_$pass'];
+      if (value != null && value.toString().trim().isNotEmpty) return pass;
+    }
+    return null;
+  }
+
   static Future<DetasselingIsoExportResult> downloadPicture(
       DetasselingIsoFormData data) async {
     final bytes = await buildPng(data);
