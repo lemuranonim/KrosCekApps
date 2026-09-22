@@ -15,6 +15,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -630,11 +631,17 @@ final coverageStatusListScopedProvider =
   final rawFields =
       await ref.watch(masterFieldCoverageScopedProvider(scope).future);
 
-  final parsed =
-      rawFields.map((raw) => FieldCoverageStatus.fromRaw(raw)).toList();
-
-  return parsed;
+  if (rawFields.length < 200) return _parseCoverageStatuses(rawFields);
+  return compute(_parseCoverageStatuses, rawFields);
 });
+
+List<FieldCoverageStatus> _parseCoverageStatuses(
+    List<Map<String, dynamic>> rawFields) {
+  final now = DateTime.now();
+  return rawFields
+      .map((raw) => FieldCoverageStatus.fromRaw(raw, now: now))
+      .toList(growable: false);
+}
 
 final phaseSummaryProvider = FutureProvider<PhaseSummary>((ref) async {
   final fields = await ref.watch(coverageStatusListProvider.future);
@@ -846,6 +853,48 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
   String? _selectedDistrict; // cascade dari region
   String? _selectedSpv;
   int _expandedAreaIndex = -1;
+  List<FieldCoverageStatus>? _projectionSource;
+  Set<DateTime>? _projectionWeeks;
+  Set<String>? _projectionFlags;
+  DateTime? _projectionPrimaryWeek;
+  DateTime? _projectionAsOfDay;
+  bool? _projectionAllWeeks;
+  List<FieldCoverageStatus> _allCoverageProjection = const [];
+  List<FieldCoverageStatus> _weeklyProjection = const [];
+  DateTime? _earliestTargetWeek;
+
+  void _ensureProjections(
+    List<FieldCoverageStatus> fields,
+    AuditDashboardFilters filters,
+  ) {
+    final primaryWeek = filters.primaryWeek;
+    final now = DateTime.now();
+    final asOfDay = DateTime(now.year, now.month, now.day);
+    if (identical(_projectionSource, fields) &&
+        identical(_projectionWeeks, filters.weeks) &&
+        identical(_projectionFlags, filters.flags) &&
+        _projectionPrimaryWeek == primaryWeek &&
+        _projectionAsOfDay == asOfDay &&
+        _projectionAllWeeks == filters.allWeeks) {
+      return;
+    }
+    _allCoverageProjection =
+        _projectAllCoverage(fields, week: primaryWeek, flags: filters.flags);
+    _weeklyProjection = projectCoverageWeeks(fields,
+        weeks: filters.weeks,
+        flags: filters.flags,
+        allWeeks: filters.allWeeks,
+        primaryWeek: primaryWeek);
+    _earliestTargetWeek = auditEarliestTargetWeek(
+        fields.map((field) => field.raw),
+        fallback: primaryWeek);
+    _projectionSource = fields;
+    _projectionWeeks = filters.weeks;
+    _projectionFlags = filters.flags;
+    _projectionPrimaryWeek = primaryWeek;
+    _projectionAsOfDay = asOfDay;
+    _projectionAllWeeks = filters.allWeeks;
+  }
 
   @override
   void initState() {
@@ -914,8 +963,9 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
     final coverageScope = MasterFieldMapScope(
       region: _showAllRegions ? null : _selectedRegion,
     );
-    final waitingForRegionScope =
-        regionOptionsAsync is AsyncLoading || needsRegionScope;
+    final waitingForRegionScope = !_showAllRegions &&
+        _selectedRegion == null &&
+        (regionOptionsAsync is AsyncLoading || needsRegionScope);
     final AsyncValue<List<FieldCoverageStatus>> fieldsAsync =
         waitingForRegionScope
             ? const AsyncValue.loading()
@@ -925,16 +975,10 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
       loading: () => const _SkeletonLoader(),
       error: (e, _) => _CoverageErrorWidget(error: e.toString()),
       data: (allFields) {
-        final allCoverageFields = _projectAllCoverage(allFields,
-            week: sharedFilters.primaryWeek, flags: sharedFilters.flags);
-        final weeklyFields = projectCoverageWeeks(allFields,
-            weeks: sharedFilters.weeks,
-            flags: sharedFilters.flags,
-            allWeeks: sharedFilters.allWeeks,
-            primaryWeek: sharedFilters.primaryWeek);
-        final earliestWeek = auditEarliestTargetWeek(
-            allFields.map((field) => field.raw),
-            fallback: sharedFilters.primaryWeek);
+        _ensureProjections(allFields, sharedFilters);
+        final allCoverageFields = _allCoverageProjection;
+        final weeklyFields = _weeklyProjection;
+        final earliestWeek = _earliestTargetWeek!;
 
         // CASCADING LOGIC — Region → District → SPV
         final regions = regionOptions.isNotEmpty

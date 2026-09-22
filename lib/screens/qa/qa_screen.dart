@@ -2193,26 +2193,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
         : fieldsData;
     final selectedKey = _selectedFieldNumbers.toList()..sort();
     final projectionDeltaDays = _getWeekProjectionDeltaDays();
-    final markerDataHash = Object.hashAll(dataToMark.map((f) {
-      final raw = f.raw;
-      return Object.hash(
-        raw['field_number']?.toString() ?? '',
-        f.lat,
-        f.lng,
-        f.isDefault,
-        f.isCorrected,
-        f.isFromPolygon,
-        f.dap,
-        f.dap + projectionDeltaDays,
-        raw['hybrid']?.toString() ?? '',
-        DapHelper.getEffectivePlantingDate(raw) ?? '',
-        raw['correction_tagging']?.toString() ?? '',
-        raw['audit_vegetative']?.toString() ?? '',
-        raw['audit_generative']?.toString() ?? '',
-        raw['audit_pre_harvest']?.toString() ?? '',
-        raw['audit_harvest']?.toString() ?? '',
-      );
-    }));
+    // ParsedFieldData is recreated after a fetch. Hashing object identities
+    // avoids stringifying every nested audit row on each pan/zoom rebuild.
+    final markerDataHash =
+        Object.hashAll(dataToMark.map((field) => identityHashCode(field)));
 
     // Buat key cache dari semua data yang memengaruhi tampilan marker.
     final markerKey = [
