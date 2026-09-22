@@ -43,6 +43,7 @@ import '../../utils/pld_visibility_helper.dart';
 import '../../utils/qa_name_helper.dart';
 import '../../widgets/audit_status_widgets.dart';
 import '../../widgets/phase_asset_icon.dart';
+import '../../widgets/shorebird_settings_indicator.dart';
 import '../../models/audit_planning_filters.dart';
 
 // ─── Work mode enum ──────────────────────────────────────
@@ -1467,8 +1468,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
           const SizedBox(width: 6),
 
           // Tombol Settings Mini
-          GestureDetector(
-            onTap: () => context.push('/qa/settings'),
+          ShorebirdSettingsIndicator(
+            onTap: () async {
+              await context.push('/qa/settings');
+            },
             child: const _NewActionPill(icon: Icons.settings_outlined),
           ),
         ],
@@ -2193,26 +2196,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
         : fieldsData;
     final selectedKey = _selectedFieldNumbers.toList()..sort();
     final projectionDeltaDays = _getWeekProjectionDeltaDays();
-    final markerDataHash = Object.hashAll(dataToMark.map((f) {
-      final raw = f.raw;
-      return Object.hash(
-        raw['field_number']?.toString() ?? '',
-        f.lat,
-        f.lng,
-        f.isDefault,
-        f.isCorrected,
-        f.isFromPolygon,
-        f.dap,
-        f.dap + projectionDeltaDays,
-        raw['hybrid']?.toString() ?? '',
-        DapHelper.getEffectivePlantingDate(raw) ?? '',
-        raw['correction_tagging']?.toString() ?? '',
-        raw['audit_vegetative']?.toString() ?? '',
-        raw['audit_generative']?.toString() ?? '',
-        raw['audit_pre_harvest']?.toString() ?? '',
-        raw['audit_harvest']?.toString() ?? '',
-      );
-    }));
+    // ParsedFieldData is recreated after a fetch. Hashing object identities
+    // avoids stringifying every nested audit row on each pan/zoom rebuild.
+    final markerDataHash =
+        Object.hashAll(dataToMark.map((field) => identityHashCode(field)));
 
     // Buat key cache dari semua data yang memengaruhi tampilan marker.
     final markerKey = [

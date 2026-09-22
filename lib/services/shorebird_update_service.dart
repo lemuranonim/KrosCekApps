@@ -112,6 +112,15 @@ class ShorebirdUpdateService {
     }
 
     final patchNumber = await currentPatchNumber();
+    final pendingPatchNumber = await nextPatchNumber();
+    if (pendingPatchNumber != null && pendingPatchNumber != patchNumber) {
+      return ShorebirdUpdateResult(
+        state: ShorebirdUpdateState.downloaded,
+        isAvailable: true,
+        currentPatchNumber: patchNumber,
+        nextPatchNumber: pendingPatchNumber,
+      );
+    }
     return ShorebirdUpdateResult.idle(
       isAvailable: true,
       currentPatchNumber: patchNumber,
@@ -145,19 +154,22 @@ class ShorebirdUpdateService {
       return ShorebirdUpdateResult.unavailable();
     }
 
-    final patchNumber = await currentPatchNumber();
+    final localPatch = await readInstalledPatch();
+    if (localPatch.state == ShorebirdUpdateState.downloaded) {
+      return localPatch;
+    }
 
     try {
       final updateStatus = await _updater.checkForUpdate();
       return _resultFromUpdateStatus(
         updateStatus,
-        currentPatchNumber: patchNumber,
+        currentPatchNumber: localPatch.currentPatchNumber,
       );
     } catch (_) {
       return ShorebirdUpdateResult(
         state: ShorebirdUpdateState.error,
         isAvailable: true,
-        currentPatchNumber: patchNumber,
+        currentPatchNumber: localPatch.currentPatchNumber,
         errorMessage: 'Gagal mengecek update',
       );
     }

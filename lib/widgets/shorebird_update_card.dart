@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -18,8 +20,10 @@ class ShorebirdUpdateCard extends StatefulWidget {
   State<ShorebirdUpdateCard> createState() => _ShorebirdUpdateCardState();
 }
 
-class _ShorebirdUpdateCardState extends State<ShorebirdUpdateCard> {
+class _ShorebirdUpdateCardState extends State<ShorebirdUpdateCard>
+    with WidgetsBindingObserver {
   late final ShorebirdUpdateService _service;
+  Timer? _pendingPatchTimer;
   ShorebirdUpdateResult _result = const ShorebirdUpdateResult(
     state: ShorebirdUpdateState.checking,
     isAvailable: false,
@@ -30,6 +34,9 @@ class _ShorebirdUpdateCardState extends State<ShorebirdUpdateCard> {
   void initState() {
     super.initState();
     _service = widget.service ?? ShorebirdUpdateService();
+    WidgetsBinding.instance.addObserver(this);
+    _pendingPatchTimer = Timer.periodic(
+        const Duration(minutes: 1), (_) => _refreshPendingPatch());
     _loadAppVersion();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -39,6 +46,34 @@ class _ShorebirdUpdateCardState extends State<ShorebirdUpdateCard> {
         _loadInstalledPatch();
       }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshPendingPatch();
+  }
+
+  Future<void> _refreshPendingPatch() async {
+    if (!mounted ||
+        _result.isBusy ||
+        _result.state == ShorebirdUpdateState.downloaded) {
+      return;
+    }
+    try {
+      final result = await _service.readInstalledPatch();
+      if (mounted && result.state == ShorebirdUpdateState.downloaded) {
+        setState(() => _result = result);
+      }
+    } catch (_) {
+      // An update notification must not interrupt the settings page.
+    }
+  }
+
+  @override
+  void dispose() {
+    _pendingPatchTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   void _loadAppVersion() {
@@ -162,6 +197,33 @@ class _ShorebirdUpdateCardState extends State<ShorebirdUpdateCard> {
               ),
             ],
           ),
+          if (_result.state == ShorebirdUpdateState.downloaded) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AdvantaColors.gold.withAlpha(isDark ? 30 : 22),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AdvantaColors.gold.withAlpha(110)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.restart_alt_rounded,
+                      color: AdvantaColors.gold, size: 24),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Patch siap diterapkan. Tutup aplikasi sepenuhnya, lalu buka kembali.',
+                      style: AdvantaText.bodyBold.copyWith(
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           _InfoRow(label: 'Versi aplikasi', value: 'v$_appVersion'),
           _InfoRow(label: 'Versi patch', value: _patchLabel),
@@ -242,8 +304,9 @@ class _ShorebirdUpdateCardState extends State<ShorebirdUpdateCard> {
       case ShorebirdUpdateState.unavailable:
         return AdvantaColors.mutedGrey;
       case ShorebirdUpdateState.upToDate:
-      case ShorebirdUpdateState.downloaded:
         return AdvantaColors.primaryGreen;
+      case ShorebirdUpdateState.downloaded:
+        return AdvantaColors.gold;
       case ShorebirdUpdateState.updateAvailable:
       case ShorebirdUpdateState.downloading:
         return AdvantaColors.gold;

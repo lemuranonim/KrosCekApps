@@ -411,10 +411,6 @@ class _FieldDetailBottomSheetState
     return null;
   }
 
-  bool _hasFilledValue(dynamic value) {
-    return value != null && value.toString().trim().isNotEmpty;
-  }
-
   Future<Map<String, dynamic>> _resolveExportFieldData() async {
     var fieldData = widget.field;
     final fieldNumber = fieldData['field_number']?.toString().trim() ?? '';
@@ -438,9 +434,13 @@ class _FieldDetailBottomSheetState
     return _firstAuditValue(fieldData['audit_generative']);
   }
 
-  bool _hasGenerativeIsoData(Map<String, dynamic> fieldData) {
+  int? _latestGenerativeIsoPass(Map<String, dynamic> fieldData) {
     final audit = _generativeAudit(fieldData);
-    return _hasFilledValue(audit?['date_of_audit_3']);
+    final maxPass = _generativeIsoCropLabel(fieldData) == 'SC' ? 5 : 3;
+    return DetasselingIsoExportService.latestAvailablePass(
+      audit,
+      maxPass: maxPass,
+    );
   }
 
   String _generativeIsoCropLabel(Map<String, dynamic> fieldData) {
@@ -455,9 +455,10 @@ class _FieldDetailBottomSheetState
 
     final fieldData = await _resolveExportFieldData();
     final audit = _generativeAudit(fieldData);
-    if (audit == null || !_hasFilledValue(audit['date_of_audit_3'])) {
+    final latestPass = _latestGenerativeIsoPass(fieldData);
+    if (audit == null || latestPass == null) {
       _showSheetSnack(
-        'ISO Generative/QPIR bisa didownload setelah Gen 3 close.',
+        'ISO Generative/QPIR bisa didownload setelah minimal Pass 1 close.',
         err: true,
       );
       return;
@@ -468,7 +469,7 @@ class _FieldDetailBottomSheetState
       final payload = DetasselingIsoFormData(
         fieldData: fieldData,
         auditData: audit,
-        passNumber: 3,
+        passNumber: latestPass,
         cropLabel: _generativeIsoCropLabel(fieldData),
       );
       final result = asPdf
@@ -1157,7 +1158,8 @@ class _FieldDetailBottomSheetState
           final isLast = index == options.length;
 
           if (isGenerativeRow) {
-            final hasData = _hasGenerativeIsoData(field);
+            final latestPass = _latestGenerativeIsoPass(field);
+            final hasData = latestPass != null;
             return Column(
               children: [
                 _PhaseIsoExportRow(
@@ -1168,8 +1170,10 @@ class _FieldDetailBottomSheetState
                   busy: _isExportingGenerativeIso,
                   theme: theme,
                   isDark: isDark,
-                  enabledText: 'Gen 3 close, siap download',
-                  disabledText: 'Download aktif setelah Gen 3 close',
+                  enabledText: latestPass == null
+                      ? 'Data audit tersedia'
+                      : 'Pass $latestPass close, siap download',
+                  disabledText: 'Download aktif setelah Pass 1 close',
                   onPicture: () => _downloadGenerativeIso(asPdf: false),
                   onPdf: () => _downloadGenerativeIso(asPdf: true),
                 ),

@@ -282,9 +282,8 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                 child: AuditWeekFilter(
                     selectedWeeks: _weeks,
                     allWeeks: _allWeeks,
-                    allLabel: 'All Weeks',
-                    allDescription:
-                        'Target 6 minggu sebelum dan sesudah week aktif',
+                    allLabel: 'Week aktif + berikutnya',
+                    allDescription: 'Planning week aktif dan 1 minggu ke depan',
                     onChanged: _setPlanningWeeks))),
         IconButton(
             tooltip: 'Minggu berikutnya',
@@ -295,10 +294,8 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
       ]));
 
   void _setPlanningWeeks(Set<DateTime> weeks, bool all) {
-    final selected = all
-        ? List.generate(
-            13, (index) => _week.add(Duration(days: (index - 6) * 7))).toSet()
-        : weeks.map(auditWeekStart).toSet();
+    final selected =
+        all ? auditAllWeeksRange(_week) : weeks.map(auditWeekStart).toSet();
     if (selected.isEmpty) return;
     final sorted = selected.toList()..sort();
     setState(() {
@@ -1142,7 +1139,9 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                     : AdvantaColors.dividerGrey),
             boxShadow: AdvantaShadows.card(false)),
         clipBehavior: Clip.antiAlias,
-        child: Theme(
+        child: Material(
+          type: MaterialType.transparency,
+          child: Theme(
             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
             child: ExpansionTile(
                 key: ValueKey(key),
@@ -1214,7 +1213,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                         const Divider(height: 12),
                         ...group.map(_fieldTile),
                       ]
-                    : const [])));
+                    : const []))));
   }
 
   Widget _microBadge(IconData icon, String label, Color color) => Container(

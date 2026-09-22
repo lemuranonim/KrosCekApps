@@ -403,7 +403,8 @@ class ParsedFieldData {
 // (Syarat Isolate: fungsi harus di luar class atau berupa static)
 // ============================================================
 Future<List<ParsedFieldData>> parseMasterFieldMapRows(
-    List<Map<String, dynamic>> rows) => compute(_parseMapFieldsInIsolate, rows);
+        List<Map<String, dynamic>> rows) =>
+    compute(_parseMapFieldsInIsolate, rows);
 
 List<ParsedFieldData> _parseMapFieldsInIsolate(
     List<Map<String, dynamic>> rawFields) {
@@ -484,14 +485,6 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(
     );
   }
 
-  // ── Helper: parse centroid dari WKT POLYGON ───────────────
-  Map<String, double>? parseWktCentroid(String? wkt) {
-    if (wkt == null || wkt.trim().isEmpty) return null;
-    final centroid = polygonCentroid(parseWktToLatLngs(wkt));
-    if (centroid == null) return null;
-    return {'lat': centroid.latitude, 'lng': centroid.longitude};
-  }
-
   ({double lat, double lng})? parseValidCoordinate(String? raw) {
     if (raw == null || raw.trim().isEmpty || !raw.contains(',')) return null;
     final parts = raw.split(',');
@@ -524,10 +517,11 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(
     bool isFromPolygon = false;
 
     // ── PRIORITAS 1: centroid polygon WKT ──────────
-    final centroid = parseWktCentroid(geometryWkt);
+    final centroid =
+        parsedPolygon == null ? null : polygonCentroid(parsedPolygon);
     if (centroid != null) {
-      final wlat = centroid['lat']!;
-      final wlng = centroid['lng']!;
+      final wlat = centroid.latitude;
+      final wlng = centroid.longitude;
       if (isValidIndonesiaCoord(wlat, wlng)) {
         finalLat = wlat;
         finalLng = wlng;

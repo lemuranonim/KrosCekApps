@@ -43,6 +43,177 @@ void main() {
     expect(parseAuditDate('2026-08-24T00:00:00+07:00'), week);
   });
 
+  test('All Weeks filter state keeps the active and next planning week', () {
+    final weeks = auditAllWeeksRange(week).toList()..sort();
+    expect(weeks, [week, week.add(const Duration(days: 7))]);
+  });
+
+  test('All Weeks projects unlimited history only through the active week', () {
+    final oldRaw = {...fieldAt(210, id: 'OLD'), 'season': 'OLD-SEASON'};
+    final nextRaw = {...fieldAt(0, id: 'NEXT'), 'season': 'NEW-SEASON'};
+    final source = [oldRaw, nextRaw]
+        .map((raw) =>
+            FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end))
+        .toList();
+
+    final projected = projectCoverageWeeks(
+      source,
+      weeks: auditAllWeeksRange(week),
+      flags: defaultAuditFlags,
+      allWeeks: true,
+      primaryWeek: week,
+      now: end,
+    );
+
+    expect(projected, isNotEmpty);
+    expect(projected.map((field) => field.fieldNumber), contains('OLD'));
+    expect(
+        projected.map((field) => field.fieldNumber), isNot(contains('NEXT')));
+    expect(
+        projected.any((field) => field.weekly.weekStart
+            .isBefore(week.subtract(const Duration(days: 20 * 7)))),
+        true);
+    expect(projected.every((field) => !field.weekly.weekStart.isAfter(week)),
+        true);
+
+    final nextWeek = projectCoverageWeeks(
+      source,
+      weeks: {week.add(const Duration(days: 7))},
+      flags: defaultAuditFlags,
+      now: end,
+    );
+    expect(nextWeek.map((field) => field.fieldNumber), contains('NEXT'));
+  });
+
+  test('multi-week coverage counts a season, FN, and phase only once', () {
+    final raw = {...fieldAt(20), 'season': 'S1'};
+    final source = [
+      FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end),
+    ];
+    final projected = projectCoverageWeeks(
+      source,
+      weeks: {
+        week.subtract(const Duration(days: 14)),
+        week.subtract(const Duration(days: 7)),
+        week,
+      },
+      flags: defaultAuditFlags,
+      now: end,
+    );
+
+    expect(projected, hasLength(1));
+    expect(projected.single.weekly.targets.single.phase, 'vegetative');
+    expect(projected.single.weekly.weekStart, week);
+    expect(WeeklyAuditSummary(projected.map((field) => field.weekly)).targetHa,
+        10);
+  });
+
+  test('the same FN in different seasons remains a separate target', () {
+    final raws = [
+      {...fieldAt(20), 'season': 'S1'},
+      {...fieldAt(20), 'season': 'S2'},
+    ];
+    final source = raws
+        .map((raw) =>
+            FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end))
+        .toList();
+    final projected = projectCoverageWeeks(
+      source,
+      weeks: {week.subtract(const Duration(days: 7)), week},
+      flags: defaultAuditFlags,
+      now: end,
+    );
+
+    expect(projected, hasLength(2));
+    expect(projected.map((field) => field.raw['season']).toSet(), {'S1', 'S2'});
+  });
+
+  test('generative checkpoint weights follow the crop audit design', () {
+    expect(auditTargetWeight('generative_1', hybrid: 'FC'), .25);
+    expect(auditTargetWeight('generative_2', hybrid: 'FC'), .25);
+    expect(auditTargetWeight('generative_3', hybrid: 'FC'), .5);
+    expect(auditTargetWeight('generative_1', hybrid: 'AX01'),
+        closeTo(1 / 6, 1e-9));
+    expect(auditTargetWeight('generative_2', hybrid: 'AX01'),
+        closeTo(1 / 6, 1e-9));
+    expect(auditTargetWeight('generative_3', hybrid: 'AX01'),
+        closeTo(1 / 6, 1e-9));
+    expect(auditTargetWeight('generative_4', hybrid: 'AX01'), .25);
+    expect(auditTargetWeight('generative_5', hybrid: 'AX01'), .25);
+    expect(
+        List.generate(
+                5,
+                (index) => auditTargetWeight('generative_${index + 1}',
+                    hybrid: 'AX01'))
+            .take(3)
+            .fold(0.0, (sum, weight) => sum + weight),
+        closeTo(.5, 1e-9));
+    expect(
+        List.generate(
+                5,
+                (index) => auditTargetWeight('generative_${index + 1}',
+                    hybrid: 'AX01'))
+            .skip(3)
+            .fold(0.0, (sum, weight) => sum + weight),
+        .5);
+    expect(auditTargetWeight('generative_5', hybrid: 'ASF123'), 1);
+    expect(auditTargetWeight('vegetative', hybrid: 'FC'), 1);
+  });
+
+  test('FC generative progress is split 25, 25, and 50 percent', () {
+    final earlyChecks = project(fieldAt(54, gen: {
+      'date_of_audit_1': '2026-08-24',
+      'date_of_audit_2': '2026-08-25',
+    }));
+    final finalCheck = project(fieldAt(54, gen: {
+      'date_of_audit_3': '2026-08-30',
+    }));
+    expect(earlyChecks.targets.map((target) => target.phase), [
+      'generative_1',
+      'generative_2',
+      'generative_3',
+    ]);
+    expect(earlyChecks.completion, .5);
+    expect(finalCheck.completion, .5);
+    expect(WeeklyAuditSummary([earlyChecks]).achievementPercent, 50);
+    expect(WeeklyAuditSummary([finalCheck]).achievementPercent, 50);
+  });
+
+  test('SC CP1-CP3 and CP4-CP5 each contribute half of full progress', () {
+    const firstGroup = {
+      'generative_1',
+      'generative_2',
+      'generative_3',
+    };
+    const secondGroup = {'generative_4', 'generative_5'};
+    final secondWeek = week.add(const Duration(days: 7));
+    final asOf = secondWeek.add(const Duration(days: 6));
+
+    WeeklyAuditSummary summary(Map<String, dynamic> gen) {
+      final raw = fieldAt(47, hybrid: 'AX01', gen: gen);
+      return WeeklyAuditSummary([
+        WeeklyAuditField.fromRaw(raw,
+            weekStart: week, now: asOf, targetPhases: firstGroup),
+        WeeklyAuditField.fromRaw(raw,
+            weekStart: secondWeek, now: asOf, targetPhases: secondGroup),
+      ]);
+    }
+
+    expect(
+        summary({
+          'date_of_audit_1': '2026-08-24',
+          'date_of_audit_2': '2026-08-25',
+          'date_of_audit_3': '2026-08-26',
+        }).achievementPercent,
+        closeTo(50, 1e-9));
+    expect(
+        summary({
+          'date_of_audit_4': '2026-08-31',
+          'date_of_audit_5': '2026-09-01',
+        }).achievementPercent,
+        closeTo(50, 1e-9));
+  });
+
   test('invalid or missing planting date never creates audit target', () {
     for (final date in [null, '', 'bad-date', '31/02/2026', '2026-02-31']) {
       expect(
@@ -86,7 +257,7 @@ void main() {
     expect(WeeklyAuditSummary([f]).achievedHa, 10);
   });
 
-  test('future audit cannot complete the current or historical week', () {
+  test('audit dated after today cannot complete a target yet', () {
     final raw = fieldAt(20, veg: {
       'date_of_audit': '2026-08-29',
       'flagging': 'PLD',
@@ -96,19 +267,15 @@ void main() {
     expect(f.done, false);
     expect(f.flag, auditNotYetFlagging);
     expect(f.latest((o) => o.ch), null);
-    final historical = project(
-        fieldAt(20, veg: {'date_of_audit': '2026-08-31'}),
-        now: DateTime(2026, 9, 5));
-    expect(historical.done, false);
   });
 
-  test(
-      'closed-week pending targets are overdue without leaking later completion',
-      () {
+  test('a late audit closes its earlier target instead of staying overdue', () {
     final f = project(fieldAt(20, veg: {'date_of_audit': '2026-08-31'}),
         now: DateTime(2026, 9, 5));
-    expect(f.overdue, true);
-    expect(WeeklyAuditSummary([f]).overdueHa, 10);
+    expect(f.done, true);
+    expect(f.overdue, false);
+    expect(WeeklyAuditSummary([f]).achievedHa, 10);
+    expect(WeeklyAuditSummary([f]).overdueHa, 0);
   });
 
   test('phase deadline inside current week determines overdue', () {
@@ -199,8 +366,21 @@ void main() {
   test('partial checkpoints do not count a whole field as achieved', () {
     final raw = fieldAt(50, gen: {'date_of_audit_1': '2026-08-24'});
     final f = project(raw);
+    final summary = WeeklyAuditSummary([f]);
+    final coverage = calculateFilteredPhases(
+        [FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end)]);
     expect(f.completion, .5);
-    expect(WeeklyAuditSummary([f]).achievedHa, 0);
+    expect(summary.achievedHa, 0);
+    expect(summary.achievementPercent, 50);
+    expect(coverage.targetCompletionPct, 50);
+    expect(
+        coverage.phases.singleWhere((phase) => phase.label == 'Generative').pct,
+        50);
+    expect(
+        FICoverage.fromFields('FI 1', [
+          FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end),
+        ]).coverageScore,
+        50);
   });
 
   test('FN achievement is not distorted by field area', () {
@@ -240,6 +420,7 @@ void main() {
     }));
     expect(f.targets.single.completion, .25);
     expect(f.done, false);
+    expect(WeeklyAuditSummary([f]).achievementPercent, 25);
     expect(f.latest((o) => o.ch), 'Fair');
     expect(f.lsvNegative, true);
   });
@@ -261,6 +442,28 @@ void main() {
       'date_of_audit_3': '2026-08-24',
       'flagging': 'RFI',
     }));
+    expect(f.flag, 'RFI');
+  });
+
+  test('target flagging only comes from the phase being evaluated', () {
+    final f = project(
+        fieldAt(60, veg: {'date_of_audit': '2026-08-01', 'flagging': 'GF'}));
+    expect(f.targets.single.phase, 'generative_3');
+    expect(f.flag, auditNotYetFlagging);
+  });
+
+  test('late target audit supplies the resolved target flagging', () {
+    final f = project(
+        fieldAt(60, veg: {
+          'date_of_audit': '2026-08-01',
+          'flagging': 'GF'
+        }, gen: {
+          'date_of_audit_3': '2026-08-31',
+          'flagging': 'RFI',
+        }),
+        now: DateTime(2026, 9, 5));
+    expect(f.done, true);
+    expect(f.overdue, false);
     expect(f.flag, 'RFI');
   });
 

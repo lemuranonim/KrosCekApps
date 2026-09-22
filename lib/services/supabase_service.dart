@@ -11,6 +11,8 @@ class SupabaseService {
     SupabaseClient? client,
     Duration auditPlanningTimeout = const Duration(seconds: 45),
   })  : _supabase = client ?? Supabase.instance.client,
+        // Keep the public parameter name used by callers and tests.
+        // ignore: prefer_initializing_formals
         _auditPlanningTimeout = auditPlanningTimeout;
 
   // Eligibility only: no geometry, crop monitoring or flagging payloads.
@@ -165,13 +167,6 @@ class SupabaseService {
     flagging_final,
     target_dt_date,
     season_id,
-    geometry_wkt,
-    geometry_area_ha,
-    geometry_source,
-    geometry_updated_at,
-    corr_field_size_ha,
-    corr_field_size_source,
-    corr_field_size_updated_at,
     audit_vegetative(
       date_of_audit,
       audit_date_user,
@@ -303,43 +298,14 @@ class SupabaseService {
     String? district,
   }) async {
     try {
-      final List<Map<String, dynamic>> allData = [];
-      const int pageSize = 1000;
-      int from = 0;
-
-      while (true) {
-        var query = _supabase
-            .from('master_fields')
-            .select(_masterFieldMapSelect)
-            .eq('is_active', true);
-
-        if (qaFi != null && qaFi.trim().isNotEmpty) {
-          final fi = qaFi.trim();
-          query = query.ilike('qa_fi', '%$fi%');
-        }
-        if (qaSpv != null && qaSpv.trim().isNotEmpty) {
-          final spv = qaSpv.trim();
-          query = query.ilike('qa_spv', '%$spv%');
-        }
-        if (season != null && season.trim().isNotEmpty) {
-          query = query.eq('season', season.trim());
-        }
-        if (region != null && region.trim().isNotEmpty) {
-          query = query.eq('region', region.trim());
-        }
-        if (district != null && district.trim().isNotEmpty) {
-          query = query.eq('district_kab', district.trim());
-        }
-
-        final response = await query
-            .order('field_number', ascending: true)
-            .range(from, from + pageSize - 1);
-
-        allData.addAll(List<Map<String, dynamic>>.from(response));
-
-        if (response.length < pageSize) break;
-        from += pageSize;
-      }
+      final allData = await _fetchScopedMasterFieldPages(
+        _masterFieldMapSelect,
+        qaFi: qaFi,
+        qaSpv: qaSpv,
+        season: season,
+        region: region,
+        district: district,
+      );
 
       debugPrint('Total map records fetched: ${allData.length}');
       return allData;
@@ -539,48 +505,74 @@ class SupabaseService {
     String? district,
   }) async {
     try {
-      final List<Map<String, dynamic>> allData = [];
-      const int pageSize = 1000;
-      int from = 0;
-
-      while (true) {
-        var query = _supabase
-            .from('master_fields')
-            .select(_masterFieldCoverageSelect)
-            .eq('is_active', true);
-
-        if (qaFi != null && qaFi.trim().isNotEmpty) {
-          final fi = qaFi.trim();
-          query = query.ilike('qa_fi', '%$fi%');
-        }
-        if (qaSpv != null && qaSpv.trim().isNotEmpty) {
-          final spv = qaSpv.trim();
-          query = query.ilike('qa_spv', '%$spv%');
-        }
-        if (season != null && season.trim().isNotEmpty) {
-          query = query.eq('season', season.trim());
-        }
-        if (region != null && region.trim().isNotEmpty) {
-          query = query.eq('region', region.trim());
-        }
-        if (district != null && district.trim().isNotEmpty) {
-          query = query.eq('district_kab', district.trim());
-        }
-
-        final response = await query
-            .order('field_number', ascending: true)
-            .range(from, from + pageSize - 1);
-
-        allData.addAll(List<Map<String, dynamic>>.from(response));
-
-        if (response.length < pageSize) break;
-        from += pageSize;
-      }
+      final allData = await _fetchScopedMasterFieldPages(
+        _masterFieldCoverageSelect,
+        qaFi: qaFi,
+        qaSpv: qaSpv,
+        season: season,
+        region: region,
+        district: district,
+      );
 
       debugPrint('Total coverage records fetched: ${allData.length}');
       return allData;
     } catch (e) {
       throw Exception('Gagal mengambil data coverage Supabase: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchScopedMasterFieldPages(
+    String columns, {
+    String? qaFi,
+    String? qaSpv,
+    String? season,
+    String? region,
+    String? district,
+  }) async {
+    const pageSize = 1000;
+    const parallelPages = 3;
+
+    Future<List<Map<String, dynamic>>> fetchPage(int from) async {
+      var query =
+          _supabase.from('master_fields').select(columns).eq('is_active', true);
+      if (qaFi?.trim().isNotEmpty == true) {
+        query = query.ilike('qa_fi', '%${qaFi!.trim()}%');
+      }
+      if (qaSpv?.trim().isNotEmpty == true) {
+        query = query.ilike('qa_spv', '%${qaSpv!.trim()}%');
+      }
+      if (season?.trim().isNotEmpty == true) {
+        query = query.eq('season', season!.trim());
+      }
+      if (region?.trim().isNotEmpty == true) {
+        query = query.eq('region', region!.trim());
+      }
+      if (district?.trim().isNotEmpty == true) {
+        query = query.eq('district_kab', district!.trim());
+      }
+      final response = await query
+          .order('field_number', ascending: true)
+          .order('season', ascending: true)
+          .range(from, from + pageSize - 1);
+      return List<Map<String, dynamic>>.from(response);
+    }
+
+    final allData = <Map<String, dynamic>>[];
+    final firstPage = await fetchPage(0);
+    allData.addAll(firstPage);
+    if (firstPage.length < pageSize) return allData;
+
+    // Keep concurrency bounded so large regions avoid one network round trip
+    // per page without flooding PostgREST with all pages at once.
+    for (var from = pageSize;; from += parallelPages * pageSize) {
+      final pages = await Future.wait(List.generate(
+        parallelPages,
+        (index) => fetchPage(from + index * pageSize),
+      ));
+      for (final page in pages) {
+        allData.addAll(page);
+        if (page.length < pageSize) return allData;
+      }
     }
   }
 

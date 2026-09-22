@@ -373,10 +373,8 @@ class QaMappingNotifier extends AsyncNotifier<List<QaMappingItem>> {
       } catch (e) {
         throw Exception('Gagal insert master_qa_mapping: $e');
       }
-      final currentItems =
-          state.whenOrNull(data: (value) => value) ?? const <QaMappingItem>[];
       _invalidateCoverageCaches();
-      return currentItems;
+      return _fetchData();
     });
   }
 

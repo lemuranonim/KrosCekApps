@@ -15,6 +15,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -44,29 +45,96 @@ String _cleanText(dynamic val) => val?.toString().trim() ?? '';
 bool _isExcludedCoverageRegion(String? region) =>
     region?.trim().toLowerCase() == 'region tester';
 
-List<FieldCoverageStatus> _projectCoverageWeeks(
+class _CoverageTargetProjection {
+  final Map<String, dynamic> raw;
+  final DateTime weekStart;
+  final String phase;
+
+  const _CoverageTargetProjection(this.raw, this.weekStart, this.phase);
+}
+
+List<FieldCoverageStatus> projectCoverageWeeks(
   List<FieldCoverageStatus> fields, {
   required Set<DateTime> weeks,
   required Set<String> flags,
+  bool allWeeks = false,
+  DateTime? primaryWeek,
+  DateTime? now,
 }) {
-  final selected = weeks.isEmpty ? {auditWeekStart(DateTime.now())} : weeks;
-  return [
-    for (final week in selected)
-      ...fields
-          .where((field) => !_isExcludedCoverageRegion(field.region))
-          .map((field) => FieldCoverageStatus.fromRaw(field.raw,
-              weekStart: auditWeekStart(week)))
-          .where((field) => flags.contains(field.weekly.flag)),
-  ];
+  final evaluatedAt = now ?? DateTime.now();
+  final selected = (weeks.isEmpty
+      ? <DateTime>[auditWeekStart(evaluatedAt)]
+      : weeks.map(auditWeekStart).toList())
+    ..sort();
+  final latestTarget = <String, _CoverageTargetProjection>{};
+
+  for (final field
+      in fields.where((field) => !_isExcludedCoverageRegion(field.region))) {
+    final fieldWeeks = allWeeks
+        ? auditHistoricalTargetWeeks(field.raw,
+            throughWeek: primaryWeek ?? evaluatedAt)
+        : selected;
+    for (final week in fieldWeeks) {
+      final weekly = WeeklyAuditField.fromRaw(field.raw,
+          weekStart: week, now: evaluatedAt);
+      for (final target in weekly.targets) {
+        // Replacing an existing value keeps one phase per season/FN and uses
+        // the last eligible week, whose deadline represents the full window.
+        latestTarget[auditTargetIdentity(field.raw, target.phase)] =
+            _CoverageTargetProjection(field.raw, week, target.phase);
+      }
+    }
+  }
+
+  final grouped = <String,
+      ({Map<String, dynamic> raw, DateTime weekStart, Set<String> phases})>{};
+  final projections = latestTarget.values.toList()
+    ..sort((a, b) {
+      final weekOrder = a.weekStart.compareTo(b.weekStart);
+      if (weekOrder != 0) return weekOrder;
+      final fieldOrder =
+          auditFieldIdentity(a.raw).compareTo(auditFieldIdentity(b.raw));
+      return fieldOrder != 0 ? fieldOrder : a.phase.compareTo(b.phase);
+    });
+  for (final projection in projections) {
+    final key =
+        '${auditFieldIdentity(projection.raw)}|${projection.weekStart.microsecondsSinceEpoch}';
+    final existing = grouped[key];
+    if (existing == null) {
+      grouped[key] = (
+        raw: projection.raw,
+        weekStart: projection.weekStart,
+        phases: {projection.phase},
+      );
+    } else {
+      existing.phases.add(projection.phase);
+    }
+  }
+
+  return grouped.values
+      .map((projection) => FieldCoverageStatus.fromRaw(
+            projection.raw,
+            weekStart: projection.weekStart,
+            now: evaluatedAt,
+            targetPhases: projection.phases,
+          ))
+      .where((field) => flags.contains(field.weekly.flag))
+      .toList(growable: false);
 }
 
-List<FieldCoverageStatus> _filterAllCoverage(
-        List<FieldCoverageStatus> fields, Set<String> flags) =>
-    fields
-        .where((field) =>
-            !_isExcludedCoverageRegion(field.region) &&
-            flags.contains(field.weekly.flag))
-        .toList(growable: false);
+List<FieldCoverageStatus> _projectAllCoverage(
+  List<FieldCoverageStatus> fields, {
+  required DateTime week,
+  required Set<String> flags,
+}) {
+  final selected = auditWeekStart(week);
+  return fields
+      .where((field) => !_isExcludedCoverageRegion(field.region))
+      .map((field) => FieldCoverageStatus.fromRaw(field.raw,
+          weekStart: auditWeekStart(selected)))
+      .where((field) => flags.contains(field.weekly.flag))
+      .toList(growable: false);
+}
 
 double _coverageArea(Iterable<FieldCoverageStatus> fields) =>
     fields.fold(0.0, (sum, field) => sum + field.effectiveAreaHa);
@@ -193,13 +261,8 @@ class FieldCoverageStatus {
 
   int get generativeTotalCount => isSweetCorn ? 5 : 3;
 
-  int get targetPhaseCount => duePhaseKeys.length;
-
   int get completedTargetPhaseCount =>
       duePhaseKeys.where(_isPhaseComplete).length;
-
-  double get completedTargetPhaseWeight => duePhaseKeys.fold(
-      0.0, (sum, phase) => sum + _phaseCompletionWeight(phase));
 
   int get overdueTargetCount => overduePhaseKeys.length;
 
@@ -216,10 +279,7 @@ class FieldCoverageStatus {
       phaseKeys.isNotEmpty && donePhasesCount == phaseKeys.length;
 
   /// Coverage score 0-100 berdasarkan fase yang sudah On Going / Overdue.
-  double get coverageScore {
-    if (targetPhaseCount == 0) return 0.0;
-    return (completedTargetPhaseWeight / targetPhaseCount) * 100;
-  }
+  double get coverageScore => weekly.completion * 100;
 
   double get vegetativeCompletionFraction {
     if (!isPsp) return vegetativeDone ? 1.0 : 0.0;
@@ -227,10 +287,6 @@ class FieldCoverageStatus {
     return (vegetativeAuditDoneCount / vegetativeAuditTotalCount)
         .clamp(0.0, 1.0)
         .toDouble();
-  }
-
-  double _phaseCompletionWeight(String phase) {
-    return weekly.phaseCompletions[phase] ?? 0.0;
   }
 
   bool _isPhaseComplete(String phase) {
@@ -275,10 +331,11 @@ class FieldCoverageStatus {
   }
 
   factory FieldCoverageStatus.fromRaw(Map<String, dynamic> raw,
-      {DateTime? weekStart, DateTime? now}) {
+      {DateTime? weekStart, DateTime? now, Set<String>? targetPhases}) {
     final weekly = WeeklyAuditField.fromRaw(raw,
         weekStart: weekStart ?? auditWeekStart(now ?? DateTime.now()),
-        now: now);
+        now: now,
+        targetPhases: targetPhases);
     final veg = auditRow(raw['audit_vegetative']);
     final hybrid = _cleanText(raw['hybrid']);
     final psp = DapHelper.isPsp(hybrid);
@@ -433,7 +490,8 @@ class PhaseCoverage {
   final double totalHa;
   final double doneHa;
   final double overdueHa;
-  double get pct => total == 0 ? 0 : (done / total) * 100;
+  final double completionPercent;
+  double get pct => completionPercent;
 
   const PhaseCoverage({
     required this.label,
@@ -445,6 +503,7 @@ class PhaseCoverage {
     required this.totalHa,
     required this.doneHa,
     required this.overdueHa,
+    required this.completionPercent,
   });
 }
 
@@ -464,6 +523,7 @@ class PhaseSummary {
   final int auditAreaOverrides;
   final double registeredAreaHa;
   final double effectiveAreaHa;
+  final double completionPercent;
 
   const PhaseSummary({
     required this.targetAreaHa,
@@ -481,10 +541,10 @@ class PhaseSummary {
     required this.auditAreaOverrides,
     required this.registeredAreaHa,
     required this.effectiveAreaHa,
+    required this.completionPercent,
   });
 
-  double get targetCompletionPct =>
-      totalTargets == 0 ? 0 : completedTargets / totalTargets * 100;
+  double get targetCompletionPct => completionPercent;
 }
 
 // ============================================================
@@ -511,6 +571,13 @@ PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields) {
         .every((t) => t.done);
     bool overdue(FieldCoverageStatus f) => f.weekly.targets
         .any((t) => auditStage(t.phase) == entry.key && t.overdue);
+    final phaseTargets = phaseFields
+        .expand((field) => field.weekly.targets)
+        .where((target) => auditStage(target.phase) == entry.key)
+        .toList(growable: false);
+    final phaseWeight =
+        phaseTargets.fold(0.0, (sum, target) => sum + target.weight);
+
     phases.add(PhaseCoverage(
         label: entry.value,
         shortLabel: entry.value,
@@ -524,7 +591,13 @@ PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields) {
             .fold(0.0, (sum, f) => sum + f.effectiveAreaHa),
         overdueHa: phaseFields
             .where(overdue)
-            .fold(0.0, (sum, f) => sum + f.effectiveAreaHa)));
+            .fold(0.0, (sum, f) => sum + f.effectiveAreaHa),
+        completionPercent: phaseFields.isEmpty
+            ? 0
+            : phaseTargets.fold(0.0,
+                    (sum, target) => sum + target.completion * target.weight) /
+                phaseWeight *
+                100));
   }
   return PhaseSummary(
       phases: phases,
@@ -539,6 +612,7 @@ PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields) {
       auditAreaOverrides: fields.where((f) => f.hasAuditAreaOverride).length,
       registeredAreaHa: weekly.targetHa,
       effectiveAreaHa: weekly.targetHa,
+      completionPercent: weekly.achievementPercent,
       targetAreaHa: weekly.targetHa,
       achievedAreaHa: weekly.achievedHa,
       overdueAreaHa: weekly.overdueHa);
@@ -557,11 +631,17 @@ final coverageStatusListScopedProvider =
   final rawFields =
       await ref.watch(masterFieldCoverageScopedProvider(scope).future);
 
-  final parsed =
-      rawFields.map((raw) => FieldCoverageStatus.fromRaw(raw)).toList();
-
-  return parsed;
+  if (rawFields.length < 200) return _parseCoverageStatuses(rawFields);
+  return compute(_parseCoverageStatuses, rawFields);
 });
+
+List<FieldCoverageStatus> _parseCoverageStatuses(
+    List<Map<String, dynamic>> rawFields) {
+  final now = DateTime.now();
+  return rawFields
+      .map((raw) => FieldCoverageStatus.fromRaw(raw, now: now))
+      .toList(growable: false);
+}
 
 final phaseSummaryProvider = FutureProvider<PhaseSummary>((ref) async {
   final fields = await ref.watch(coverageStatusListProvider.future);
@@ -773,6 +853,48 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
   String? _selectedDistrict; // cascade dari region
   String? _selectedSpv;
   int _expandedAreaIndex = -1;
+  List<FieldCoverageStatus>? _projectionSource;
+  Set<DateTime>? _projectionWeeks;
+  Set<String>? _projectionFlags;
+  DateTime? _projectionPrimaryWeek;
+  DateTime? _projectionAsOfDay;
+  bool? _projectionAllWeeks;
+  List<FieldCoverageStatus> _allCoverageProjection = const [];
+  List<FieldCoverageStatus> _weeklyProjection = const [];
+  DateTime? _earliestTargetWeek;
+
+  void _ensureProjections(
+    List<FieldCoverageStatus> fields,
+    AuditDashboardFilters filters,
+  ) {
+    final primaryWeek = filters.primaryWeek;
+    final now = DateTime.now();
+    final asOfDay = DateTime(now.year, now.month, now.day);
+    if (identical(_projectionSource, fields) &&
+        identical(_projectionWeeks, filters.weeks) &&
+        identical(_projectionFlags, filters.flags) &&
+        _projectionPrimaryWeek == primaryWeek &&
+        _projectionAsOfDay == asOfDay &&
+        _projectionAllWeeks == filters.allWeeks) {
+      return;
+    }
+    _allCoverageProjection =
+        _projectAllCoverage(fields, week: primaryWeek, flags: filters.flags);
+    _weeklyProjection = projectCoverageWeeks(fields,
+        weeks: filters.weeks,
+        flags: filters.flags,
+        allWeeks: filters.allWeeks,
+        primaryWeek: primaryWeek);
+    _earliestTargetWeek = auditEarliestTargetWeek(
+        fields.map((field) => field.raw),
+        fallback: primaryWeek);
+    _projectionSource = fields;
+    _projectionWeeks = filters.weeks;
+    _projectionFlags = filters.flags;
+    _projectionPrimaryWeek = primaryWeek;
+    _projectionAsOfDay = asOfDay;
+    _projectionAllWeeks = filters.allWeeks;
+  }
 
   @override
   void initState() {
@@ -841,8 +963,9 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
     final coverageScope = MasterFieldMapScope(
       region: _showAllRegions ? null : _selectedRegion,
     );
-    final waitingForRegionScope =
-        regionOptionsAsync is AsyncLoading || needsRegionScope;
+    final waitingForRegionScope = !_showAllRegions &&
+        _selectedRegion == null &&
+        (regionOptionsAsync is AsyncLoading || needsRegionScope);
     final AsyncValue<List<FieldCoverageStatus>> fieldsAsync =
         waitingForRegionScope
             ? const AsyncValue.loading()
@@ -852,10 +975,10 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
       loading: () => const _SkeletonLoader(),
       error: (e, _) => _CoverageErrorWidget(error: e.toString()),
       data: (allFields) {
-        final allCoverageFields =
-            _filterAllCoverage(allFields, sharedFilters.flags);
-        final weeklyFields = _projectCoverageWeeks(allFields,
-            weeks: sharedFilters.weeks, flags: sharedFilters.flags);
+        _ensureProjections(allFields, sharedFilters);
+        final allCoverageFields = _allCoverageProjection;
+        final weeklyFields = _weeklyProjection;
+        final earliestWeek = _earliestTargetWeek!;
 
         // CASCADING LOGIC — Region → District → SPV
         final regions = regionOptions.isNotEmpty
@@ -932,7 +1055,8 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
               ),
-            SliverToBoxAdapter(child: const _WeeklyCoverageControls()),
+            SliverToBoxAdapter(
+                child: _WeeklyCoverageControls(earliestWeek: earliestWeek)),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -1000,7 +1124,7 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.successLight,
                     value:
-                        '${summary.completedTargets} / ${summary.totalTargets} FN · ${summary.targetCompletionPct.toStringAsFixed(0)}%',
+                        '${summary.targetCompletionPct.toStringAsFixed(0)}% · ${summary.completedTargets}/${summary.totalTargets} FN selesai',
                     label: 'Achieved'),
                 _StatCard(
                     icon: Icons.warning_amber_rounded,
@@ -1138,10 +1262,16 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             : allFields
                 .where((f) => QaNameHelper.containsExactName(f.qaSpv, myName))
                 .toList();
-        final allCoverageFields =
-            _filterAllCoverage(mySpvFields, sharedFilters.flags);
-        final weeklyFields = _projectCoverageWeeks(mySpvFields,
-            weeks: sharedFilters.weeks, flags: sharedFilters.flags);
+        final allCoverageFields = _projectAllCoverage(mySpvFields,
+            week: sharedFilters.primaryWeek, flags: sharedFilters.flags);
+        final weeklyFields = projectCoverageWeeks(mySpvFields,
+            weeks: sharedFilters.weeks,
+            flags: sharedFilters.flags,
+            allWeeks: sharedFilters.allWeeks,
+            primaryWeek: sharedFilters.primaryWeek);
+        final earliestWeek = auditEarliestTargetWeek(
+            mySpvFields.map((field) => field.raw),
+            fallback: sharedFilters.primaryWeek);
 
         // 2. CASCADING LOGIC SPV (Berdasarkan lahan milik SPV ini saja)
         final spvOptions = allCoverageFields
@@ -1219,7 +1349,8 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
               ),
-            SliverToBoxAdapter(child: const _WeeklyCoverageControls()),
+            SliverToBoxAdapter(
+                child: _WeeklyCoverageControls(earliestWeek: earliestWeek)),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -1281,7 +1412,7 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.successLight,
                     value:
-                        '${summary.completedTargets} / ${summary.totalTargets} FN · ${summary.targetCompletionPct.toStringAsFixed(0)}%',
+                        '${summary.targetCompletionPct.toStringAsFixed(0)}% · ${summary.completedTargets}/${summary.totalTargets} FN selesai',
                     label: 'Achieved'),
                 _StatCard(
                     icon: Icons.warning_amber_rounded,
@@ -1413,10 +1544,16 @@ class _FIViewState extends ConsumerState<_FIView> {
             : allFields
                 .where((f) => QaNameHelper.containsExactName(f.qaFi, myName))
                 .toList();
-        final allCoverageFields =
-            _filterAllCoverage(myFiFields, sharedFilters.flags);
-        final weeklyFields = _projectCoverageWeeks(myFiFields,
-            weeks: sharedFilters.weeks, flags: sharedFilters.flags);
+        final allCoverageFields = _projectAllCoverage(myFiFields,
+            week: sharedFilters.primaryWeek, flags: sharedFilters.flags);
+        final weeklyFields = projectCoverageWeeks(myFiFields,
+            weeks: sharedFilters.weeks,
+            flags: sharedFilters.flags,
+            allWeeks: sharedFilters.allWeeks,
+            primaryWeek: sharedFilters.primaryWeek);
+        final earliestWeek = auditEarliestTargetWeek(
+            myFiFields.map((field) => field.raw),
+            fallback: sharedFilters.primaryWeek);
 
         // 2. CASCADING LOGIC FI (Gunakan myFiFields)
         final fiOptions = allCoverageFields
@@ -1498,7 +1635,8 @@ class _FIViewState extends ConsumerState<_FIView> {
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
               ),
-            SliverToBoxAdapter(child: const _WeeklyCoverageControls()),
+            SliverToBoxAdapter(
+                child: _WeeklyCoverageControls(earliestWeek: earliestWeek)),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -1578,7 +1716,7 @@ class _FIViewState extends ConsumerState<_FIView> {
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.successLight,
                     value:
-                        '${summary.completedTargets} / ${summary.totalTargets} FN · ${summary.targetCompletionPct.toStringAsFixed(0)}%',
+                        '${summary.targetCompletionPct.toStringAsFixed(0)}% · ${summary.completedTargets}/${summary.totalTargets} FN selesai',
                     label: 'Achieved'),
                 _StatCard(
                     icon: Icons.assignment_late_rounded,
@@ -2737,7 +2875,7 @@ class _FIRatingItem extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
                 Text(
-                    '${fi.targetFields} target field · ${fi.completedTargets}/${fi.totalTargets} target${fi.actionFields > 0 ? ' · ${fi.actionFields} action' : ''}',
+                    '${fi.targetFields} target field · ${fi.completedTargets}/${fi.totalTargets} FN selesai${fi.actionFields > 0 ? ' · ${fi.actionFields} action' : ''}',
                     style: TextStyle(
                         fontSize: 9,
                         color: fi.actionFields > 0
@@ -4987,7 +5125,9 @@ String _formatHa(double ha) {
 }
 
 class _WeeklyCoverageControls extends ConsumerWidget {
-  const _WeeklyCoverageControls();
+  final DateTime earliestWeek;
+
+  const _WeeklyCoverageControls({required this.earliestWeek});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -5028,13 +5168,15 @@ class _WeeklyCoverageControls extends ConsumerWidget {
               children: [
                 AuditWeekFilter(
                     selectedWeeks: filters.weeks,
-                    allWeeks:
-                        filters.coverageMode == CoverageDisplayMode.allCoverage,
+                    allWeeks: filters.allWeeks,
+                    allLabel: 'All Weeks',
+                    allDescription:
+                        'Seluruh histori sampai week aktif; 1 week ke depan tersedia untuk planning',
+                    earliestWeek: earliestWeek,
                     onChanged: (weeks, all) {
-                      notifier.setWeeks(weeks, all: all);
-                      notifier.setCoverageMode(all
-                          ? CoverageDisplayMode.allCoverage
-                          : CoverageDisplayMode.targetAudit);
+                      final selected =
+                          all ? auditAllWeeksRange(filters.primaryWeek) : weeks;
+                      notifier.setWeeks(selected, all: all);
                     }),
                 AuditFlagFilter(
                     selected: filters.flags, onChanged: notifier.setFlags),
@@ -5044,6 +5186,11 @@ class _WeeklyCoverageControls extends ConsumerWidget {
                     onPressed: () => context.push(
                         '/audit-planning?weekStart=${Uri.encodeComponent(filters.primaryWeek.toIso8601String())}')),
               ]),
+          const SizedBox(height: 6),
+          Text(
+              'Overdue berarti batas target sudah lewat dan fasenya belum diaudit sampai hari ini. Audit yang masuk terlambat otomatis mengubah target lama menjadi Done.',
+              style: TextStyle(
+                  fontSize: 11, height: 1.35, color: AdvantaColors.mutedGrey)),
         ]));
   }
 }

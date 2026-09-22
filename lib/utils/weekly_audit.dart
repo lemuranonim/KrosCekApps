@@ -8,6 +8,108 @@ DateTime auditWeekStart(DateTime date) {
   return day.subtract(Duration(days: day.weekday - DateTime.monday));
 }
 
+const int auditWeekPickerFallbackBack = 6;
+const int auditWeekPickerAhead = 1;
+
+/// Weeks retained in filter state while All Weeks is active. Historical target
+/// weeks are derived per field, so a long history never becomes one large
+/// cross-product of every field and every calendar week.
+Set<DateTime> auditAllWeeksRange(DateTime primaryWeek) {
+  final anchor = auditWeekStart(primaryWeek);
+  return {
+    anchor,
+    anchor.add(const Duration(days: auditWeekPickerAhead * 7)),
+  };
+}
+
+({DateTime first, DateTime last})? auditTargetWeekBounds(
+    Map<String, dynamic> raw) {
+  final veg = auditRow(raw['audit_vegetative']);
+  final planting = parseAuditDate(veg['rev_planting_date']) ??
+      parseAuditDate(raw['planting_date_pdn']);
+  if (planting == null) return null;
+
+  final rules = DapHelper.getPhaseRules(
+      hybrid: raw['hybrid']?.toString(),
+      district: raw['district_kab']?.toString(),
+      region: raw['region']?.toString(),
+      subDistrict: raw['sub_district_kec']?.toString());
+  if (rules.isEmpty) return null;
+
+  var first =
+      auditWeekStart(planting.add(Duration(days: rules.first.onGoingStart)));
+  var last =
+      auditWeekStart(planting.add(Duration(days: rules.first.onGoingEnd)));
+  for (final rule in rules.skip(1)) {
+    final ruleFirst =
+        auditWeekStart(planting.add(Duration(days: rule.onGoingStart)));
+    final ruleLast =
+        auditWeekStart(planting.add(Duration(days: rule.onGoingEnd)));
+    if (ruleFirst.isBefore(first)) first = ruleFirst;
+    if (ruleLast.isAfter(last)) last = ruleLast;
+  }
+  return (first: first, last: last);
+}
+
+/// Returns only lifecycle weeks for one field, capped at the active week.
+/// This includes old seasons without imposing an arbitrary historical limit.
+Set<DateTime> auditHistoricalTargetWeeks(
+  Map<String, dynamic> raw, {
+  required DateTime throughWeek,
+}) {
+  final bounds = auditTargetWeekBounds(raw);
+  if (bounds == null) return const {};
+  final limit = auditWeekStart(throughWeek);
+  final last = bounds.last.isBefore(limit) ? bounds.last : limit;
+  if (bounds.first.isAfter(last)) return const {};
+  return {
+    for (var week = bounds.first;
+        !week.isAfter(last);
+        week = week.add(const Duration(days: 7)))
+      week,
+  };
+}
+
+DateTime auditEarliestTargetWeek(
+  Iterable<Map<String, dynamic>> fields, {
+  required DateTime fallback,
+}) {
+  DateTime? earliest;
+  for (final raw in fields) {
+    final bounds = auditTargetWeekBounds(raw);
+    if (bounds != null &&
+        (earliest == null || bounds.first.isBefore(earliest))) {
+      earliest = bounds.first;
+    }
+  }
+  return earliest ?? auditWeekStart(fallback);
+}
+
+String auditFieldIdentity(Map<String, dynamic> raw) {
+  String normalized(dynamic value) =>
+      value?.toString().trim().toLowerCase() ?? '';
+
+  final seasonId = normalized(raw['season_id']);
+  final season = seasonId.isNotEmpty ? seasonId : normalized(raw['season']);
+  final fieldNumber = normalized(raw['field_number']);
+  if (fieldNumber.isNotEmpty) return '$season|$fieldNumber';
+
+  // Old rows should still remain distinct when their FN is incomplete.
+  return [
+    season,
+    normalized(raw['region']),
+    normalized(raw['district_kab']),
+    normalized(raw['sub_district_kec']),
+    normalized(raw['village_desa']),
+    normalized(raw['farmer_name']),
+    normalized(raw['planting_date_pdn']),
+    normalized(raw['hybrid']),
+  ].join('|');
+}
+
+String auditTargetIdentity(Map<String, dynamic> raw, String phase) =>
+    '${auditFieldIdentity(raw)}|${phase.trim().toLowerCase()}';
+
 int auditIsoWeekNumber(DateTime date) {
   final day = auditDateOnly(date);
   final thursday = day.add(Duration(days: DateTime.thursday - day.weekday));
@@ -71,6 +173,33 @@ const auditNotYetFlagging = 'Not Yet Flagging';
 const auditFlagLabels = ['GF', 'RFI', 'RFD', 'PLD', auditNotYetFlagging];
 const defaultAuditFlags = {'GF', 'RFI', 'RFD', 'PLD', auditNotYetFlagging};
 
+double auditTargetWeight(String phase, {String? hybrid}) {
+  if (!phase.startsWith('generative_')) return 1;
+  if (DapHelper.isPsp(hybrid)) return 1;
+  if (DapHelper.isSweetCorn(hybrid)) {
+    switch (phase) {
+      case 'generative_1':
+      case 'generative_2':
+      case 'generative_3':
+        return 1 / 6; // CP1-CP3 share the first 50%.
+      case 'generative_4':
+      case 'generative_5':
+        return .25; // CP4-CP5 share the remaining 50%.
+      default:
+        return 1;
+    }
+  }
+  switch (phase) {
+    case 'generative_1':
+    case 'generative_2':
+      return .25;
+    case 'generative_3':
+      return .5;
+    default:
+      return 1;
+  }
+}
+
 class AuditObservation {
   final int sequence;
   final String phase;
@@ -102,6 +231,7 @@ class WeeklyAuditTarget {
   final DateTime plannedDate;
   final DateTime deadline;
   final double completion;
+  final double weight;
   final bool overdue;
 
   const WeeklyAuditTarget(
@@ -109,6 +239,7 @@ class WeeklyAuditTarget {
       required this.plannedDate,
       required this.deadline,
       required this.completion,
+      required this.weight,
       required this.overdue});
 
   bool get done => completion >= 1;
@@ -151,10 +282,13 @@ class WeeklyAuditField {
   bool get isTarget => targets.isNotEmpty;
   bool get done => isTarget && targets.every((target) => target.done);
   bool get overdue => targets.any((target) => target.overdue);
-  double get completion => !isTarget
+  double get targetWeight =>
+      targets.fold(0.0, (sum, target) => sum + target.weight);
+  double get completion => !isTarget || targetWeight <= 0
       ? 0
-      : targets.fold(0.0, (sum, target) => sum + target.completion) /
-          targets.length;
+      : targets.fold(
+              0.0, (sum, target) => sum + target.completion * target.weight) /
+          targetWeight;
   String get village => _text(raw['village_desa']) ?? 'Desa belum diisi';
   // Same village name in different districts must never be merged.
   String get villageKey => [
@@ -186,7 +320,7 @@ class WeeklyAuditField {
       const {'RFI', 'RFD', 'BF', 'PLD', 'OF', 'RF'}.contains(flag);
 
   factory WeeklyAuditField.fromRaw(Map<String, dynamic> raw,
-      {required DateTime weekStart, DateTime? now}) {
+      {required DateTime weekStart, DateTime? now, Set<String>? targetPhases}) {
     final start = auditWeekStart(weekStart);
     final end = start.add(const Duration(days: 6));
     final today = auditDateOnly(now ?? DateTime.now());
@@ -209,7 +343,10 @@ class WeeklyAuditField {
       final date = parseAuditDate(dateValue);
       if (date == null) return;
       if (countForCompletion) phaseDates.putIfAbsent(phase, () => []).add(date);
-      if (date.isAfter(asOf)) return;
+      // A selected week defines when the target was due. Its resolution always
+      // follows data available through today, so a late audit can close an old
+      // target instead of leaving it permanently overdue.
+      if (date.isAfter(today)) return;
       final isGen = phase.startsWith('generative');
       final flagValue = roguing
           ? row['flagging$suffix']
@@ -282,14 +419,6 @@ class WeeklyAuditField {
       final phaseOrder = _phaseOrder(a.phase).compareTo(_phaseOrder(b.phase));
       return phaseOrder != 0 ? phaseOrder : a.sequence.compareTo(b.sequence);
     });
-    var flag = auditNotYetFlagging;
-    for (final observation in observations) {
-      if (observation.flag != null) flag = observation.flag!;
-    }
-    // Undated master status cannot reconstruct a historical week.
-    if (flag == auditNotYetFlagging && !end.isBefore(today)) {
-      flag = _flag(raw['flagging_final']) ?? flag;
-    }
     final rules = DapHelper.getPhaseRules(
         hybrid: hybrid,
         district: raw['district_kab']?.toString(),
@@ -314,7 +443,7 @@ class WeeklyAuditField {
 
     for (final rule in rules) {
       phaseCompletions[rule.key] = ((phaseDates[rule.key] ?? const <DateTime>[])
-                  .where((d) => !d.isAfter(asOf))
+                  .where((d) => !d.isAfter(today))
                   .length /
               requiredPasses(rule.key))
           .clamp(0.0, 1.0);
@@ -324,6 +453,7 @@ class WeeklyAuditField {
         final windowStart = planting.add(Duration(days: rule.onGoingStart));
         final windowEnd = planting.add(Duration(days: rule.onGoingEnd));
         if (windowStart.isAfter(end) || windowEnd.isBefore(start)) continue;
+        if (targetPhases != null && !targetPhases.contains(rule.key)) continue;
         final dates = phaseDates[rule.key] ?? const <DateTime>[];
         if (dates.where((d) => d.isBefore(start) && !d.isAfter(today)).length >=
             requiredPasses(rule.key)) {
@@ -336,8 +466,27 @@ class WeeklyAuditField {
             plannedDate: windowStart.isAfter(start) ? windowStart : start,
             deadline: deadline,
             completion: completion,
+            weight: auditTargetWeight(rule.key, hybrid: hybrid),
             overdue: completion < 1 && deadline.isBefore(today)));
       }
+    }
+    var flag = auditNotYetFlagging;
+    Iterable<AuditObservation> flagObservations = observations;
+    if (targets.isNotEmpty) {
+      final targetPhases = targets.map((target) => target.phase).toSet();
+      flagObservations = observations
+          .where((observation) => targetPhases.contains(observation.phase));
+    }
+    for (final observation in flagObservations) {
+      if (observation.flag != null) flag = observation.flag!;
+    }
+    // An undated master flag is only safe as a current overall snapshot when
+    // no dated phase can contradict it. It must not be attributed to a target
+    // when an older phase is the known source of that flag.
+    if (flag == auditNotYetFlagging &&
+        !end.isBefore(today) &&
+        (targets.isEmpty || observations.isEmpty)) {
+      flag = _flag(raw['flagging_final']) ?? flag;
     }
     final dap = planting == null ? 0 : end.difference(planting).inDays;
     final stage = auditStage(DapHelper.getRecommendedPhase(dap,
@@ -406,8 +555,16 @@ class WeeklyAuditSummary {
   int get targetFn => fields.length;
   int get auditedFn => fields.where((f) => f.done).length;
   int get overdueFn => fields.where((f) => f.overdue).length;
-  double get achievementPercent =>
-      targetFn > 0 ? auditedFn / targetFn * 100 : 0;
+
+  /// Area never changes the score. Audit targets contribute their configured
+  /// phase weight and partial PSP work keeps its actual completion fraction.
+  double get achievementPercent {
+    final weight = fields.fold(0.0, (sum, field) => sum + field.targetWeight);
+    if (weight <= 0) return 0;
+    final completed = fields.fold(
+        0.0, (sum, field) => sum + field.completion * field.targetWeight);
+    return completed / weight * 100;
+  }
 
   Map<String, AuditAreaMetric> composition(
       String Function(WeeklyAuditField) key) {
