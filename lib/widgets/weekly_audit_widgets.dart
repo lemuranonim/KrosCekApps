@@ -348,7 +348,9 @@ class WeeklyAuditCards extends StatelessWidget {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: AdvantaColors.dividerGrey)),
-              child: ExpansionTile(
+              child: Material(
+                type: MaterialType.transparency,
+                child: ExpansionTile(
                   title: const Text('Detail analytics',
                       style: TextStyle(
                           fontWeight: FontWeight.w800,
@@ -395,7 +397,7 @@ class WeeklyAuditCards extends StatelessWidget {
                           () => _open('Stage · ${stage.value}',
                               (f) => f.stage == stage.key))),
                     ]),
-                  ])),
+                  ]))),
         ]));
   }
 

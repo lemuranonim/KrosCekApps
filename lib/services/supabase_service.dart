@@ -11,6 +11,8 @@ class SupabaseService {
     SupabaseClient? client,
     Duration auditPlanningTimeout = const Duration(seconds: 45),
   })  : _supabase = client ?? Supabase.instance.client,
+        // Keep the public parameter name used by callers and tests.
+        // ignore: prefer_initializing_formals
         _auditPlanningTimeout = auditPlanningTimeout;
 
   // Eligibility only: no geometry, crop monitoring or flagging payloads.

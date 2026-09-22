@@ -10,7 +10,7 @@ permissions:
 
 env:
   # Keep dependency resolution and Shorebird builds on the tested Flutter SDK.
-  FLUTTER_VERSION: '3.35.7'
+  FLUTTER_VERSION: '3.47.4'
 
 jobs:
   build-and-release:

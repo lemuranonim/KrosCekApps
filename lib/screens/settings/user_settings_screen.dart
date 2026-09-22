@@ -162,6 +162,7 @@ class _UserSettingsScreenState extends ConsumerState<UserSettingsScreen> {
                 ],
 
                 _ProfileCard(session: _session, isDark: isDark, theme: theme),
+                const ShorebirdUpdateCard(),
                 const SizedBox(height: 8),
 
                 _SectionHeader(label: 'Akun'),
@@ -235,7 +236,6 @@ class _UserSettingsScreenState extends ConsumerState<UserSettingsScreen> {
                 const SizedBox(height: 8),
 
                 _SectionHeader(label: 'Aplikasi'),
-                const ShorebirdUpdateCard(),
                 _SettingsTile(
                   icon: Icons.info_outline_rounded,
                   label: 'Tentang Kroscek',

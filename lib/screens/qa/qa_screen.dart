@@ -43,6 +43,7 @@ import '../../utils/pld_visibility_helper.dart';
 import '../../utils/qa_name_helper.dart';
 import '../../widgets/audit_status_widgets.dart';
 import '../../widgets/phase_asset_icon.dart';
+import '../../widgets/shorebird_settings_indicator.dart';
 import '../../models/audit_planning_filters.dart';
 
 // ─── Work mode enum ──────────────────────────────────────
@@ -1467,8 +1468,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
           const SizedBox(width: 6),
 
           // Tombol Settings Mini
-          GestureDetector(
-            onTap: () => context.push('/qa/settings'),
+          ShorebirdSettingsIndicator(
+            onTap: () async {
+              await context.push('/qa/settings');
+            },
             child: const _NewActionPill(icon: Icons.settings_outlined),
           ),
         ],

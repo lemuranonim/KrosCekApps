@@ -1139,7 +1139,9 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                     : AdvantaColors.dividerGrey),
             boxShadow: AdvantaShadows.card(false)),
         clipBehavior: Clip.antiAlias,
-        child: Theme(
+        child: Material(
+          type: MaterialType.transparency,
+          child: Theme(
             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
             child: ExpansionTile(
                 key: ValueKey(key),
@@ -1211,7 +1213,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
                         const Divider(height: 12),
                         ...group.map(_fieldTile),
                       ]
-                    : const [])));
+                    : const []))));
   }
 
   Widget _microBadge(IconData icon, String label, Color color) => Container(
