@@ -1,9 +1,9 @@
 // lib/widgets/field_list_view.dart
 // ── PERUBAHAN dari versi sebelumnya ──────────────────────
 //  • Tambah parameter `activePhase` (ActivePhaseView)
-//  • Tambah parameter `onPhaseChanged` (ValueChanged<ActivePhaseView>)
-//  • AuditPhaseFilterBar DIPINDAH ke header sheet (bukan di dalam FieldListView)
-//    → menghindari dobel filter dengan filter bar di home map overlay
+//  • AuditPhaseFilterBar menjadi satu-satunya filter fase di sheet
+//  • Pilihan fase yang sama memfilter DAP list sekaligus mengubah status audit
+//    aktif di QA Map
 //  • _sheetPhase local state di showSheet memakai closure variable pattern
 //    → klik filter di sheet sekarang berdampak langsung ke tampilan list
 //  • Setiap card: left border + progress dots + badge status
@@ -20,13 +20,33 @@ import '../utils/active_phase_filter.dart';
 import '../utils/dap_helper.dart';
 import 'audit_status_widgets.dart';
 
+List<ParsedFieldData> filterFieldListByActivePhase(
+  List<ParsedFieldData> fields, {
+  required ActivePhaseView activePhase,
+  required int deltaDays,
+}) {
+  return fields
+      .where((field) {
+        final projectedDap = field.dap + deltaDays;
+        return DapHelper.isDapInPhaseView(
+          projectedDap,
+          activePhase,
+          hybrid: field.raw['hybrid']?.toString(),
+          district: field.raw['district_kab']?.toString(),
+          region: field.raw['region']?.toString(),
+          subDistrict: field.raw['sub_district_kec']?.toString(),
+        );
+      })
+      .toList(growable: false);
+}
+
 class FieldListView extends StatefulWidget {
   final List<ParsedFieldData> fieldsData;
   final LatLng? userLocation;
   final double topPadding;
   final Color Function(int dap, {String? hybrid}) getMarkerColor;
   final void Function(List<Map<String, dynamic>> uncoordFields)
-      onUncoordBannerTap;
+  onUncoordBannerTap;
   final void Function(double lat, double lng) onNavigateTap;
 
   final bool isMassMode;
@@ -36,7 +56,6 @@ class FieldListView extends StatefulWidget {
   final ScrollController? scrollController;
 
   final ActivePhaseView activePhase;
-  final ValueChanged<ActivePhaseView> onPhaseChanged;
 
   /// Selisih hari untuk proyeksi DAP (Time Traveller)
   final int deltaDays;
@@ -53,7 +72,6 @@ class FieldListView extends StatefulWidget {
     required this.selectedFieldNumbers,
     required this.onFieldTap,
     required this.activePhase,
-    required this.onPhaseChanged,
     this.deltaDays = 0,
     this.scrollController,
   });
@@ -67,13 +85,15 @@ class FieldListView extends StatefulWidget {
     required LatLng? userLocation,
     required Color Function(int dap, {String? hybrid}) getMarkerColor,
     required void Function(List<Map<String, dynamic>> uncoordFields)
-        onUncoordBannerTap,
+    onUncoordBannerTap,
     required void Function(double lat, double lng) onNavigateTap,
     required bool isMassMode,
     required Set<String> selectedFieldNumbers,
     required void Function(ParsedFieldData field) onFieldTap,
     required ActivePhaseView activePhase,
     required ValueChanged<ActivePhaseView> onPhaseChanged,
+    required List<ParsedFieldData> Function(ActivePhaseView phase)
+    fieldsForPhase,
     int deltaDays = 0,
   }) {
     showModalBottomSheet(
@@ -96,6 +116,7 @@ class FieldListView extends StatefulWidget {
         // dan trigger rebuild dengan nilai yang benar.
         // ─────────────────────────────────────────────────────────────────
         ActivePhaseView sheetPhase = activePhase;
+        List<ParsedFieldData> sheetFields = fieldsData;
 
         return StatefulBuilder(
           builder: (sheetContext, setSheetState) {
@@ -108,8 +129,9 @@ class FieldListView extends StatefulWidget {
                 return Container(
                   decoration: const BoxDecoration(
                     color: AdvantaColors.deepForest,
-                    borderRadius:
-                        BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
                   ),
                   child: Column(
                     children: [
@@ -131,40 +153,45 @@ class FieldListView extends StatefulWidget {
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                         child: Row(
                           children: [
-                            const Icon(Icons.format_list_bulleted_rounded,
-                                color: AdvantaColors.lightGreen, size: 20),
+                            const Icon(
+                              Icons.format_list_bulleted_rounded,
+                              color: AdvantaColors.lightGreen,
+                              size: 20,
+                            ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 'Daftar Lahan',
-                                style: AdvantaText.heading3
-                                    .copyWith(color: Colors.white),
+                                style: AdvantaText.heading3.copyWith(
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                             GestureDetector(
                               onTap: () => Navigator.pop(context),
-                              child: const Icon(Icons.close,
-                                  color: Colors.white38, size: 20),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white38,
+                                size: 20,
+                              ),
                             ),
                           ],
                         ),
                       ),
 
-                      // ── FIX: AuditPhaseFilterBar HANYA di sini (di header sheet) ──
-                      // Sebelumnya ada di dalam FieldListView._buildAuditPhaseBar()
-                      // yang menyebabkan dobel dengan filter bar di home map overlay.
-                      // Dengan memindahkannya ke sini, FieldListView tidak lagi punya
-                      // filter bar sendiri → tidak dobel.
+                      // Satu-satunya filter fase di List View. Pilihannya
+                      // diteruskan ke QA Map dan dipakai untuk rentang DAP list.
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
                               child: Text(
-                                'STATUS AUDIT',
+                                'FASE & STATUS AUDIT',
                                 style: AdvantaText.caption.copyWith(
                                   color: Colors.white38,
                                   fontWeight: FontWeight.w600,
@@ -176,11 +203,14 @@ class FieldListView extends StatefulWidget {
                             AuditPhaseFilterBar(
                               activePhase: sheetPhase,
                               onChanged: (phase) {
-                                // FIX: update _sheetPhase SEBELUM setSheetState
-                                // agar FieldListView menerima nilai terbaru.
-                                setSheetState(() => sheetPhase = phase);
-                                // Propagate ke parent (QAScreen) juga
+                                // Satu pilihan fase mengendalikan QA Map,
+                                // status audit card, dan subset DAP pada list.
                                 onPhaseChanged(phase);
+                                final nextFields = fieldsForPhase(phase);
+                                setSheetState(() {
+                                  sheetPhase = phase;
+                                  sheetFields = nextFields;
+                                });
                               },
                             ),
                           ],
@@ -191,7 +221,7 @@ class FieldListView extends StatefulWidget {
 
                       Expanded(
                         child: FieldListView(
-                          fieldsData: fieldsData,
+                          fieldsData: sheetFields,
                           userLocation: userLocation,
                           topPadding: 8.0,
                           getMarkerColor: getMarkerColor,
@@ -200,15 +230,8 @@ class FieldListView extends StatefulWidget {
                           isMassMode: isMassMode,
                           selectedFieldNumbers: selectedFieldNumbers,
                           scrollController: scrollCtrl,
-                          // FIX: pakai _sheetPhase (local mutable), bukan activePhase
+                          // Pakai phase lokal yang tersinkron dengan QA Map.
                           activePhase: sheetPhase,
-                          // onPhaseChanged di sini tidak lagi dipakai untuk filter bar
-                          // (karena filter bar sudah dipindah ke header di atas),
-                          // tapi tetap diteruskan untuk kebutuhan card/badge di dalam list.
-                          onPhaseChanged: (phase) {
-                            setSheetState(() => sheetPhase = phase);
-                            onPhaseChanged(phase);
-                          },
                           onFieldTap: (f) {
                             onFieldTap(f);
                             setSheetState(() {});
@@ -232,54 +255,36 @@ class FieldListView extends StatefulWidget {
 }
 
 class _FieldListViewState extends State<FieldListView> {
-  String _activeFilter = 'Semua';
-
-  final List<Map<String, dynamic>> _filters = [
-    {'label': 'Semua', 'icon': Icons.apps_rounded},
-    {'label': 'Vegetative (<50 DAP)', 'icon': Icons.eco_rounded},
-    {'label': 'Generative (50-70 DAP)', 'icon': Icons.spa_rounded},
-    {'label': 'Pre-Harvest (71-94 DAP)', 'icon': Icons.content_cut_rounded},
-    {'label': 'Harvest (≥95 DAP)', 'icon': Icons.agriculture_rounded},
-  ];
-
   @override
   Widget build(BuildContext context) {
-    // 1. Filter berdasarkan DAP (Simulasi DAP jika deltaDays != 0)
-    final filteredData = widget.fieldsData.where((f) {
-      if (_activeFilter == 'Semua') return true;
-      final projectedDap = f.dap + widget.deltaDays;
-      switch (_activeFilter) {
-        case 'Vegetative (<50 DAP)':
-          return projectedDap < 50;
-        case 'Generative (50-70 DAP)':
-          return projectedDap >= 50 && projectedDap <= 70;
-        case 'Pre-Harvest (71-94 DAP)':
-          return projectedDap >= 71 && projectedDap <= 94;
-        case 'Harvest (≥95 DAP)':
-          return projectedDap >= 95;
-        default:
-          return true;
-      }
-    }).toList();
+    // Satu filter fase untuk status audit dan rentang DAP. DapHelper menjaga
+    // perbedaan rentang FC, SC (termasuk highland), dan PSP tetap konsisten.
+    final filteredData = filterFieldListByActivePhase(
+      widget.fieldsData,
+      activePhase: widget.activePhase,
+      deltaDays: widget.deltaDays,
+    );
 
     // 2. Pisahkan lahan tanpa koordinat
-    final uncoordFields =
-        filteredData.where((f) => f.isDefault).map((f) => f.raw).toList();
+    final uncoordFields = filteredData
+        .where((f) => f.isDefault)
+        .map((f) => f.raw)
+        .toList();
 
     // 3. Hitung jarak
     final List<({ParsedFieldData data, double distance})> withDistance =
         filteredData.where((f) => !f.isDefault).map((f) {
-      double dist = 0;
-      if (widget.userLocation != null) {
-        dist = Geolocator.distanceBetween(
-          widget.userLocation!.latitude,
-          widget.userLocation!.longitude,
-          f.lat,
-          f.lng,
-        );
-      }
-      return (data: f, distance: dist);
-    }).toList();
+          double dist = 0;
+          if (widget.userLocation != null) {
+            dist = Geolocator.distanceBetween(
+              widget.userLocation!.latitude,
+              widget.userLocation!.longitude,
+              f.lat,
+              f.lng,
+            );
+          }
+          return (data: f, distance: dist);
+        }).toList();
 
     if (widget.userLocation != null) {
       withDistance.sort((a, b) => a.distance.compareTo(b.distance));
@@ -288,17 +293,6 @@ class _FieldListViewState extends State<FieldListView> {
     return Column(
       children: [
         SizedBox(height: widget.topPadding),
-
-        // ── CHIPS FILTER DAP ──
-        _buildFilterChips(),
-        const SizedBox(height: 8),
-
-        // NOTE: AuditPhaseFilterBar SENGAJA TIDAK ada di sini.
-        // Alasannya: ketika FieldListView dirender di dalam showSheet,
-        // filter bar sudah ada di header sheet (di atas).
-        // Ketika FieldListView dirender langsung (tanpa sheet),
-        // filter bar ada di home map overlay (qa_screen.dart).
-        // Menaruhnya di sini menyebabkan DOBEL.
 
         // ── LIST VIEW ──
         Expanded(
@@ -372,74 +366,84 @@ class _FieldListViewState extends State<FieldListView> {
           dap: projectedDap,
           activePhase: widget.activePhase,
           borderRadius: AdvantaRadius.cardRadius,
-          child: ListTile(
-            onTap: () => widget.onFieldTap(f),
-            contentPadding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
-            leading: _buildDapAvatar(
-                projectedDap, f.raw['hybrid']?.toString(), isSelected),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    fn,
-                    style: AdvantaText.bodyBold.copyWith(
-                      color:
-                          isSelected ? AdvantaColors.lightGreen : Colors.white,
+          child: Material(
+            color: Colors.transparent,
+            child: ListTile(
+              onTap: () => widget.onFieldTap(f),
+              contentPadding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+              leading: _buildDapAvatar(
+                projectedDap,
+                f.raw['hybrid']?.toString(),
+                isSelected,
+              ),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      fn,
+                      style: AdvantaText.bodyBold.copyWith(
+                        color: isSelected
+                            ? AdvantaColors.lightGreen
+                            : Colors.white,
+                      ),
                     ),
                   ),
-                ),
-                // Badge status fase aktif — pakai widget.activePhase
-                // yang sudah sinkron dengan _sheetPhase dari showSheet
-                _buildActivePhaseBadge(auditStatus, projectedDap),
-              ],
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  f.raw['farmer_name'] ?? '-',
-                  style: AdvantaText.caption.copyWith(color: Colors.white70),
-                ),
-                const SizedBox(height: 6),
-                // Progress Dots
-                Row(
-                  children: [
-                    AuditProgressDots(status: auditStatus),
-                    const SizedBox(width: 10),
-                    Icon(
-                      Icons.near_me_rounded,
-                      size: 11,
-                      color: isSelected
-                          ? AdvantaColors.lightGreen
-                          : AdvantaColors.goldLight,
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      distance > 1000 ? '$distKm km' : '$distM m',
-                      style: AdvantaText.caption.copyWith(
+                  // Badge status fase aktif — pakai widget.activePhase
+                  // yang sudah sinkron dengan _sheetPhase dari showSheet
+                  _buildActivePhaseBadge(auditStatus, projectedDap),
+                ],
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    f.raw['farmer_name'] ?? '-',
+                    style: AdvantaText.caption.copyWith(color: Colors.white70),
+                  ),
+                  const SizedBox(height: 6),
+                  // Progress Dots
+                  Row(
+                    children: [
+                      AuditProgressDots(status: auditStatus),
+                      const SizedBox(width: 10),
+                      Icon(
+                        Icons.near_me_rounded,
+                        size: 11,
                         color: isSelected
                             ? AdvantaColors.lightGreen
                             : AdvantaColors.goldLight,
-                        fontWeight: FontWeight.bold,
                       ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            trailing: widget.isMassMode
-                ? Icon(
-                    isSelected
-                        ? Icons.check_circle_rounded
-                        : Icons.radio_button_off_rounded,
-                    color:
-                        isSelected ? AdvantaColors.lightGreen : Colors.white24,
-                  )
-                : IconButton(
-                    icon: const Icon(Icons.directions_outlined,
-                        color: AdvantaColors.lightGreen),
-                    onPressed: () => widget.onNavigateTap(f.lat, f.lng),
+                      const SizedBox(width: 3),
+                      Text(
+                        distance > 1000 ? '$distKm km' : '$distM m',
+                        style: AdvantaText.caption.copyWith(
+                          color: isSelected
+                              ? AdvantaColors.lightGreen
+                              : AdvantaColors.goldLight,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
+                ],
+              ),
+              trailing: widget.isMassMode
+                  ? Icon(
+                      isSelected
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_off_rounded,
+                      color: isSelected
+                          ? AdvantaColors.lightGreen
+                          : Colors.white24,
+                    )
+                  : IconButton(
+                      icon: const Icon(
+                        Icons.directions_outlined,
+                        color: AdvantaColors.lightGreen,
+                      ),
+                      onPressed: () => widget.onNavigateTap(f.lat, f.lng),
+                    ),
+            ),
           ),
         ),
       ),
@@ -449,8 +453,9 @@ class _FieldListViewState extends State<FieldListView> {
   /// Badge status fase aktif sesuai pilihan user (dari widget.activePhase)
   Widget _buildActivePhaseBadge(FieldAuditStatus auditStatus, int dap) {
     final phase = widget.activePhase;
-    final resolvedPhase =
-        phase == ActivePhaseView.auto ? _dapToPhase(dap, auditStatus) : phase;
+    final resolvedPhase = phase == ActivePhaseView.auto
+        ? _dapToPhase(dap, auditStatus)
+        : phase;
 
     if (resolvedPhase == ActivePhaseView.generative) {
       return AuditStatusBadge.generative(
@@ -477,7 +482,9 @@ class _FieldListViewState extends State<FieldListView> {
   }
 
   SingleAuditStatus? _getSingleStatus(
-      FieldAuditStatus s, ActivePhaseView phase) {
+    FieldAuditStatus s,
+    ActivePhaseView phase,
+  ) {
     switch (phase) {
       case ActivePhaseView.vegetative:
         return s.vegetative;
@@ -488,71 +495,6 @@ class _FieldListViewState extends State<FieldListView> {
       default:
         return null;
     }
-  }
-
-  // ── DAP FILTER CHIPS ─────────────────────────────────────
-  Widget _buildFilterChips() {
-    return SizedBox(
-      height: 38,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        scrollDirection: Axis.horizontal,
-        itemCount: _filters.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (ctx, i) {
-          final filter = _filters[i];
-          final label = filter['label'] as String;
-          final icon = filter['icon'] as IconData;
-          final isSelected = _activeFilter == label;
-
-          return GestureDetector(
-            onTap: () => setState(() => _activeFilter = label),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? AdvantaColors.primaryGreen
-                    : Colors.white.withAlpha(15),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isSelected
-                      ? AdvantaColors.lightGreen
-                      : Colors.white.withAlpha(30),
-                  width: 1,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: AdvantaColors.primaryGreen.withAlpha(100),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        )
-                      ]
-                    : [],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon,
-                      size: 14,
-                      color: isSelected ? Colors.white : Colors.white70),
-                  const SizedBox(width: 6),
-                  Text(
-                    label,
-                    style: AdvantaText.caption.copyWith(
-                      color: isSelected ? Colors.white : Colors.white70,
-                      fontWeight:
-                          isSelected ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
   }
 
   Widget _buildDapAvatar(int dap, String? hybrid, bool isSelected) {
@@ -599,18 +541,26 @@ class _FieldListViewState extends State<FieldListView> {
           ),
           child: Row(
             children: [
-              const Icon(Icons.location_off_rounded,
-                  color: Colors.white, size: 16),
+              const Icon(
+                Icons.location_off_rounded,
+                color: Colors.white,
+                size: 16,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   '${uncoordFields.length} Lahan Tanpa Koordinat',
                   style: AdvantaText.label.copyWith(
-                      color: Colors.white, fontWeight: FontWeight.bold),
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded,
-                  color: Colors.white, size: 16),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Colors.white,
+                size: 16,
+              ),
             ],
           ),
         ),

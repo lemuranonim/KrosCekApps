@@ -814,9 +814,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return _cachedFilteredFields!;
   }
 
-  List<ParsedFieldData> _filterFields(List<ParsedFieldData> allParsed) {
+  List<ParsedFieldData> _filterFields(
+    List<ParsedFieldData> allParsed, {
+    ActivePhaseView? activePhaseOverride,
+  }) {
     final selRegion = _selectedRegion?.trim().toLowerCase();
     final selDistrict = _selectedDistrict?.trim().toLowerCase();
+    final activePhase = activePhaseOverride ?? _activePhaseView;
     final directFieldNumberSearch = homeMapHasActiveFieldNumberSearch(
       _activeFilters,
     );
@@ -827,10 +831,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
       // ── Proyeksi DAP untuk Visual Marker ──
       final int projectedDap = _getProjectedDap(f.dap);
-      final ActivePhaseView projectedPhase =
-          _activePhaseView == ActivePhaseView.auto
+      final ActivePhaseView projectedPhase = activePhase == ActivePhaseView.auto
           ? _dapToPhaseView(projectedDap, hybrid: f.raw['hybrid']?.toString())
-          : _activePhaseView;
+          : activePhase;
 
       // ── Region, District, & Multi-param filters (TETAP SAMA) ──
       if (selRegion != null) {
@@ -854,12 +857,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
         final matchesSelectedWeek = _selectedWeeks.any((week) {
           if (!_isFieldActiveInWeek(f, week)) return false;
           final weekProjectedDap = _getProjectedDapForWeek(f.dap, week);
-          final weekProjectedPhase = _activePhaseView == ActivePhaseView.auto
+          final weekProjectedPhase = activePhase == ActivePhaseView.auto
               ? _dapToPhaseView(
                   weekProjectedDap,
                   hybrid: f.raw['hybrid']?.toString(),
                 )
-              : _activePhaseView;
+              : activePhase;
           return _matchesAuditFilter(f, weekProjectedPhase, weekProjectedDap);
         });
         if (!matchesSelectedWeek) return false;
@@ -1645,22 +1648,23 @@ class _QAScreenState extends ConsumerState<QAScreen>
     );
   }
 
+  void _setActivePhaseView(ActivePhaseView phase) {
+    setState(() {
+      _activePhaseView = phase;
+      if (phase != ActivePhaseView.generative &&
+          phase != ActivePhaseView.auto &&
+          _auditFilter == _AuditFilter.partial) {
+        _auditFilter = _AuditFilter.all;
+      }
+      _clearMapCaches();
+    });
+  }
+
   // Fungsi Helper baru untuk membuat Tombol Ikon Fase yang ringkas
   Widget _buildPhaseIconButton(ActivePhaseView phase) {
     final isActive = _activePhaseView == phase;
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _activePhaseView = phase;
-          // Logika reset filter parsial jika pindah dari generatif
-          if (phase != ActivePhaseView.generative &&
-              phase != ActivePhaseView.auto &&
-              _auditFilter == _AuditFilter.partial) {
-            _auditFilter = _AuditFilter.all;
-          }
-          _clearMapCaches();
-        });
-      },
+      onTap: () => _setActivePhaseView(phase),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: 40,
@@ -4223,9 +4227,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
                             }
                           },
                           activePhase: _activePhaseView,
-                          onPhaseChanged: (phase) {
-                            setState(() => _activePhaseView = phase);
-                          },
+                          onPhaseChanged: _setActivePhaseView,
+                          fieldsForPhase: (phase) => _filterFields(
+                            allFields,
+                            activePhaseOverride: phase,
+                          ),
                           deltaDays: deltaDays, // <── TERUSKAN DELTA DAYS
                         );
                       });
