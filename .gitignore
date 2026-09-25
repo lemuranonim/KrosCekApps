@@ -41,7 +41,18 @@ assets/config.json
 .pub/
 /build/
 /docs/
-/supabase/
+# Supabase local runtime is ignored, while the ACT sync implementation is
+# versioned explicitly.
+/supabase/*
+!/supabase/config.toml
+!/supabase/functions/
+/supabase/functions/*
+!/supabase/functions/act-master-fields-sync/
+!/supabase/functions/act-master-fields-sync/**
+!/supabase/migrations/
+/supabase/migrations/*
+!/supabase/migrations/20260924*.sql
+!/supabase/migrations/20260925*.sql
 .vscode/
 /local commit/
 

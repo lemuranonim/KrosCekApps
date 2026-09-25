@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "@supabase/functions-js": "jsr:@supabase/functions-js@^2",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@^2",
+    "xlsx": "npm:xlsx@0.18.5"
+  },
+  "compilerOptions": {
+    "strict": true
+  }
+}

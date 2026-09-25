@@ -151,20 +151,25 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   }
 
   ({String coordinate, double lat, double lng, String source})?
-      _resolveFieldCoordinate(Map<String, dynamic> fieldData) {
-    final centroid =
-        CoordHelper.wktCentroid(fieldData['geometry_wkt']?.toString());
-    if (centroid != null) {
+  _resolveFieldCoordinate(Map<String, dynamic> fieldData) {
+    for (final geometry in [
+      (
+        wkt: fieldData['correction_geometry_wkt']?.toString(),
+        source: 'correction_polygon',
+      ),
+      (wkt: fieldData['geometry_wkt']?.toString(), source: 'polygon'),
+    ]) {
+      final centroid = CoordHelper.wktCentroid(geometry.wkt);
+      if (centroid == null) continue;
       final lat = centroid['lat']!;
       final lng = centroid['lng']!;
-      if (CoordHelper.isValidIndonesia(lat, lng)) {
-        return (
-          coordinate: _formatCoordinate(lat, lng),
-          lat: lat,
-          lng: lng,
-          source: 'polygon'
-        );
-      }
+      if (!CoordHelper.isValidIndonesia(lat, lng)) continue;
+      return (
+        coordinate: _formatCoordinate(lat, lng),
+        lat: lat,
+        lng: lng,
+        source: geometry.source,
+      );
     }
 
     final correction = _parseCoordinate(_readVegetativeCorrection(fieldData));
@@ -174,7 +179,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         coordinate: _formatCoordinate(correction.lat, correction.lng),
         lat: correction.lat,
         lng: correction.lng,
-        source: 'correction'
+        source: 'correction',
       );
     }
 
@@ -185,7 +190,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         coordinate: _formatCoordinate(coordinate.lat, coordinate.lng),
         lat: coordinate.lat,
         lng: coordinate.lng,
-        source: 'coordinate'
+        source: 'coordinate',
       );
     }
 
@@ -194,8 +199,10 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
 
   String _coordinateSourceLabel(String? source) {
     switch (source) {
+      case 'correction_polygon':
+        return 'Centroid Correction WKT';
       case 'polygon':
-        return 'Centroid WKT';
+        return 'Centroid WKT ACT';
       case 'correction':
         return 'Correction Tagging';
       case 'coordinate':
@@ -213,7 +220,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         audit?['qa_fi']?.toString() ?? fieldData['qa_fi']?.toString() ?? '';
     _qaSpvCtrl.text =
         audit?['qa_spv']?.toString() ?? fieldData['qa_spv']?.toString() ?? '';
-    _corrTaggingCtrl.text = audit?['correction_tagging']?.toString() ??
+    _corrTaggingCtrl.text =
+        audit?['correction_tagging']?.toString() ??
         fieldData['correction_tagging']?.toString() ??
         '';
     _coRoguingCtrl.text = audit?['co_detasseling']?.toString() ?? '';
@@ -222,7 +230,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     _pldReasonCtrl.text = audit?['pld_reason']?.toString() ?? '';
 
     _revTglTanam = _parseDate(
-        audit?['rev_planting_date'] ?? fieldData['planting_date_pdn']);
+      audit?['rev_planting_date'] ?? fieldData['planting_date_pdn'],
+    );
 
     setState(() {
       _previousCrop = audit?['previous_crop_by_audit']?.toString();
@@ -248,10 +257,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       initialDate: initialDate ?? now,
       firstDate: DateTime(2020),
       lastDate: now,
-      builder: (ctx, child) => Theme(
-        data: pspDatePickerTheme(ctx, _kPspVeg),
-        child: child!,
-      ),
+      builder: (ctx, child) =>
+          Theme(data: pspDatePickerTheme(ctx, _kPspVeg), child: child!),
     );
     if (picked != null) onPicked(picked);
   }
@@ -298,34 +305,43 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
         'https://nominatim.openstreetmap.org/reverse'
         '?format=json&lat=$lat&lon=$lng&zoom=14&addressdetails=1',
       );
-      final resp = await http.get(url, headers: {
-        'User-Agent': 'AdvantaSeedsFieldAudit/1.0 (audit@advantaseeds.com)',
-        'Accept': 'application/json',
-      }).timeout(const Duration(seconds: 15));
+      final resp = await http
+          .get(
+            url,
+            headers: {
+              'User-Agent':
+                  'AdvantaSeedsFieldAudit/1.0 (audit@advantaseeds.com)',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (resp.statusCode == 200) {
         final jsonData = jsonDecode(resp.body) as Map<String, dynamic>;
         final addr = jsonData['address'] as Map<String, dynamic>? ?? {};
         return {
-          'desa': (addr['village'] ??
-                  addr['hamlet'] ??
-                  addr['suburb'] ??
-                  addr['neighbourhood'] ??
-                  '-')
-              .toString(),
-          'kecamatan': (addr['subdistrict'] ??
-                  addr['city_district'] ??
-                  addr['district'] ??
-                  addr['county'] ??
-                  '-')
-              .toString(),
-          'kabupaten': (addr['regency'] ??
-                  addr['city'] ??
-                  addr['state_district'] ??
-                  addr['county'] ??
-                  addr['state'] ??
-                  '-')
-              .toString(),
+          'desa':
+              (addr['village'] ??
+                      addr['hamlet'] ??
+                      addr['suburb'] ??
+                      addr['neighbourhood'] ??
+                      '-')
+                  .toString(),
+          'kecamatan':
+              (addr['subdistrict'] ??
+                      addr['city_district'] ??
+                      addr['district'] ??
+                      addr['county'] ??
+                      '-')
+                  .toString(),
+          'kabupaten':
+              (addr['regency'] ??
+                      addr['city'] ??
+                      addr['state_district'] ??
+                      addr['county'] ??
+                      addr['state'] ??
+                      '-')
+                  .toString(),
         };
       }
     } on TimeoutException {
@@ -362,7 +378,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       _pendingGeometryWkt = null;
     });
     _snack(
-        '${_coordinateSourceLabel(_existingCoordinateSource)} dikonfirmasi sebagai koreksi');
+      '${_coordinateSourceLabel(_existingCoordinateSource)} dikonfirmasi sebagai koreksi',
+    );
   }
 
   Future<LatLng?> _geocodeWilayah(Map<String, dynamic> fieldData) async {
@@ -390,10 +407,16 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           'https://nominatim.openstreetmap.org/search'
           '?format=json&q=${Uri.encodeComponent(q)}&limit=1&countrycodes=id',
         );
-        final resp = await http.get(url, headers: {
-          'User-Agent': 'AdvantaSeedsFieldAudit/1.0 (audit@advantaseeds.com)',
-          'Accept': 'application/json',
-        }).timeout(const Duration(seconds: 10));
+        final resp = await http
+            .get(
+              url,
+              headers: {
+                'User-Agent':
+                    'AdvantaSeedsFieldAudit/1.0 (audit@advantaseeds.com)',
+                'Accept': 'application/json',
+              },
+            )
+            .timeout(const Duration(seconds: 10));
 
         if (resp.statusCode == 200) {
           final list = jsonDecode(resp.body) as List<dynamic>;
@@ -452,8 +475,9 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           _corrTaggingSource = 'kml';
           _pendingGeometryWkt = polygon?.wkt;
         });
-        final polygonInfo =
-            polygon == null ? '' : ' + polygon ${polygon.pointCount} titik';
+        final polygonInfo = polygon == null
+            ? ''
+            : ' + polygon ${polygon.pointCount} titik';
         _snack('KML berhasil dimuat$polygonInfo: $coordStr');
       }
     } catch (e) {
@@ -463,10 +487,12 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
 
   Future<void> _applyManualCoord() async {
     if (GuestGuard.blockIfGuest(context, _session)) return;
-    final lat =
-        double.tryParse(_manualLatCtrl.text.trim().replaceAll(',', '.'));
-    final lng =
-        double.tryParse(_manualLngCtrl.text.trim().replaceAll(',', '.'));
+    final lat = double.tryParse(
+      _manualLatCtrl.text.trim().replaceAll(',', '.'),
+    );
+    final lng = double.tryParse(
+      _manualLngCtrl.text.trim().replaceAll(',', '.'),
+    );
     if (lat == null || lng == null || !CoordHelper.isValidIndonesia(lat, lng)) {
       _snack('Latitude / Longitude tidak valid', err: true);
       return;
@@ -502,11 +528,15 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   ),
                   SizedBox(width: 12),
-                  Text('Mencari koordinat wilayah...',
-                      style: TextStyle(fontSize: 13)),
+                  Text(
+                    'Mencari koordinat wilayah...',
+                    style: TextStyle(fontSize: 13),
+                  ),
                 ],
               ),
               duration: Duration(seconds: 5),
@@ -555,8 +585,10 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     if (!_isPld) return true;
     final pldArea = _parseDouble(_pldAreaCtrl);
     if (pldArea == null || pldArea <= 0) {
-      _snack('Recommendation PLD (Ha) wajib diisi dengan angka valid',
-          err: true);
+      _snack(
+        'Recommendation PLD (Ha) wajib diisi dengan angka valid',
+        err: true,
+      );
       return false;
     }
     return true;
@@ -592,16 +624,18 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
           .map((roguing) => roguing.date)
           .whereType<DateTime>()
           .fold<DateTime?>(null, (latest, date) {
-        if (latest == null || date.isAfter(latest)) return date;
-        return latest;
-      });
+            if (latest == null || date.isAfter(latest)) return date;
+            return latest;
+          });
       final summaryDate = completionDate ?? latestDate ?? now;
       final r1 = _roguings[0];
       final r4 = _roguings[3];
-      final roguingFilledCount =
-          _roguings.where((roguing) => roguing.date != null).length;
-      final inferredRoguingStatus =
-          completionDate != null ? 'C' : (roguingFilledCount > 0 ? 'B' : 'A');
+      final roguingFilledCount = _roguings
+          .where((roguing) => roguing.date != null)
+          .length;
+      final inferredRoguingStatus = completionDate != null
+          ? 'C'
+          : (roguingFilledCount > 0 ? 'B' : 'A');
 
       final data = <String, dynamic>{
         'field_number': widget.fieldNumber,
@@ -639,7 +673,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       await service.upsertVegetativeAudit(data);
       if (_pendingGeometryWkt != null &&
           _pendingGeometryWkt!.trim().isNotEmpty) {
-        await service.updateFieldGeometryWkt(
+        await service.updateFieldCorrectionGeometryWkt(
           fieldNumber: widget.fieldNumber,
           geometryWkt: _pendingGeometryWkt!.trim(),
         );
@@ -673,9 +707,11 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       if (!mounted) return;
       ref.invalidate(masterFieldDetailProvider(widget.fieldNumber));
       ref.invalidate(vegetativeAuditProvider(widget.fieldNumber));
-      _snack(_isPld
-          ? 'Rekomendasi PLD Roguing ${_selectedRoguing.number} berhasil disimpan'
-          : 'Vegetative PSP audit berhasil disimpan');
+      _snack(
+        _isPld
+            ? 'Rekomendasi PLD Roguing ${_selectedRoguing.number} berhasil disimpan'
+            : 'Vegetative PSP audit berhasil disimpan',
+      );
       await Future.delayed(const Duration(milliseconds: 600));
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -689,8 +725,10 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     final theme = Theme.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content:
-            Text(msg, style: AdvantaText.body2.copyWith(color: Colors.white)),
+        content: Text(
+          msg,
+          style: AdvantaText.body2.copyWith(color: Colors.white),
+        ),
         backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -704,7 +742,7 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     final auditAsync = ref.watch(vegetativeAuditProvider(widget.fieldNumber));
     final fieldData =
         ref.watch(masterFieldDetailProvider(widget.fieldNumber)).value ??
-            const <String, dynamic>{};
+        const <String, dynamic>{};
 
     final resolvedCoord = _resolveFieldCoordinate(fieldData);
     if (resolvedCoord != null) {
@@ -733,15 +771,17 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
       ),
       body: auditAsync.when(
         loading: () => AdvantaLoadingState(
-            title: 'Memuat form audit',
-            subtitle: 'Mengambil data inspeksi',
-            accentColor: _kPspVeg,
-            icon: Icons.assignment_rounded),
+          title: 'Memuat form audit',
+          subtitle: 'Mengambil data inspeksi',
+          accentColor: _kPspVeg,
+          icon: Icons.assignment_rounded,
+        ),
         error: (e, _) => Center(
           child: Text(
             'Error: $e',
-            style: AdvantaText.body2
-                .copyWith(color: Theme.of(context).colorScheme.error),
+            style: AdvantaText.body2.copyWith(
+              color: Theme.of(context).colorScheme.error,
+            ),
           ),
         ),
         data: (audit) {
@@ -804,8 +844,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
             saveLabel: _isGuest
                 ? 'READ-ONLY - TIDAK DAPAT MENYIMPAN'
                 : (_isPld
-                    ? 'SIMPAN $activeSaveLabel - PLD'
-                    : 'SIMPAN $activeSaveLabel'),
+                      ? 'SIMPAN $activeSaveLabel - PLD'
+                      : 'SIMPAN $activeSaveLabel'),
             onSave: _isGuest
                 ? () => GuestGuard.blockIfGuest(context, _session)
                 : _saveAudit,
@@ -993,23 +1033,29 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   }
 
   Widget _buildCorrectionTaggingWidget(
-      Map<String, dynamic> fieldData, Color color) {
+    Map<String, dynamic> fieldData,
+    Color color,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final displayCoord = _existingCoordinate ?? '';
     final coordSourceLabel = _coordinateSourceLabel(_existingCoordinateSource);
     final parsed = _parseCoordinate(displayCoord);
     final hasCoord = displayCoord.isNotEmpty;
-    final isZeroCoord = parsed != null &&
+    final isZeroCoord =
+        parsed != null &&
         parsed.lat.abs() < 0.0001 &&
         parsed.lng.abs() < 0.0001;
 
     final kBlue = isDark ? const Color(0xFF4FC3F7) : const Color(0xFF0288D1);
-    final kBlueMuted =
-        isDark ? const Color(0xFF80CBC4) : const Color(0xFF26A69A);
-    final kDarkPanel =
-        isDark ? const Color(0xFF1A2E40) : const Color(0xFFF0F4F8);
-    final kDarkBorder =
-        isDark ? const Color(0xFF2A4A60) : const Color(0xFFB0BEC5);
+    final kBlueMuted = isDark
+        ? const Color(0xFF80CBC4)
+        : const Color(0xFF26A69A);
+    final kDarkPanel = isDark
+        ? const Color(0xFF1A2E40)
+        : const Color(0xFFF0F4F8);
+    final kDarkBorder = isDark
+        ? const Color(0xFF2A4A60)
+        : const Color(0xFFB0BEC5);
     const kManualColor = Color(0xFF4DB6AC);
     const kKmlColor = Color(0xFFFFB74D);
     const kMapColor = Color(0xFF9575CD);
@@ -1018,8 +1064,9 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     final fillColor = isDark
         ? AdvantaColors.deepForest.withAlpha(200)
         : AdvantaColors.softGrey;
-    final borderColor =
-        isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+    final borderColor = isDark
+        ? Colors.white.withAlpha(28)
+        : Colors.black.withAlpha(20);
 
     IconData sourceIcon = Icons.check_circle_outline;
     Color sourceColor = color;
@@ -1074,8 +1121,11 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                   color: panelAccent.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(Icons.edit_location_alt_rounded,
-                    color: panelAccent, size: 19),
+                child: Icon(
+                  Icons.edit_location_alt_rounded,
+                  color: panelAccent,
+                  size: 19,
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1089,8 +1139,10 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                     const SizedBox(height: 2),
                     Text(
                       'Koreksi titik koordinat lahan sebelum submit audit.',
-                      style: AdvantaText.caption
-                          .copyWith(color: subColor, height: 1.25),
+                      style: AdvantaText.caption.copyWith(
+                        color: subColor,
+                        height: 1.25,
+                      ),
                     ),
                   ],
                 ),
@@ -1100,8 +1152,9 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                 decoration: BoxDecoration(
                   color: panelAccent.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(999),
-                  border:
-                      Border.all(color: panelAccent.withValues(alpha: 0.28)),
+                  border: Border.all(
+                    color: panelAccent.withValues(alpha: 0.28),
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1170,7 +1223,9 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                       const Spacer(),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 2),
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: isZeroCoord
                               ? AdvantaColors.error.withValues(alpha: 0.15)
@@ -1180,8 +1235,9 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                         child: Text(
                           isZeroCoord ? 'Koordinat Nol' : coordSourceLabel,
                           style: TextStyle(
-                            color:
-                                isZeroCoord ? const Color(0xFFEF9A9A) : kBlue,
+                            color: isZeroCoord
+                                ? const Color(0xFFEF9A9A)
+                                : kBlue,
                             fontSize: 8.5,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1209,35 +1265,48 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                             width: 12,
                             height: 12,
                             child: CircularProgressIndicator(
-                                strokeWidth: 1.5, color: kBlue),
+                              strokeWidth: 1.5,
+                              color: kBlue,
+                            ),
                           ),
                           const SizedBox(width: 8),
-                          Text('Memuat detail lokasi...',
-                              style:
-                                  TextStyle(color: kBlueMuted, fontSize: 11)),
+                          Text(
+                            'Memuat detail lokasi...',
+                            style: TextStyle(color: kBlueMuted, fontSize: 11),
+                          ),
                         ],
                       )
                     else if (_existingGeoResult != null) ...[
-                      _geoRow(Icons.home_outlined, 'Desa',
-                          _existingGeoResult!['desa'],
-                          color: kBlueMuted),
+                      _geoRow(
+                        Icons.home_outlined,
+                        'Desa',
+                        _existingGeoResult!['desa'],
+                        color: kBlueMuted,
+                      ),
                       const SizedBox(height: 4),
-                      _geoRow(Icons.map_outlined, 'Kecamatan',
-                          _existingGeoResult!['kecamatan'],
-                          color: kBlueMuted),
+                      _geoRow(
+                        Icons.map_outlined,
+                        'Kecamatan',
+                        _existingGeoResult!['kecamatan'],
+                        color: kBlueMuted,
+                      ),
                       const SizedBox(height: 4),
-                      _geoRow(Icons.location_city_outlined, 'Kabupaten',
-                          _existingGeoResult!['kabupaten'],
-                          color: kBlueMuted),
+                      _geoRow(
+                        Icons.location_city_outlined,
+                        'Kabupaten',
+                        _existingGeoResult!['kabupaten'],
+                        color: kBlueMuted,
+                      ),
                     ],
                   ] else ...[
                     const SizedBox(height: 6),
                     Text(
                       'Koordinat mengarah ke titik 0,0. Gunakan tombol koreksi di bawah.',
                       style: TextStyle(
-                          color: const Color(0xFFEF9A9A),
-                          fontSize: 10,
-                          height: 1.4),
+                        color: const Color(0xFFEF9A9A),
+                        fontSize: 10,
+                        height: 1.4,
+                      ),
                     ),
                   ],
                 ],
@@ -1275,7 +1344,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                             : kDarkBorder,
                       ),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                     ),
                   ),
@@ -1289,8 +1359,9 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                         decoration: BoxDecoration(
                           color: color.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(10),
-                          border:
-                              Border.all(color: color.withValues(alpha: 0.40)),
+                          border: Border.all(
+                            color: color.withValues(alpha: 0.40),
+                          ),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -1299,11 +1370,15 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                               width: 14,
                               height: 14,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: color),
+                                strokeWidth: 2,
+                                color: color,
+                              ),
                             ),
                             const SizedBox(width: 8),
-                            Text('Mengambil GPS...',
-                                style: TextStyle(color: color, fontSize: 12)),
+                            Text(
+                              'Mengambil GPS...',
+                              style: TextStyle(color: color, fontSize: 12),
+                            ),
                           ],
                         ),
                       )
@@ -1312,8 +1387,10 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                             ? null
                             : _captureUserGps,
                         icon: const Icon(Icons.my_location_rounded, size: 15),
-                        label: const Text('Ambil GPS Saya',
-                            style: TextStyle(fontSize: 12)),
+                        label: const Text(
+                          'Ambil GPS Saya',
+                          style: TextStyle(fontSize: 12),
+                        ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: _corrTaggingSource == 'gps'
                               ? AdvantaColors.success
@@ -1324,7 +1401,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                                 : color.withValues(alpha: 0.60),
                           ),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                           padding: const EdgeInsets.symmetric(vertical: 10),
                         ),
                       ),
@@ -1338,8 +1416,10 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                 child: OutlinedButton.icon(
                   onPressed: _isGuest ? null : _importFromKml,
                   icon: const Icon(Icons.file_open_outlined, size: 15),
-                  label:
-                      const Text('Import KML', style: TextStyle(fontSize: 12)),
+                  label: const Text(
+                    'Import KML',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _corrTaggingSource == 'kml'
                         ? kKmlColor
@@ -1350,7 +1430,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                           : kKmlColor.withValues(alpha: 0.30),
                     ),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
@@ -1358,11 +1439,14 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed:
-                      _isGuest ? null : () => _openMapPinDialog(fieldData),
+                  onPressed: _isGuest
+                      ? null
+                      : () => _openMapPinDialog(fieldData),
                   icon: const Icon(Icons.pin_drop_outlined, size: 15),
-                  label: const Text('Geser Pin Peta',
-                      style: TextStyle(fontSize: 12)),
+                  label: const Text(
+                    'Geser Pin Peta',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _corrTaggingSource == 'map'
                         ? kMapColor
@@ -1373,7 +1457,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                           : kMapColor.withValues(alpha: 0.30),
                     ),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
@@ -1393,16 +1478,20 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.edit_location_alt_outlined,
-                        color: kManualColor, size: 13),
+                    Icon(
+                      Icons.edit_location_alt_outlined,
+                      color: kManualColor,
+                      size: 13,
+                    ),
                     SizedBox(width: 6),
                     Text(
                       'INPUT MANUAL KOORDINAT',
                       style: TextStyle(
-                          color: kManualColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.5),
+                        color: kManualColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ],
                 ),
@@ -1413,10 +1502,15 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                       child: TextField(
                         controller: _manualLatCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true, signed: true),
+                          decimal: true,
+                          signed: true,
+                        ),
                         style: AdvantaText.body2.copyWith(color: textColor),
-                        decoration:
-                            _manualCoordDecor(context, 'Latitude', '-7.123456'),
+                        decoration: _manualCoordDecor(
+                          context,
+                          'Latitude',
+                          '-7.123456',
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -1424,10 +1518,15 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                       child: TextField(
                         controller: _manualLngCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true, signed: true),
+                          decimal: true,
+                          signed: true,
+                        ),
                         style: AdvantaText.body2.copyWith(color: textColor),
                         decoration: _manualCoordDecor(
-                            context, 'Longitude', '110.123456'),
+                          context,
+                          'Longitude',
+                          '110.123456',
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -1440,13 +1539,17 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                           foregroundColor: kManualColor,
                           elevation: 0,
                           side: BorderSide(
-                              color: kManualColor.withValues(alpha: 0.50)),
+                            color: kManualColor.withValues(alpha: 0.50),
+                          ),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                         ),
-                        child: const Text('Terapkan',
-                            style: TextStyle(fontSize: 12)),
+                        child: const Text(
+                          'Terapkan',
+                          style: TextStyle(fontSize: 12),
+                        ),
                       ),
                     ),
                   ],
@@ -1504,16 +1607,26 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
                   ),
                   if (_newGeoResult != null) ...[
                     const SizedBox(height: 8),
-                    _geoRow(Icons.home_outlined, 'Desa', _newGeoResult!['desa'],
-                        color: sourceColor.withValues(alpha: 0.90)),
+                    _geoRow(
+                      Icons.home_outlined,
+                      'Desa',
+                      _newGeoResult!['desa'],
+                      color: sourceColor.withValues(alpha: 0.90),
+                    ),
                     const SizedBox(height: 3),
-                    _geoRow(Icons.map_outlined, 'Kecamatan',
-                        _newGeoResult!['kecamatan'],
-                        color: sourceColor.withValues(alpha: 0.90)),
+                    _geoRow(
+                      Icons.map_outlined,
+                      'Kecamatan',
+                      _newGeoResult!['kecamatan'],
+                      color: sourceColor.withValues(alpha: 0.90),
+                    ),
                     const SizedBox(height: 3),
-                    _geoRow(Icons.location_city_outlined, 'Kabupaten',
-                        _newGeoResult!['kabupaten'],
-                        color: sourceColor.withValues(alpha: 0.90)),
+                    _geoRow(
+                      Icons.location_city_outlined,
+                      'Kabupaten',
+                      _newGeoResult!['kabupaten'],
+                      color: sourceColor.withValues(alpha: 0.90),
+                    ),
                   ],
                 ],
               ),
@@ -1528,14 +1641,19 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline,
-                      color: subColor.withValues(alpha: 0.50), size: 14),
+                  Icon(
+                    Icons.info_outline,
+                    color: subColor.withValues(alpha: 0.50),
+                    size: 14,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Pilih salah satu opsi di atas untuk mengisi koreksi koordinat.',
-                      style: AdvantaText.caption
-                          .copyWith(color: subColor, height: 1.4),
+                      style: AdvantaText.caption.copyWith(
+                        color: subColor,
+                        height: 1.4,
+                      ),
                     ),
                   ),
                 ],
@@ -1548,20 +1666,26 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
   }
 
   InputDecoration _manualCoordDecor(
-      BuildContext context, String label, String hint) {
+    BuildContext context,
+    String label,
+    String hint,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final subColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
     final fillColor = isDark
         ? AdvantaColors.deepForest.withAlpha(200)
         : AdvantaColors.softGrey;
-    final borderColor =
-        isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+    final borderColor = isDark
+        ? Colors.white.withAlpha(28)
+        : Colors.black.withAlpha(20);
     return InputDecoration(
       labelText: label,
       hintText: hint,
       labelStyle: TextStyle(color: subColor, fontSize: 11),
-      hintStyle:
-          TextStyle(color: subColor.withValues(alpha: 0.40), fontSize: 11),
+      hintStyle: TextStyle(
+        color: subColor.withValues(alpha: 0.40),
+        fontSize: 11,
+      ),
       filled: true,
       fillColor: fillColor,
       isDense: true,
@@ -1577,20 +1701,28 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
     );
   }
 
-  Widget _geoRow(IconData icon, String label, String? value,
-      {Color color = const Color(0xFF80CBC4)}) {
+  Widget _geoRow(
+    IconData icon,
+    String label,
+    String? value, {
+    Color color = const Color(0xFF80CBC4),
+  }) {
     return Row(
       children: [
         Icon(icon, size: 11, color: color.withValues(alpha: 0.70)),
         const SizedBox(width: 5),
-        Text('$label: ',
-            style:
-                TextStyle(color: color.withValues(alpha: 0.70), fontSize: 11)),
+        Text(
+          '$label: ',
+          style: TextStyle(color: color.withValues(alpha: 0.70), fontSize: 11),
+        ),
         Expanded(
           child: Text(
             value?.isNotEmpty == true ? value! : '-',
             style: TextStyle(
-                color: color, fontSize: 11, fontWeight: FontWeight.w600),
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -1693,7 +1825,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Isolation Type',
-                required: _requiresFullAudit &&
+                required:
+                    _requiresFullAudit &&
                     pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: pspIsolationTypeOpts,
                 value: roguing.isolationType,
@@ -1705,7 +1838,8 @@ class _FormVegetativePSPState extends ConsumerState<FormVegetativePSP> {
             Expanded(
               child: PspOptionPicker(
                 label: 'Isolation Distance',
-                required: _requiresFullAudit &&
+                required:
+                    _requiresFullAudit &&
                     pspValueIn(roguing.isolationAudit, const ['YES']),
                 options: pspIsolationDistanceOpts,
                 value: roguing.isolationDistance,
@@ -1773,8 +1907,11 @@ class _MapPinDialogState extends State<_MapPinDialog> {
               padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
               child: Row(
                 children: [
-                  const Icon(Icons.pin_drop_outlined,
-                      color: Color(0xFF9575CD), size: 16),
+                  const Icon(
+                    Icons.pin_drop_outlined,
+                    color: Color(0xFF9575CD),
+                    size: 16,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1794,26 +1931,33 @@ class _MapPinDialogState extends State<_MapPinDialog> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF9575CD).withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                      color: const Color(0xFF9575CD).withValues(alpha: 0.30)),
+                    color: const Color(0xFF9575CD).withValues(alpha: 0.30),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.touch_app_outlined,
-                        color: Color(0xFF9575CD), size: 13),
+                    const Icon(
+                      Icons.touch_app_outlined,
+                      color: Color(0xFF9575CD),
+                      size: 13,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         '${_pinPosition.latitude.toStringAsFixed(6)},  ${_pinPosition.longitude.toStringAsFixed(6)}',
                         style: const TextStyle(
-                            color: Color(0xFFCE93D8),
-                            fontSize: 11,
-                            fontFamily: 'monospace'),
+                          color: Color(0xFFCE93D8),
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                        ),
                       ),
                     ),
                   ],
@@ -1822,8 +1966,9 @@ class _MapPinDialogState extends State<_MapPinDialog> {
             ),
             Expanded(
               child: ClipRRect(
-                borderRadius:
-                    const BorderRadius.vertical(bottom: Radius.circular(16)),
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(16),
+                ),
                 child: Stack(
                   children: [
                     FlutterMap(
@@ -1846,8 +1991,11 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                               point: _pinPosition,
                               width: 40,
                               height: 50,
-                              child: const Icon(Icons.location_pin,
-                                  color: Color(0xFF9575CD), size: 38),
+                              child: const Icon(
+                                Icons.location_pin,
+                                color: Color(0xFF9575CD),
+                                size: 38,
+                              ),
                             ),
                           ],
                         ),
@@ -1894,15 +2042,19 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                         bottom: 52,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.48),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Text(
                             'Esri World Imagery',
-                            style:
-                                TextStyle(color: Colors.white70, fontSize: 9),
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 9,
+                            ),
                           ),
                         ),
                       ),
@@ -1913,15 +2065,19 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                       child: Center(
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.55),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: const Text(
                             'Ketuk peta untuk memindahkan pin',
-                            style:
-                                TextStyle(color: Colors.white70, fontSize: 11),
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                            ),
                           ),
                         ),
                       ),
@@ -1943,7 +2099,8 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ),
@@ -1985,11 +2142,13 @@ class _MapLayerButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon,
-                color: selected
-                    ? const Color(0xFF7E57C2)
-                    : AdvantaColors.mutedGrey,
-                size: 14),
+            Icon(
+              icon,
+              color: selected
+                  ? const Color(0xFF7E57C2)
+                  : AdvantaColors.mutedGrey,
+              size: 14,
+            ),
             const SizedBox(width: 4),
             Text(
               label,
@@ -2034,8 +2193,8 @@ class _PspRoguingDraft {
     cropUniformity = audit?['crop_uniformity_roguing_$number']?.toString();
     isolationAudit = audit?['isolation_audit_roguing_$number']?.toString();
     isolationType = audit?['isolation_type_roguing_$number']?.toString();
-    isolationDistance =
-        audit?['isolation_distance_roguing_$number']?.toString();
+    isolationDistance = audit?['isolation_distance_roguing_$number']
+        ?.toString();
   }
 
   Map<String, dynamic> toPayload() {
