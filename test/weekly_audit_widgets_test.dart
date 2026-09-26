@@ -378,6 +378,26 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('planning uses the shared branded loading state', (tester) async {
+    final loading = Completer<List<AuditPlanField>>();
+    await tester.pumpWidget(ProviderScope(
+        overrides: [
+          auditPlanningRegionsProvider.overrideWith((ref) async => ['East']),
+          auditPlanningProvider.overrideWith((ref, params) => loading.future),
+        ],
+        child: MaterialApp(
+            home: AuditPlanningScreen(initialWeek: fixtures.week))));
+    await tester.pump();
+
+    expect(find.text('Memuat planning audit'), findsOneWidget);
+    expect(find.text('Menghitung target DAP dan status audit'), findsOneWidget);
+
+    loading.complete([]);
+    await tester.pumpAndSettle();
+    expect(find.text('Memuat planning audit'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('planning day projection uses the full eligible DAP window',
       (tester) async {
     tester.view.physicalSize = const Size(360, 844);

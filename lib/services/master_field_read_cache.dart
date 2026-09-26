@@ -15,11 +15,12 @@ class MasterFieldReadCacheEntry {
   });
 }
 
-/// Persistent, per-account read-through snapshot for the two largest payloads.
+/// Persistent, per-account read-through snapshot for expensive field payloads.
 ///
 /// Redis remains the shared server cache. This snapshot only prevents an
-/// unchanged Map/Coverage payload from being downloaded again on every app
-/// start. The Edge Function validates [version] before this data is returned.
+/// unchanged Map/Coverage/Planning payload from being downloaded again on
+/// every app start. The Edge Function validates [version] before this data is
+/// returned.
 class MasterFieldReadCache {
   MasterFieldReadCache._();
 

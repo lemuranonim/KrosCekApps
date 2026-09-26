@@ -4,10 +4,12 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const CACHE_NAMESPACE = "master_fields_map";
 const MAP_CACHE_TTL_SECONDS = 21_600;
 const COVERAGE_CACHE_TTL_SECONDS = 7_200;
+const PLANNING_INDEX_CACHE_TTL_SECONDS = 14_400;
 // Keep the combined first-load budget around 2.5 MB/user/day. Repeated app
 // starts use knownVersion and do not touch Redis at all.
 const MAP_MAX_CACHE_VALUE_BYTES = 1_000_000;
 const COVERAGE_MAX_CACHE_VALUE_BYTES = 1_500_000;
+const PLANNING_INDEX_MAX_CACHE_VALUE_BYTES = 750_000;
 const CACHE_BUILD_LOCK_SECONDS = 60;
 const CACHE_BUILD_WAIT_MS = [250, 500, 750, 1000, 1500];
 // Conservative guard based on the smaller public Free Tier allowance, even
@@ -252,6 +254,40 @@ const COVERAGE_SELECT = `
     crop_uniformity,
     crop_health
   )
+`;
+
+// Week-independent eligibility index for Audit Planning. The client computes
+// the selected week's targets from this compact payload, then fetches complete
+// rows only for eligible field numbers.
+const PLANNING_INDEX_SELECT = `
+  field_number,
+  hybrid,
+  planting_date_pdn,
+  region,
+  district_kab,
+  sub_district_kec,
+  qa_fi,
+  qa_spv,
+  audit_vegetative(
+    rev_planting_date,
+    date_of_audit,
+    audit_date_user,
+    date_of_inspeksi_roguing_1,
+    date_of_inspeksi_roguing_2,
+    date_of_inspeksi_roguing_3,
+    date_of_inspeksi_roguing_4
+  ),
+  audit_generative(
+    date_of_audit_1,
+    date_of_audit_2,
+    date_of_audit_3,
+    date_of_audit_4,
+    date_of_audit_5,
+    date_of_inspeksi_roguing_5,
+    date_of_inspeksi_roguing_6
+  ),
+  audit_pre_harvest(audit_date),
+  audit_harvest(date_of_audit)
 `;
 
 type JsonMap = Record<string, unknown>;
@@ -550,18 +586,34 @@ Deno.serve(async (req) => {
   }
 
   const dataset = input.dataset == null ? "map" : input.dataset;
-  if (dataset !== "map" && dataset !== "coverage") {
-    return jsonResponse({ error: "dataset must be map or coverage" }, 400);
+  if (
+    dataset !== "map" &&
+    dataset !== "coverage" &&
+    dataset !== "planning_index"
+  ) {
+    return jsonResponse({
+      error: "dataset must be map, coverage, or planning_index",
+    }, 400);
   }
   const cacheNamespace = dataset === "coverage"
     ? "master_fields_coverage"
+    : dataset === "planning_index"
+    ? "master_fields_planning_index"
     : CACHE_NAMESPACE;
-  const selectColumns = dataset === "coverage" ? COVERAGE_SELECT : MAP_SELECT;
+  const selectColumns = dataset === "coverage"
+    ? COVERAGE_SELECT
+    : dataset === "planning_index"
+    ? PLANNING_INDEX_SELECT
+    : MAP_SELECT;
   const cacheTtlSeconds = dataset === "coverage"
     ? COVERAGE_CACHE_TTL_SECONDS
+    : dataset === "planning_index"
+    ? PLANNING_INDEX_CACHE_TTL_SECONDS
     : MAP_CACHE_TTL_SECONDS;
   const maxCacheValueBytes = dataset === "coverage"
     ? COVERAGE_MAX_CACHE_VALUE_BYTES
+    : dataset === "planning_index"
+    ? PLANNING_INDEX_MAX_CACHE_VALUE_BYTES
     : MAP_MAX_CACHE_VALUE_BYTES;
 
   let knownVersion: number | null;
@@ -817,7 +869,7 @@ Deno.serve(async (req) => {
       },
     });
   } catch (error) {
-    console.error("Map query failed:", error instanceof Error ? error.message : error);
-    return jsonResponse({ error: "Unable to load map fields" }, 500);
+    console.error("Field cache query failed:", error instanceof Error ? error.message : error);
+    return jsonResponse({ error: `Unable to load ${dataset} fields` }, 500);
   }
 });

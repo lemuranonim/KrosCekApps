@@ -894,7 +894,85 @@ class SupabaseService {
     String? region,
     String? district,
     String? season,
+    bool bypassCache = false,
   }) async {
+    final userId = _supabase.auth.currentUser?.id;
+    final hasCacheScope = [
+      qaFi,
+      qaSpv,
+      season,
+      region,
+      district,
+    ].any((value) => value?.trim().isNotEmpty == true);
+    if (_mapCacheEnabled && userId != null && hasCacheScope) {
+      final localSnapshot = !bypassCache
+          ? await MasterFieldReadCache.read(
+              userId: userId,
+              dataset: 'planning_index',
+              season: season,
+              region: region,
+              district: district,
+            )
+          : null;
+      try {
+        final response = await _supabase.functions
+            .invoke(
+              'master-fields-map-cache',
+              body: {
+                'dataset': 'planning_index',
+                'season': season,
+                'region': region,
+                'district': district,
+                'bypassCache': bypassCache,
+                if (localSnapshot != null)
+                  'knownVersion': localSnapshot.version,
+              },
+            )
+            .timeout(_auditPlanningTimeout);
+        final body = response.data;
+        if (body is Map) {
+          if (body['notModified'] == true && localSnapshot != null) {
+            debugPrint(
+              'Planning cache status: local_not_modified '
+              '(v${localSnapshot.version})',
+            );
+            return localSnapshot.rows;
+          }
+          final data = body['data'];
+          if (data is List) {
+            final cache = body['cache'];
+            int? cacheVersion;
+            if (cache is Map) {
+              debugPrint('Planning cache status: ${cache['status']}');
+              final rawVersion = cache['version'];
+              if (rawVersion is num) cacheVersion = rawVersion.toInt();
+            }
+            final result = data
+                .whereType<Map>()
+                .map((row) => Map<String, dynamic>.from(row))
+                .toList(growable: false);
+            if (cacheVersion != null) {
+              unawaited(
+                MasterFieldReadCache.write(
+                  userId: userId,
+                  dataset: 'planning_index',
+                  version: cacheVersion,
+                  rows: result,
+                  season: season,
+                  region: region,
+                  district: district,
+                ),
+              );
+            }
+            return result;
+          }
+        }
+        throw const FormatException('Invalid planning cache response');
+      } catch (cacheError) {
+        debugPrint('Planning cache unavailable; using Supabase: $cacheError');
+      }
+    }
+
     final rows = <Map<String, dynamic>>[];
     const pageSize = 1000;
     const parallelPages = 3;
