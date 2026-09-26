@@ -53,6 +53,7 @@ assets/config.json
 /supabase/migrations/*
 !/supabase/migrations/20260924*.sql
 !/supabase/migrations/20260925*.sql
+!/supabase/migrations/20260926*.sql
 .vscode/
 /local commit/
 

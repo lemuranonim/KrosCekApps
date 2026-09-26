@@ -8,8 +8,11 @@ The default `table` mode reads the three paginated Planting JSON endpoints,
 merges `Geometry WKT` from authenticated background export workbooks, and then
 overlays final PLD/Area Adjustment rows (`status=3`). WKT and reconciliation
 are processed in resumable 2,000-row batches, so the large FC workbook is never
-applied in one Edge invocation. Pending/process PLD recommendations are never
-applied. The approved PLD mapping is:
+applied in one Edge invocation. FC WKT is exported in monthly shards while the
+smaller PS and SC exports remain full-range. Within each shard, the reader skips
+rows before the saved cursor without decoding them and resolves shared strings
+only for Field Number and Geometry WKT. Pending/process PLD recommendations are
+never applied. The approved PLD mapping is:
 
 - planted area: column 12
 - effective area: column 13
@@ -172,7 +175,9 @@ ACT background-export queue time and the large FC WKT workbook. It stops
 dispatching as soon as the run is terminal, prevents duplicate runs for the
 same source date, and uses the encrypted Vault secret
 `act_sync_service_role_key`. The former local Codex automation is paused and is
-not required for production.
+not required for production. Every successful batch advances `progress_at`; a
+server-side watchdog marks an active run `FAILED` after 60 minutes without a
+checkpoint, so a forced Edge shutdown cannot leave KC showing an endless sync.
 
 Cron job `act-master-fields-sync-cleanup` runs at 02:30 WIB. Raw staged rows are
 kept for three days and reconciliation rows for seven days; run summaries and

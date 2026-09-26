@@ -10,7 +10,7 @@ import {
   type ParsedSourceRow,
   type SourceType,
 } from "./sync-core.ts";
-import { iterateFirstSheetRows } from "./xlsx-stream.ts";
+import { iterateFirstSheetRows, readFirstSheetRowsChunk } from "./xlsx-stream.ts";
 
 const ACT_ORIGIN = (Deno.env.get("ACT_SYNC_ORIGIN") ?? "https://act.advantaseeds.com")
   .replace(/\/$/, "");
@@ -53,6 +53,69 @@ const PLANTING_TABLE_ROUTE: Record<SourceType, string> = {
   PS: "planting/Planting_ps/table",
   SC: "planting/Planting_sc/table",
 };
+
+const WKT_SHARD_STRATEGY_VERSION = 2;
+
+function buildWktDateShards(
+  sourceType: SourceType,
+  from: string,
+  to: string,
+): Array<Record<string, unknown>> {
+  if (sourceType !== "FC") {
+    return [{
+      from,
+      to,
+      job_id: null,
+      row_cursor: 0,
+      processed_rows: 0,
+      geometry_rows: 0,
+      matched_rows: 0,
+      complete: false,
+    }];
+  }
+
+  const rangeEnd = new Date(`${to}T00:00:00Z`);
+  let cursor = new Date(`${from}T00:00:00Z`);
+  const shards: Array<Record<string, unknown>> = [];
+  while (cursor <= rangeEnd) {
+    const monthEnd = new Date(Date.UTC(
+      cursor.getUTCFullYear(),
+      cursor.getUTCMonth() + 1,
+      0,
+    ));
+    const shardEnd = monthEnd < rangeEnd ? monthEnd : rangeEnd;
+    shards.push({
+      from: cursor.toISOString().slice(0, 10),
+      to: shardEnd.toISOString().slice(0, 10),
+      job_id: null,
+      row_cursor: 0,
+      processed_rows: 0,
+      geometry_rows: 0,
+      matched_rows: 0,
+      complete: false,
+    });
+    cursor = new Date(shardEnd);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return shards;
+}
+
+function createWktSourceState(
+  sourceType: SourceType,
+  from: string,
+  to: string,
+): Record<string, unknown> {
+  return {
+    strategy: sourceType === "FC" ? "monthly" : "full_range",
+    shards: buildWktDateShards(sourceType, from, to),
+    shard_index: 0,
+    row_cursor: 0,
+    processed_rows: 0,
+    geometry_rows: 0,
+    matched_rows: 0,
+    complete: false,
+  };
+}
 
 const MASTER_FIELDS_SELECT = [
   "field_number",
@@ -391,6 +454,7 @@ class ActClient {
   async downloadBackgroundExport(
     sourceType: SourceType,
     job: ExportJob,
+    knownFileHash?: string,
   ): Promise<ExportArtifact> {
     const fileUrl = await this.readExportFileUrl(job.id);
     const bytes = await this.downloadFile(fileUrl);
@@ -399,7 +463,7 @@ class ActClient {
       exportKind: EXPORT_KIND[sourceType],
       bytes,
       fileUrl,
-      fileHash: await sha256Bytes(bytes),
+      fileHash: knownFileHash || await sha256Bytes(bytes),
     };
   }
 
@@ -752,12 +816,9 @@ async function mergeGeometryArtifactChunk(
     throw new Error(`ACT ${artifact.sourceType} WKT export must be an XLSX workbook`);
   }
 
-  let headers: Map<number, string> | null = null;
-  let seenRows = 0;
   let processedRows = 0;
   let geometryRows = 0;
   let matchedRows = 0;
-  let complete = true;
   let mergeBatch: Array<{ field_number_norm: string; geometry_wkt: string }> = [];
 
   const flush = async (): Promise<void> => {
@@ -772,41 +833,42 @@ async function mergeGeometryArtifactChunk(
     mergeBatch = [];
   };
 
-  for await (const row of iterateFirstSheetRows(artifact.bytes)) {
-    if (!headers) {
-      const hasFieldNumber = [...row.values.values()].some((value) => {
-        const header = normalizeHeader(value);
-        return header === "field number" || header === "field no" || header === "fn";
-      });
-      if (row.rowNumber <= 25 && hasFieldNumber) {
-        headers = new Map(
-          [...row.values.entries()].map(([column, value]) => [
-            column,
-            String(value ?? `column_${column + 1}`).trim(),
-          ]),
-        );
-      }
-      continue;
-    }
+  const fieldNumberHeaders = new Set([
+    "field number",
+    "field number fn",
+    "field no",
+    "fieldnumber",
+    "fn",
+    "fn field number",
+    "nomor fn",
+    "planting nomor",
+  ]);
+  const geometryHeaders = new Set([
+    "geometry wkt",
+    "geometry",
+    "planting geo",
+  ]);
+  const chunk = await readFirstSheetRowsChunk(
+    artifact.bytes,
+    cursor,
+    maxRows,
+    (values) => [...values.values()].some((value) => fieldNumberHeaders.has(normalizeHeader(value))),
+    (value) => {
+      const header = normalizeHeader(value);
+      return fieldNumberHeaders.has(header) || geometryHeaders.has(header);
+    },
+  );
+  if (![...chunk.headers.values()].some((value) => geometryHeaders.has(normalizeHeader(value)))) {
+    throw new Error(`ACT ${artifact.sourceType} workbook has no Geometry WKT header`);
+  }
 
+  for (const row of chunk.rows) {
     const raw: Record<string, unknown> = {};
-    let hasValue = false;
-    for (const [column, header] of headers) {
+    for (const [column, header] of chunk.headers) {
       const value = row.values.get(column) ?? null;
       raw[header] = value;
-      if (value !== null && String(value).trim() !== "") hasValue = true;
-    }
-    if (!hasValue) continue;
-    if (seenRows < cursor) {
-      seenRows++;
-      continue;
-    }
-    if (processedRows >= maxRows) {
-      complete = false;
-      break;
     }
 
-    seenRows++;
     processedRows++;
     const mapped = mapExportRow(raw, artifact.sourceType, row.rowNumber);
     const geometryWkt = String(mapped.sourcePayload.geometry_wkt ?? "").trim();
@@ -824,14 +886,13 @@ async function mergeGeometryArtifactChunk(
     if (mergeBatch.length >= 250) await flush();
   }
 
-  if (!headers) throw new Error(`ACT ${artifact.sourceType} workbook has no Field Number header`);
   await flush();
   return {
     processedRows,
-    nextCursor: cursor + processedRows,
+    nextCursor: chunk.nextCursor,
     geometryRows,
     matchedRows,
-    complete,
+    complete: chunk.complete,
   };
 }
 
@@ -929,6 +990,7 @@ async function finalizeStagedRun(
       source_counts: sourceCounts,
       source_meta: sourceMeta,
       summary,
+      progress_at: new Date().toISOString(),
       completed_at: input.apply && !blocked ? null : new Date().toISOString(),
     })
     .eq("id", runId);
@@ -1348,41 +1410,35 @@ Deno.serve(async (req) => {
         if (!source) {
           const wktState = recordValue(sourceMeta.wkt_state);
           if (input.includeWkt && wktState.complete !== true) {
-            if (!wktState.queued_at) {
-              const act = new ActClient();
-              await act.login(actUsername, actPassword);
-              const existingJobs = await act.listExportJobs();
+            if (Number(wktState.strategy_version ?? 0) !== WKT_SHARD_STRATEGY_VERSION) {
               const wktSources = Object.fromEntries(
                 input.sources.map((candidate) => [
                   candidate,
-                  {
-                    job_id: null,
-                    row_cursor: 0,
-                    processed_rows: 0,
-                    geometry_rows: 0,
-                    matched_rows: 0,
-                    complete: false,
-                  },
+                  createWktSourceState(candidate, input.from, input.to),
                 ]),
               );
-              for (const candidate of input.sources) {
-                await act.startBackgroundExport(candidate, input.from, input.to);
-              }
               sourceMeta.wkt_state = {
-                queued_at: new Date().toISOString(),
-                existing_job_ids: existingJobs.map((job) => job.id),
+                strategy_version: WKT_SHARD_STRATEGY_VERSION,
+                initialized_at: new Date().toISOString(),
+                migrated_from_unsharded: Object.keys(wktState).length > 0,
                 sources: wktSources,
                 complete: false,
               };
-              const { error: queueError } = await service
+              const { error: initializeError } = await service
                 .from("act_sync_runs")
-                .update({ status: "EXTRACTING", source_meta: sourceMeta })
+                .update({
+                  status: "EXTRACTING",
+                  source_meta: sourceMeta,
+                  progress_at: new Date().toISOString(),
+                })
                 .eq("id", activeRunId);
-              if (queueError) throw new Error(`Cannot queue ACT WKT exports: ${queueError.message}`);
+              if (initializeError) {
+                throw new Error(`Cannot initialize ACT WKT shards: ${initializeError.message}`);
+              }
               return jsonResponse({
                 run_id: activeRunId,
                 status: "EXTRACTING",
-                staged_source: "WKT_EXPORTS",
+                staged_source: "WKT_SHARDS",
                 pending_sources: input.sources,
               }, 202);
             }
@@ -1393,19 +1449,137 @@ Deno.serve(async (req) => {
             );
             if (wktSource) {
               const sourceState = recordValue(wktSources[wktSource]);
+              const shards = Array.isArray(sourceState.shards)
+                ? sourceState.shards.map(recordValue)
+                : buildWktDateShards(wktSource, input.from, input.to);
+              const shardIndex = shards.findIndex((candidate) => candidate.complete !== true);
+              if (shardIndex < 0) {
+                wktSources[wktSource] = { ...sourceState, complete: true };
+                wktState.sources = wktSources;
+                sourceMeta.wkt_state = wktState;
+                const { error: sourceCompleteError } = await service
+                  .from("act_sync_runs")
+                  .update({
+                    status: "EXTRACTING",
+                    source_meta: sourceMeta,
+                    progress_at: new Date().toISOString(),
+                  })
+                  .eq("id", activeRunId);
+                if (sourceCompleteError) {
+                  throw new Error(`Cannot complete ACT WKT source: ${sourceCompleteError.message}`);
+                }
+                return jsonResponse({
+                  run_id: activeRunId,
+                  status: "EXTRACTING",
+                  staged_source: `${wktSource}_WKT`,
+                  source_complete: true,
+                }, 202);
+              }
+
+              const shard = shards[shardIndex];
               const act = new ActClient();
               await act.login(actUsername, actPassword);
-              let jobId = String(sourceState.job_id ?? "");
+              const unqueuedShardIndexes = wktSource === "FC"
+                ? shards
+                  .map((candidate, index) => candidate.queued_at ? -1 : index)
+                  .filter((index) => index >= 0)
+                : [];
+              if (unqueuedShardIndexes.length > 1) {
+                const existingJobs = await act.listExportJobs();
+                const queuedAt = new Date().toISOString();
+                const existingJobIds = existingJobs.map((job) => job.id);
+                for (const index of unqueuedShardIndexes) {
+                  const pendingShard = shards[index];
+                  await act.startBackgroundExport(
+                    wktSource,
+                    String(pendingShard.from),
+                    String(pendingShard.to),
+                  );
+                  shards[index] = {
+                    ...pendingShard,
+                    queued_at: queuedAt,
+                    existing_job_ids: existingJobIds,
+                  };
+                }
+                wktSources[wktSource] = {
+                  ...sourceState,
+                  shards,
+                  shard_index: shardIndex,
+                  updated_at: queuedAt,
+                };
+                wktState.sources = wktSources;
+                sourceMeta.wkt_state = wktState;
+                const { error: shardBatchQueueError } = await service
+                  .from("act_sync_runs")
+                  .update({
+                    status: "EXTRACTING",
+                    source_meta: sourceMeta,
+                    progress_at: queuedAt,
+                  })
+                  .eq("id", activeRunId);
+                if (shardBatchQueueError) {
+                  throw new Error(
+                    `Cannot queue ACT WKT shard batch: ${shardBatchQueueError.message}`,
+                  );
+                }
+                return jsonResponse({
+                  run_id: activeRunId,
+                  status: "EXTRACTING",
+                  staged_source: `${wktSource}_WKT_EXPORTS`,
+                  queued_shards: unqueuedShardIndexes.length,
+                }, 202);
+              }
+
+              let jobId = String(shard.job_id ?? "");
+              if (!shard.queued_at) {
+                const existingJobs = await act.listExportJobs();
+                await act.startBackgroundExport(
+                  wktSource,
+                  String(shard.from),
+                  String(shard.to),
+                );
+                shards[shardIndex] = {
+                  ...shard,
+                  queued_at: new Date().toISOString(),
+                  existing_job_ids: existingJobs.map((job) => job.id),
+                };
+                wktSources[wktSource] = {
+                  ...sourceState,
+                  shards,
+                  shard_index: shardIndex,
+                  updated_at: new Date().toISOString(),
+                };
+                wktState.sources = wktSources;
+                sourceMeta.wkt_state = wktState;
+                const { error: shardQueueError } = await service
+                  .from("act_sync_runs")
+                  .update({
+                    status: "EXTRACTING",
+                    source_meta: sourceMeta,
+                    progress_at: new Date().toISOString(),
+                  })
+                  .eq("id", activeRunId);
+                if (shardQueueError) {
+                  throw new Error(`Cannot queue ACT WKT shard: ${shardQueueError.message}`);
+                }
+                return jsonResponse({
+                  run_id: activeRunId,
+                  status: "EXTRACTING",
+                  staged_source: `${wktSource}_WKT_EXPORT`,
+                  shard: { index: shardIndex, from: shard.from, to: shard.to },
+                }, 202);
+              }
+
               if (!jobId) {
                 const existingIds = new Set(
-                  Array.isArray(wktState.existing_job_ids)
-                    ? wktState.existing_job_ids.map(String)
+                  Array.isArray(shard.existing_job_ids)
+                    ? shard.existing_job_ids.map(String)
                     : [],
                 );
                 const lookup = await act.findBackgroundJobs(
                   [wktSource],
-                  input.from,
-                  input.to,
+                  String(shard.from),
+                  String(shard.to),
                   existingIds,
                 );
                 const readyJob = lookup.ready[wktSource];
@@ -1415,6 +1589,7 @@ Deno.serve(async (req) => {
                     status: "EXTRACTING",
                     staged_source: "WKT_EXPORTS",
                     pending_sources: [wktSource],
+                    shard: { index: shardIndex, from: shard.from, to: shard.to },
                     observed_jobs: lookup.observed,
                   }, 202);
                 }
@@ -1424,12 +1599,12 @@ Deno.serve(async (req) => {
               const artifact = await act.downloadBackgroundExport(wktSource, {
                 id: jobId,
                 kind: EXPORT_KIND[wktSource],
-                from: input.from,
-                to: input.to,
+                from: String(shard.from),
+                to: String(shard.to),
                 status: "success",
                 createdAt: "",
-              });
-              const cursor = Number(sourceState.row_cursor ?? 0);
+              }, String(shard.file_hash ?? "") || undefined);
+              const cursor = Number(shard.row_cursor ?? 0);
               const chunkRows = Math.max(250, Number(syncConfig.wkt_chunk_rows ?? 2_000));
               const merged = await mergeGeometryArtifactChunk(
                 service,
@@ -1438,14 +1613,41 @@ Deno.serve(async (req) => {
                 cursor,
                 chunkRows,
               );
-              wktSources[wktSource] = {
+              shards[shardIndex] = {
+                ...shard,
                 job_id: jobId,
                 file_hash: artifact.fileHash,
                 row_cursor: merged.nextCursor,
-                processed_rows: Number(sourceState.processed_rows ?? 0) + merged.processedRows,
-                geometry_rows: Number(sourceState.geometry_rows ?? 0) + merged.geometryRows,
-                matched_rows: Number(sourceState.matched_rows ?? 0) + merged.matchedRows,
+                processed_rows: Number(shard.processed_rows ?? 0) + merged.processedRows,
+                geometry_rows: Number(shard.geometry_rows ?? 0) + merged.geometryRows,
+                matched_rows: Number(shard.matched_rows ?? 0) + merged.matchedRows,
                 complete: merged.complete,
+                updated_at: new Date().toISOString(),
+              };
+              const processedRows = shards.reduce(
+                (total, candidate) => total + Number(candidate.processed_rows ?? 0),
+                0,
+              );
+              const geometryRows = shards.reduce(
+                (total, candidate) => total + Number(candidate.geometry_rows ?? 0),
+                0,
+              );
+              const matchedRows = shards.reduce(
+                (total, candidate) => total + Number(candidate.matched_rows ?? 0),
+                0,
+              );
+              const sourceComplete = shards.every((candidate) => candidate.complete === true);
+              const nextShardIndex = shards.findIndex((candidate) => candidate.complete !== true);
+              wktSources[wktSource] = {
+                ...sourceState,
+                shards,
+                shard_index: nextShardIndex < 0 ? shards.length : nextShardIndex,
+                job_id: jobId,
+                row_cursor: processedRows,
+                processed_rows: processedRows,
+                geometry_rows: geometryRows,
+                matched_rows: matchedRows,
+                complete: sourceComplete,
                 updated_at: new Date().toISOString(),
               };
               wktState.sources = wktSources;
@@ -1455,7 +1657,11 @@ Deno.serve(async (req) => {
               sourceMeta.wkt_state = wktState;
               const { error: wktUpdateError } = await service
                 .from("act_sync_runs")
-                .update({ status: "EXTRACTING", source_meta: sourceMeta })
+                .update({
+                  status: "EXTRACTING",
+                  source_meta: sourceMeta,
+                  progress_at: new Date().toISOString(),
+                })
                 .eq("id", activeRunId);
               if (wktUpdateError) {
                 throw new Error(`Cannot update ACT WKT cursor: ${wktUpdateError.message}`);
@@ -1468,7 +1674,13 @@ Deno.serve(async (req) => {
                 geometry_rows: merged.geometryRows,
                 matched_rows: merged.matchedRows,
                 source_cursor: merged.nextCursor,
-                source_complete: merged.complete,
+                source_complete: sourceComplete,
+                shard: {
+                  index: shardIndex,
+                  from: shard.from,
+                  to: shard.to,
+                  complete: merged.complete,
+                },
               }, 202);
             }
             wktState.complete = true;
@@ -1530,7 +1742,11 @@ Deno.serve(async (req) => {
             sourceMeta.pld_matched_count = matched;
             const { error: pldUpdateError } = await service
               .from("act_sync_runs")
-              .update({ status: "EXTRACTING", source_meta: sourceMeta })
+              .update({
+                status: "EXTRACTING",
+                source_meta: sourceMeta,
+                progress_at: new Date().toISOString(),
+              })
               .eq("id", activeRunId);
             if (pldUpdateError) {
               throw new Error(`Cannot update ACT PLD cursor: ${pldUpdateError.message}`);
@@ -1572,7 +1788,11 @@ Deno.serve(async (req) => {
             };
             const { error: prepareInitError } = await service
               .from("act_sync_runs")
-              .update({ status: "VALIDATING", source_meta: sourceMeta })
+              .update({
+                status: "VALIDATING",
+                source_meta: sourceMeta,
+                progress_at: new Date().toISOString(),
+              })
               .eq("id", activeRunId);
             if (prepareInitError) {
               throw new Error(`Cannot initialize ACT validation batches: ${prepareInitError.message}`);
@@ -1623,7 +1843,11 @@ Deno.serve(async (req) => {
             sourceMeta.prepare_state = prepareState;
             const { error: prepareUpdateError } = await service
               .from("act_sync_runs")
-              .update({ status: "VALIDATING", source_meta: sourceMeta })
+              .update({
+                status: "VALIDATING",
+                source_meta: sourceMeta,
+                progress_at: new Date().toISOString(),
+              })
               .eq("id", activeRunId);
             if (prepareUpdateError) {
               throw new Error(`Cannot update ACT validation cursor: ${prepareUpdateError.message}`);
@@ -1709,6 +1933,7 @@ Deno.serve(async (req) => {
             status: nextStatus,
             source_counts: sourceCounts,
             source_meta: sourceMeta,
+            progress_at: new Date().toISOString(),
           })
           .eq("id", activeRunId);
         if (pageUpdateError) {
@@ -1792,6 +2017,7 @@ Deno.serve(async (req) => {
           status: nextStatus,
           source_counts: sourceCounts,
           source_meta: sourceMeta,
+          progress_at: new Date().toISOString(),
         })
         .eq("id", activeRunId);
       if (stageUpdateError) {
@@ -1858,7 +2084,11 @@ Deno.serve(async (req) => {
       };
       const { error: tableInitError } = await service
         .from("act_sync_runs")
-        .update({ status: "EXTRACTING", source_meta: sourceMeta })
+        .update({
+          status: "EXTRACTING",
+          source_meta: sourceMeta,
+          progress_at: new Date().toISOString(),
+        })
         .eq("id", activeRunId);
       if (tableInitError) {
         throw new Error(`Cannot initialize ACT table sync: ${tableInitError.message}`);
@@ -1892,7 +2122,11 @@ Deno.serve(async (req) => {
       };
       const { error: queueUpdateError } = await service
         .from("act_sync_runs")
-        .update({ status: "WAITING_EXPORT", source_meta: sourceMeta })
+        .update({
+          status: "WAITING_EXPORT",
+          source_meta: sourceMeta,
+          progress_at: new Date().toISOString(),
+        })
         .eq("id", activeRunId);
       if (queueUpdateError) {
         throw new Error(`Cannot persist ACT export queue: ${queueUpdateError.message}`);
@@ -1933,6 +2167,7 @@ Deno.serve(async (req) => {
         status: "VALIDATING",
         source_counts: sourceCounts,
         source_meta: sourceMeta,
+        progress_at: new Date().toISOString(),
       })
       .eq("id", activeRunId);
     if (validationUpdateError) {
@@ -1947,6 +2182,7 @@ Deno.serve(async (req) => {
         .update({
           status: "FAILED",
           error_message: message.slice(0, 2_000),
+          progress_at: new Date().toISOString(),
           completed_at: new Date().toISOString(),
         })
         .eq("id", activeRunId);
