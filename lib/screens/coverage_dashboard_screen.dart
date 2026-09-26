@@ -212,6 +212,7 @@ class _State extends ConsumerState<CoverageDashboardScreen> {
         isMassMode: false,
         selectedFieldNumbers: {},
         onPhaseChanged: (phase) {},
+        fieldsForPhase: (_) => overdueFields,
       );
     });
   }
@@ -2088,6 +2089,7 @@ class _QaFiVillageList extends ConsumerWidget {
         isMassMode: false,
         selectedFieldNumbers: {},
         onPhaseChanged: (phase) {},
+        fieldsForPhase: (_) => villageFields,
       );
     });
   }

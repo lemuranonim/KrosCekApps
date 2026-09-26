@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_map/flutter_map.dart' show LatLngBounds;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+
 import '../services/supabase_service.dart';
 import '../services/supabase_auth_service.dart';
 import '../services/session_manager.dart';
@@ -58,17 +59,15 @@ Map<String, dynamic> _withResolvedCorrectionTagging(
 ) {
   final correction = _readVegetativeCorrection(field);
   if (correction == null) return field;
-  return {
-    ...field,
-    'correction_tagging': correction,
-  };
+  return {...field, 'correction_tagging': correction};
 }
 
 // ============================================================
 // 3. MASTER FIELDS PROVIDER (Data Mentah)
 // ============================================================
-final masterFieldsProvider =
-    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final masterFieldsProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final supabaseService = ref.watch(supabaseServiceProvider);
   final user = await ref.watch(currentUserProvider.future);
 
@@ -89,9 +88,7 @@ final masterFieldsProvider =
   final allFields = (await supabaseService.getMasterFieldsWithAllAudits(
     qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
     qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
-  ))
-      .map(_withResolvedCorrectionTagging)
-      .toList();
+  )).map(_withResolvedCorrectionTagging).toList();
 
   if (action == 'all') return allFields;
 
@@ -111,46 +108,50 @@ final masterFieldsProvider =
 });
 
 final masterFieldDetailProvider =
-    FutureProvider.family<Map<String, dynamic>?, String>(
-        (ref, fieldNumber) async {
-  final supabaseService = ref.watch(supabaseServiceProvider);
-  final user = await ref.watch(currentUserProvider.future);
-  final trimmedFieldNumber = fieldNumber.trim();
+    FutureProvider.family<Map<String, dynamic>?, String>((
+      ref,
+      fieldNumber,
+    ) async {
+      final supabaseService = ref.watch(supabaseServiceProvider);
+      final user = await ref.watch(currentUserProvider.future);
+      final trimmedFieldNumber = fieldNumber.trim();
 
-  if (user == null || trimmedFieldNumber.isEmpty) return null;
+      if (user == null || trimmedFieldNumber.isEmpty) return null;
 
-  final detail =
-      await supabaseService.getMasterFieldWithAllAudits(trimmedFieldNumber);
-  if (detail == null) return null;
+      final detail = await supabaseService.getMasterFieldWithAllAudits(
+        trimmedFieldNumber,
+      );
+      if (detail == null) return null;
 
-  final resolved = _withResolvedCorrectionTagging(detail);
-  final action = user.action.toLowerCase();
-  final role = user.role.toUpperCase();
-  final userName = user.name.trim().toLowerCase();
+      final resolved = _withResolvedCorrectionTagging(detail);
+      final action = user.action.toLowerCase();
+      final role = user.role.toUpperCase();
+      final userName = user.name.trim().toLowerCase();
 
-  if (action == 'all') return resolved;
-  if (action == 'audit') {
-    if (role == 'FI') {
-      return QaNameHelper.fieldHasFi(resolved, userName) ? resolved : null;
-    }
-    if (role == 'SPV') {
-      return QaNameHelper.fieldHasSpv(resolved, userName) ? resolved : null;
-    }
-  }
+      if (action == 'all') return resolved;
+      if (action == 'audit') {
+        if (role == 'FI') {
+          return QaNameHelper.fieldHasFi(resolved, userName) ? resolved : null;
+        }
+        if (role == 'SPV') {
+          return QaNameHelper.fieldHasSpv(resolved, userName) ? resolved : null;
+        }
+      }
 
-  return resolved;
-});
+      return resolved;
+    });
 
 class MasterFieldNumbersScope {
   final List<String> fieldNumbers;
 
   MasterFieldNumbersScope(Iterable<String> fieldNumbers)
-      : fieldNumbers = (fieldNumbers
-            .map((fieldNumber) => fieldNumber.trim())
-            .where((fieldNumber) => fieldNumber.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort());
+    : fieldNumbers =
+          (fieldNumbers
+              .map((fieldNumber) => fieldNumber.trim())
+              .where((fieldNumber) => fieldNumber.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort());
 
   @override
   bool operator ==(Object other) =>
@@ -171,38 +172,39 @@ bool _listEquals(List<String> a, List<String> b) {
 }
 
 final masterFieldsByFieldNumbersProvider =
-    FutureProvider.family<List<Map<String, dynamic>>, MasterFieldNumbersScope>(
-        (ref, scope) async {
-  final supabaseService = ref.watch(supabaseServiceProvider);
-  final user = await ref.watch(currentUserProvider.future);
+    FutureProvider.family<List<Map<String, dynamic>>, MasterFieldNumbersScope>((
+      ref,
+      scope,
+    ) async {
+      final supabaseService = ref.watch(supabaseServiceProvider);
+      final user = await ref.watch(currentUserProvider.future);
 
-  if (user == null || scope.fieldNumbers.isEmpty) return [];
+      if (user == null || scope.fieldNumbers.isEmpty) return [];
 
-  final action = user.action.toLowerCase();
-  final role = user.role.toUpperCase();
-  final userName = user.name.trim().toLowerCase();
+      final action = user.action.toLowerCase();
+      final role = user.role.toUpperCase();
+      final userName = user.name.trim().toLowerCase();
 
-  final fields =
-      (await supabaseService.getMasterFieldsByFieldNumbers(scope.fieldNumbers))
-          .map(_withResolvedCorrectionTagging)
-          .toList();
+      final fields = (await supabaseService.getMasterFieldsByFieldNumbers(
+        scope.fieldNumbers,
+      )).map(_withResolvedCorrectionTagging).toList();
 
-  if (action == 'all') return fields;
+      if (action == 'all') return fields;
 
-  if (action == 'audit') {
-    if (role == 'FI') {
-      return fields.where((field) {
-        return QaNameHelper.fieldHasFi(field, userName);
-      }).toList();
-    } else if (role == 'SPV') {
-      return fields.where((field) {
-        return QaNameHelper.fieldHasSpv(field, userName);
-      }).toList();
-    }
-  }
+      if (action == 'audit') {
+        if (role == 'FI') {
+          return fields.where((field) {
+            return QaNameHelper.fieldHasFi(field, userName);
+          }).toList();
+        } else if (role == 'SPV') {
+          return fields.where((field) {
+            return QaNameHelper.fieldHasSpv(field, userName);
+          }).toList();
+        }
+      }
 
-  return fields;
-});
+      return fields;
+    });
 
 // ============================================================
 // 3b. MASTER FIELD MAP PROVIDER (Data Ringan Untuk Peta)
@@ -231,10 +233,10 @@ class MasterFieldMapScope {
   });
 
   const MasterFieldMapScope.all()
-      : season = null,
-        region = null,
-        district = null,
-        allSeasons = true;
+    : season = null,
+      region = null,
+      district = null,
+      allSeasons = true;
 
   @override
   bool operator ==(Object other) =>
@@ -249,120 +251,129 @@ class MasterFieldMapScope {
 }
 
 final activeMasterFieldRegionsProvider =
-    FutureProvider.family<List<String>, MasterFieldMapScope>(
-        (ref, scope) async {
-  final supabaseService = ref.watch(supabaseServiceProvider);
-  final user = await ref.watch(currentUserProvider.future);
-  if (user == null) return [];
-  final resolvedSeason = scope.allSeasons
-      ? null
-      : (scope.season?.trim().isNotEmpty == true
-          ? scope.season!.trim()
-          : await ref.watch(latestActiveMasterFieldSeasonProvider.future));
-  final action = user.action.toLowerCase();
-  final role = user.role.toUpperCase();
+    FutureProvider.family<List<String>, MasterFieldMapScope>((
+      ref,
+      scope,
+    ) async {
+      final supabaseService = ref.watch(supabaseServiceProvider);
+      final user = await ref.watch(currentUserProvider.future);
+      if (user == null) return [];
+      final resolvedSeason = scope.allSeasons
+          ? null
+          : (scope.season?.trim().isNotEmpty == true
+                ? scope.season!.trim()
+                : await ref.watch(
+                    latestActiveMasterFieldSeasonProvider.future,
+                  ));
+      final action = user.action.toLowerCase();
+      final role = user.role.toUpperCase();
 
-  return supabaseService.getActiveMasterFieldRegions(
-    season: resolvedSeason,
-    qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
-    qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
-  );
-});
+      return supabaseService.getActiveMasterFieldRegions(
+        season: resolvedSeason,
+        qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
+        qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
+      );
+    });
 
-final masterFieldMapProvider =
-    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final masterFieldMapProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   return ref.watch(
     masterFieldMapScopedProvider(const MasterFieldMapScope.all()).future,
   );
 });
 
 final masterFieldMapScopedProvider =
-    FutureProvider.family<List<Map<String, dynamic>>, MasterFieldMapScope>(
-        (ref, scope) async {
-  final supabaseService = ref.watch(supabaseServiceProvider);
-  final user = await ref.watch(currentUserProvider.future);
+    FutureProvider.family<List<Map<String, dynamic>>, MasterFieldMapScope>((
+      ref,
+      scope,
+    ) async {
+      final supabaseService = ref.watch(supabaseServiceProvider);
+      final user = await ref.watch(currentUserProvider.future);
 
-  if (user == null) return [];
+      if (user == null) return [];
 
-  final action = user.action.toLowerCase();
-  final role = user.role.toUpperCase();
-  final userName = user.name.trim().toLowerCase();
-  final resolvedSeason = scope.allSeasons
-      ? null
-      : (scope.season?.trim().isNotEmpty == true
-          ? scope.season!.trim()
-          : await ref.watch(latestActiveMasterFieldSeasonProvider.future));
+      final action = user.action.toLowerCase();
+      final role = user.role.toUpperCase();
+      final userName = user.name.trim().toLowerCase();
+      final resolvedSeason = scope.allSeasons
+          ? null
+          : (scope.season?.trim().isNotEmpty == true
+                ? scope.season!.trim()
+                : await ref.watch(
+                    latestActiveMasterFieldSeasonProvider.future,
+                  ));
 
-  final mapFields = (await supabaseService.getMasterFieldsForMap(
-    qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
-    qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
-    season: resolvedSeason,
-    region: scope.region,
-    district: scope.district,
-  ))
-      .map(_withResolvedCorrectionTagging)
-      .toList();
+      final mapFields = (await supabaseService.getMasterFieldsForMap(
+        qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
+        qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
+        season: resolvedSeason,
+        region: scope.region,
+        district: scope.district,
+      )).map(_withResolvedCorrectionTagging).toList();
 
-  if (action == 'all') return mapFields;
+      if (action == 'all') return mapFields;
 
-  if (action == 'audit') {
-    if (role == 'FI') {
-      return mapFields.where((field) {
-        return QaNameHelper.fieldHasFi(field, userName);
-      }).toList();
-    } else if (role == 'SPV') {
-      return mapFields.where((field) {
-        return QaNameHelper.fieldHasSpv(field, userName);
-      }).toList();
-    }
-  }
+      if (action == 'audit') {
+        if (role == 'FI') {
+          return mapFields.where((field) {
+            return QaNameHelper.fieldHasFi(field, userName);
+          }).toList();
+        } else if (role == 'SPV') {
+          return mapFields.where((field) {
+            return QaNameHelper.fieldHasSpv(field, userName);
+          }).toList();
+        }
+      }
 
-  return mapFields;
-});
+      return mapFields;
+    });
 
 final masterFieldCoverageScopedProvider =
-    FutureProvider.family<List<Map<String, dynamic>>, MasterFieldMapScope>(
-        (ref, scope) async {
-  final supabaseService = ref.watch(supabaseServiceProvider);
-  final user = await ref.watch(currentUserProvider.future);
+    FutureProvider.family<List<Map<String, dynamic>>, MasterFieldMapScope>((
+      ref,
+      scope,
+    ) async {
+      final supabaseService = ref.watch(supabaseServiceProvider);
+      final user = await ref.watch(currentUserProvider.future);
 
-  if (user == null) return [];
+      if (user == null) return [];
 
-  final action = user.action.toLowerCase();
-  final role = user.role.toUpperCase();
-  final userName = user.name.trim().toLowerCase();
-  final resolvedSeason = scope.allSeasons
-      ? null
-      : (scope.season?.trim().isNotEmpty == true
-          ? scope.season!.trim()
-          : await ref.watch(latestActiveMasterFieldSeasonProvider.future));
+      final action = user.action.toLowerCase();
+      final role = user.role.toUpperCase();
+      final userName = user.name.trim().toLowerCase();
+      final resolvedSeason = scope.allSeasons
+          ? null
+          : (scope.season?.trim().isNotEmpty == true
+                ? scope.season!.trim()
+                : await ref.watch(
+                    latestActiveMasterFieldSeasonProvider.future,
+                  ));
 
-  final fields = (await supabaseService.getMasterFieldsForCoverage(
-    qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
-    qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
-    season: resolvedSeason,
-    region: scope.region,
-    district: scope.district,
-  ))
-      .map(_withResolvedCorrectionTagging)
-      .toList();
+      final fields = (await supabaseService.getMasterFieldsForCoverage(
+        qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
+        qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
+        season: resolvedSeason,
+        region: scope.region,
+        district: scope.district,
+      )).map(_withResolvedCorrectionTagging).toList();
 
-  if (action == 'all') return fields;
+      if (action == 'all') return fields;
 
-  if (action == 'audit') {
-    if (role == 'FI') {
-      return fields.where((field) {
-        return QaNameHelper.fieldHasFi(field, userName);
-      }).toList();
-    } else if (role == 'SPV') {
-      return fields.where((field) {
-        return QaNameHelper.fieldHasSpv(field, userName);
-      }).toList();
-    }
-  }
+      if (action == 'audit') {
+        if (role == 'FI') {
+          return fields.where((field) {
+            return QaNameHelper.fieldHasFi(field, userName);
+          }).toList();
+        } else if (role == 'SPV') {
+          return fields.where((field) {
+            return QaNameHelper.fieldHasSpv(field, userName);
+          }).toList();
+        }
+      }
 
-  return fields;
-});
+      return fields;
+    });
 
 // ============================================================
 // 4. DATA MODEL KHUSUS PETA
@@ -376,7 +387,7 @@ class ParsedFieldData {
   final bool isFromPolygon;
   final int dap;
 
-  /// Raw WKT string dari kolom geometry_wkt, jika ada.
+  /// WKT efektif: correction_geometry_wkt bila valid, lalu geometry_wkt ACT.
   final String? geometryWkt;
 
   /// Koordinat polygon yang sudah diparse dari WKT.
@@ -403,11 +414,12 @@ class ParsedFieldData {
 // (Syarat Isolate: fungsi harus di luar class atau berupa static)
 // ============================================================
 Future<List<ParsedFieldData>> parseMasterFieldMapRows(
-        List<Map<String, dynamic>> rows) =>
-    compute(_parseMapFieldsInIsolate, rows);
+  List<Map<String, dynamic>> rows,
+) => compute(_parseMapFieldsInIsolate, rows);
 
 List<ParsedFieldData> _parseMapFieldsInIsolate(
-    List<Map<String, dynamic>> rawFields) {
+  List<Map<String, dynamic>> rawFields,
+) {
   // ── Helper: validasi koordinat wilayah Indonesia ──────────
   bool isValidIndonesiaCoord(double lat, double lng) {
     return lat >= -11.0 &&
@@ -500,25 +512,48 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(
   return rawFields.map((f) {
     final normalizedRaw = _withResolvedCorrectionTagging(f);
     final correctionCoord = _readVegetativeCorrection(normalizedRaw);
-    final geometryWkt = f['geometry_wkt']?.toString();
+    final correctionGeometryWkt = f['correction_geometry_wkt']
+        ?.toString()
+        .trim();
+    final actGeometryWkt = f['geometry_wkt']?.toString().trim();
     final rawCoord = f['coordinate']?.toString();
 
-    // Parse Polygon Points
+    // Parse polygon correction first. Invalid correction data falls back safely
+    // to the ACT geometry instead of hiding the field from the map.
+    String? geometryWkt;
     List<LatLng>? parsedPolygon;
-    if (geometryWkt != null && geometryWkt.isNotEmpty) {
-      parsedPolygon = parseWktToLatLngs(geometryWkt);
+    LatLng? centroid;
+    bool isFromCorrectionGeometry = false;
+    for (final candidate in [
+      (wkt: correctionGeometryWkt, isCorrection: true),
+      (wkt: actGeometryWkt, isCorrection: false),
+    ]) {
+      if (candidate.wkt == null || candidate.wkt!.isEmpty) continue;
+      final points = parseWktToLatLngs(candidate.wkt!);
+      final candidateCentroid = polygonCentroid(points);
+      if (candidateCentroid == null ||
+          !isValidIndonesiaCoord(
+            candidateCentroid.latitude,
+            candidateCentroid.longitude,
+          )) {
+        continue;
+      }
+      geometryWkt = candidate.wkt;
+      parsedPolygon = points;
+      centroid = candidateCentroid;
+      isFromCorrectionGeometry = candidate.isCorrection;
+      break;
     }
 
     // Inisialisasi langsung non-nullable dengan nilai default (PRIORITAS 4).
     double finalLat = -7.637017;
     double finalLng = 112.8272303;
     bool isDef = true;
-    bool isCorrected = false;
+    bool isCorrected =
+        isFromCorrectionGeometry && correctionGeometryWkt != actGeometryWkt;
     bool isFromPolygon = false;
 
     // ── PRIORITAS 1: centroid polygon WKT ──────────
-    final centroid =
-        parsedPolygon == null ? null : polygonCentroid(parsedPolygon);
     if (centroid != null) {
       final wlat = centroid.latitude;
       final wlng = centroid.longitude;
@@ -563,8 +598,9 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(
       dap: DapHelper.calculateFieldDAP(normalizedRaw),
       geometryWkt: geometryWkt,
       polygonPoints: validPolygon,
-      polygonBounds:
-          validPolygon == null ? null : LatLngBounds.fromPoints(validPolygon),
+      polygonBounds: validPolygon == null
+          ? null
+          : LatLngBounds.fromPoints(validPolygon),
     );
   }).toList();
 }
@@ -572,8 +608,9 @@ List<ParsedFieldData> _parseMapFieldsInIsolate(
 // ============================================================
 // 6. PROVIDER PETA (Menjalankan Isolate)
 // ============================================================
-final parsedMapFieldsProvider =
-    FutureProvider<List<ParsedFieldData>>((ref) async {
+final parsedMapFieldsProvider = FutureProvider<List<ParsedFieldData>>((
+  ref,
+) async {
   final rawFields = await ref.watch(masterFieldsProvider.future);
 
   if (rawFields.isEmpty) return [];
@@ -582,8 +619,9 @@ final parsedMapFieldsProvider =
   return await compute(_parseMapFieldsInIsolate, rawFields);
 });
 
-final parsedMasterFieldMapProvider =
-    FutureProvider<List<ParsedFieldData>>((ref) async {
+final parsedMasterFieldMapProvider = FutureProvider<List<ParsedFieldData>>((
+  ref,
+) async {
   final rawFields = await ref.watch(masterFieldMapProvider.future);
 
   if (rawFields.isEmpty) return [];
@@ -592,11 +630,15 @@ final parsedMasterFieldMapProvider =
 });
 
 final parsedMasterFieldMapScopedProvider =
-    FutureProvider.family<List<ParsedFieldData>, MasterFieldMapScope>(
-        (ref, scope) async {
-  final rawFields = await ref.watch(masterFieldMapScopedProvider(scope).future);
+    FutureProvider.family<List<ParsedFieldData>, MasterFieldMapScope>((
+      ref,
+      scope,
+    ) async {
+      final rawFields = await ref.watch(
+        masterFieldMapScopedProvider(scope).future,
+      );
 
-  if (rawFields.isEmpty) return [];
+      if (rawFields.isEmpty) return [];
 
-  return await compute(_parseMapFieldsInIsolate, rawFields);
-});
+      return await compute(_parseMapFieldsInIsolate, rawFields);
+    });

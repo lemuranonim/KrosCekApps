@@ -2,6 +2,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; // <── TAMBAHKAN INI
+
 import '../../providers/audit_vegetative_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
@@ -53,15 +55,9 @@ const _cropHealthOpts = [
   GenOpt('Best', '5 – Best'),
 ];
 
-const _offtypeOpts = [
-  GenOpt('0', 'A – 0'),
-  GenOpt('>0', 'B – >0'),
-];
+const _offtypeOpts = [GenOpt('0', 'A – 0'), GenOpt('>0', 'B – >0')];
 
-const _isolationOpts = [
-  GenOpt('Yes', 'A – Yes'),
-  GenOpt('No', 'B – No'),
-];
+const _isolationOpts = [GenOpt('Yes', 'A – Yes'), GenOpt('No', 'B – No')];
 
 const _previousCropOpts = [
   GenOpt('Corn After Corn', 'Corn After Corn'),
@@ -99,20 +95,11 @@ const _flaggingOpts = [
   GenOpt('PLD', 'PLD'),
 ];
 
-const _maleSplitOpts = [
-  GenOpt('Yes', 'Y – Yes'),
-  GenOpt('No', 'N – No'),
-];
+const _maleSplitOpts = [GenOpt('Yes', 'Y – Yes'), GenOpt('No', 'N – No')];
 
-const _yesNoOpts = [
-  GenOpt('Yes', 'Y – Yes'),
-  GenOpt('No', 'N – No'),
-];
+const _yesNoOpts = [GenOpt('Yes', 'Y – Yes'), GenOpt('No', 'N – No')];
 
-const _splitFieldOpts = [
-  GenOpt('Yes', 'A – Yes'),
-  GenOpt('No', 'B – No'),
-];
+const _splitFieldOpts = [GenOpt('Yes', 'A – Yes'), GenOpt('No', 'B – No')];
 
 const _poiAccuracyOpts = [
   GenOpt('Valid', 'Valid'),
@@ -245,8 +232,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     final fillColor = isDark
         ? AdvantaColors.deepForest.withAlpha(200)
         : AdvantaColors.softGrey;
-    final borderColor =
-        isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+    final borderColor = isDark
+        ? Colors.white.withAlpha(28)
+        : Colors.black.withAlpha(20);
     final textColor = Theme.of(context).colorScheme.onSurface;
 
     return Column(
@@ -254,8 +242,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       children: [
         Text(
           isRequired ? '$label *' : label,
-          style: AdvantaText.body2
-              .copyWith(color: subColor, fontWeight: FontWeight.w500),
+          style: AdvantaText.body2.copyWith(
+            color: subColor,
+            fontWeight: FontWeight.w500,
+          ),
         ),
         const SizedBox(height: 8),
         Autocomplete<String>(
@@ -269,69 +259,76 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
           },
           fieldViewBuilder:
               (context, fieldController, focusNode, onFieldSubmitted) {
-            // Sinkronisasi controller Autocomplete dengan controller form
-            fieldController.addListener(() {
-              if (controller.text != fieldController.text) {
-                controller.text = fieldController.text;
-              }
-            });
+                // Sinkronisasi controller Autocomplete dengan controller form
+                fieldController.addListener(() {
+                  if (controller.text != fieldController.text) {
+                    controller.text = fieldController.text;
+                  }
+                });
 
-            return TextFormField(
-              controller: fieldController,
-              focusNode: focusNode,
-              textCapitalization:
-                  TextCapitalization.characters, // Otomatis Huruf Besar
-              style: AdvantaText.body1.copyWith(color: textColor),
-              decoration: InputDecoration(
-                hintText: hint,
-                hintStyle:
-                    TextStyle(color: subColor.withAlpha(100), fontSize: 13),
-                prefixIcon: Icon(icon, color: accentColor, size: 20),
-                filled: true,
-                fillColor: fillColor,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: borderColor),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: accentColor, width: 1.5),
-                ),
-                errorBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: AdvantaColors.error),
-                ),
-                focusedErrorBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide:
-                      const BorderSide(color: AdvantaColors.error, width: 1.5),
-                ),
-                suffixIcon: fieldController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear_rounded, size: 18),
-                        color: subColor,
-                        onPressed: () {
-                          fieldController.clear();
-                          controller.clear();
-                        },
-                      )
-                    : null,
-              ),
-              validator: isRequired
-                  ? (v) => (v == null || v.isEmpty) ? 'Wajib diisi' : null
-                  : null,
-              onFieldSubmitted: (v) => onFieldSubmitted(),
-            );
-          },
+                return TextFormField(
+                  controller: fieldController,
+                  focusNode: focusNode,
+                  textCapitalization:
+                      TextCapitalization.characters, // Otomatis Huruf Besar
+                  style: AdvantaText.body1.copyWith(color: textColor),
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    hintStyle: TextStyle(
+                      color: subColor.withAlpha(100),
+                      fontSize: 13,
+                    ),
+                    prefixIcon: Icon(icon, color: accentColor, size: 20),
+                    filled: true,
+                    fillColor: fillColor,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: borderColor),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: accentColor, width: 1.5),
+                    ),
+                    errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: AdvantaColors.error),
+                    ),
+                    focusedErrorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(
+                        color: AdvantaColors.error,
+                        width: 1.5,
+                      ),
+                    ),
+                    suffixIcon: fieldController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded, size: 18),
+                            color: subColor,
+                            onPressed: () {
+                              fieldController.clear();
+                              controller.clear();
+                            },
+                          )
+                        : null,
+                  ),
+                  validator: isRequired
+                      ? (v) => (v == null || v.isEmpty) ? 'Wajib diisi' : null
+                      : null,
+                  onFieldSubmitted: (v) => onFieldSubmitted(),
+                );
+              },
           optionsViewBuilder: (context, onSelected, options) {
             return Align(
               alignment: Alignment.topLeft,
               child: Material(
                 color: Colors.transparent,
                 child: Container(
-                  width: MediaQuery.of(context).size.width -
+                  width:
+                      MediaQuery.of(context).size.width -
                       64, // Sesuaikan lebar dalam kotak Section
                   margin: const EdgeInsets.only(top: 4),
                   decoration: BoxDecoration(
@@ -340,9 +337,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                     border: Border.all(color: borderColor),
                     boxShadow: [
                       BoxShadow(
-                          color: Colors.black.withAlpha(50),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4)),
+                        color: Colors.black.withAlpha(50),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
                     ],
                   ),
                   child: ListView.separated(
@@ -357,12 +355,15 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                         onTap: () => onSelected(option),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
                           child: Text(
                             option,
                             style: AdvantaText.body2.copyWith(
-                                color: accentColor,
-                                fontWeight: FontWeight.w600),
+                              color: accentColor,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       );
@@ -390,11 +391,13 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     final ratio = audit['sowing_ratio_by_audit'] as String?;
     if (ratio != null && ratio.contains(':')) {
       final p = ratio.split(':');
-      _sowingRatioFCtrl.text =
-          p[0].trim().isEmpty ? '' : p[0].trim().substring(0, 1);
+      _sowingRatioFCtrl.text = p[0].trim().isEmpty
+          ? ''
+          : p[0].trim().substring(0, 1);
       final maleRatio = p.length > 1 ? p[1].trim() : '';
-      _sowingRatioMCtrl.text =
-          maleRatio.isEmpty ? '' : maleRatio.substring(0, 1);
+      _sowingRatioMCtrl.text = maleRatio.isEmpty
+          ? ''
+          : maleRatio.substring(0, 1);
     }
 
     if (audit['audit_date_user'] != null) {
@@ -475,20 +478,25 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   }
 
   ({String coordinate, double lat, double lng, String source})?
-      _resolveFieldCoordinate(Map<String, dynamic> fieldData) {
-    final centroid =
-        CoordHelper.wktCentroid(fieldData['geometry_wkt']?.toString());
-    if (centroid != null) {
+  _resolveFieldCoordinate(Map<String, dynamic> fieldData) {
+    for (final geometry in [
+      (
+        wkt: fieldData['correction_geometry_wkt']?.toString(),
+        source: 'correction_polygon',
+      ),
+      (wkt: fieldData['geometry_wkt']?.toString(), source: 'polygon'),
+    ]) {
+      final centroid = CoordHelper.wktCentroid(geometry.wkt);
+      if (centroid == null) continue;
       final lat = centroid['lat']!;
       final lng = centroid['lng']!;
-      if (CoordHelper.isValidIndonesia(lat, lng)) {
-        return (
-          coordinate: _formatCoordinate(lat, lng),
-          lat: lat,
-          lng: lng,
-          source: 'polygon',
-        );
-      }
+      if (!CoordHelper.isValidIndonesia(lat, lng)) continue;
+      return (
+        coordinate: _formatCoordinate(lat, lng),
+        lat: lat,
+        lng: lng,
+        source: geometry.source,
+      );
     }
 
     final correction = _parseCoordinate(_readVegetativeCorrection(fieldData));
@@ -518,8 +526,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
 
   String _coordinateSourceLabel(String? source) {
     switch (source) {
+      case 'correction_polygon':
+        return 'Centroid Correction WKT';
       case 'polygon':
-        return 'Centroid WKT';
+        return 'Centroid WKT ACT';
       case 'correction':
         return 'Correction Tagging';
       case 'coordinate':
@@ -535,34 +545,43 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
         'https://nominatim.openstreetmap.org/reverse'
         '?format=json&lat=$lat&lon=$lng&zoom=14&addressdetails=1',
       );
-      final resp = await http.get(url, headers: {
-        'User-Agent': 'AdvantaSeedsFieldAudit/1.0 (audit@advantaseeds.com)',
-        'Accept': 'application/json',
-      }).timeout(const Duration(seconds: 15));
+      final resp = await http
+          .get(
+            url,
+            headers: {
+              'User-Agent':
+                  'AdvantaSeedsFieldAudit/1.0 (audit@advantaseeds.com)',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (resp.statusCode == 200) {
         final jsonData = jsonDecode(resp.body) as Map<String, dynamic>;
         final addr = jsonData['address'] as Map<String, dynamic>? ?? {};
         return {
-          'desa': (addr['village'] ??
-                  addr['hamlet'] ??
-                  addr['suburb'] ??
-                  addr['neighbourhood'] ??
-                  '-')
-              .toString(),
-          'kecamatan': (addr['subdistrict'] ??
-                  addr['city_district'] ??
-                  addr['district'] ??
-                  addr['county'] ??
-                  '-')
-              .toString(),
-          'kabupaten': (addr['regency'] ??
-                  addr['city'] ??
-                  addr['state_district'] ??
-                  addr['county'] ??
-                  addr['state'] ??
-                  '-')
-              .toString(),
+          'desa':
+              (addr['village'] ??
+                      addr['hamlet'] ??
+                      addr['suburb'] ??
+                      addr['neighbourhood'] ??
+                      '-')
+                  .toString(),
+          'kecamatan':
+              (addr['subdistrict'] ??
+                      addr['city_district'] ??
+                      addr['district'] ??
+                      addr['county'] ??
+                      '-')
+                  .toString(),
+          'kabupaten':
+              (addr['regency'] ??
+                      addr['city'] ??
+                      addr['state_district'] ??
+                      addr['county'] ??
+                      addr['state'] ??
+                      '-')
+                  .toString(),
         };
       }
     } on TimeoutException {
@@ -604,7 +623,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       }
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 15)),
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 15),
+        ),
       );
       final coordStr =
           '${pos.latitude.toStringAsFixed(6)},${pos.longitude.toStringAsFixed(6)}';
@@ -640,7 +661,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       _pendingGeometryWkt = null;
     });
     _snack(
-        '${_coordinateSourceLabel(_existingCoordinateSource)} dikonfirmasi sebagai koreksi');
+      '${_coordinateSourceLabel(_existingCoordinateSource)} dikonfirmasi sebagai koreksi',
+    );
   }
 
   Future<LatLng?> _geocodeWilayah(Map<String, dynamic> fieldData) async {
@@ -670,10 +692,16 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
           'https://nominatim.openstreetmap.org/search'
           '?format=json&q=${Uri.encodeComponent(q)}&limit=1&countrycodes=id',
         );
-        final resp = await http.get(url, headers: {
-          'User-Agent': 'AdvantaSeedsFieldAudit/1.0 (audit@advantaseeds.com)',
-          'Accept': 'application/json',
-        }).timeout(const Duration(seconds: 10));
+        final resp = await http
+            .get(
+              url,
+              headers: {
+                'User-Agent':
+                    'AdvantaSeedsFieldAudit/1.0 (audit@advantaseeds.com)',
+                'Accept': 'application/json',
+              },
+            )
+            .timeout(const Duration(seconds: 10));
 
         if (resp.statusCode == 200) {
           final list = jsonDecode(resp.body) as List<dynamic>;
@@ -736,8 +764,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
           _corrTaggingSource = 'kml';
           _pendingGeometryWkt = polygon?.wkt;
         });
-        final polygonInfo =
-            polygon == null ? '' : ' + polygon ${polygon.pointCount} titik';
+        final polygonInfo = polygon == null
+            ? ''
+            : ' + polygon ${polygon.pointCount} titik';
         _snack('KML berhasil dimuat$polygonInfo: $coordStr');
       }
     } catch (e) {
@@ -747,10 +776,12 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
 
   Future<void> _applyManualCoord() async {
     if (GuestGuard.blockIfGuest(context, _session)) return;
-    final lat =
-        double.tryParse(_manualLatCtrl.text.trim().replaceAll(',', '.'));
-    final lng =
-        double.tryParse(_manualLngCtrl.text.trim().replaceAll(',', '.'));
+    final lat = double.tryParse(
+      _manualLatCtrl.text.trim().replaceAll(',', '.'),
+    );
+    final lng = double.tryParse(
+      _manualLngCtrl.text.trim().replaceAll(',', '.'),
+    );
     if (lat == null || lng == null) {
       _snack('Latitude / Longitude tidak valid', err: true);
       return;
@@ -788,11 +819,15 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   ),
                   SizedBox(width: 12),
-                  Text('Mencari koordinat wilayah...',
-                      style: TextStyle(fontSize: 13)),
+                  Text(
+                    'Mencari koordinat wilayah...',
+                    style: TextStyle(fontSize: 13),
+                  ),
                 ],
               ),
               duration: Duration(seconds: 5),
@@ -840,10 +875,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       initialDate: _auditDateUser,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      builder: (ctx, child) => Theme(
-        data: genDatePickerTheme(ctx, _kPhaseVeg),
-        child: child!,
-      ),
+      builder: (ctx, child) =>
+          Theme(data: genDatePickerTheme(ctx, _kPhaseVeg), child: child!),
     );
     if (p != null) setState(() => _auditDateUser = p);
   }
@@ -874,8 +907,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
         'qa_spv': _qaSpvCtrl.text.trim(),
         'correction_tagging': _corrTaggingCtrl.text.trim(),
         'co_detasseling': _coDetasselingCtrl.text.trim(),
-        'field_size_by_audit_ha':
-            double.tryParse(_fieldSizeCtrl.text.replaceAll(',', '.')),
+        'field_size_by_audit_ha': double.tryParse(
+          _fieldSizeCtrl.text.replaceAll(',', '.'),
+        ),
         'male_split_by_audit': _maleSplit,
         'sowing_ratio_by_audit':
             '${_sowingRatioFCtrl.text.trim()}:${_sowingRatioMCtrl.text.trim()}',
@@ -906,7 +940,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       await service.upsertVegetativeAudit(data);
       if (_pendingGeometryWkt != null &&
           _pendingGeometryWkt!.trim().isNotEmpty) {
-        await service.updateFieldGeometryWkt(
+        await service.updateFieldCorrectionGeometryWkt(
           fieldNumber: widget.fieldNumber,
           geometryWkt: _pendingGeometryWkt!.trim(),
         );
@@ -916,7 +950,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       try {
         final pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 5)),
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 5),
+          ),
         );
         lat = pos.latitude;
         lng = pos.longitude;
@@ -951,14 +987,18 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
 
   void _snack(String msg, {bool err = false}) {
     final theme = Theme.of(context);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content:
-          Text(msg, style: AdvantaText.body2.copyWith(color: Colors.white)),
-      backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      margin: const EdgeInsets.all(12),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          msg,
+          style: AdvantaText.body2.copyWith(color: Colors.white),
+        ),
+        backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(12),
+      ),
+    );
   }
 
   @override
@@ -966,7 +1006,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     final auditAsync = ref.watch(vegetativeAuditProvider(widget.fieldNumber));
     final fieldData =
         ref.watch(masterFieldDetailProvider(widget.fieldNumber)).value ??
-            const <String, dynamic>{};
+        const <String, dynamic>{};
 
     final resolvedCoord = _resolveFieldCoordinate(fieldData);
     if (resolvedCoord != null) {
@@ -997,14 +1037,18 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       ),
       body: auditAsync.when(
         loading: () => AdvantaLoadingState(
-            title: 'Memuat form audit',
-            subtitle: 'Mengambil data inspeksi',
-            accentColor: _kPhaseVeg,
-            icon: Icons.assignment_rounded),
+          title: 'Memuat form audit',
+          subtitle: 'Mengambil data inspeksi',
+          accentColor: _kPhaseVeg,
+          icon: Icons.assignment_rounded,
+        ),
         error: (e, _) => Center(
-          child: Text('Error: $e',
-              style: AdvantaText.body2
-                  .copyWith(color: Theme.of(context).colorScheme.error)),
+          child: Text(
+            'Error: $e',
+            style: AdvantaText.body2.copyWith(
+              color: Theme.of(context).colorScheme.error,
+            ),
+          ),
         ),
         data: (audit) {
           if (audit != null) {
@@ -1067,7 +1111,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                       const SizedBox(height: 12),
                       GenDateTile(
                         label: 'Rev Planting Date',
-                        date: _revPlantingDate ??
+                        date:
+                            _revPlantingDate ??
                             DateTime.now(), // <--- TAMBAHKAN INI
                         onTap: () async {
                           if (_isGuest) {
@@ -1359,8 +1404,7 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                       if (isDiscard) ...[
                         const SizedBox(height: 12),
                         const GenDiscardBanner(
-                          message:
-                              'Mode PLD aktif — pastikan PLD Reason terisi sebelum menyimpan.',
+                          message: 'Mode PLD aktif — pastikan PLD Reason terisi sebelum menyimpan.',
                         ),
                         const SizedBox(height: 14),
                         GenOptionPicker(
@@ -1451,7 +1495,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
 
   // ── Field Card ────────────────────────────────────────────
   Widget _buildFieldCard(
-      BuildContext context, Map<String, dynamic> f, String? corrTag) {
+    BuildContext context,
+    Map<String, dynamic> f,
+    String? corrTag,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final labelColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
     final valueColor = Theme.of(context).colorScheme.onSurface;
@@ -1472,78 +1519,142 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
               const Text(
                 'DATA LAHAN (READ ONLY)',
                 style: TextStyle(
-                    color: _kPhaseVeg,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.8),
+                  color: _kPhaseVeg,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                ),
               ),
               const Spacer(),
               if (corrTag != null && corrTag.isNotEmpty)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFF7043).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                        color: const Color(0xFFFF7043).withValues(alpha: 0.5)),
+                      color: const Color(0xFFFF7043).withValues(alpha: 0.5),
+                    ),
                   ),
                   child: Text(
                     'Corr: $corrTag',
                     style: const TextStyle(
-                        color: Color(0xFFFF8A65),
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold),
+                      color: Color(0xFFFF8A65),
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 10),
-          Row(children: [
-            Expanded(
-                child: _VegCell('Petani', f['farmer_name']?.toString(),
-                    labelColor: labelColor, valueColor: valueColor)),
-            Expanded(
-                child: _VegCell('Hybrid', f['hybrid']?.toString(),
-                    labelColor: labelColor, valueColor: valueColor)),
-          ]),
-          const SizedBox(height: 4),
-          Row(children: [
-            Expanded(
-                child: _VegCell('Grower', f['grower']?.toString(),
-                    labelColor: labelColor, valueColor: valueColor)),
-            Expanded(
+          Row(
+            children: [
+              Expanded(
                 child: _VegCell(
-                    'Luas Eff', '${f['effective_area_ha'] ?? '-'} Ha',
-                    labelColor: labelColor, valueColor: valueColor)),
-          ]),
+                  'Petani',
+                  f['farmer_name']?.toString(),
+                  labelColor: labelColor,
+                  valueColor: valueColor,
+                ),
+              ),
+              Expanded(
+                child: _VegCell(
+                  'Hybrid',
+                  f['hybrid']?.toString(),
+                  labelColor: labelColor,
+                  valueColor: valueColor,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
-          Row(children: [
-            Expanded(
-                child: _VegCell('Season', f['season']?.toString(),
-                    labelColor: labelColor, valueColor: valueColor)),
-            Expanded(
-                child: _VegCell('Region', f['region']?.toString(),
-                    labelColor: labelColor, valueColor: valueColor)),
-          ]),
+          Row(
+            children: [
+              Expanded(
+                child: _VegCell(
+                  'Grower',
+                  f['grower']?.toString(),
+                  labelColor: labelColor,
+                  valueColor: valueColor,
+                ),
+              ),
+              Expanded(
+                child: _VegCell(
+                  'Luas Eff',
+                  '${f['effective_area_ha'] ?? '-'} Ha',
+                  labelColor: labelColor,
+                  valueColor: valueColor,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
-          Row(children: [
-            Expanded(
-                child: _VegCell('Dusun', f['hamlet_dusun']?.toString(),
-                    labelColor: labelColor, valueColor: valueColor)),
-            Expanded(
-                child: _VegCell('Desa', f['village_desa']?.toString(),
-                    labelColor: labelColor, valueColor: valueColor)),
-          ]),
+          Row(
+            children: [
+              Expanded(
+                child: _VegCell(
+                  'Season',
+                  f['season']?.toString(),
+                  labelColor: labelColor,
+                  valueColor: valueColor,
+                ),
+              ),
+              Expanded(
+                child: _VegCell(
+                  'Region',
+                  f['region']?.toString(),
+                  labelColor: labelColor,
+                  valueColor: valueColor,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
-          Row(children: [
-            Expanded(
-                child: _VegCell('Kecamatan', f['sub_district_kec']?.toString(),
-                    labelColor: labelColor, valueColor: valueColor)),
-            Expanded(
-                child: _VegCell('Kabupaten', f['district_kab']?.toString(),
-                    labelColor: labelColor, valueColor: valueColor)),
-          ]),
+          Row(
+            children: [
+              Expanded(
+                child: _VegCell(
+                  'Dusun',
+                  f['hamlet_dusun']?.toString(),
+                  labelColor: labelColor,
+                  valueColor: valueColor,
+                ),
+              ),
+              Expanded(
+                child: _VegCell(
+                  'Desa',
+                  f['village_desa']?.toString(),
+                  labelColor: labelColor,
+                  valueColor: valueColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: _VegCell(
+                  'Kecamatan',
+                  f['sub_district_kec']?.toString(),
+                  labelColor: labelColor,
+                  valueColor: valueColor,
+                ),
+              ),
+              Expanded(
+                child: _VegCell(
+                  'Kabupaten',
+                  f['district_kab']?.toString(),
+                  labelColor: labelColor,
+                  valueColor: valueColor,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -1551,7 +1662,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
 
   // ── Correction Tagging Widget ─────────────────────────────
   Widget _buildCorrectionTaggingWidget(
-      BuildContext context, Map<String, dynamic> fieldData) {
+    BuildContext context,
+    Map<String, dynamic> fieldData,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final resolvedCoord = _resolveFieldCoordinate(fieldData);
     final displayCoord =
@@ -1559,18 +1672,22 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     final coordSourceLabel = _coordinateSourceLabel(resolvedCoord?.source);
     final hasCoord = displayCoord.isNotEmpty;
     final parsed = _parseCoordinate(displayCoord);
-    final isZeroCoord = parsed != null &&
+    final isZeroCoord =
+        parsed != null &&
         parsed.lat.abs() < 0.0001 &&
         parsed.lng.abs() < 0.0001;
 
     // Theme-aware colors
     final kBlue = isDark ? const Color(0xFF4FC3F7) : const Color(0xFF0288D1);
-    final kBlueMuted =
-        isDark ? const Color(0xFF80CBC4) : const Color(0xFF26A69A);
-    final kDarkPanel =
-        isDark ? const Color(0xFF1A2E40) : const Color(0xFFF0F4F8);
-    final kDarkBorder =
-        isDark ? const Color(0xFF2A4A60) : const Color(0xFFB0BEC5);
+    final kBlueMuted = isDark
+        ? const Color(0xFF80CBC4)
+        : const Color(0xFF26A69A);
+    final kDarkPanel = isDark
+        ? const Color(0xFF1A2E40)
+        : const Color(0xFFF0F4F8);
+    final kDarkBorder = isDark
+        ? const Color(0xFF2A4A60)
+        : const Color(0xFFB0BEC5);
     final kManualColor = const Color(0xFF4DB6AC);
     final kKmlColor = const Color(0xFFFFB74D);
     final kMapColor = const Color(0xFF9575CD);
@@ -1578,8 +1695,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     final fillColor = isDark
         ? AdvantaColors.deepForest.withAlpha(200)
         : AdvantaColors.softGrey;
-    final borderColor =
-        isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+    final borderColor = isDark
+        ? Colors.white.withAlpha(28)
+        : Colors.black.withAlpha(20);
     final textColor = Theme.of(context).colorScheme.onSurface;
 
     IconData sourceIcon = Icons.check_circle_outline;
@@ -1612,8 +1730,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     final panelBg = isDark
         ? panelAccent.withValues(alpha: 0.10)
         : panelAccent.withValues(alpha: 0.06);
-    final panelBorder =
-        panelAccent.withValues(alpha: hasCorrection ? 0.45 : 0.24);
+    final panelBorder = panelAccent.withValues(
+      alpha: hasCorrection ? 0.45 : 0.24,
+    );
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1641,8 +1760,11 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                   color: panelAccent.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(Icons.edit_location_alt_rounded,
-                    color: panelAccent, size: 19),
+                child: Icon(
+                  Icons.edit_location_alt_rounded,
+                  color: panelAccent,
+                  size: 19,
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1656,8 +1778,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                     const SizedBox(height: 2),
                     Text(
                       'Koreksi titik koordinat lahan sebelum submit audit.',
-                      style: AdvantaText.caption
-                          .copyWith(color: subColor, height: 1.25),
+                      style: AdvantaText.caption.copyWith(
+                        color: subColor,
+                        height: 1.25,
+                      ),
                     ),
                   ],
                 ),
@@ -1667,18 +1791,20 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                 decoration: BoxDecoration(
                   color: panelAccent.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(999),
-                  border:
-                      Border.all(color: panelAccent.withValues(alpha: 0.28)),
+                  border: Border.all(
+                    color: panelAccent.withValues(alpha: 0.28),
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                        hasCorrection
-                            ? sourceIcon
-                            : Icons.radio_button_unchecked_rounded,
-                        size: 12,
-                        color: panelAccent),
+                      hasCorrection
+                          ? sourceIcon
+                          : Icons.radio_button_unchecked_rounded,
+                      size: 12,
+                      color: panelAccent,
+                    ),
                     const SizedBox(width: 5),
                     Text(
                       hasCorrection
@@ -1708,9 +1834,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                     : kDarkPanel,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                    color: isZeroCoord
-                        ? AdvantaColors.error.withValues(alpha: 0.40)
-                        : kDarkBorder),
+                  color: isZeroCoord
+                      ? AdvantaColors.error.withValues(alpha: 0.40)
+                      : kDarkBorder,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1737,7 +1864,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                       const Spacer(),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 2),
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: isZeroCoord
                               ? AdvantaColors.error.withValues(alpha: 0.15)
@@ -1747,8 +1876,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                         child: Text(
                           isZeroCoord ? '⚠ Koordinat Nol' : coordSourceLabel,
                           style: TextStyle(
-                            color:
-                                isZeroCoord ? const Color(0xFFEF9A9A) : kBlue,
+                            color: isZeroCoord
+                                ? const Color(0xFFEF9A9A)
+                                : kBlue,
                             fontSize: 8.5,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1770,37 +1900,54 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                   if (!isZeroCoord) ...[
                     const SizedBox(height: 8),
                     if (_isGeocodingExisting)
-                      Row(children: [
-                        SizedBox(
+                      Row(
+                        children: [
+                          SizedBox(
                             width: 12,
                             height: 12,
                             child: CircularProgressIndicator(
-                                strokeWidth: 1.5, color: kBlue)),
-                        const SizedBox(width: 8),
-                        Text('Memuat detail lokasi…',
-                            style: TextStyle(color: kBlueMuted, fontSize: 11)),
-                      ])
+                              strokeWidth: 1.5,
+                              color: kBlue,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Memuat detail lokasi…',
+                            style: TextStyle(color: kBlueMuted, fontSize: 11),
+                          ),
+                        ],
+                      )
                     else if (_existingGeoResult != null) ...[
-                      _geoRow(Icons.home_outlined, 'Desa',
-                          _existingGeoResult!['desa'],
-                          color: kBlueMuted),
+                      _geoRow(
+                        Icons.home_outlined,
+                        'Desa',
+                        _existingGeoResult!['desa'],
+                        color: kBlueMuted,
+                      ),
                       const SizedBox(height: 4),
-                      _geoRow(Icons.map_outlined, 'Kecamatan',
-                          _existingGeoResult!['kecamatan'],
-                          color: kBlueMuted),
+                      _geoRow(
+                        Icons.map_outlined,
+                        'Kecamatan',
+                        _existingGeoResult!['kecamatan'],
+                        color: kBlueMuted,
+                      ),
                       const SizedBox(height: 4),
-                      _geoRow(Icons.location_city_outlined, 'Kabupaten',
-                          _existingGeoResult!['kabupaten'],
-                          color: kBlueMuted),
+                      _geoRow(
+                        Icons.location_city_outlined,
+                        'Kabupaten',
+                        _existingGeoResult!['kabupaten'],
+                        color: kBlueMuted,
+                      ),
                     ],
                   ] else ...[
                     const SizedBox(height: 6),
                     Text(
                       'Koordinat mengarah ke titik 0,0 (tidak valid). Gunakan tombol koreksi di bawah.',
                       style: TextStyle(
-                          color: const Color(0xFFEF9A9A),
-                          fontSize: 10,
-                          height: 1.4),
+                        color: const Color(0xFFEF9A9A),
+                        fontSize: 10,
+                        height: 1.4,
+                      ),
                     ),
                   ],
                 ],
@@ -1841,7 +1988,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                         width: 1.2,
                       ),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                     ),
                   ),
@@ -1856,28 +2004,35 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                           color: _kPhaseVeg.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                              color: _kPhaseVeg.withValues(alpha: 0.40)),
+                            color: _kPhaseVeg.withValues(alpha: 0.40),
+                          ),
                         ),
                         child: const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: _kPhaseVeg)),
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: _kPhaseVeg,
+                              ),
+                            ),
                             SizedBox(width: 8),
-                            Text('Mengambil GPS…',
-                                style:
-                                    TextStyle(color: _kPhaseVeg, fontSize: 12)),
+                            Text(
+                              'Mengambil GPS…',
+                              style: TextStyle(color: _kPhaseVeg, fontSize: 12),
+                            ),
                           ],
                         ),
                       )
                     : OutlinedButton.icon(
                         onPressed: _captureUserGps,
                         icon: const Icon(Icons.my_location_rounded, size: 15),
-                        label: const Text('Ambil GPS Saya',
-                            style: TextStyle(fontSize: 12)),
+                        label: const Text(
+                          'Ambil GPS Saya',
+                          style: TextStyle(fontSize: 12),
+                        ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: _corrTaggingSource == 'gps'
                               ? AdvantaColors.success
@@ -1888,7 +2043,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                                 : _kPhaseVeg.withValues(alpha: 0.60),
                           ),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                           padding: const EdgeInsets.symmetric(vertical: 10),
                         ),
                       ),
@@ -1904,8 +2060,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                 child: OutlinedButton.icon(
                   onPressed: _importFromKml,
                   icon: const Icon(Icons.file_open_outlined, size: 15),
-                  label:
-                      const Text('Import KML', style: TextStyle(fontSize: 12)),
+                  label: const Text(
+                    'Import KML',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _corrTaggingSource == 'kml'
                         ? kKmlColor
@@ -1917,7 +2075,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                       width: 1.2,
                     ),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
@@ -1927,8 +2086,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                 child: OutlinedButton.icon(
                   onPressed: () => _openMapPinDialog(fieldData),
                   icon: const Icon(Icons.pin_drop_outlined, size: 15),
-                  label: const Text('Geser Pin Peta',
-                      style: TextStyle(fontSize: 12)),
+                  label: const Text(
+                    'Geser Pin Peta',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _corrTaggingSource == 'map'
                         ? kMapColor
@@ -1940,7 +2101,8 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                       width: 1.2,
                     ),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
@@ -1960,64 +2122,86 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
-                  const Icon(Icons.edit_location_alt_outlined,
-                      color: Color(0xFF4DB6AC), size: 13),
-                  const SizedBox(width: 6),
-                  const Text(
-                    'INPUT MANUAL KOORDINAT',
-                    style: TextStyle(
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.edit_location_alt_outlined,
+                      color: Color(0xFF4DB6AC),
+                      size: 13,
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'INPUT MANUAL KOORDINAT',
+                      style: TextStyle(
                         color: Color(0xFF4DB6AC),
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5),
-                  ),
-                ]),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _manualLatCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true, signed: true),
-                      style: AdvantaText.body2.copyWith(color: textColor),
-                      decoration:
-                          _manualCoordDecor(context, 'Latitude', '-7.123456'),
-                      onChanged: (_) {},
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _manualLngCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true, signed: true),
-                      style: AdvantaText.body2.copyWith(color: textColor),
-                      decoration:
-                          _manualCoordDecor(context, 'Longitude', '110.123456'),
-                      onChanged: (_) {},
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    height: 42,
-                    child: ElevatedButton(
-                      onPressed: _applyManualCoord,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: kManualColor.withValues(alpha: 0.20),
-                        foregroundColor: kManualColor,
-                        elevation: 0,
-                        side: BorderSide(
-                            color: kManualColor.withValues(alpha: 0.50)),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        letterSpacing: 0.5,
                       ),
-                      child: const Text('Terapkan',
-                          style: TextStyle(fontSize: 12)),
                     ),
-                  ),
-                ]),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _manualLatCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: true,
+                        ),
+                        style: AdvantaText.body2.copyWith(color: textColor),
+                        decoration: _manualCoordDecor(
+                          context,
+                          'Latitude',
+                          '-7.123456',
+                        ),
+                        onChanged: (_) {},
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: _manualLngCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: true,
+                        ),
+                        style: AdvantaText.body2.copyWith(color: textColor),
+                        decoration: _manualCoordDecor(
+                          context,
+                          'Longitude',
+                          '110.123456',
+                        ),
+                        onChanged: (_) {},
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      height: 42,
+                      child: ElevatedButton(
+                        onPressed: _applyManualCoord,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kManualColor.withValues(alpha: 0.20),
+                          foregroundColor: kManualColor,
+                          elevation: 0,
+                          side: BorderSide(
+                            color: kManualColor.withValues(alpha: 0.50),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                        child: const Text(
+                          'Terapkan',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -2072,16 +2256,26 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
                   ),
                   if (_newGeoResult != null) ...[
                     const SizedBox(height: 8),
-                    _geoRow(Icons.home_outlined, 'Desa', _newGeoResult!['desa'],
-                        color: sourceColor.withValues(alpha: 0.90)),
+                    _geoRow(
+                      Icons.home_outlined,
+                      'Desa',
+                      _newGeoResult!['desa'],
+                      color: sourceColor.withValues(alpha: 0.90),
+                    ),
                     const SizedBox(height: 3),
-                    _geoRow(Icons.map_outlined, 'Kecamatan',
-                        _newGeoResult!['kecamatan'],
-                        color: sourceColor.withValues(alpha: 0.90)),
+                    _geoRow(
+                      Icons.map_outlined,
+                      'Kecamatan',
+                      _newGeoResult!['kecamatan'],
+                      color: sourceColor.withValues(alpha: 0.90),
+                    ),
                     const SizedBox(height: 3),
-                    _geoRow(Icons.location_city_outlined, 'Kabupaten',
-                        _newGeoResult!['kabupaten'],
-                        color: sourceColor.withValues(alpha: 0.90)),
+                    _geoRow(
+                      Icons.location_city_outlined,
+                      'Kabupaten',
+                      _newGeoResult!['kabupaten'],
+                      color: sourceColor.withValues(alpha: 0.90),
+                    ),
                   ],
                 ],
               ),
@@ -2096,14 +2290,19 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline,
-                      color: subColor.withValues(alpha: 0.50), size: 14),
+                  Icon(
+                    Icons.info_outline,
+                    color: subColor.withValues(alpha: 0.50),
+                    size: 14,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Pilih salah satu opsi di atas untuk mengisi koreksi koordinat.',
-                      style: AdvantaText.caption
-                          .copyWith(color: subColor, height: 1.4),
+                      style: AdvantaText.caption.copyWith(
+                        color: subColor,
+                        height: 1.4,
+                      ),
                     ),
                   ),
                 ],
@@ -2116,20 +2315,26 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
   }
 
   InputDecoration _manualCoordDecor(
-      BuildContext context, String label, String hint) {
+    BuildContext context,
+    String label,
+    String hint,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final subColor = isDark ? Colors.white60 : AdvantaColors.mutedGrey;
     final fillColor = isDark
         ? AdvantaColors.deepForest.withAlpha(200)
         : AdvantaColors.softGrey;
-    final borderColor =
-        isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+    final borderColor = isDark
+        ? Colors.white.withAlpha(28)
+        : Colors.black.withAlpha(20);
     return InputDecoration(
       labelText: label,
       hintText: hint,
       labelStyle: TextStyle(color: subColor, fontSize: 11),
-      hintStyle:
-          TextStyle(color: subColor.withValues(alpha: 0.40), fontSize: 11),
+      hintStyle: TextStyle(
+        color: subColor.withValues(alpha: 0.40),
+        fontSize: 11,
+      ),
       filled: true,
       fillColor: fillColor,
       isDense: true,
@@ -2145,22 +2350,33 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     );
   }
 
-  Widget _geoRow(IconData icon, String label, String? value,
-      {Color color = const Color(0xFF80CBC4)}) {
-    return Row(children: [
-      Icon(icon, size: 11, color: color.withValues(alpha: 0.70)),
-      const SizedBox(width: 5),
-      Text('$label: ',
-          style: TextStyle(color: color.withValues(alpha: 0.70), fontSize: 11)),
-      Expanded(
-        child: Text(
-          value?.isNotEmpty == true ? value! : '-',
-          style: TextStyle(
-              color: color, fontSize: 11, fontWeight: FontWeight.w600),
-          overflow: TextOverflow.ellipsis,
+  Widget _geoRow(
+    IconData icon,
+    String label,
+    String? value, {
+    Color color = const Color(0xFF80CBC4),
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 11, color: color.withValues(alpha: 0.70)),
+        const SizedBox(width: 5),
+        Text(
+          '$label: ',
+          style: TextStyle(color: color.withValues(alpha: 0.70), fontSize: 11),
         ),
-      ),
-    ]);
+        Expanded(
+          child: Text(
+            value?.isNotEmpty == true ? value! : '-',
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildSowingRatio(BuildContext context, bool isDiscard) {
@@ -2173,8 +2389,10 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
       children: [
         Text(
           isDiscard ? 'Sowing Ratio (F : M)' : 'Sowing Ratio (F : M) *',
-          style: AdvantaText.body2
-              .copyWith(color: subColor, fontWeight: FontWeight.w500),
+          style: AdvantaText.body2.copyWith(
+            color: subColor,
+            fontWeight: FontWeight.w500,
+          ),
         ),
         const SizedBox(height: 8),
         Row(
@@ -2202,11 +2420,14 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Text(':',
-                  style: TextStyle(
-                      color: subColor.withValues(alpha: 0.70),
-                      fontSize: 22,
-                      fontWeight: FontWeight.w300)),
+              child: Text(
+                ':',
+                style: TextStyle(
+                  color: subColor.withValues(alpha: 0.70),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w300,
+                ),
+              ),
             ),
             Expanded(
               child: TextFormField(
@@ -2236,8 +2457,9 @@ class _FormVegetativeState extends ConsumerState<FormVegetative> {
     final fillColor = isDark
         ? AdvantaColors.deepForest.withAlpha(200)
         : AdvantaColors.softGrey;
-    final borderColor =
-        isDark ? Colors.white.withAlpha(28) : Colors.black.withAlpha(20);
+    final borderColor = isDark
+        ? Colors.white.withAlpha(28)
+        : Colors.black.withAlpha(20);
     return InputDecoration(
       labelText: label,
       labelStyle: TextStyle(color: subColor, fontSize: 12),
@@ -2272,8 +2494,12 @@ class _VegCell extends StatelessWidget {
   final String? value;
   final Color labelColor;
   final Color valueColor;
-  const _VegCell(this.label, this.value,
-      {required this.labelColor, required this.valueColor});
+  const _VegCell(
+    this.label,
+    this.value, {
+    required this.labelColor,
+    required this.valueColor,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2282,15 +2508,21 @@ class _VegCell extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: TextStyle(
-                  color: labelColor,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500)),
+          Text(
+            label,
+            style: TextStyle(
+              color: labelColor,
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           Text(
             value?.isNotEmpty == true ? value! : '—',
             style: TextStyle(
-                color: valueColor, fontSize: 12, fontWeight: FontWeight.w500),
+              color: valueColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
@@ -2345,8 +2577,11 @@ class _MapPinDialogState extends State<_MapPinDialog> {
               padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
               child: Row(
                 children: [
-                  const Icon(Icons.pin_drop_outlined,
-                      color: Color(0xFF9575CD), size: 16),
+                  const Icon(
+                    Icons.pin_drop_outlined,
+                    color: Color(0xFF9575CD),
+                    size: 16,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -2366,26 +2601,33 @@ class _MapPinDialogState extends State<_MapPinDialog> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF9575CD).withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                      color: const Color(0xFF9575CD).withValues(alpha: 0.30)),
+                    color: const Color(0xFF9575CD).withValues(alpha: 0.30),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.touch_app_outlined,
-                        color: Color(0xFF9575CD), size: 13),
+                    const Icon(
+                      Icons.touch_app_outlined,
+                      color: Color(0xFF9575CD),
+                      size: 13,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         '${_pinPosition.latitude.toStringAsFixed(6)},  ${_pinPosition.longitude.toStringAsFixed(6)}',
                         style: const TextStyle(
-                            color: Color(0xFFCE93D8),
-                            fontSize: 11,
-                            fontFamily: 'monospace'),
+                          color: Color(0xFFCE93D8),
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                        ),
                       ),
                     ),
                   ],
@@ -2395,8 +2637,9 @@ class _MapPinDialogState extends State<_MapPinDialog> {
             // ── Map ──
             Expanded(
               child: ClipRRect(
-                borderRadius:
-                    const BorderRadius.vertical(bottom: Radius.circular(16)),
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(16),
+                ),
                 child: Stack(
                   children: [
                     FlutterMap(
@@ -2422,8 +2665,11 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                               child: const Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.location_pin,
-                                      color: Color(0xFF9575CD), size: 38),
+                                  Icon(
+                                    Icons.location_pin,
+                                    color: Color(0xFF9575CD),
+                                    size: 38,
+                                  ),
                                 ],
                               ),
                             ),
@@ -2472,15 +2718,19 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                         bottom: 52,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.48),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Text(
                             'Esri World Imagery',
-                            style:
-                                TextStyle(color: Colors.white70, fontSize: 9),
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 9,
+                            ),
                           ),
                         ),
                       ),
@@ -2491,15 +2741,19 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                       child: Center(
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.55),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: const Text(
                             'Ketuk peta untuk memindahkan pin',
-                            style:
-                                TextStyle(color: Colors.white70, fontSize: 11),
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                            ),
                           ),
                         ),
                       ),
@@ -2522,7 +2776,8 @@ class _MapPinDialogState extends State<_MapPinDialog> {
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ),

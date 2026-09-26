@@ -27,6 +27,8 @@ import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 // url_launcher
 import 'package:url_launcher/url_launcher.dart';
+
+import '../../providers/act_sync_status_provider.dart';
 import '../../providers/detasseling_plan_provider.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
@@ -41,6 +43,7 @@ import '../../utils/coord_helper.dart';
 import '../../utils/dap_helper.dart';
 import '../../utils/pld_visibility_helper.dart';
 import '../../utils/qa_name_helper.dart';
+import '../../widgets/act_sync_status_strip.dart';
 import '../../widgets/audit_status_widgets.dart';
 import '../../widgets/phase_asset_icon.dart';
 import '../../widgets/shorebird_settings_indicator.dart';
@@ -157,15 +160,16 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   MasterFieldMapScope get _currentMapScope => MasterFieldMapScope(
-        season: _selectedSeason,
-        region: _showAllRegions ? null : _selectedRegion,
-        district: _showAllRegions ? null : _selectedDistrict,
-        allSeasons: _showAllSeasons,
-      );
+    season: _selectedSeason,
+    region: _showAllRegions ? null : _selectedRegion,
+    district: _showAllRegions ? null : _selectedDistrict,
+    allSeasons: _showAllSeasons,
+  );
 
   void _refreshMapProviders() {
     _clearMapCaches();
     final scope = _currentMapScope;
+    ref.invalidate(actSyncStatusProvider);
     ref.invalidate(activeMasterFieldSeasonsProvider);
     ref.invalidate(latestActiveMasterFieldSeasonProvider);
     ref.invalidate(activeMasterFieldRegionsProvider(scope));
@@ -186,9 +190,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     await _openFieldDetailSafely(fieldData);
   }
 
-  Future<void> _openFieldDetail(
-    Map<String, dynamic> fieldData,
-  ) async {
+  Future<void> _openFieldDetail(Map<String, dynamic> fieldData) async {
     final fieldNumber = fieldData['field_number']?.toString();
     var detail = fieldData;
 
@@ -252,8 +254,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
   String _weekKey(Map<String, dynamic> week) {
     final startDate = week['startDate'];
     if (startDate is DateTime) {
-      return DateTime(startDate.year, startDate.month, startDate.day)
-          .toIso8601String();
+      return DateTime(
+        startDate.year,
+        startDate.month,
+        startDate.day,
+      ).toIso8601String();
     }
     return week['label']?.toString() ?? '';
   }
@@ -269,8 +274,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
       if (aStart is DateTime && bStart is DateTime) {
         return aStart.compareTo(bStart);
       }
-      return (a['label']?.toString() ?? '')
-          .compareTo(b['label']?.toString() ?? '');
+      return (a['label']?.toString() ?? '').compareTo(
+        b['label']?.toString() ?? '',
+      );
     });
     return sorted;
   }
@@ -358,16 +364,19 @@ class _QAScreenState extends ConsumerState<QAScreen>
     int daysToSubtract = now.weekday - startDayOfWeek;
     if (daysToSubtract < 0) daysToSubtract += 7;
 
-    final DateTime startOfThisWeek =
-        now.subtract(Duration(days: daysToSubtract));
+    final DateTime startOfThisWeek = now.subtract(
+      Duration(days: daysToSubtract),
+    );
 
     List<Map<String, dynamic>> weeks = [];
 
     for (int i = -4; i <= 3; i++) {
       // Saya set -4 agar bisa mundur lebih jauh
       final start = DateTime(
-              startOfThisWeek.year, startOfThisWeek.month, startOfThisWeek.day)
-          .add(Duration(days: i * 7));
+        startOfThisWeek.year,
+        startOfThisWeek.month,
+        startOfThisWeek.day,
+      ).add(Duration(days: i * 7));
       final end = start.add(const Duration(days: 6)); // Senin + 6 hari = Minggu
 
       final startFormat = DateFormat('d MMM', 'id_ID').format(start);
@@ -398,15 +407,18 @@ class _QAScreenState extends ConsumerState<QAScreen>
     int daysToSubtract = now.weekday - startDayOfWeek;
     if (daysToSubtract < 0) daysToSubtract += 7;
 
-    final DateTime startOfThisWeek =
-        now.subtract(Duration(days: daysToSubtract));
+    final DateTime startOfThisWeek = now.subtract(
+      Duration(days: daysToSubtract),
+    );
 
     List<Map<String, dynamic>> extendedWeeks = [];
 
     for (int i = -26; i <= 26; i++) {
       final start = DateTime(
-              startOfThisWeek.year, startOfThisWeek.month, startOfThisWeek.day)
-          .add(Duration(days: i * 7));
+        startOfThisWeek.year,
+        startOfThisWeek.month,
+        startOfThisWeek.day,
+      ).add(Duration(days: i * 7));
       final end = start.add(const Duration(days: 6));
 
       final startFormat = DateFormat('d MMM', 'id_ID').format(start);
@@ -467,8 +479,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 return Container(
                   decoration: const BoxDecoration(
                     color: AdvantaColors.deepForest,
-                    borderRadius:
-                        BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
                   ),
                   child: Column(
                     children: [
@@ -491,20 +504,23 @@ class _QAScreenState extends ConsumerState<QAScreen>
                                 children: [
                                   Text(
                                     'Pilih Minggu',
-                                    style: AdvantaText.heading3
-                                        .copyWith(color: Colors.white),
+                                    style: AdvantaText.heading3.copyWith(
+                                      color: Colors.white,
+                                    ),
                                   ),
                                   Text(
                                     'Bisa pilih lebih dari satu minggu',
-                                    style: AdvantaText.caption
-                                        .copyWith(color: Colors.white60),
+                                    style: AdvantaText.caption.copyWith(
+                                      color: Colors.white60,
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                             TextButton(
-                              onPressed: () => setSheetState(() =>
-                                  tempSelected = <Map<String, dynamic>>[]),
+                              onPressed: () => setSheetState(
+                                () => tempSelected = <Map<String, dynamic>>[],
+                              ),
                               child: const Text('Semua'),
                             ),
                           ],
@@ -607,9 +623,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1400),
     )..repeat();
-    _shimmerAnim = Tween<double>(begin: -1.5, end: 2.5).animate(
-      CurvedAnimation(parent: _shimmerCtrl, curve: Curves.easeInOut),
-    );
+    _shimmerAnim = Tween<double>(
+      begin: -1.5,
+      end: 2.5,
+    ).animate(CurvedAnimation(parent: _shimmerCtrl, curve: Curves.easeInOut));
     _refreshSpinCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -703,21 +720,25 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   void _startLocationStream() {
     _positionSub?.cancel();
-    _positionSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
-      ),
-    ).listen((pos) {
-      if (!mounted) return;
-      setState(() {
-        _userLocation = LatLng(pos.latitude, pos.longitude);
-        _gpsEnabled = true;
-      });
-    }, onError: (_) {
-      if (!mounted) return;
-      setState(() => _gpsEnabled = false);
-    });
+    _positionSub =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+          ),
+        ).listen(
+          (pos) {
+            if (!mounted) return;
+            setState(() {
+              _userLocation = LatLng(pos.latitude, pos.longitude);
+              _gpsEnabled = true;
+            });
+          },
+          onError: (_) {
+            if (!mounted) return;
+            setState(() => _gpsEnabled = false);
+          },
+        );
   }
 
   Future<void> _goToUserLocation() async {
@@ -744,8 +765,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   // Fungsi untuk membuka Google Maps
   Future<void> _openInGoogleMaps(double lat, double lng) async {
-    final url =
-        Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    final url = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
+    );
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
@@ -792,11 +814,16 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return _cachedFilteredFields!;
   }
 
-  List<ParsedFieldData> _filterFields(List<ParsedFieldData> allParsed) {
+  List<ParsedFieldData> _filterFields(
+    List<ParsedFieldData> allParsed, {
+    ActivePhaseView? activePhaseOverride,
+  }) {
     final selRegion = _selectedRegion?.trim().toLowerCase();
     final selDistrict = _selectedDistrict?.trim().toLowerCase();
-    final directFieldNumberSearch =
-        homeMapHasActiveFieldNumberSearch(_activeFilters);
+    final activePhase = activePhaseOverride ?? _activePhaseView;
+    final directFieldNumberSearch = homeMapHasActiveFieldNumberSearch(
+      _activeFilters,
+    );
 
     return allParsed.where((f) {
       if (_isExcludedRegion(f.raw['region'])) return false;
@@ -804,10 +831,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
       // ── Proyeksi DAP untuk Visual Marker ──
       final int projectedDap = _getProjectedDap(f.dap);
-      final ActivePhaseView projectedPhase = _activePhaseView ==
-              ActivePhaseView.auto
+      final ActivePhaseView projectedPhase = activePhase == ActivePhaseView.auto
           ? _dapToPhaseView(projectedDap, hybrid: f.raw['hybrid']?.toString())
-          : _activePhaseView;
+          : activePhase;
 
       // ── Region, District, & Multi-param filters (TETAP SAMA) ──
       if (selRegion != null) {
@@ -831,17 +857,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
         final matchesSelectedWeek = _selectedWeeks.any((week) {
           if (!_isFieldActiveInWeek(f, week)) return false;
           final weekProjectedDap = _getProjectedDapForWeek(f.dap, week);
-          final weekProjectedPhase = _activePhaseView == ActivePhaseView.auto
+          final weekProjectedPhase = activePhase == ActivePhaseView.auto
               ? _dapToPhaseView(
                   weekProjectedDap,
                   hybrid: f.raw['hybrid']?.toString(),
                 )
-              : _activePhaseView;
-          return _matchesAuditFilter(
-            f,
-            weekProjectedPhase,
-            weekProjectedDap,
-          );
+              : activePhase;
+          return _matchesAuditFilter(f, weekProjectedPhase, weekProjectedDap);
         });
         if (!matchesSelectedWeek) return false;
       } else if (!_matchesAuditFilter(f, projectedPhase, projectedDap)) {
@@ -857,8 +879,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
     setState(_clearMapCaches);
     _searchFocusDebounce?.cancel();
     if (!_activeFilters.any((filter) => filter.value.trim().isNotEmpty)) return;
-    _searchFocusDebounce =
-        Timer(const Duration(milliseconds: 350), _focusActiveSearchResults);
+    _searchFocusDebounce = Timer(
+      const Duration(milliseconds: 350),
+      _focusActiveSearchResults,
+    );
   }
 
   void _focusActiveSearchResults() {
@@ -873,8 +897,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
         .join('|');
     final List<ParsedFieldData> allFields;
     try {
-      allFields =
-          await ref.read(parsedMasterFieldMapScopedProvider(scope).future);
+      allFields = await ref.read(
+        parsedMasterFieldMapScopedProvider(scope).future,
+      );
     } catch (_) {
       return;
     }
@@ -929,10 +954,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
       case _AuditFilter.partial:
         final hasVegetativeProgress =
             phaseToCheck == ActivePhaseView.vegetative &&
-                auditStatus.hasVegetativePartialProgress;
+            auditStatus.hasVegetativePartialProgress;
         final hasGenerativeProgress =
             phaseToCheck == ActivePhaseView.generative &&
-                auditStatus.generative == GenerativeAuditStatus.derengJangkep;
+            auditStatus.generative == GenerativeAuditStatus.derengJangkep;
         return hasVegetativeProgress || hasGenerativeProgress;
       case _AuditFilter.all:
         return true;
@@ -997,12 +1022,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
     if (PldVisibilityHelper.isExplicitPld(raw['flagging_final']) ||
         PldVisibilityHelper.isDecisionPld(veg?['decision']) ||
         PldVisibilityHelper.isDecisionPld(veg?['final_decision']) ||
-        PldVisibilityHelper.isVegetativeActionPldFull(
-          veg?['action_needed'],
-        ) ||
-        PldVisibilityHelper.isPldOrDiscardFull(
-          preHarvest?['final_decision'],
-        ) ||
+        PldVisibilityHelper.isVegetativeActionPldFull(veg?['action_needed']) ||
+        PldVisibilityHelper.isPldOrDiscardFull(preHarvest?['final_decision']) ||
         PldVisibilityHelper.isExplicitPld(preHarvest?['final_flagging']) ||
         PldVisibilityHelper.isPldOrDiscardFull(harvest?['status_downgrade']) ||
         PldVisibilityHelper.isExplicitPld(harvest?['final_flagging']) ||
@@ -1011,12 +1032,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
     }
 
     for (var i = 1; i <= 5; i++) {
-      if (PldVisibilityHelper.isPldOrDiscardFull(
-            gen?['action_needed_$i'],
-          ) ||
-          PldVisibilityHelper.isPldOrDiscardFull(
-            gen?['final_decision_$i'],
-          )) {
+      if (PldVisibilityHelper.isPldOrDiscardFull(gen?['action_needed_$i']) ||
+          PldVisibilityHelper.isPldOrDiscardFull(gen?['final_decision_$i'])) {
         return true;
       }
     }
@@ -1087,10 +1104,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return season.isEmpty ? 'Season Terbaru' : season;
   }
 
-  void _setSeasonScope({
-    required bool allSeasons,
-    String? season,
-  }) {
+  void _setSeasonScope({required bool allSeasons, String? season}) {
     final nextScope = resolveHomeMapSeasonScope(
       allSeasons: allSeasons,
       season: season,
@@ -1167,7 +1181,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final regionOptions = (regionOptionsAsync.value ?? const <String>[])
         .where((region) => !_isExcludedRegion(region))
         .toList(growable: false);
-    final needsRegionScope = _shouldAutoScopeByRegion(user) &&
+    final needsRegionScope =
+        _shouldAutoScopeByRegion(user) &&
         !_showAllRegions &&
         _selectedRegion == null;
 
@@ -1181,15 +1196,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
       });
     }
 
-    final waitForRegionScope = needsRegionScope &&
+    final waitForRegionScope =
+        needsRegionScope &&
         (regionOptionsAsync is AsyncLoading || regionOptions.isNotEmpty);
     final mapScope = _currentMapScope;
     final AsyncValue<List<ParsedFieldData>> parsedMapAsync =
         userAsync is AsyncLoading || waitForRegionScope
-            ? const AsyncValue<List<ParsedFieldData>>.loading()
-            : ref.watch(parsedMasterFieldMapScopedProvider(
-                mapScope,
-              ));
+        ? const AsyncValue<List<ParsedFieldData>>.loading()
+        : ref.watch(parsedMasterFieldMapScopedProvider(mapScope));
     final seasonsAsync = ref.watch(activeMasterFieldSeasonsProvider);
     final seasonOptions = seasonsAsync.value ?? const <String>[];
     final mapFieldsForFilters =
@@ -1307,6 +1321,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       // BARIS 1: Unified Search & Action Bar
                       _buildUnifiedTopBar(attendance),
 
+                      // Status ringkas sinkronisasi harian ACT → KC
+                      const ActSyncStatusStrip(),
+
                       // BARIS 2: Gabungan Semua Filter (Region, District, QA, Status, Fase)
                       if (parsedMapAsync is AsyncData)
                         _buildUnifiedFilters(
@@ -1320,10 +1337,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       // BARIS 3: Coordinate Quality Summary
                       if (parsedMapAsync is AsyncData)
                         parsedMapAsync.whenData((parsedFields) {
-                              final visibleFields =
-                                  _getFilteredFields(parsedFields);
+                              final visibleFields = _getFilteredFields(
+                                parsedFields,
+                              );
                               return _buildCoordinateQualityStrip(
-                                  visibleFields);
+                                visibleFields,
+                              );
                             }).value ??
                             const SizedBox.shrink(),
 
@@ -1368,7 +1387,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 _showAllSeasons
                     ? null
                     : (_selectedSeason ??
-                        (seasonOptions.isEmpty ? null : seasonOptions.first)),
+                          (seasonOptions.isEmpty ? null : seasonOptions.first)),
               ),
             ),
 
@@ -1401,12 +1420,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
           if (_workMode == _WorkMode.mass &&
               parsedMapAsync is AsyncData &&
               _editingPolygonField == null)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: _buildMassBar(),
-            ),
+            Positioned(bottom: 0, left: 0, right: 0, child: _buildMassBar()),
 
           if (_editingPolygonField != null)
             Positioned(
@@ -1418,9 +1432,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
           // ── 8. INITIAL LOADING — on top of everything ──────
           if (parsedMapAsync is AsyncLoading)
-            Positioned.fill(
-              child: _buildInitialLoadingScreen(),
-            ),
+            Positioned.fill(child: _buildInitialLoadingScreen()),
         ],
       ),
     );
@@ -1440,8 +1452,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
           // Search Bar di Tengah
           Expanded(
-              child:
-                  _buildNewRow2Search()), // Gunakan fungsi search bar kamu yang sudah ada
+            child: _buildNewRow2Search(),
+          ), // Gunakan fungsi search bar kamu yang sudah ada
 
           const SizedBox(width: 8),
 
@@ -1536,10 +1548,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       selectedSeason: _selectedSeason,
                       showAllSeasons: _showAllSeasons,
                       onSelected: (allSeasons, season) {
-                        _setSeasonScope(
-                          allSeasons: allSeasons,
-                          season: season,
-                        );
+                        _setSeasonScope(allSeasons: allSeasons, season: season);
                       },
                     ),
                   );
@@ -1602,8 +1611,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 icon: _showPldDiscardFields
                     ? Icons.visibility_rounded
                     : Icons.visibility_off_rounded,
-                label:
-                    _showPldDiscardFields ? 'PLD/Discard' : 'PLD Disembunyikan',
+                label: _showPldDiscardFields
+                    ? 'PLD/Discard'
+                    : 'PLD Disembunyikan',
                 isActive: !_showPldDiscardFields,
                 onTap: () {
                   setState(() {
@@ -1638,22 +1648,23 @@ class _QAScreenState extends ConsumerState<QAScreen>
     );
   }
 
+  void _setActivePhaseView(ActivePhaseView phase) {
+    setState(() {
+      _activePhaseView = phase;
+      if (phase != ActivePhaseView.generative &&
+          phase != ActivePhaseView.auto &&
+          _auditFilter == _AuditFilter.partial) {
+        _auditFilter = _AuditFilter.all;
+      }
+      _clearMapCaches();
+    });
+  }
+
   // Fungsi Helper baru untuk membuat Tombol Ikon Fase yang ringkas
   Widget _buildPhaseIconButton(ActivePhaseView phase) {
     final isActive = _activePhaseView == phase;
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _activePhaseView = phase;
-          // Logika reset filter parsial jika pindah dari generatif
-          if (phase != ActivePhaseView.generative &&
-              phase != ActivePhaseView.auto &&
-              _auditFilter == _AuditFilter.partial) {
-            _auditFilter = _AuditFilter.all;
-          }
-          _clearMapCaches();
-        });
-      },
+      onTap: () => _setActivePhaseView(phase),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: 40,
@@ -1675,7 +1686,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   BoxShadow(
                     color: AdvantaColors.primaryGreen.withAlpha(60),
                     blurRadius: 8,
-                  )
+                  ),
                 ]
               : [],
         ),
@@ -1756,17 +1767,25 @@ class _QAScreenState extends ConsumerState<QAScreen>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.location_off_rounded,
-                  color: Colors.white, size: 14),
+              const Icon(
+                Icons.location_off_rounded,
+                color: Colors.white,
+                size: 14,
+              ),
               const SizedBox(width: 8),
               Text(
                 '${uncoordFields.length} Lahan Tanpa Koordinat',
-                style: AdvantaText.caption
-                    .copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+                style: AdvantaText.caption.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(width: 4),
-              const Icon(Icons.chevron_right_rounded,
-                  color: Colors.white, size: 16),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Colors.white,
+                size: 16,
+              ),
             ],
           ),
         ),
@@ -1842,11 +1861,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   showPld: _showPldDiscardFields,
                   textFilters: _activeFilters
                       .where((filter) => filter.value.trim().isNotEmpty)
-                      .map((filter) => AuditPlanningTextFilter(
-                            fieldKey: filter.param.fieldKey,
-                            label: filter.param.label,
-                            value: filter.value.trim(),
-                          ))
+                      .map(
+                        (filter) => AuditPlanningTextFilter(
+                          fieldKey: filter.param.fieldKey,
+                          label: filter.param.label,
+                          value: filter.value.trim(),
+                        ),
+                      )
                       .toList(growable: false),
                 );
                 context.push(
@@ -1886,21 +1907,23 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final polygonSubtitle = isKml
         ? '${_editingPolygonFileName ?? 'File KML'} - ${_editingPolygonKmlPointCount ?? _editingPolygonPoints.length} titik'
         : '${_editingPolygonPoints.length} titik polygon';
-    final areaDeltaHa =
-        masterAreaHa == null ? null : polygonAreaHa - masterAreaHa;
+    final areaDeltaHa = masterAreaHa == null
+        ? null
+        : polygonAreaHa - masterAreaHa;
     final areaDeltaPct = masterAreaHa == null || masterAreaHa <= 0
         ? null
         : (areaDeltaHa! / masterAreaHa) * 100;
-    final canDelete = _selectedPolygonVertexIndex != null &&
+    final canDelete =
+        _selectedPolygonVertexIndex != null &&
         _editingPolygonPoints.length > 3 &&
         !_isSavingPolygon;
     final deltaColor = areaDeltaHa == null
         ? Colors.white70
         : areaDeltaHa.abs() < 0.005
-            ? AdvantaColors.lightGreen
-            : areaDeltaHa > 0
-                ? AdvantaColors.lightGreen
-                : AdvantaColors.goldLight;
+        ? AdvantaColors.lightGreen
+        : areaDeltaHa > 0
+        ? AdvantaColors.lightGreen
+        : AdvantaColors.goldLight;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
@@ -1937,8 +1960,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
                             polygonSubtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: AdvantaText.caption
-                                .copyWith(color: Colors.white60),
+                            style: AdvantaText.caption.copyWith(
+                              color: Colors.white60,
+                            ),
                           ),
                         ),
                       ],
@@ -1975,23 +1999,29 @@ class _QAScreenState extends ConsumerState<QAScreen>
                           ),
                         )
                       : isKml
-                          ? Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.check_rounded,
-                                    color: Colors.white, size: 18),
-                                const SizedBox(width: 5),
-                                Text(
-                                  'Gunakan',
-                                  style: AdvantaText.caption.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : const Icon(Icons.check_rounded,
-                              color: Colors.white, size: 20),
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Gunakan',
+                              style: AdvantaText.caption.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        )
+                      : const Icon(
+                          Icons.check_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                 ),
               ),
             ],
@@ -2023,7 +2053,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     value: areaDeltaHa == null
                         ? '-'
                         : '${_formatSignedAreaHa(areaDeltaHa)}'
-                            '${areaDeltaPct == null ? '' : ' (${_formatSignedPercent(areaDeltaPct)})'}',
+                              '${areaDeltaPct == null ? '' : ' (${_formatSignedPercent(areaDeltaPct)})'}',
                     valueColor: deltaColor,
                     alignEnd: true,
                   ),
@@ -2043,8 +2073,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   onTap: _isSavingPolygon || _editingPolygonField == null
                       ? null
                       : () => unawaited(
-                            _importPolygonFromKml(_editingPolygonField!),
-                          ),
+                          _importPolygonFromKml(_editingPolygonField!),
+                        ),
                 ),
                 _PolygonToolButton(
                   icon: Icons.center_focus_strong_rounded,
@@ -2163,8 +2193,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }) {
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment:
-          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: alignEnd
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
         Text(
           label,
@@ -2198,8 +2229,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final projectionDeltaDays = _getWeekProjectionDeltaDays();
     // ParsedFieldData is recreated after a fetch. Hashing object identities
     // avoids stringifying every nested audit row on each pan/zoom rebuild.
-    final markerDataHash =
-        Object.hashAll(dataToMark.map((field) => identityHashCode(field)));
+    final markerDataHash = Object.hashAll(
+      dataToMark.map((field) => identityHashCode(field)),
+    );
 
     // Buat key cache dari semua data yang memengaruhi tampilan marker.
     final markerKey = [
@@ -2224,9 +2256,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   Widget _buildMap(
-      List<ParsedFieldData> fieldsData, List<ParsedFieldData> allFields) {
-    final uncoordRaw =
-        fieldsData.where((f) => f.isDefault).map((f) => f.raw).toList();
+    List<ParsedFieldData> fieldsData,
+    List<ParsedFieldData> allFields,
+  ) {
+    final uncoordRaw = fieldsData
+        .where((f) => f.isDefault)
+        .map((f) => f.raw)
+        .toList();
     // final coordFields = fieldsData.where((f) => !f.isDefault).toList();
 
     final visibleMarkerFields = _getVisibleMarkerFields(fieldsData);
@@ -2245,11 +2281,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
         // ── Optimasi: Kurangi frekuensi rebuild saat zoom ──
         onMapEvent: (event) {
           final newZoom = _mapController.camera.zoom;
-          final crossedPolygonZoom = (_currentZoom < _polygonMinZoom &&
-                  newZoom >= _polygonMinZoom) ||
+          final crossedPolygonZoom =
+              (_currentZoom < _polygonMinZoom && newZoom >= _polygonMinZoom) ||
               (_currentZoom >= _polygonMinZoom && newZoom < _polygonMinZoom);
           final zoomChangedEnough = (newZoom - _currentZoom).abs() > 0.5;
-          final viewportSettled = event is MapEventMoveEnd ||
+          final viewportSettled =
+              event is MapEventMoveEnd ||
               event is MapEventFlingAnimationEnd ||
               event is MapEventDoubleTapZoomEnd ||
               event is MapEventScrollWheelZoom;
@@ -2352,8 +2389,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
     for (final f in fieldsData) {
       final projectedDap = _getProjectedDap(f.dap);
       final hybrid = f.raw['hybrid']?.toString();
-      final color = _markerColor(projectedDap,
-          hybrid: hybrid); // Gunakan projectedDap & hybrid
+      final color = _markerColor(
+        projectedDap,
+        hybrid: hybrid,
+      ); // Gunakan projectedDap & hybrid
       final fn = f.raw['field_number']?.toString() ?? '';
       final isSelected = _selectedFieldNumbers.contains(fn);
       final isCorrected = f.isCorrected;
@@ -2370,214 +2409,223 @@ class _QAScreenState extends ConsumerState<QAScreen>
         hybrid: hybrid,
       );
 
-      result.add(Marker(
-        point: LatLng(f.lat, f.lng),
-        width: 56,
-        height: 56,
-        alignment: Alignment.topCenter,
-        child: RepaintBoundary(
-          child: GestureDetector(
-            onTap: () {
-              if (_editingPolygonField != null) return;
-              if (_workMode == _WorkMode.mass) {
-                setState(() {
-                  if (isSelected) {
-                    _selectedFieldNumbers.remove(fn);
-                  } else {
-                    _selectedFieldNumbers.add(fn);
-                  }
-                });
-              } else {
-                final canOpenPolygonActions = _showPolygons &&
-                    _currentZoom >= _polygonMinZoom &&
-                    (f.polygonPoints?.length ?? 0) >= 3;
-                if (canOpenPolygonActions) {
-                  _handlePolygonSelection(f);
+      result.add(
+        Marker(
+          point: LatLng(f.lat, f.lng),
+          width: 56,
+          height: 56,
+          alignment: Alignment.topCenter,
+          child: RepaintBoundary(
+            child: GestureDetector(
+              onTap: () {
+                if (_editingPolygonField != null) return;
+                if (_workMode == _WorkMode.mass) {
+                  setState(() {
+                    if (isSelected) {
+                      _selectedFieldNumbers.remove(fn);
+                    } else {
+                      _selectedFieldNumbers.add(fn);
+                    }
+                  });
                 } else {
-                  unawaited(_openFieldDetailSafely(f.raw));
+                  final canOpenPolygonActions =
+                      _showPolygons &&
+                      _currentZoom >= _polygonMinZoom &&
+                      (f.polygonPoints?.length ?? 0) >= 3;
+                  if (canOpenPolygonActions) {
+                    _handlePolygonSelection(f);
+                  } else {
+                    unawaited(_openFieldDetailSafely(f.raw));
+                  }
                 }
-              }
-            },
-            child: Stack(
-              alignment: Alignment.center,
-              clipBehavior: Clip.none,
-              children: [
-                // ── 0. GOLDEN HALO (FOR SC ONLY) ───────────────────
-                if (isSc && !isSelected)
-                  Positioned(
-                    bottom: 12,
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AdvantaColors.gold.withAlpha(220),
-                            blurRadius: 18,
-                            spreadRadius: 3,
-                          ),
-                          BoxShadow(
-                            color: AdvantaColors.gold.withAlpha(150),
-                            blurRadius: 8,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                // ── 1. BENTUK MAP PIN (TEARDROP) ───────────────────
-                Positioned(
-                  bottom: 8,
-                  child: Transform.rotate(
-                    angle: 45 * (3.14159265359 / 180),
-                    child: Container(
-                      width: isCorrected ? 38 : 34,
-                      height: isCorrected ? 38 : 34,
-                      decoration: BoxDecoration(
-                        color: isSelected ? AdvantaColors.primaryGreen : color,
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(20),
-                          topRight: Radius.circular(20),
-                          bottomLeft: Radius.circular(20),
-                          bottomRight: Radius.circular(3), // Ujung lancip
-                        ),
-                        border: Border.all(
-                          color: isSelected
-                              ? Colors.white
-                              : isCorrected
-                                  ? AdvantaColors.gold
-                                  : Colors.white,
-                          width: isSelected ? 3.0 : 2.0,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withAlpha(120),
-                            blurRadius: 6,
-                            offset: const Offset(2, 2),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── 2. ANGKA DAP ATAU ICON CENTANG ─────────────────
-                Positioned(
-                  bottom: 18,
-                  child: isSelected
-                      ? const Icon(Icons.check_rounded,
-                          color: Colors.white, size: 22)
-                      : Text(
-                          '$projectedDap',
-                          style: AdvantaText.caption.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            height: 1.0,
-                          ),
-                        ),
-                ),
-
-                // ── 3. BADGE KOREKSI (C) ───────────────────────────
-                if (isCorrected && !isSelected)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      width: 16,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        color: AdvantaColors.gold,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                              color: AdvantaColors.gold.withAlpha(136),
-                              blurRadius: 4),
-                        ],
-                      ),
-                      child: Center(
-                        child: Text(
-                          'C',
-                          style: AdvantaText.caption.copyWith(
-                            color: AdvantaColors.charcoal,
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                            height: 1.0,
-                          ),
+              },
+              child: Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.none,
+                children: [
+                  // ── 0. GOLDEN HALO (FOR SC ONLY) ───────────────────
+                  if (isSc && !isSelected)
+                    Positioned(
+                      bottom: 12,
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AdvantaColors.gold.withAlpha(220),
+                              blurRadius: 18,
+                              spreadRadius: 3,
+                            ),
+                            BoxShadow(
+                              color: AdvantaColors.gold.withAlpha(150),
+                              blurRadius: 8,
+                              spreadRadius: 1,
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ),
 
-                // ── 4. AUDIT STATUS DOT ────────────────────────────
-                if (!isSelected)
-                  Positioned(
-                    top: 8,
-                    left: 8,
-                    child: MarkerAuditDot(
-                      auditStatus: auditStatus,
-                      dap: projectedDap, // <--- Gunakan projectedDap
-                      activePhase: markerActivePhase,
-                      isCorrected: isCorrected,
-                    ),
-                  ),
-
-                // ── 5. OVERDUE INDICATOR ────────────────────────
-                if (!isSelected && isOverdue)
+                  // ── 1. BENTUK MAP PIN (TEARDROP) ───────────────────
                   Positioned(
                     bottom: 8,
-                    right: 8,
-                    child: Container(
-                      width: 16,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        color: AdvantaColors.error,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 1.4),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AdvantaColors.error.withAlpha(136),
-                            blurRadius: 5,
+                    child: Transform.rotate(
+                      angle: 45 * (3.14159265359 / 180),
+                      child: Container(
+                        width: isCorrected ? 38 : 34,
+                        height: isCorrected ? 38 : 34,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AdvantaColors.primaryGreen
+                              : color,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(20),
+                            topRight: Radius.circular(20),
+                            bottomLeft: Radius.circular(20),
+                            bottomRight: Radius.circular(3), // Ujung lancip
                           ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.priority_high_rounded,
-                        color: Colors.white,
-                        size: 11,
+                          border: Border.all(
+                            color: isSelected
+                                ? Colors.white
+                                : isCorrected
+                                ? AdvantaColors.gold
+                                : Colors.white,
+                            width: isSelected ? 3.0 : 2.0,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(120),
+                              blurRadius: 6,
+                              offset: const Offset(2, 2),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-              ],
+
+                  // ── 2. ANGKA DAP ATAU ICON CENTANG ─────────────────
+                  Positioned(
+                    bottom: 18,
+                    child: isSelected
+                        ? const Icon(
+                            Icons.check_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          )
+                        : Text(
+                            '$projectedDap',
+                            style: AdvantaText.caption.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              height: 1.0,
+                            ),
+                          ),
+                  ),
+
+                  // ── 3. BADGE KOREKSI (C) ───────────────────────────
+                  if (isCorrected && !isSelected)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: AdvantaColors.gold,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AdvantaColors.gold.withAlpha(136),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            'C',
+                            style: AdvantaText.caption.copyWith(
+                              color: AdvantaColors.charcoal,
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // ── 4. AUDIT STATUS DOT ────────────────────────────
+                  if (!isSelected)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: MarkerAuditDot(
+                        auditStatus: auditStatus,
+                        dap: projectedDap, // <--- Gunakan projectedDap
+                        activePhase: markerActivePhase,
+                        isCorrected: isCorrected,
+                      ),
+                    ),
+
+                  // ── 5. OVERDUE INDICATOR ────────────────────────
+                  if (!isSelected && isOverdue)
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: AdvantaColors.error,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.4),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AdvantaColors.error.withAlpha(136),
+                              blurRadius: 5,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.priority_high_rounded,
+                          color: Colors.white,
+                          size: 11,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
-      ));
+      );
     }
     return result;
   }
 
   Widget _buildCluster(int count) => Container(
-        decoration: BoxDecoration(
-          color: AdvantaColors.primaryGreen,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 2.0),
-          boxShadow: [
-            BoxShadow(
-              color: AdvantaColors.primaryGreen.withAlpha(128),
-              blurRadius: 10,
-            ),
-          ],
+    decoration: BoxDecoration(
+      color: AdvantaColors.primaryGreen,
+      shape: BoxShape.circle,
+      border: Border.all(color: Colors.white, width: 2.0),
+      boxShadow: [
+        BoxShadow(
+          color: AdvantaColors.primaryGreen.withAlpha(128),
+          blurRadius: 10,
         ),
-        child: Center(
-          child: Text(
-            '$count',
-            style: AdvantaText.bodyBold.copyWith(color: Colors.white),
-          ),
-        ),
-      );
+      ],
+    ),
+    child: Center(
+      child: Text(
+        '$count',
+        style: AdvantaText.bodyBold.copyWith(color: Colors.white),
+      ),
+    ),
+  );
 
   bool get _isEditingPolygon => _editingPolygonField != null;
 
@@ -2608,8 +2656,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final points = field.polygonPoints ?? const <LatLng>[];
     final canEdit = _canEditPolygon;
     final centroid = _polygonCentroid(points);
-    final centroidText =
-        centroid == null ? '-' : _formatCorrectionCoordinate(centroid);
+    final centroidText = centroid == null
+        ? '-'
+        : _formatCorrectionCoordinate(centroid);
     final canCorrect =
         canEdit && centroid != null && !_isSavingCorrectionTagging;
 
@@ -2640,29 +2689,41 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       color: AdvantaColors.primaryGreen.withAlpha(60),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.pentagon_outlined,
-                        color: AdvantaColors.lightGreen, size: 20),
+                    child: const Icon(
+                      Icons.pentagon_outlined,
+                      color: AdvantaColors.lightGreen,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(fieldNumber,
-                            style: AdvantaText.bodyBold
-                                .copyWith(color: Colors.white)),
-                        Text(farmer,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AdvantaText.caption
-                                .copyWith(color: Colors.white60)),
+                        Text(
+                          fieldNumber,
+                          style: AdvantaText.bodyBold.copyWith(
+                            color: Colors.white,
+                          ),
+                        ),
+                        Text(
+                          farmer,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AdvantaText.caption.copyWith(
+                            color: Colors.white60,
+                          ),
+                        ),
                       ],
                     ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(sheetContext),
-                    icon: const Icon(Icons.close_rounded,
-                        color: Colors.white54, size: 20),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white54,
+                      size: 20,
+                    ),
                     tooltip: 'Tutup',
                   ),
                 ],
@@ -2676,10 +2737,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     icon: Icons.location_city_outlined,
                     label: district,
                   ),
-                  _PolygonInfoChip(
-                    icon: Icons.map_outlined,
-                    label: region,
-                  ),
+                  _PolygonInfoChip(icon: Icons.map_outlined, label: region),
                   _PolygonInfoChip(
                     icon: Icons.straighten_rounded,
                     label: area == null ? '-' : '$area ha',
@@ -2749,8 +2807,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
                               _startPolygonEdit(field);
                             }
                           : null,
-                      icon: const Icon(Icons.edit_location_alt_outlined,
-                          size: 18),
+                      icon: const Icon(
+                        Icons.edit_location_alt_outlined,
+                        size: 18,
+                      ),
                       label: Text(
                         'Manual',
                         style: AdvantaText.button.copyWith(
@@ -3028,7 +3088,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
       final userName = ref.read(currentUserProvider).value?.name.trim();
       final normalizedNote = editNote.isEmpty ? null : editNote;
       final geometryWkt = _latLngListToPolygonWkt(_editingPolygonPoints);
-      await ref.read(supabaseServiceProvider).updateFieldGeometryWkt(
+      await ref
+          .read(supabaseServiceProvider)
+          .updateFieldCorrectionGeometryWkt(
             fieldNumber: fieldNumber,
             geometryWkt: geometryWkt,
             geometrySource: wasKmlUpload ? 'qa_kml' : 'qa_manual',
@@ -3037,8 +3099,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
             geometryUpdatedBy: userName,
             geometryEditNote: normalizedNote,
             corrFieldSizeHa: polygonAreaHa,
-            corrFieldSizeSource:
-                wasKmlUpload ? 'fam_polygon_kml' : 'fam_polygon_manual',
+            corrFieldSizeSource: wasKmlUpload
+                ? 'fam_polygon_kml'
+                : 'fam_polygon_manual',
             corrFieldSizeUpdatedBy: userName,
             corrFieldSizeNote: normalizedNote,
           );
@@ -3075,13 +3138,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final deltaHa = masterAreaHa == null ? null : polygonAreaHa - masterAreaHa;
     final deltaPct =
         masterAreaHa == null || masterAreaHa <= 0 || deltaHa == null
-            ? null
-            : (deltaHa / masterAreaHa) * 100;
+        ? null
+        : (deltaHa / masterAreaHa) * 100;
     final deltaColor = deltaHa == null
         ? AdvantaColors.charcoal
         : deltaHa >= 0
-            ? AdvantaColors.success
-            : AdvantaColors.gold;
+        ? AdvantaColors.success
+        : AdvantaColors.gold;
     final noteController = TextEditingController();
 
     try {
@@ -3121,7 +3184,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   value: deltaHa == null
                       ? '-'
                       : '${_formatSignedAreaHa(deltaHa)}'
-                          '${deltaPct == null ? '' : ' (${_formatSignedPercent(deltaPct)})'}',
+                            '${deltaPct == null ? '' : ' (${_formatSignedPercent(deltaPct)})'}',
                   valueColor: deltaColor,
                 ),
                 const SizedBox(height: 12),
@@ -3188,8 +3251,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
   Future<void> _savePolygonCentroidCorrection(ParsedFieldData field) async {
     if (_isSavingCorrectionTagging) return;
     if (!_canEditPolygon) {
-      _showPolygonSnack('Akses correction tagging tidak tersedia.',
-          isError: true);
+      _showPolygonSnack(
+        'Akses correction tagging tidak tersedia.',
+        isError: true,
+      );
       return;
     }
 
@@ -3209,7 +3274,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
     setState(() => _isSavingCorrectionTagging = true);
 
     try {
-      await ref.read(supabaseServiceProvider).updateFieldCorrectionTagging(
+      await ref
+          .read(supabaseServiceProvider)
+          .updateFieldCorrectionTagging(
             fieldNumber: fieldNumber,
             correctionTagging: correctionTagging,
           );
@@ -3221,8 +3288,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSavingCorrectionTagging = false);
-      _showPolygonSnack('Gagal menyimpan correction tagging: $e',
-          isError: true);
+      _showPolygonSnack(
+        'Gagal menyimpan correction tagging: $e',
+        isError: true,
+      );
     }
   }
 
@@ -3295,8 +3364,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
     for (final key in keys) {
       final value = raw[key];
       if (value is num) return value.toDouble();
-      final parsed =
-          double.tryParse(value?.toString().trim().replaceAll(',', '.') ?? '');
+      final parsed = double.tryParse(
+        value?.toString().trim().replaceAll(',', '.') ?? '',
+      );
       if (parsed != null) return parsed;
     }
     return null;
@@ -3333,8 +3403,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final sign = value > 0
         ? '+'
         : value < 0
-            ? '-'
-            : '';
+        ? '-'
+        : '';
     return '$sign${value.abs().toStringAsFixed(2)} Ha';
   }
 
@@ -3342,18 +3412,20 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final sign = value > 0
         ? '+'
         : value < 0
-            ? '-'
-            : '';
+        ? '-'
+        : '';
     return '$sign${value.abs().toStringAsFixed(1)}%';
   }
 
   String _latLngListToPolygonWkt(List<LatLng> points) {
     final closed = _closedPolygonRing(points);
-    final pairs = closed.map((p) {
-      final lng = p.longitude.toStringAsFixed(7);
-      final lat = p.latitude.toStringAsFixed(7);
-      return '$lng $lat';
-    }).join(', ');
+    final pairs = closed
+        .map((p) {
+          final lng = p.longitude.toStringAsFixed(7);
+          final lat = p.latitude.toStringAsFixed(7);
+          return '$lng $lat';
+        })
+        .join(', ');
     return 'POLYGON(($pairs))';
   }
 
@@ -3415,19 +3487,23 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   List<ParsedFieldData> _getVisibleMarkerFields(
-      List<ParsedFieldData> fieldsData) {
+    List<ParsedFieldData> fieldsData,
+  ) {
     final visibleBounds = _getExpandedVisibleBounds(
       paddingFactor: _markerViewportPaddingFactor,
     );
     if (visibleBounds == null) return fieldsData;
 
-    return fieldsData.where((f) {
-      return _boundsContainsLatLng(visibleBounds, f.lat, f.lng);
-    }).toList(growable: false);
+    return fieldsData
+        .where((f) {
+          return _boundsContainsLatLng(visibleBounds, f.lat, f.lng);
+        })
+        .toList(growable: false);
   }
 
   List<ParsedFieldData> _getVisiblePolygonFields(
-      List<ParsedFieldData> fieldsData) {
+    List<ParsedFieldData> fieldsData,
+  ) {
     if (!_showPolygons || _currentZoom < _polygonMinZoom) {
       return const [];
     }
@@ -3491,10 +3567,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return lng >= west || lng <= east;
   }
 
-  bool _handlePolygonMapTap(
-    LatLng point,
-    List<ParsedFieldData> polygonFields,
-  ) {
+  bool _handlePolygonMapTap(LatLng point, List<ParsedFieldData> polygonFields) {
     final field = _findPolygonFieldAtPoint(point, polygonFields);
     if (field == null) return false;
     _handlePolygonSelection(field);
@@ -3598,7 +3671,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
       );
     }
 
-    final t = (((point.x - start.x) * dx) + ((point.y - start.y) * dy)) /
+    final t =
+        (((point.x - start.x) * dx) + ((point.y - start.y) * dy)) /
         ((dx * dx) + (dy * dy));
     final clampedT = t.clamp(0.0, 1.0);
     final projectionX = start.x + clampedT * dx;
@@ -3611,8 +3685,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   bool _shouldSkipDuplicatePolygonInteraction(ParsedFieldData field) {
     final fieldNumber = field.raw['field_number']?.toString() ?? '';
-    final key =
-        fieldNumber.isEmpty ? identityHashCode(field).toString() : fieldNumber;
+    final key = fieldNumber.isEmpty
+        ? identityHashCode(field).toString()
+        : fieldNumber;
     final now = DateTime.now();
     final lastAt = _lastPolygonInteractionAt;
 
@@ -3720,10 +3795,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   shape: BoxShape.circle,
                   border: Border.all(color: accent, width: 1.3),
                   boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(90),
-                      blurRadius: 6,
-                    ),
+                    BoxShadow(color: Colors.black.withAlpha(90), blurRadius: 6),
                   ],
                 ),
                 child: Icon(Icons.add_rounded, color: accent, size: 14),
@@ -3779,12 +3851,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     fontWeight: FontWeight.w900,
                     height: 1,
                     shadows: labelColor == Colors.white
-                        ? [
-                            const Shadow(
-                              color: Colors.black54,
-                              blurRadius: 2,
-                            ),
-                          ]
+                        ? [const Shadow(color: Colors.black54, blurRadius: 2)]
                         : null,
                   ),
                 ),
@@ -3801,7 +3868,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
   /// Build PolygonLayer dari semua field yang punya polygonPoints.
   /// Hanya ditampilkan saat zoom >= 14 agar tidak berantakan di zoom jauh.
   PolygonLayer<ParsedFieldData> _buildPolygonLayer(
-      List<ParsedFieldData> fieldsData) {
+    List<ParsedFieldData> fieldsData,
+  ) {
     final polygons = <Polygon<ParsedFieldData>>[];
 
     for (final f in fieldsData) {
@@ -3824,13 +3892,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
         fillColor = AdvantaColors.primaryGreen.withAlpha(35);
       }
 
-      polygons.add(Polygon<ParsedFieldData>(
-        points: points,
-        color: fillColor,
-        borderColor: borderColor,
-        borderStrokeWidth: 1.5,
-        hitValue: f,
-      ));
+      polygons.add(
+        Polygon<ParsedFieldData>(
+          points: points,
+          color: fillColor,
+          borderColor: borderColor,
+          borderStrokeWidth: 1.5,
+          hitValue: f,
+        ),
+      );
     }
 
     return PolygonLayer<ParsedFieldData>(
@@ -3862,12 +3932,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   builder: (_, __) {
                     return Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
                       decoration: BoxDecoration(
                         color: AdvantaColors.deepForest,
                         borderRadius: BorderRadius.circular(40),
                         border: Border.all(
-                            color: AdvantaColors.primaryGreen.withAlpha(100)),
+                          color: AdvantaColors.primaryGreen.withAlpha(100),
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: AdvantaColors.primaryGreen.withAlpha(60),
@@ -3909,47 +3982,49 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   Widget _buildError(String msg) => Container(
-        color: AdvantaColors.deepForest,
-        padding: const EdgeInsets.all(32),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.cloud_off, color: AdvantaColors.error, size: 52),
-              const SizedBox(height: 12),
-              Text(
-                'Gagal memuat peta',
-                style: AdvantaText.heading2.copyWith(color: Colors.white),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                msg,
-                textAlign: TextAlign.center,
-                style: AdvantaText.body2.copyWith(color: Colors.white54),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: _refreshMapProviders,
-                icon: const Icon(Icons.refresh),
-                label: Text('Coba Lagi', style: AdvantaText.button),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AdvantaColors.primaryGreen,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: AdvantaRadius.buttonRadius),
-                ),
-              ),
-            ],
+    color: AdvantaColors.deepForest,
+    padding: const EdgeInsets.all(32),
+    child: Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.cloud_off, color: AdvantaColors.error, size: 52),
+          const SizedBox(height: 12),
+          Text(
+            'Gagal memuat peta',
+            style: AdvantaText.heading2.copyWith(color: Colors.white),
           ),
-        ),
-      );
+          const SizedBox(height: 8),
+          Text(
+            msg,
+            textAlign: TextAlign.center,
+            style: AdvantaText.body2.copyWith(color: Colors.white54),
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            onPressed: _refreshMapProviders,
+            icon: const Icon(Icons.refresh),
+            label: Text('Coba Lagi', style: AdvantaText.button),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AdvantaColors.primaryGreen,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: AdvantaRadius.buttonRadius,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   // ─── DESAIN BARU: HEADER BUILDERS ─────────────────────────────────
   Widget _buildNewRow2Search() {
     return GestureDetector(
       onTap: () {
         // Ambil semua data lahan saat ini untuk fitur Autocomplete (Saran Teks)
-        final allFields = ref
+        final allFields =
+            ref
                 .read(parsedMasterFieldMapScopedProvider(_currentMapScope))
                 .value ??
             [];
@@ -3976,12 +4051,14 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     color: AdvantaColors.deepForest,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                        color: AdvantaColors.lightGreen.withAlpha(30)),
+                      color: AdvantaColors.lightGreen.withAlpha(30),
+                    ),
                     boxShadow: [
                       BoxShadow(
-                          color: Colors.black.withAlpha(120),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10)),
+                        color: Colors.black.withAlpha(120),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
                     ],
                   ),
                   child: ClipRRect(
@@ -4020,9 +4097,12 @@ class _QAScreenState extends ConsumerState<QAScreen>
             // Animasi Slide dari Atas ke Bawah
             return SlideTransition(
               position:
-                  Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero)
-                      .animate(CurvedAnimation(
-                          parent: anim1, curve: Curves.easeOutCubic)),
+                  Tween<Offset>(
+                    begin: const Offset(0, -1),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic),
+                  ),
               child: FadeTransition(opacity: anim1, child: child),
             );
           },
@@ -4046,21 +4126,27 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     ? '${_activeFilters.length} parameter pencarian'
                     : 'Cari lahan / petani...',
                 style: AdvantaText.body2.copyWith(
-                    color: _activeFilters.isNotEmpty
-                        ? Colors.white
-                        : Colors.white54),
+                  color: _activeFilters.isNotEmpty
+                      ? Colors.white
+                      : Colors.white54,
+                ),
               ),
             ),
             if (_activeFilters.isNotEmpty)
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: const BoxDecoration(
-                    shape: BoxShape.circle, color: AdvantaColors.primaryGreen),
-                child: Text('${_activeFilters.length}',
-                    style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold)),
+                  shape: BoxShape.circle,
+                  color: AdvantaColors.primaryGreen,
+                ),
+                child: Text(
+                  '${_activeFilters.length}',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               )
             else
               const Icon(Icons.tune_rounded, color: Colors.white54, size: 18),
@@ -4081,124 +4167,134 @@ class _QAScreenState extends ConsumerState<QAScreen>
         ).value;
 
         // Item definitions: icon, label, activeColor, isActive, onTap
-        final items = <({
-          IconData icon,
-          String label,
-          Color color,
-          bool active,
-          VoidCallback onTap
-        })>[
-          (
-            icon: Icons.format_list_bulleted_rounded,
-            label: 'List View',
-            color: AdvantaColors.primaryGreen,
-            active: false,
-            onTap: () {
-              // Tutup speed dial
-              setState(() => _isSpeedDialOpen = false);
-              _speedDialCtrl.reverse();
+        final items =
+            <
+              ({
+                IconData icon,
+                String label,
+                Color color,
+                bool active,
+                VoidCallback onTap,
+              })
+            >[
+              (
+                icon: Icons.format_list_bulleted_rounded,
+                label: 'List View',
+                color: AdvantaColors.primaryGreen,
+                active: false,
+                onTap: () {
+                  // Tutup speed dial
+                  setState(() => _isSpeedDialOpen = false);
+                  _speedDialCtrl.reverse();
 
-              // Hitung deltaDays untuk Time Traveller
-              final deltaDays = _getWeekProjectionDeltaDays();
+                  // Hitung deltaDays untuk Time Traveller
+                  final deltaDays = _getWeekProjectionDeltaDays();
 
-              // Ambil data lahan dan tampilkan Bottom Sheet
-              ref
-                  .read(parsedMasterFieldMapScopedProvider(_currentMapScope))
-                  .whenData((allFields) {
-                final filtered = _filterFields(allFields);
-                FieldListView.showSheet(
-                  context,
-                  fieldsData: filtered,
-                  userLocation: _userLocation,
-                  getMarkerColor: _markerColor,
-                  onUncoordBannerTap: (uncoordFields) =>
-                      _showDefaultCoordSheet(uncoordFields),
-                  onNavigateTap: (lat, lng) => _openInGoogleMaps(lat, lng),
-                  isMassMode: _workMode == _WorkMode.mass,
-                  selectedFieldNumbers: _selectedFieldNumbers,
-                  onFieldTap: (f) {
-                    final fn = f.raw['field_number']?.toString() ?? '';
-                    if (_workMode == _WorkMode.mass) {
-                      // Jika mode massal, ubah status centang lahan
-                      setState(() {
-                        if (_selectedFieldNumbers.contains(fn)) {
-                          _selectedFieldNumbers.remove(fn);
-                        } else {
-                          _selectedFieldNumbers.add(fn);
-                        }
+                  // Ambil data lahan dan tampilkan Bottom Sheet
+                  ref
+                      .read(
+                        parsedMasterFieldMapScopedProvider(_currentMapScope),
+                      )
+                      .whenData((allFields) {
+                        final filtered = _filterFields(allFields);
+                        FieldListView.showSheet(
+                          context,
+                          fieldsData: filtered,
+                          userLocation: _userLocation,
+                          getMarkerColor: _markerColor,
+                          onUncoordBannerTap: (uncoordFields) =>
+                              _showDefaultCoordSheet(uncoordFields),
+                          onNavigateTap: (lat, lng) =>
+                              _openInGoogleMaps(lat, lng),
+                          isMassMode: _workMode == _WorkMode.mass,
+                          selectedFieldNumbers: _selectedFieldNumbers,
+                          onFieldTap: (f) {
+                            final fn = f.raw['field_number']?.toString() ?? '';
+                            if (_workMode == _WorkMode.mass) {
+                              // Jika mode massal, ubah status centang lahan
+                              setState(() {
+                                if (_selectedFieldNumbers.contains(fn)) {
+                                  _selectedFieldNumbers.remove(fn);
+                                } else {
+                                  _selectedFieldNumbers.add(fn);
+                                }
+                              });
+                            } else {
+                              // Jika mode single, TUTUP list view dulu, baru buka detailnya
+                              Navigator.pop(context);
+
+                              unawaited(_openFieldDetailSafely(f.raw));
+                            }
+                          },
+                          activePhase: _activePhaseView,
+                          onPhaseChanged: _setActivePhaseView,
+                          fieldsForPhase: (phase) => _filterFields(
+                            allFields,
+                            activePhaseOverride: phase,
+                          ),
+                          deltaDays: deltaDays, // <── TERUSKAN DELTA DAYS
+                        );
                       });
-                    } else {
-                      // Jika mode single, TUTUP list view dulu, baru buka detailnya
-                      Navigator.pop(context);
-
-                      unawaited(_openFieldDetailSafely(f.raw));
-                    }
-                  },
-                  activePhase: _activePhaseView,
-                  onPhaseChanged: (phase) {
-                    setState(() => _activePhaseView = phase);
-                  },
-                  deltaDays: deltaDays, // <── TERUSKAN DELTA DAYS
-                );
-              });
-            },
-          ),
-          (
-            icon: Icons.fit_screen_outlined,
-            label: 'Fit on Map',
-            color: AdvantaColors.midGreen,
-            active: false,
-            onTap: () {
-              ref
-                  .read(parsedMasterFieldMapScopedProvider(_currentMapScope))
-                  .whenData(
-                    (all) => _fitBounds(_filterFields(all)),
-                  );
-              setState(() => _isSpeedDialOpen = false);
-              _speedDialCtrl.reverse();
-            },
-          ),
-          (
-            icon: _isLegendVisible ? Icons.layers : Icons.layers_outlined,
-            label: 'Legends',
-            color: AdvantaColors.midGreen,
-            active: _isLegendVisible,
-            onTap: () => setState(() {
+                },
+              ),
+              (
+                icon: Icons.fit_screen_outlined,
+                label: 'Fit on Map',
+                color: AdvantaColors.midGreen,
+                active: false,
+                onTap: () {
+                  ref
+                      .read(
+                        parsedMasterFieldMapScopedProvider(_currentMapScope),
+                      )
+                      .whenData((all) => _fitBounds(_filterFields(all)));
+                  setState(() => _isSpeedDialOpen = false);
+                  _speedDialCtrl.reverse();
+                },
+              ),
+              (
+                icon: _isLegendVisible ? Icons.layers : Icons.layers_outlined,
+                label: 'Legends',
+                color: AdvantaColors.midGreen,
+                active: _isLegendVisible,
+                onTap: () => setState(() {
                   _isLegendVisible = !_isLegendVisible;
                 }),
-          ),
-          (
-            icon: _showPolygons
-                ? Icons.pentagon_rounded
-                : Icons.pentagon_outlined,
-            label: _currentZoom < _polygonMinZoom && _showPolygons
-                ? 'Polygon (zoom in)'
-                : 'Polygon',
-            color: AdvantaColors.primaryGreen,
-            active: _showPolygons,
-            onTap: () => setState(() => _showPolygons = !_showPolygons),
-          ),
-          (
-            icon: _isSatellite
-                ? Icons.map_outlined
-                : Icons.satellite_alt_outlined,
-            label: _isSatellite ? 'StreetView' : 'Satelit',
-            color: AdvantaColors.goldLight,
-            active: _isSatellite,
-            onTap: () => setState(() => _isSatellite = !_isSatellite),
-          ),
-          (
-            icon: _isLocating
-                ? Icons.location_searching_rounded
-                : (_gpsEnabled
-                    ? Icons.my_location_rounded
-                    : Icons.location_off_rounded),
-            label: 'Get User GPS',
-            color: _gpsEnabled ? AdvantaColors.lightGreen : AdvantaColors.error,
-            active: _gpsEnabled,
-            onTap: _goToUserLocation,
-          ),
-        ];
+              ),
+              (
+                icon: _showPolygons
+                    ? Icons.pentagon_rounded
+                    : Icons.pentagon_outlined,
+                label: _currentZoom < _polygonMinZoom && _showPolygons
+                    ? 'Polygon (zoom in)'
+                    : 'Polygon',
+                color: AdvantaColors.primaryGreen,
+                active: _showPolygons,
+                onTap: () => setState(() => _showPolygons = !_showPolygons),
+              ),
+              (
+                icon: _isSatellite
+                    ? Icons.map_outlined
+                    : Icons.satellite_alt_outlined,
+                label: _isSatellite ? 'StreetView' : 'Satelit',
+                color: AdvantaColors.goldLight,
+                active: _isSatellite,
+                onTap: () => setState(() => _isSatellite = !_isSatellite),
+              ),
+              (
+                icon: _isLocating
+                    ? Icons.location_searching_rounded
+                    : (_gpsEnabled
+                          ? Icons.my_location_rounded
+                          : Icons.location_off_rounded),
+                label: 'Get User GPS',
+                color: _gpsEnabled
+                    ? AdvantaColors.lightGreen
+                    : AdvantaColors.error,
+                active: _gpsEnabled,
+                onTap: _goToUserLocation,
+              ),
+            ];
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -4224,13 +4320,16 @@ class _QAScreenState extends ConsumerState<QAScreen>
                         if (tItem > 0.3)
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 9, vertical: 4),
+                              horizontal: 9,
+                              vertical: 4,
+                            ),
                             margin: const EdgeInsets.only(right: 8),
                             decoration: BoxDecoration(
                               color: AdvantaColors.deepForest.withAlpha(210),
                               borderRadius: BorderRadius.circular(20),
-                              border:
-                                  Border.all(color: Colors.white.withAlpha(25)),
+                              border: Border.all(
+                                color: Colors.white.withAlpha(25),
+                              ),
                             ),
                             child: Text(
                               item.label,
@@ -4262,19 +4361,21 @@ class _QAScreenState extends ConsumerState<QAScreen>
                             ),
                             child:
                                 item.icon == Icons.location_searching_rounded &&
-                                        _isLocating
-                                    ? const Padding(
-                                        padding: EdgeInsets.all(10),
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : Icon(item.icon,
-                                        size: 16,
-                                        color: item.active
-                                            ? Colors.white
-                                            : Colors.white70),
+                                    _isLocating
+                                ? const Padding(
+                                    padding: EdgeInsets.all(10),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Icon(
+                                    item.icon,
+                                    size: 16,
+                                    color: item.active
+                                        ? Colors.white
+                                        : Colors.white70,
+                                  ),
                           ),
                         ),
                       ],
@@ -4309,7 +4410,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       ? const LinearGradient(
                           colors: [
                             AdvantaColors.primaryGreen,
-                            AdvantaColors.midGreen
+                            AdvantaColors.midGreen,
                           ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -4390,8 +4491,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
               ),
               GestureDetector(
                 onTap: () => setState(() => _isLegendVisible = false),
-                child: const Icon(Icons.close_rounded,
-                    color: Colors.white38, size: 16),
+                child: const Icon(
+                  Icons.close_rounded,
+                  color: Colors.white38,
+                  size: 16,
+                ),
               ),
             ],
           ),
@@ -4561,8 +4665,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   shape: BoxShape.circle,
                 ),
                 child: const Center(
-                  child: Icon(Icons.location_off_rounded,
-                      color: Colors.white, size: 7),
+                  child: Icon(
+                    Icons.location_off_rounded,
+                    color: Colors.white,
+                    size: 7,
+                  ),
                 ),
               ),
               const SizedBox(width: 9),
@@ -4637,7 +4744,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       ? const LinearGradient(
                           colors: [
                             AdvantaColors.primaryGreen,
-                            AdvantaColors.midGreen
+                            AdvantaColors.midGreen,
                           ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -4665,11 +4772,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
                   child: count > 0
                       ? Text(
                           '$count',
-                          style: AdvantaText.heading2
-                              .copyWith(color: Colors.white),
+                          style: AdvantaText.heading2.copyWith(
+                            color: Colors.white,
+                          ),
                         )
-                      : const Icon(Icons.touch_app_rounded,
-                          color: Colors.white38, size: 20),
+                      : const Icon(
+                          Icons.touch_app_rounded,
+                          color: Colors.white38,
+                          size: 20,
+                        ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -4683,13 +4794,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
                         children: [
                           Text(
                             'Mass Inspect Aktif',
-                            style: AdvantaText.bodyBold
-                                .copyWith(color: Colors.white),
+                            style: AdvantaText.bodyBold.copyWith(
+                              color: Colors.white,
+                            ),
                           ),
                           Text(
                             'Tap marker di peta untuk memilih lahan',
-                            style: AdvantaText.caption
-                                .copyWith(color: Colors.white38),
+                            style: AdvantaText.caption.copyWith(
+                              color: Colors.white38,
+                            ),
                           ),
                         ],
                       )
@@ -4706,8 +4819,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
                           ),
                           Text(
                             'Pilih fase untuk mulai inspeksi massal',
-                            style: AdvantaText.caption
-                                .copyWith(color: Colors.white38),
+                            style: AdvantaText.caption.copyWith(
+                              color: Colors.white38,
+                            ),
                           ),
                         ],
                       ),
@@ -4718,8 +4832,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 GestureDetector(
                   onTap: _showSelectedFieldsSheet,
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withAlpha(14),
                       borderRadius: BorderRadius.circular(10),
@@ -4727,8 +4843,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
                     ),
                     child: Text(
                       'Daftar',
-                      style: AdvantaText.label
-                          .copyWith(color: AdvantaColors.goldLight),
+                      style: AdvantaText.label.copyWith(
+                        color: AdvantaColors.goldLight,
+                      ),
                     ),
                   ),
                 ),
@@ -4736,8 +4853,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 GestureDetector(
                   onTap: () => setState(() => _selectedFieldNumbers.clear()),
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withAlpha(10),
                       borderRadius: BorderRadius.circular(10),
@@ -4753,13 +4872,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 GestureDetector(
                   onTap: _showPhaseSheet,
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 9,
+                    ),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [
                           AdvantaColors.primaryGreen,
-                          AdvantaColors.midGreen
+                          AdvantaColors.midGreen,
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -4796,13 +4917,16 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   // ─── PHASE SELECTION SHEET (mass only) ──────────────────────
   bool _selectedFieldsAreSweetCornOnly() {
-    final parsedFields =
-        ref.read(parsedMasterFieldMapScopedProvider(_currentMapScope)).value;
+    final parsedFields = ref
+        .read(parsedMasterFieldMapScopedProvider(_currentMapScope))
+        .value;
     if (parsedFields == null) return false;
 
     final selectedFields = parsedFields
-        .where((f) =>
-            _selectedFieldNumbers.contains(f.raw['field_number']?.toString()))
+        .where(
+          (f) =>
+              _selectedFieldNumbers.contains(f.raw['field_number']?.toString()),
+        )
         .toList();
 
     return selectedFields.isNotEmpty &&
@@ -4812,13 +4936,16 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   bool _selectedFieldsArePspOnly() {
-    final parsedFields =
-        ref.read(parsedMasterFieldMapScopedProvider(_currentMapScope)).value;
+    final parsedFields = ref
+        .read(parsedMasterFieldMapScopedProvider(_currentMapScope))
+        .value;
     if (parsedFields == null) return false;
 
     final selectedFields = parsedFields
-        .where((f) =>
-            _selectedFieldNumbers.contains(f.raw['field_number']?.toString()))
+        .where(
+          (f) =>
+              _selectedFieldNumbers.contains(f.raw['field_number']?.toString()),
+        )
         .toList();
 
     return selectedFields.isNotEmpty &&
@@ -4839,10 +4966,13 @@ class _QAScreenState extends ConsumerState<QAScreen>
         includePspPhases: _selectedFieldsArePspOnly(),
         onSelected: (phase) {
           Navigator.pop(context);
-          context.push('/inspect/mass', extra: {
-            'fieldNumbers': _selectedFieldNumbers.toList(),
-            'phase': phase,
-          });
+          context.push(
+            '/inspect/mass',
+            extra: {
+              'fieldNumbers': _selectedFieldNumbers.toList(),
+              'phase': phase,
+            },
+          );
         },
       ),
     );
@@ -4850,14 +4980,17 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
   void _showSelectedFieldsSheet() {
     // 1. Ambil data yang sudah di-parse (dimana DAP sudah dihitung)
-    final parsedAsync =
-        ref.read(parsedMasterFieldMapScopedProvider(_currentMapScope));
+    final parsedAsync = ref.read(
+      parsedMasterFieldMapScopedProvider(_currentMapScope),
+    );
     if (parsedAsync.value == null) return;
 
     // 2. Filter data berdasarkan field number yang dipilih
     final selectedParsedFields = parsedAsync.value!
-        .where((f) =>
-            _selectedFieldNumbers.contains(f.raw['field_number']?.toString()))
+        .where(
+          (f) =>
+              _selectedFieldNumbers.contains(f.raw['field_number']?.toString()),
+        )
         .toList();
 
     showModalBottomSheet(
@@ -4933,9 +5066,7 @@ Widget _buildCoordinateQualityStrip(List<ParsedFieldData> fields) {
   );
 }
 
-_CoordinateQualityStats _coordinateQualityStats(
-  List<ParsedFieldData> fields,
-) {
+_CoordinateQualityStats _coordinateQualityStats(List<ParsedFieldData> fields) {
   var correctedCount = 0;
   var geometryCount = 0;
   var legacyCoordinateCount = 0;
@@ -5095,13 +5226,14 @@ class _CompactAttendanceDot extends StatelessWidget {
         ),
         child: Center(
           child: Icon(
-              isNotCheckedIn
-                  ? Icons.warning_amber_rounded
-                  : isCheckedOut
-                      ? Icons.task_alt_rounded
-                      : Icons.person,
-              color: color,
-              size: 18),
+            isNotCheckedIn
+                ? Icons.warning_amber_rounded
+                : isCheckedOut
+                ? Icons.task_alt_rounded
+                : Icons.person,
+            color: color,
+            size: 18,
+          ),
         ),
       ),
     );
@@ -5145,10 +5277,7 @@ class _NewWeekPickerChip extends StatelessWidget {
   final List<Map<String, dynamic>> selectedWeeks;
   final VoidCallback onTap;
 
-  const _NewWeekPickerChip({
-    required this.selectedWeeks,
-    required this.onTap,
-  });
+  const _NewWeekPickerChip({required this.selectedWeeks, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -5156,8 +5285,8 @@ class _NewWeekPickerChip extends StatelessWidget {
     final displayText = selectedWeeks.isEmpty
         ? 'Semua Minggu'
         : selectedWeeks.length == 1
-            ? '$todayStr • ${selectedWeeks.first['label']}'
-            : '$todayStr • ${selectedWeeks.length} Minggu';
+        ? '$todayStr • ${selectedWeeks.first['label']}'
+        : '$todayStr • ${selectedWeeks.length} Minggu';
 
     return GestureDetector(
       onTap: onTap,
@@ -5186,8 +5315,11 @@ class _NewWeekPickerChip extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const Icon(Icons.keyboard_arrow_down_rounded,
-                color: Colors.white, size: 16),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: Colors.white,
+              size: 16,
+            ),
           ],
         ),
       ),
@@ -5235,13 +5367,13 @@ class _AuditStatusSheet extends StatelessWidget {
         filter: _AuditFilter.all,
         label: 'Semua Status',
         icon: Icons.apps_rounded,
-        color: Colors.white70
+        color: Colors.white70,
       ),
       (
         filter: _AuditFilter.sampun,
         label: 'Sampun (Sudah Audit)',
         icon: Icons.check_circle_rounded,
-        color: const Color(0xFF43A047)
+        color: const Color(0xFF43A047),
       ),
       // MUNCUL JIKA FASE BISA PUNYA PROGRESS PARSIAL
       if (activePhase == ActivePhaseView.generative ||
@@ -5251,13 +5383,13 @@ class _AuditStatusSheet extends StatelessWidget {
           filter: _AuditFilter.partial,
           label: 'Progress Sebagian',
           icon: Icons.timelapse_rounded,
-          color: const Color(0xFFFFA726)
+          color: const Color(0xFFFFA726),
         ),
       (
         filter: _AuditFilter.dereng,
         label: 'Dereng (Belum Audit)',
         icon: Icons.radio_button_unchecked_rounded,
-        color: const Color(0xFFEF5350)
+        color: const Color(0xFFEF5350),
       ),
     ];
 
@@ -5298,11 +5430,15 @@ class _AuditStatusSheet extends StatelessWidget {
 
                 return ListTile(
                   leading: Icon(item.icon, color: item.color),
-                  title: Text(item.label,
-                      style: AdvantaText.body1.copyWith(color: Colors.white)),
+                  title: Text(
+                    item.label,
+                    style: AdvantaText.body1.copyWith(color: Colors.white),
+                  ),
                   trailing: isSelected
-                      ? const Icon(Icons.check_circle,
-                          color: AdvantaColors.lightGreen)
+                      ? const Icon(
+                          Icons.check_circle,
+                          color: AdvantaColors.lightGreen,
+                        )
                       : null,
                   onTap: () {
                     onSelected(item.filter);
@@ -5477,9 +5613,11 @@ class _NewQuickFilterChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon,
-                color: isActive ? AdvantaColors.lightGreen : Colors.white70,
-                size: 14),
+            Icon(
+              icon,
+              color: isActive ? AdvantaColors.lightGreen : Colors.white70,
+              size: 14,
+            ),
             const SizedBox(width: 6),
             Text(
               label,
@@ -5490,9 +5628,12 @@ class _NewQuickFilterChip extends StatelessWidget {
             ),
             if (hasDropdown) ...[
               const SizedBox(width: 4),
-              Icon(Icons.keyboard_arrow_down_rounded,
-                  color: isActive ? Colors.white : Colors.white70, size: 14),
-            ]
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: isActive ? Colors.white : Colors.white70,
+                size: 14,
+              ),
+            ],
           ],
         ),
       ),
@@ -5548,10 +5689,7 @@ class _PolygonInfoChip extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const _PolygonInfoChip({
-    required this.icon,
-    required this.label,
-  });
+  const _PolygonInfoChip({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -5682,19 +5820,24 @@ class _FilterPopupChip<T extends Object> extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Text('Semua',
-                    style: AdvantaText.body2.copyWith(
-                      color: currentValue == null
-                          ? AdvantaColors.lightGreen
-                          : Colors.white70,
-                      fontWeight: currentValue == null
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                    )),
+                child: Text(
+                  'Semua',
+                  style: AdvantaText.body2.copyWith(
+                    color: currentValue == null
+                        ? AdvantaColors.lightGreen
+                        : Colors.white70,
+                    fontWeight: currentValue == null
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
               ),
               if (currentValue == null)
-                const Icon(Icons.check_circle_rounded,
-                    color: AdvantaColors.lightGreen, size: 16),
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: AdvantaColors.lightGreen,
+                  size: 16,
+                ),
             ],
           ),
         ),
@@ -5709,16 +5852,21 @@ class _FilterPopupChip<T extends Object> extends StatelessWidget {
                   child: Text(
                     itemLabel(item),
                     style: AdvantaText.body2.copyWith(
-                      color:
-                          isSelected ? AdvantaColors.lightGreen : Colors.white,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected
+                          ? AdvantaColors.lightGreen
+                          : Colors.white,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                     ),
                   ),
                 ),
                 if (isSelected)
-                  const Icon(Icons.check_circle_rounded,
-                      color: AdvantaColors.lightGreen, size: 16),
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: AdvantaColors.lightGreen,
+                    size: 16,
+                  ),
               ],
             ),
           );
@@ -5741,9 +5889,11 @@ class _FilterPopupChip<T extends Object> extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon,
-                color: isActive ? AdvantaColors.lightGreen : Colors.white70,
-                size: 14),
+            Icon(
+              icon,
+              color: isActive ? AdvantaColors.lightGreen : Colors.white70,
+              size: 14,
+            ),
             const SizedBox(width: 6),
             Text(
               label, // Label ini dikirim dari parent
@@ -5753,8 +5903,11 @@ class _FilterPopupChip<T extends Object> extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            Icon(Icons.keyboard_arrow_down_rounded,
-                color: isActive ? Colors.white : Colors.white70, size: 14),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: isActive ? Colors.white : Colors.white70,
+              size: 14,
+            ),
           ],
         ),
       ),
@@ -5804,18 +5957,19 @@ HomeMapSeasonScope resolveHomeMapSeasonScope({
   String? season,
   String? selectedRegion,
   required bool showAllRegions,
-}) =>
-    (
-      allSeasons: allSeasons,
-      season: allSeasons ? null : season,
-      region: selectedRegion,
-      allRegions: showAllRegions,
-    );
+}) => (
+  allSeasons: allSeasons,
+  season: allSeasons ? null : season,
+  region: selectedRegion,
+  allRegions: showAllRegions,
+);
 
 bool homeMapHasActiveFieldNumberSearch(Iterable<SearchFilter> filters) =>
-    filters.any((filter) =>
-        filter.param == SearchParam.fieldNumber &&
-        filter.value.trim().isNotEmpty);
+    filters.any(
+      (filter) =>
+          filter.param == SearchParam.fieldNumber &&
+          filter.value.trim().isNotEmpty,
+    );
 
 bool homeMapMatchesSearchFilters(
   Map<String, dynamic> raw,
@@ -5862,8 +6016,9 @@ class _SmartSearchBarState extends State<_SmartSearchBar> {
 
   void _addFilter() {
     final usedParams = widget.filters.map((f) => f.param).toSet();
-    final available =
-        SearchParam.values.where((p) => !usedParams.contains(p)).toList();
+    final available = SearchParam.values
+        .where((p) => !usedParams.contains(p))
+        .toList();
     if (available.isEmpty) return;
 
     setState(() {
@@ -5904,8 +6059,11 @@ class _SmartSearchBarState extends State<_SmartSearchBar> {
       children: [
         Row(
           children: [
-            const Icon(Icons.manage_search_rounded,
-                color: AdvantaColors.lightGreen, size: 24),
+            const Icon(
+              Icons.manage_search_rounded,
+              color: AdvantaColors.lightGreen,
+              size: 24,
+            ),
             const SizedBox(width: 8),
             Text(
               'Pencarian Spesifik',
@@ -5915,10 +6073,11 @@ class _SmartSearchBarState extends State<_SmartSearchBar> {
             if (widget.filters.isNotEmpty)
               TextButton(
                 onPressed: _clearAll,
-                child: Text('Reset',
-                    style:
-                        AdvantaText.label.copyWith(color: AdvantaColors.error)),
-              )
+                child: Text(
+                  'Reset',
+                  style: AdvantaText.label.copyWith(color: AdvantaColors.error),
+                ),
+              ),
           ],
         ),
         const SizedBox(height: 8),
@@ -5985,8 +6144,8 @@ class _SmartSearchBarState extends State<_SmartSearchBar> {
                           size: 18,
                           color:
                               widget.filters.length < SearchParam.values.length
-                                  ? AdvantaColors.lightGreen
-                                  : Colors.white24,
+                              ? AdvantaColors.lightGreen
+                              : Colors.white24,
                         ),
                         const SizedBox(width: 8),
                         Text(
@@ -5994,7 +6153,8 @@ class _SmartSearchBarState extends State<_SmartSearchBar> {
                               ? 'Tambah Parameter'
                               : 'Semua parameter digunakan',
                           style: AdvantaText.bodyBold.copyWith(
-                            color: widget.filters.length <
+                            color:
+                                widget.filters.length <
                                     SearchParam.values.length
                                 ? AdvantaColors.lightGreen
                                 : Colors.white24,
@@ -6042,7 +6202,8 @@ class _FilterRowState extends State<_FilterRow> {
   void _showParamPicker() {
     final available = SearchParam.values
         .where(
-            (p) => p == widget.filter.param || !widget.usedParams.contains(p))
+          (p) => p == widget.filter.param || !widget.usedParams.contains(p),
+        )
         .toList();
 
     showModalBottomSheet(
@@ -6085,8 +6246,11 @@ class _FilterRowState extends State<_FilterRow> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(widget.filter.param.icon,
-                      size: 13, color: AdvantaColors.lightGreen),
+                  Icon(
+                    widget.filter.param.icon,
+                    size: 13,
+                    color: AdvantaColors.lightGreen,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     widget.filter.param.label,
@@ -6096,17 +6260,24 @@ class _FilterRowState extends State<_FilterRow> {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Icon(Icons.unfold_more_rounded,
-                      size: 12, color: AdvantaColors.lightGreen.withAlpha(150)),
+                  Icon(
+                    Icons.unfold_more_rounded,
+                    size: 12,
+                    color: AdvantaColors.lightGreen.withAlpha(150),
+                  ),
                 ],
               ),
             ),
           ),
 
           const SizedBox(width: 8),
-          Text('≈',
-              style: AdvantaText.body2
-                  .copyWith(color: Colors.white30, fontSize: 16)),
+          Text(
+            '≈',
+            style: AdvantaText.body2.copyWith(
+              color: Colors.white30,
+              fontSize: 16,
+            ),
+          ),
           const SizedBox(width: 8),
 
           // ── Kotak Teks dengan Autocomplete (Pencarian Cerdas) ──
@@ -6124,9 +6295,11 @@ class _FilterRowState extends State<_FilterRow> {
                 // Memfilter data unik yang cocok dengan ketikan user
                 final suggestions = widget.allFields
                     .map((f) => f.raw[key]?.toString() ?? '')
-                    .where((val) =>
-                        val.trim().isNotEmpty &&
-                        val.toLowerCase().contains(query))
+                    .where(
+                      (val) =>
+                          val.trim().isNotEmpty &&
+                          val.toLowerCase().contains(query),
+                    )
                     .toSet()
                     .toList();
 
@@ -6140,54 +6313,66 @@ class _FilterRowState extends State<_FilterRow> {
               // UI dari kotak input (TextField)
               fieldViewBuilder:
                   (context, controller, focusNode, onFieldSubmitted) {
-                return TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  style: AdvantaText.body2
-                      .copyWith(color: Colors.white, fontSize: 13),
-                  textAlignVertical: TextAlignVertical.center,
-                  cursorColor: AdvantaColors.lightGreen,
-                  decoration: InputDecoration(
-                    hintText: 'Cari...',
-                    hintStyle:
-                        AdvantaText.caption.copyWith(color: Colors.white54),
-                    filled: true,
-                    fillColor: AdvantaColors.midGreen.withAlpha(160),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(
-                          color: AdvantaColors.lightGreen.withAlpha(60)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: Colors.white.withAlpha(30)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(
-                          color: AdvantaColors.lightGreen.withAlpha(180)),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 12),
-                    suffixIcon: controller.text.isNotEmpty
-                        ? GestureDetector(
-                            onTap: () {
-                              controller.clear();
-                              widget.filter.value = '';
-                              widget.onChanged();
-                            },
-                            child: const Icon(Icons.close_rounded,
-                                size: 14, color: Colors.white54),
-                          )
-                        : null,
-                  ),
-                  onChanged: (v) {
-                    widget.filter.value = v;
-                    widget.onChanged();
+                    return TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      style: AdvantaText.body2.copyWith(
+                        color: Colors.white,
+                        fontSize: 13,
+                      ),
+                      textAlignVertical: TextAlignVertical.center,
+                      cursorColor: AdvantaColors.lightGreen,
+                      decoration: InputDecoration(
+                        hintText: 'Cari...',
+                        hintStyle: AdvantaText.caption.copyWith(
+                          color: Colors.white54,
+                        ),
+                        filled: true,
+                        fillColor: AdvantaColors.midGreen.withAlpha(160),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: AdvantaColors.lightGreen.withAlpha(60),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: Colors.white.withAlpha(30),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: AdvantaColors.lightGreen.withAlpha(180),
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 12,
+                        ),
+                        suffixIcon: controller.text.isNotEmpty
+                            ? GestureDetector(
+                                onTap: () {
+                                  controller.clear();
+                                  widget.filter.value = '';
+                                  widget.onChanged();
+                                },
+                                child: const Icon(
+                                  Icons.close_rounded,
+                                  size: 14,
+                                  color: Colors.white54,
+                                ),
+                              )
+                            : null,
+                      ),
+                      onChanged: (v) {
+                        widget.filter.value = v;
+                        widget.onChanged();
+                      },
+                      onSubmitted: (v) => onFieldSubmitted(),
+                    );
                   },
-                  onSubmitted: (v) => onFieldSubmitted(),
-                );
-              },
               // UI dari List Dropdown Saran Pencarian
               optionsViewBuilder: (context, onSelected, options) {
                 return Align(
@@ -6195,7 +6380,8 @@ class _FilterRowState extends State<_FilterRow> {
                   child: Material(
                     color: Colors.transparent,
                     child: Container(
-                      width: MediaQuery.of(context).size.width -
+                      width:
+                          MediaQuery.of(context).size.width -
                           160, // Sesuaikan sisa lebar layar
                       margin: const EdgeInsets.only(top: 4),
                       decoration: BoxDecoration(
@@ -6204,9 +6390,10 @@ class _FilterRowState extends State<_FilterRow> {
                         border: Border.all(color: Colors.white.withAlpha(30)),
                         boxShadow: [
                           BoxShadow(
-                              color: Colors.black.withAlpha(150),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4)),
+                            color: Colors.black.withAlpha(150),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
                         ],
                       ),
                       child: ListView.separated(
@@ -6214,19 +6401,24 @@ class _FilterRowState extends State<_FilterRow> {
                         shrinkWrap: true,
                         itemCount: options.length,
                         separatorBuilder: (_, __) => Divider(
-                            height: 1, color: Colors.white.withAlpha(10)),
+                          height: 1,
+                          color: Colors.white.withAlpha(10),
+                        ),
                         itemBuilder: (context, index) {
                           final option = options.elementAt(index);
                           return InkWell(
                             onTap: () => onSelected(option),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
                               child: Text(
                                 option,
                                 style: AdvantaText.body2.copyWith(
-                                    color: AdvantaColors.lightGreen,
-                                    fontWeight: FontWeight.w600),
+                                  color: AdvantaColors.lightGreen,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           );
@@ -6251,10 +6443,15 @@ class _FilterRowState extends State<_FilterRow> {
                 color: AdvantaColors.error.withAlpha(20),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                    color: AdvantaColors.error.withAlpha(50), width: 1),
+                  color: AdvantaColors.error.withAlpha(50),
+                  width: 1,
+                ),
               ),
-              child: const Icon(Icons.remove_rounded,
-                  size: 15, color: AdvantaColors.error),
+              child: const Icon(
+                Icons.remove_rounded,
+                size: 15,
+                color: AdvantaColors.error,
+              ),
             ),
           ),
         ],
@@ -6299,8 +6496,11 @@ class _ParamPickerSheet extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
             child: Row(
               children: [
-                Icon(Icons.tune_rounded,
-                    size: 16, color: AdvantaColors.lightGreen),
+                Icon(
+                  Icons.tune_rounded,
+                  size: 16,
+                  color: AdvantaColors.lightGreen,
+                ),
                 const SizedBox(width: 10),
                 Text(
                   'Pilih Parameter Filter',
@@ -6322,10 +6522,14 @@ class _ParamPickerSheet extends StatelessWidget {
                 onTap: () => onSelected(p),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 3,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: isSelected
                         ? AdvantaColors.primaryGreen.withAlpha(50)
@@ -6365,8 +6569,9 @@ class _ParamPickerSheet extends StatelessWidget {
                             Text(
                               p.label,
                               style: AdvantaText.bodyBold.copyWith(
-                                color:
-                                    isSelected ? Colors.white : Colors.white70,
+                                color: isSelected
+                                    ? Colors.white
+                                    : Colors.white70,
                                 fontWeight: isSelected
                                     ? FontWeight.w700
                                     : FontWeight.w500,
@@ -6383,8 +6588,11 @@ class _ParamPickerSheet extends StatelessWidget {
                         ),
                       ),
                       if (isSelected)
-                        Icon(Icons.check_circle_rounded,
-                            size: 18, color: AdvantaColors.lightGreen),
+                        Icon(
+                          Icons.check_circle_rounded,
+                          size: 18,
+                          color: AdvantaColors.lightGreen,
+                        ),
                     ],
                   ),
                 ),
@@ -6423,7 +6631,7 @@ class _PhaseSheet extends StatelessWidget {
       'vegetative',
       Color(0xFF78909C),
       '100% target – semua field aktif',
-      false
+      false,
     ),
     (
       Icons.grass_outlined,
@@ -6431,7 +6639,7 @@ class _PhaseSheet extends StatelessWidget {
       'generative_1',
       Color(0xFFFFCA28),
       'Checkpoint pertama – readiness & roguing',
-      false
+      false,
     ),
     (
       Icons.grass,
@@ -6439,7 +6647,7 @@ class _PhaseSheet extends StatelessWidget {
       'generative_2',
       Color(0xFFFF7043),
       'Checkpoint kedua – female shedding',
-      false
+      false,
     ),
     (
       Icons.grass,
@@ -6447,7 +6655,7 @@ class _PhaseSheet extends StatelessWidget {
       'generative_3',
       Color(0xFFE53935),
       'Checkpoint final – flagging & detasseling',
-      false
+      false,
     ),
     (
       Icons.grass,
@@ -6455,7 +6663,7 @@ class _PhaseSheet extends StatelessWidget {
       'generative_4',
       Color(0xFF8E24AA),
       'Sweet Corn – checkpoint keempat',
-      true
+      true,
     ),
     (
       Icons.grass,
@@ -6463,7 +6671,7 @@ class _PhaseSheet extends StatelessWidget {
       'generative_5',
       Color(0xFFD81B60),
       'Sweet Corn – checkpoint kelima',
-      true
+      true,
     ),
     (
       Icons.agriculture_outlined,
@@ -6471,7 +6679,7 @@ class _PhaseSheet extends StatelessWidget {
       'pre_harvest',
       Color(0xFF795548),
       'Target 50% – sampling eligible',
-      false
+      false,
     ),
     (
       Icons.grain,
@@ -6479,7 +6687,7 @@ class _PhaseSheet extends StatelessWidget {
       'harvest',
       Color(0xFF43A047),
       'Target 50% + field flagged',
-      false
+      false,
     ),
   ];
 
@@ -6492,7 +6700,7 @@ class _PhaseSheet extends StatelessWidget {
           'vegetative',
           Color(0xFF78909C),
           'Roguing 1-4',
-          false
+          false,
         ),
         (
           Icons.grass,
@@ -6500,7 +6708,7 @@ class _PhaseSheet extends StatelessWidget {
           'generative_5',
           Color(0xFFE53935),
           'Roguing 5-6',
-          false
+          false,
         ),
         (
           Icons.grain,
@@ -6508,7 +6716,7 @@ class _PhaseSheet extends StatelessWidget {
           'harvest',
           Color(0xFF43A047),
           'Ear condition & crop health',
-          false
+          false,
         ),
       ];
     }
@@ -6551,8 +6759,11 @@ class _PhaseSheet extends StatelessWidget {
                     color: AdvantaColors.primaryGreen.withAlpha(51),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(Icons.checklist_rtl,
-                      color: AdvantaColors.lightGreen, size: 18),
+                  child: Icon(
+                    Icons.checklist_rtl,
+                    color: AdvantaColors.lightGreen,
+                    size: 18,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -6561,13 +6772,15 @@ class _PhaseSheet extends StatelessWidget {
                     children: [
                       Text(
                         'Pilih Fase – Mass Inspect',
-                        style:
-                            AdvantaText.heading3.copyWith(color: Colors.white),
+                        style: AdvantaText.heading3.copyWith(
+                          color: Colors.white,
+                        ),
                       ),
                       Text(
                         '$selectionCount lahan akan diinspeksi bersamaan',
-                        style:
-                            AdvantaText.caption.copyWith(color: Colors.white54),
+                        style: AdvantaText.caption.copyWith(
+                          color: Colors.white54,
+                        ),
                       ),
                     ],
                   ),
@@ -6586,8 +6799,10 @@ class _PhaseSheet extends StatelessWidget {
             itemBuilder: (ctx, i) {
               final (icon, label, key, color, desc, _) = _visiblePhases[i];
               return ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 2,
+                ),
                 leading: Container(
                   width: 40,
                   height: 40,
@@ -6607,14 +6822,19 @@ class _PhaseSheet extends StatelessWidget {
                 title: Text(
                   label,
                   style: AdvantaText.body1.copyWith(
-                      color: Colors.white, fontWeight: FontWeight.w500),
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 subtitle: Text(
                   desc,
                   style: AdvantaText.caption.copyWith(color: Colors.white38),
                 ),
-                trailing:
-                    Icon(Icons.chevron_right, color: Colors.white30, size: 18),
+                trailing: Icon(
+                  Icons.chevron_right,
+                  color: Colors.white30,
+                  size: 18,
+                ),
                 onTap: () => onSelected(key),
               );
             },
@@ -6652,12 +6872,14 @@ class _UserLocationMarkerState extends State<_UserLocationMarker>
       duration: const Duration(milliseconds: 1600),
     )..repeat(reverse: false);
 
-    _scale = Tween<double>(begin: 1.0, end: 2.4).animate(
-      CurvedAnimation(parent: _pulse, curve: Curves.easeOut),
-    );
-    _opacity = Tween<double>(begin: 0.55, end: 0.0).animate(
-      CurvedAnimation(parent: _pulse, curve: Curves.easeOut),
-    );
+    _scale = Tween<double>(
+      begin: 1.0,
+      end: 2.4,
+    ).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeOut));
+    _opacity = Tween<double>(
+      begin: 0.55,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeOut));
   }
 
   @override
@@ -6696,7 +6918,10 @@ class _UserLocationMarkerState extends State<_UserLocationMarker>
             color: Colors.white,
             boxShadow: [
               BoxShadow(
-                  color: Color(0x662196F3), blurRadius: 8, spreadRadius: 2),
+                color: Color(0x662196F3),
+                blurRadius: 8,
+                spreadRadius: 2,
+              ),
             ],
           ),
         ),
@@ -6737,10 +6962,14 @@ class _UncoordMarkerState extends State<_UncoordMarker>
       vsync: this,
       duration: const Duration(milliseconds: 1400),
     )..repeat(reverse: false);
-    _scale = Tween<double>(begin: 1.0, end: 2.2)
-        .animate(CurvedAnimation(parent: _pulse, curve: Curves.easeOut));
-    _opacity = Tween<double>(begin: 0.5, end: 0.0)
-        .animate(CurvedAnimation(parent: _pulse, curve: Curves.easeOut));
+    _scale = Tween<double>(
+      begin: 1.0,
+      end: 2.2,
+    ).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeOut));
+    _opacity = Tween<double>(
+      begin: 0.5,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeOut));
   }
 
   @override
@@ -6764,8 +6993,9 @@ class _UncoordMarkerState extends State<_UncoordMarker>
               height: 36,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AdvantaColors.error
-                    .withAlpha((_opacity.value * 255).round()),
+                color: AdvantaColors.error.withAlpha(
+                  (_opacity.value * 255).round(),
+                ),
               ),
             ),
           ),
@@ -6789,18 +7019,25 @@ class _UncoordMarkerState extends State<_UncoordMarker>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.location_off_rounded,
-                  color: Colors.white, size: 18),
+              const Icon(
+                Icons.location_off_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
               const SizedBox(height: 1),
               Text(
                 '${widget.count}',
-                style: AdvantaText.heading3
-                    .copyWith(color: Colors.white, height: 1.0),
+                style: AdvantaText.heading3.copyWith(
+                  color: Colors.white,
+                  height: 1.0,
+                ),
               ),
               Text(
                 'lahan',
-                style: AdvantaText.caption
-                    .copyWith(color: Colors.white70, height: 1.1),
+                style: AdvantaText.caption.copyWith(
+                  color: Colors.white70,
+                  height: 1.1,
+                ),
               ),
             ],
           ),
@@ -6817,10 +7054,7 @@ class _UncoordFieldsSheet extends StatefulWidget {
   final List<Map<String, dynamic>> fields;
   final void Function(Map<String, dynamic> field) onOpenField;
 
-  const _UncoordFieldsSheet({
-    required this.fields,
-    required this.onOpenField,
-  });
+  const _UncoordFieldsSheet({required this.fields, required this.onOpenField});
 
   @override
   State<_UncoordFieldsSheet> createState() => _UncoordFieldsSheetState();
@@ -6894,8 +7128,11 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: kRed.withAlpha(102)),
                       ),
-                      child: const Icon(Icons.location_off_rounded,
-                          color: kRed, size: 18),
+                      child: const Icon(
+                        Icons.location_off_rounded,
+                        color: kRed,
+                        size: 18,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -6904,13 +7141,15 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                         children: [
                           Text(
                             'Lahan Tanpa Koordinat',
-                            style: AdvantaText.heading3
-                                .copyWith(color: Colors.white),
+                            style: AdvantaText.heading3.copyWith(
+                              color: Colors.white,
+                            ),
                           ),
                           Text(
                             '${widget.fields.length} lahan — koordinat belum diisi / masih 0',
-                            style: AdvantaText.caption
-                                .copyWith(color: Colors.white54),
+                            style: AdvantaText.caption.copyWith(
+                              color: Colors.white54,
+                            ),
                           ),
                         ],
                       ),
@@ -6924,8 +7163,11 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                           color: Colors.white.withAlpha(20),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.close,
-                            color: Colors.white54, size: 16),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white54,
+                          size: 16,
+                        ),
                       ),
                     ),
                   ],
@@ -6942,19 +7184,24 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                   decoration: BoxDecoration(
                     color: AdvantaColors.successLight.withAlpha(20),
                     borderRadius: BorderRadius.circular(10),
-                    border:
-                        Border.all(color: AdvantaColors.success.withAlpha(128)),
+                    border: Border.all(
+                      color: AdvantaColors.success.withAlpha(128),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.info_outline,
-                          color: AdvantaColors.lightGreen, size: 14),
+                      Icon(
+                        Icons.info_outline,
+                        color: AdvantaColors.lightGreen,
+                        size: 14,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           'Tap baris lahan → buka detail → Correction Tagging untuk mengisi koordinat yang benar.',
-                          style: AdvantaText.caption
-                              .copyWith(color: AdvantaColors.lightGreen),
+                          style: AdvantaText.caption.copyWith(
+                            color: AdvantaColors.lightGreen,
+                          ),
                         ),
                       ),
                     ],
@@ -6969,26 +7216,38 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: TextField(
                   controller: _searchCtrl,
-                  style: AdvantaText.body2
-                      .copyWith(color: Colors.white, fontSize: 13),
+                  style: AdvantaText.body2.copyWith(
+                    color: Colors.white,
+                    fontSize: 13,
+                  ),
                   textAlignVertical: TextAlignVertical.center,
                   cursorColor: AdvantaColors.lightGreen,
                   decoration: InputDecoration(
                     hintText: 'Cari No. Lahan, Petani, FA…',
-                    hintStyle: AdvantaText.body2
-                        .copyWith(color: Colors.white54, fontSize: 13),
-                    prefixIcon: const Icon(Icons.search,
-                        color: Colors.white54, size: 18),
-                    prefixIconConstraints:
-                        const BoxConstraints(minWidth: 40, minHeight: 40),
+                    hintStyle: AdvantaText.body2.copyWith(
+                      color: Colors.white54,
+                      fontSize: 13,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: Colors.white54,
+                      size: 18,
+                    ),
+                    prefixIconConstraints: const BoxConstraints(
+                      minWidth: 40,
+                      minHeight: 40,
+                    ),
                     suffixIcon: _query.isNotEmpty
                         ? GestureDetector(
                             onTap: () {
                               _searchCtrl.clear();
                               setState(() => _query = '');
                             },
-                            child: const Icon(Icons.clear,
-                                color: Colors.white54, size: 16),
+                            child: const Icon(
+                              Icons.clear,
+                              color: Colors.white54,
+                              size: 16,
+                            ),
                           )
                         : null,
                     filled: true,
@@ -6996,20 +7255,25 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide(
-                          color: AdvantaColors.goldLight.withAlpha(30)),
+                        color: AdvantaColors.goldLight.withAlpha(30),
+                      ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide(
-                          color: AdvantaColors.goldLight.withAlpha(30)),
+                        color: AdvantaColors.goldLight.withAlpha(30),
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide(
-                          color: AdvantaColors.lightGreen.withAlpha(180)),
+                        color: AdvantaColors.lightGreen.withAlpha(180),
+                      ),
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 14),
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
                   ),
                   onChanged: (v) => setState(() => _query = v),
                 ),
@@ -7025,13 +7289,17 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.search_off,
-                                color: Colors.white24, size: 40),
+                            const Icon(
+                              Icons.search_off,
+                              color: Colors.white24,
+                              size: 40,
+                            ),
                             const SizedBox(height: 8),
                             Text(
                               'Tidak ada hasil',
-                              style: AdvantaText.body2
-                                  .copyWith(color: Colors.white38),
+                              style: AdvantaText.body2.copyWith(
+                                color: Colors.white38,
+                              ),
                             ),
                           ],
                         ),
@@ -7063,7 +7331,9 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                             splashColor: AdvantaColors.midGreen.withAlpha(51),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
                               child: Row(
                                 children: [
                                   Container(
@@ -7074,9 +7344,10 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: const Icon(
-                                        Icons.location_off_rounded,
-                                        color: kRed,
-                                        size: 18),
+                                      Icons.location_off_rounded,
+                                      color: kRed,
+                                      size: 18,
+                                    ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
@@ -7091,18 +7362,21 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                                                 fn,
                                                 style: AdvantaText.bodyBold
                                                     .copyWith(
-                                                        color: Colors.white),
+                                                      color: Colors.white,
+                                                    ),
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                             ),
                                             Container(
                                               padding:
                                                   const EdgeInsets.symmetric(
-                                                      horizontal: 6,
-                                                      vertical: 2),
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
                                               decoration: BoxDecoration(
-                                                color:
-                                                    Colors.white.withAlpha(15),
+                                                color: Colors.white.withAlpha(
+                                                  15,
+                                                ),
                                                 borderRadius:
                                                     BorderRadius.circular(5),
                                               ),
@@ -7110,7 +7384,8 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                                                 ha,
                                                 style: AdvantaText.caption
                                                     .copyWith(
-                                                        color: Colors.white54),
+                                                      color: Colors.white54,
+                                                    ),
                                               ),
                                             ),
                                           ],
@@ -7118,8 +7393,9 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                                         const SizedBox(height: 3),
                                         Text(
                                           farmer,
-                                          style: AdvantaText.body2
-                                              .copyWith(color: Colors.white70),
+                                          style: AdvantaText.body2.copyWith(
+                                            color: Colors.white70,
+                                          ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                         const SizedBox(height: 2),
@@ -7131,13 +7407,14 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                                                 child: Text(
                                                   [village, district]
                                                       .where(
-                                                          (s) => s.isNotEmpty)
+                                                        (s) => s.isNotEmpty,
+                                                      )
                                                       .join(', '),
                                                   style: AdvantaText.caption
                                                       .copyWith(
-                                                    color:
-                                                        AdvantaColors.mutedGrey,
-                                                  ),
+                                                        color: AdvantaColors
+                                                            .mutedGrey,
+                                                      ),
                                                   overflow:
                                                       TextOverflow.ellipsis,
                                                 ),
@@ -7146,10 +7423,12 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                                               Container(
                                                 padding:
                                                     const EdgeInsets.symmetric(
-                                                        horizontal: 6,
-                                                        vertical: 1),
+                                                      horizontal: 6,
+                                                      vertical: 1,
+                                                    ),
                                                 margin: const EdgeInsets.only(
-                                                    left: 6),
+                                                  left: 6,
+                                                ),
                                                 decoration: BoxDecoration(
                                                   color: AdvantaColors
                                                       .primaryGreen
@@ -7161,9 +7440,9 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                                                   fa,
                                                   style: AdvantaText.caption
                                                       .copyWith(
-                                                    color: AdvantaColors
-                                                        .lightGreen,
-                                                  ),
+                                                        color: AdvantaColors
+                                                            .lightGreen,
+                                                      ),
                                                 ),
                                               ),
                                           ],
@@ -7172,8 +7451,11 @@ class _UncoordFieldsSheetState extends State<_UncoordFieldsSheet> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  const Icon(Icons.chevron_right,
-                                      color: Colors.white24, size: 18),
+                                  const Icon(
+                                    Icons.chevron_right,
+                                    color: Colors.white24,
+                                    size: 18,
+                                  ),
                                 ],
                               ),
                             ),
@@ -7222,9 +7504,10 @@ class _MapLoadingScreenState extends State<_MapLoadingScreen>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..repeat(reverse: true);
-    _dotAnim = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _dotCtrl, curve: Curves.easeInOut),
-    );
+    _dotAnim = Tween<double>(
+      begin: 0.3,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _dotCtrl, curve: Curves.easeInOut));
     _tickStep();
   }
 
@@ -7351,9 +7634,10 @@ class _MapLoadingScreenState extends State<_MapLoadingScreen>
                       'assets/logo_kc_notitle_unbox.png',
                       fit: BoxFit.contain,
                       errorBuilder: (_, __, ___) => const Icon(
-                          Icons.agriculture_rounded,
-                          color: AdvantaColors.primaryGreen,
-                          size: 48),
+                        Icons.agriculture_rounded,
+                        color: AdvantaColors.primaryGreen,
+                        size: 48,
+                      ),
                     ),
                   ),
                 ),
@@ -7520,10 +7804,7 @@ class _SelectedFieldsSheet extends StatelessWidget {
   final List<ParsedFieldData> fields;
   final void Function(String fieldNumber) onRemove;
 
-  const _SelectedFieldsSheet({
-    required this.fields,
-    required this.onRemove,
-  });
+  const _SelectedFieldsSheet({required this.fields, required this.onRemove});
 
   @override
   Widget build(BuildContext context) {
@@ -7565,8 +7846,11 @@ class _SelectedFieldsSheet extends StatelessWidget {
                         color: AdvantaColors.primaryGreen.withAlpha(51),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.checklist_rtl,
-                          color: AdvantaColors.lightGreen, size: 18),
+                      child: const Icon(
+                        Icons.checklist_rtl,
+                        color: AdvantaColors.lightGreen,
+                        size: 18,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -7575,13 +7859,15 @@ class _SelectedFieldsSheet extends StatelessWidget {
                         children: [
                           Text(
                             'Daftar Lahan Dipilih',
-                            style: AdvantaText.heading3
-                                .copyWith(color: Colors.white),
+                            style: AdvantaText.heading3.copyWith(
+                              color: Colors.white,
+                            ),
                           ),
                           Text(
                             '${fields.length} lahan siap diinspeksi',
-                            style: AdvantaText.caption
-                                .copyWith(color: Colors.white54),
+                            style: AdvantaText.caption.copyWith(
+                              color: Colors.white54,
+                            ),
                           ),
                         ],
                       ),
@@ -7595,8 +7881,11 @@ class _SelectedFieldsSheet extends StatelessWidget {
                           color: Colors.white.withAlpha(20),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.close,
-                            color: Colors.white54, size: 16),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white54,
+                          size: 16,
+                        ),
                       ),
                     ),
                   ],
@@ -7626,7 +7915,9 @@ class _SelectedFieldsSheet extends StatelessWidget {
 
                     return Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       child: Row(
                         children: [
                           Expanded(
@@ -7637,7 +7928,9 @@ class _SelectedFieldsSheet extends StatelessWidget {
                                   children: [
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: AdvantaColors.primaryGreen,
                                         borderRadius: BorderRadius.circular(6),
@@ -7653,30 +7946,35 @@ class _SelectedFieldsSheet extends StatelessWidget {
                                     const SizedBox(width: 8),
                                     Text(
                                       'DAP $dap',
-                                      style: AdvantaText.caption
-                                          .copyWith(color: Colors.white54),
+                                      style: AdvantaText.caption.copyWith(
+                                        color: Colors.white54,
+                                      ),
                                     ),
                                   ],
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
                                   farmer,
-                                  style: AdvantaText.bodyBold
-                                      .copyWith(color: Colors.white),
+                                  style: AdvantaText.bodyBold.copyWith(
+                                    color: Colors.white,
+                                  ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   'Hybrid: $hybrid',
-                                  style: AdvantaText.caption
-                                      .copyWith(color: Colors.white54),
+                                  style: AdvantaText.caption.copyWith(
+                                    color: Colors.white54,
+                                  ),
                                 ),
                               ],
                             ),
                           ),
                           IconButton(
                             onPressed: () => onRemove(fn),
-                            icon: const Icon(Icons.remove_circle_outline,
-                                color: AdvantaColors.error),
+                            icon: const Icon(
+                              Icons.remove_circle_outline,
+                              color: AdvantaColors.error,
+                            ),
                             tooltip: 'Hapus dari daftar',
                           ),
                         ],

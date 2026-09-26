@@ -10,16 +10,15 @@ class SupabaseService {
   SupabaseService({
     SupabaseClient? client,
     Duration auditPlanningTimeout = const Duration(seconds: 45),
-  })  : _supabase = client ?? Supabase.instance.client,
-        // Keep the public parameter name used by callers and tests.
-        // ignore: prefer_initializing_formals
-        _auditPlanningTimeout = auditPlanningTimeout;
+  }) : _supabase = client ?? Supabase.instance.client,
+       // Keep the public parameter name used by callers and tests.
+       // ignore: prefer_initializing_formals
+       _auditPlanningTimeout = auditPlanningTimeout;
 
   // Eligibility only: no geometry, crop monitoring or flagging payloads.
   // Keep revised planting dates and PSP passes so weekly targets stay exact.
   static const String _auditPlanningIndexSelect = '''
     field_number,
-    season,
     hybrid,
     planting_date_pdn,
     region,
@@ -47,6 +46,144 @@ class SupabaseService {
     ),
     audit_pre_harvest(audit_date),
     audit_harvest(date_of_audit)
+  ''';
+
+  // Planning only needs the field identity, location, workload and audit
+  // observations. Keep this separate from the broader Coverage payload: on a
+  // large region the unused master-field columns add up across thousands of
+  // records. The full row is still loaded lazily by masterFieldDetailProvider
+  // when the user opens a field.
+  static const String _auditPlanningFieldSelect = '''
+    field_number,
+    season,
+    farmer_name,
+    hybrid,
+    effective_area_ha,
+    planting_date_pdn,
+    hamlet_dusun,
+    village_desa,
+    sub_district_kec,
+    district_kab,
+    coordinate,
+    correction_tagging,
+    region,
+    type,
+    qa_fi,
+    qa_spv,
+    flagging_final,
+    audit_vegetative(
+      date_of_audit,
+      audit_date_user,
+      audit_week,
+      qa_fi,
+      rev_planting_date,
+      field_size_by_audit_ha,
+      correction_tagging,
+      decision,
+      action_needed,
+      flagging,
+      co_detasseling,
+      roguing_status,
+      lsv_status,
+      isolation_problem_by_audit,
+      crop_uniformity,
+      crop_health,
+      date_of_inspeksi_roguing_1,
+      date_of_inspeksi_roguing_2,
+      date_of_inspeksi_roguing_3,
+      date_of_inspeksi_roguing_4,
+      audit_lsv_roguing_2,
+      audit_lsv_roguing_3,
+      audit_lsv_roguing_4,
+      crop_health_roguing_1,
+      crop_uniformity_roguing_1,
+      crop_health_roguing_2,
+      crop_uniformity_roguing_2,
+      crop_health_roguing_3,
+      crop_uniformity_roguing_3,
+      crop_health_roguing_4,
+      crop_uniformity_roguing_4,
+      isolation_audit_roguing_1
+    ),
+    audit_generative(
+      date_of_audit_1,
+      week_of_audit_1,
+      qa_fi_1,
+      roguing_status_1,
+      lsv_status_1,
+      crop_uniformity_1,
+      crop_health_1,
+      date_of_audit_2,
+      week_of_audit_2,
+      qa_fi_2,
+      roguing_status_2,
+      lsv_status_2,
+      crop_uniformity_2,
+      crop_health_2,
+      date_of_audit_3,
+      week_of_audit_3,
+      qa_fi_3,
+      lsv_status_3,
+      crop_uniformity_3,
+      crop_health_3,
+      date_of_audit_4,
+      week_of_audit_4,
+      qa_fi_4,
+      roguing_status_4,
+      lsv_status_4,
+      crop_uniformity_4,
+      crop_health_4,
+      date_of_audit_5,
+      week_of_audit_5,
+      qa_fi_5,
+      lsv_status_5,
+      crop_uniformity_5,
+      crop_health_5,
+      action_needed_1,
+      action_needed_2,
+      action_needed_3,
+      action_needed_4,
+      final_decision_3,
+      final_decision_5,
+      flagging,
+      final_flagging_5,
+      detasseling_assesment_3,
+      detasseling_assesment_5,
+      isolation_problem_5,
+      submitted_at_5,
+      date_of_inspeksi_roguing_5,
+      audit_lsv_roguing_5,
+      crop_uniformity_roguing_5,
+      crop_health_roguing_5,
+      isolation_audit_roguing_5,
+      flagging_roguing_5,
+      date_of_inspeksi_roguing_6,
+      audit_lsv_roguing_6,
+      crop_uniformity_roguing_6,
+      crop_health_roguing_6,
+      isolation_audit_roguing_6,
+      flagging_roguing_6
+    ),
+    audit_pre_harvest(
+      audit_date,
+      audit_week,
+      qa_fi,
+      final_decision,
+      final_flagging,
+      male_chopping_rows,
+      crop_uniformity,
+      crop_health
+    ),
+    audit_harvest(
+      date_of_audit,
+      audit_week,
+      qa_fi,
+      final_flagging,
+      status_downgrade,
+      downgrade_flagging,
+      crop_uniformity,
+      crop_health
+    )
   ''';
 
   static const String _masterFieldMapSelect = '''
@@ -85,6 +222,7 @@ class SupabaseService {
     target_dt_date,
     season_id,
     geometry_wkt,
+    correction_geometry_wkt,
     geometry_area_ha,
     geometry_source,
     geometry_updated_at,
@@ -533,8 +671,10 @@ class SupabaseService {
     const parallelPages = 3;
 
     Future<List<Map<String, dynamic>>> fetchPage(int from) async {
-      var query =
-          _supabase.from('master_fields').select(columns).eq('is_active', true);
+      var query = _supabase
+          .from('master_fields')
+          .select(columns)
+          .eq('is_active', true);
       if (qaFi?.trim().isNotEmpty == true) {
         query = query.ilike('qa_fi', '%${qaFi!.trim()}%');
       }
@@ -564,11 +704,13 @@ class SupabaseService {
 
     // Keep concurrency bounded so large regions avoid one network round trip
     // per page without flooding PostgREST with all pages at once.
-    for (var from = pageSize;; from += parallelPages * pageSize) {
-      final pages = await Future.wait(List.generate(
-        parallelPages,
-        (index) => fetchPage(from + index * pageSize),
-      ));
+    for (var from = pageSize; ; from += parallelPages * pageSize) {
+      final pages = await Future.wait(
+        List.generate(
+          parallelPages,
+          (index) => fetchPage(from + index * pageSize),
+        ),
+      );
       for (final page in pages) {
         allData.addAll(page);
         if (page.length < pageSize) return allData;
@@ -585,24 +727,48 @@ class SupabaseService {
     String? district,
     String? season,
   }) async {
-    final timer = Stopwatch()..start();
     final rows = <Map<String, dynamic>>[];
     const pageSize = 1000;
-    for (var from = 0;; from += pageSize) {
-      final remaining = _auditPlanningTimeRemaining(timer);
-      final page = await _auditPlanningQuery(
-        _auditPlanningIndexSelect,
-        qaFi: qaFi,
-        qaSpv: qaSpv,
-        region: region,
-        district: district,
-        season: season,
-      )
-          .order('field_number', ascending: true)
-          .range(from, from + pageSize - 1)
-          .timeout(remaining);
-      rows.addAll(page);
-      if (page.length < pageSize) break;
+    const parallelPages = 3;
+
+    Future<List<Map<String, dynamic>>> fetchPage(int from) =>
+        _auditPlanningQuery(
+              _auditPlanningIndexSelect,
+              qaFi: qaFi,
+              qaSpv: qaSpv,
+              region: region,
+              district: district,
+              season: season,
+            )
+            .order('field_number', ascending: true)
+            .range(from, from + pageSize - 1)
+            .timeout(_auditPlanningTimeout);
+
+    // Avoid speculative requests for the common one-page scope. Once a scope
+    // is known to be large, fetch a small bounded window concurrently. The
+    // timeout applies to each request, not to the accumulated duration of all
+    // pages, so a healthy large region is not rejected merely for having more
+    // records.
+    final firstPage = await fetchPage(0);
+    rows.addAll(firstPage);
+    if (firstPage.length < pageSize) return rows;
+
+    for (var from = pageSize; ; from += parallelPages * pageSize) {
+      final pages = await Future.wait(
+        List.generate(
+          parallelPages,
+          (index) => fetchPage(from + index * pageSize),
+        ),
+      );
+      var reachedLastPage = false;
+      for (final page in pages) {
+        rows.addAll(page);
+        if (page.length < pageSize) {
+          reachedLastPage = true;
+          break;
+        }
+      }
+      if (reachedLastPage) break;
     }
     return rows;
   }
@@ -620,24 +786,36 @@ class SupabaseService {
         .where((number) => number.isNotEmpty)
         .toSet()
         .toList(growable: false);
-    final timer = Stopwatch()..start();
+    if (numbers.isEmpty) return const [];
+
     final rows = <Map<String, dynamic>>[];
     const chunkSize = 100;
+    const parallelChunks = 3;
+    final chunks = <List<String>>[];
     for (var i = 0; i < numbers.length; i += chunkSize) {
       final end = (i + chunkSize).clamp(0, numbers.length);
-      final remaining = _auditPlanningTimeRemaining(timer);
-      final page = await _auditPlanningQuery(
-        _masterFieldCoverageSelect,
-        qaFi: qaFi,
-        qaSpv: qaSpv,
-        region: region,
-        district: district,
-        season: season,
-      )
-          .inFilter('field_number', numbers.sublist(i, end))
-          .order('field_number', ascending: true)
-          .timeout(remaining);
-      rows.addAll(page);
+      chunks.add(numbers.sublist(i, end));
+    }
+
+    Future<List<Map<String, dynamic>>> fetchChunk(List<String> chunk) =>
+        _auditPlanningQuery(
+              _auditPlanningFieldSelect,
+              qaFi: qaFi,
+              qaSpv: qaSpv,
+              region: region,
+              district: district,
+              season: season,
+            )
+            .inFilter('field_number', chunk)
+            .order('field_number', ascending: true)
+            .timeout(_auditPlanningTimeout);
+
+    for (var i = 0; i < chunks.length; i += parallelChunks) {
+      final end = (i + parallelChunks).clamp(0, chunks.length);
+      final pages = await Future.wait(chunks.sublist(i, end).map(fetchChunk));
+      for (final page in pages) {
+        rows.addAll(page);
+      }
     }
     return rows;
   }
@@ -650,8 +828,10 @@ class SupabaseService {
     String? district,
     String? season,
   }) {
-    var query =
-        _supabase.from('master_fields').select(columns).eq('is_active', true);
+    var query = _supabase
+        .from('master_fields')
+        .select(columns)
+        .eq('is_active', true);
     if (qaFi != null && qaFi.trim().isNotEmpty) {
       query = query.ilike('qa_fi', '%${qaFi.trim()}%');
     }
@@ -670,15 +850,6 @@ class SupabaseService {
     return query;
   }
 
-  Duration _auditPlanningTimeRemaining(Stopwatch timer) {
-    final remaining = _auditPlanningTimeout - timer.elapsed;
-    if (remaining <= Duration.zero) {
-      throw TimeoutException(
-          'Pengambilan data planning terlalu lama.', _auditPlanningTimeout);
-    }
-    return remaining;
-  }
-
   /// Mengambil data master fields beserta semua data audit terkait.
   /// Generative sekarang menggunakan 1 tabel (audit_generative).
   Future<List<Map<String, dynamic>>> getMasterFieldsWithAllAudits({
@@ -691,13 +862,16 @@ class SupabaseService {
       int from = 0;
 
       while (true) {
-        var query = _supabase.from('master_fields').select('''
+        var query = _supabase
+            .from('master_fields')
+            .select('''
             *,
             audit_vegetative(*),
             audit_generative(*),
             audit_pre_harvest(*),
             audit_harvest(*)
-          ''').eq('is_active', true);
+          ''')
+            .eq('is_active', true);
 
         if (qaFi != null && qaFi.trim().isNotEmpty) {
           final fi = qaFi.trim();
@@ -727,11 +901,14 @@ class SupabaseService {
         debugPrint('Sample qa_fi: ${first['qa_fi']}');
         debugPrint('Sample planting_date_pdn: ${first['planting_date_pdn']}');
         debugPrint(
-            'audit_vegetative type: ${first['audit_vegetative'].runtimeType}');
+          'audit_vegetative type: ${first['audit_vegetative'].runtimeType}',
+        );
         debugPrint(
-            'audit_generative type: ${first['audit_generative'].runtimeType}');
+          'audit_generative type: ${first['audit_generative'].runtimeType}',
+        );
         debugPrint(
-            'audit_pre_harvest type: ${first['audit_pre_harvest'].runtimeType}');
+          'audit_pre_harvest type: ${first['audit_pre_harvest'].runtimeType}',
+        );
         debugPrint('audit_harvest type: ${first['audit_harvest'].runtimeType}');
       }
       return allData;
@@ -745,13 +922,17 @@ class SupabaseService {
     String fieldNumber,
   ) async {
     try {
-      final response = await _supabase.from('master_fields').select('''
+      final response = await _supabase
+          .from('master_fields')
+          .select('''
             *,
             audit_vegetative(*),
             audit_generative(*),
             audit_pre_harvest(*),
             audit_harvest(*)
-          ''').eq('field_number', fieldNumber).maybeSingle();
+          ''')
+          .eq('field_number', fieldNumber)
+          .maybeSingle();
 
       if (response == null) return null;
       return Map<String, dynamic>.from(response);
@@ -760,7 +941,7 @@ class SupabaseService {
     }
   }
 
-  Future<void> updateFieldGeometryWkt({
+  Future<void> updateFieldCorrectionGeometryWkt({
     required String fieldNumber,
     required String geometryWkt,
     String? geometrySource,
@@ -773,13 +954,15 @@ class SupabaseService {
     String? corrFieldSizeUpdatedBy,
     String? corrFieldSizeNote,
   }) async {
-    final payload = <String, dynamic>{'geometry_wkt': geometryWkt};
-    final hasGeometryMetadata = geometrySource != null ||
+    final payload = <String, dynamic>{'correction_geometry_wkt': geometryWkt};
+    final hasGeometryMetadata =
+        geometrySource != null ||
         geometryAreaHa != null ||
         geometryPointCount != null ||
         geometryUpdatedBy != null ||
         geometryEditNote != null;
-    final hasCorrFieldSize = corrFieldSizeHa != null ||
+    final hasCorrFieldSize =
+        corrFieldSizeHa != null ||
         corrFieldSizeSource != null ||
         corrFieldSizeUpdatedBy != null ||
         corrFieldSizeNote != null;
@@ -819,7 +1002,7 @@ class SupabaseService {
         try {
           final updatedRows = await _supabase
               .from('master_fields')
-              .update({'geometry_wkt': geometryWkt})
+              .update({'correction_geometry_wkt': geometryWkt})
               .eq('field_number', fieldNumber)
               .select('field_number');
 
@@ -844,10 +1027,7 @@ class SupabaseService {
     try {
       final updatedAuditRows = await _supabase
           .from('audit_vegetative')
-          .update({
-            'correction_tagging': correctionTagging,
-            'updated_at': now,
-          })
+          .update({'correction_tagging': correctionTagging, 'updated_at': now})
           .eq('field_number', fieldNumber)
           .select('field_number');
 
@@ -963,15 +1143,24 @@ class SupabaseService {
   // Backward compatibility atau jika masih butuh function spesifik
   Future<void> upsertGenerative1Audit(Map<String, dynamic> data) async =>
       upsertGenerativeCheckpoint(
-          fieldNumber: data['field_number'], checkpoint: 1, data: data);
+        fieldNumber: data['field_number'],
+        checkpoint: 1,
+        data: data,
+      );
 
   Future<void> upsertGenerative2Audit(Map<String, dynamic> data) async =>
       upsertGenerativeCheckpoint(
-          fieldNumber: data['field_number'], checkpoint: 2, data: data);
+        fieldNumber: data['field_number'],
+        checkpoint: 2,
+        data: data,
+      );
 
   Future<void> upsertGenerative3Audit(Map<String, dynamic> data) async =>
       upsertGenerativeCheckpoint(
-          fieldNumber: data['field_number'], checkpoint: 3, data: data);
+        fieldNumber: data['field_number'],
+        checkpoint: 3,
+        data: data,
+      );
 
   // ============================================================
   // MASS INSPECTION — Bulk upsert
@@ -990,9 +1179,10 @@ class SupabaseService {
           final checkpoint = int.parse(phase.split('_')[1]);
           record['is_mass_submit_$checkpoint'] = true;
           await upsertGenerativeCheckpoint(
-              fieldNumber: record['field_number'],
-              checkpoint: checkpoint,
-              data: record);
+            fieldNumber: record['field_number'],
+            checkpoint: checkpoint,
+            data: record,
+          );
         } else {
           final tableName = _phaseToTable(phase);
           record['updated_at'] = DateTime.now().toIso8601String();
@@ -1116,7 +1306,8 @@ class SupabaseService {
     final patterns = <RegExp>[
       RegExp(r"Could not find the '([^']+)' column"),
       RegExp(
-          r'column [A-Za-z_][A-Za-z0-9_]*\.([A-Za-z_][A-Za-z0-9_]*) does not exist'),
+        r'column [A-Za-z_][A-Za-z0-9_]*\.([A-Za-z_][A-Za-z0-9_]*) does not exist',
+      ),
       RegExp(r'column "([^"]+)" does not exist'),
       RegExp(r'column ([A-Za-z_][A-Za-z0-9_]*) does not exist'),
     ];
@@ -1238,7 +1429,8 @@ class SupabaseService {
 
   // [BARU DITAMBAHKAN] Fungsi untuk mengambil data aktivitas hari ini
   Future<List<Map<String, dynamic>>> getTodayActivities(
-      String attendanceId) async {
+    String attendanceId,
+  ) async {
     try {
       final response = await _supabase
           .from('attendance_activity')
