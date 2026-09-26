@@ -99,8 +99,14 @@ void main() {
       SessionKeys.activeUserName: 'Manager',
     });
     final fields = [
-      FieldCoverageStatus.fromRaw(fixtures.fieldAt(20),
-          weekStart: fixtures.week, now: fixtures.end),
+      FieldCoverageStatus.fromRaw(
+          fixtures.fieldAt(20, id: 'CURRENT', area: 10),
+          weekStart: fixtures.week,
+          now: fixtures.end),
+      FieldCoverageStatus.fromRaw(
+          fixtures.fieldAt(300, id: 'HISTORICAL', area: 5),
+          weekStart: fixtures.week,
+          now: fixtures.end),
     ];
     final container = ProviderContainer(overrides: [
       coverageStatusListProvider.overrideWith((ref) async => fields),
@@ -120,10 +126,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('W35'), findsOneWidget);
+    expect(find.text('15.0 Ha | 2 FN'), findsWidgets);
     await tester.tap(find.widgetWithText(ChoiceChip, 'Target Audit'));
     await tester.pumpAndSettle();
     expect(find.textContaining('W35'), findsOneWidget);
     expect(container.read(auditDashboardFilterProvider).weeks, {fixtures.week});
+    expect(find.text('15.0 Ha | 2 FN'), findsNothing);
+    expect(find.text('10.0 Ha | 1 FN'), findsWidgets);
   });
 
   testWidgets('Coverage shows a branded loading shell while data is fetched',

@@ -307,6 +307,35 @@ void main() {
     expect(f.overdue, true);
   });
 
+  test('zero effective area remains traceable but is never overdue', () {
+    final raw = fieldAt(35, id: 'DISCARDED', area: 0);
+    final weekly = project(raw, now: DateTime(2026, 8, 26));
+    final coverage = FieldCoverageStatus.fromRaw(
+      raw,
+      weekStart: week,
+      now: DateTime(2026, 8, 26),
+    );
+    final completed = FieldCoverageStatus.fromRaw(
+      fieldAt(20,
+          id: 'ACTIVE', veg: {'date_of_audit': '2026-08-24'}),
+      weekStart: week,
+      now: DateTime(2026, 8, 26),
+    );
+    final summary = calculateFilteredPhases([completed, coverage]);
+
+    expect(weekly.targets, isNotEmpty);
+    expect(weekly.isTarget, false);
+    expect(weekly.overdue, false);
+    expect(weekly.targets.every((target) => !target.overdue), true);
+    expect(WeeklyAuditSummary([weekly]).targetFn, 0);
+    expect(coverage.isAuditTarget, false);
+    expect(coverage.isOverdue, false);
+    expect(summary.totalTargets, 1);
+    expect(summary.targetCompletionPct, 100);
+    expect(summary.overdueTargets, 0);
+    expect(summary.overdueAreaHa, 0);
+  });
+
   test('PLD exclusion normalizes 95/3/2 to 100 percent, keeps hectares', () {
     final all = [
       project(fieldAt(20,

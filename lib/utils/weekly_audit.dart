@@ -279,7 +279,7 @@ class WeeklyAuditField {
       required this.flag});
 
   double get areaHa => auditArea(raw['effective_area_ha']);
-  bool get isTarget => targets.isNotEmpty;
+  bool get isTarget => areaHa > 0 && targets.isNotEmpty;
   bool get done => isTarget && targets.every((target) => target.done);
   bool get overdue => targets.any((target) => target.overdue);
   double get targetWeight =>
@@ -427,6 +427,10 @@ class WeeklyAuditField {
         district: raw['district_kab']?.toString(),
         region: raw['region']?.toString(),
         subDistrict: raw['sub_district_kec']?.toString());
+    // A fully discarded/PLD field has no remaining audit workload. Keep its
+    // historical targets visible, but never classify them as overdue merely
+    // because no audit form was filled after its effective area became zero.
+    final hasEffectiveArea = auditArea(raw['effective_area_ha']) > 0;
     final targets = <WeeklyAuditTarget>[];
     final phaseCompletions = <String, double>{};
     int requiredPasses(String phase) {
@@ -483,7 +487,9 @@ class WeeklyAuditField {
             deadline: deadline,
             completion: completion,
             weight: auditTargetWeight(rule.key, hybrid: hybrid),
-            overdue: completion < 1 && deadline.isBefore(today)));
+            overdue: hasEffectiveArea &&
+                completion < 1 &&
+                deadline.isBefore(today)));
       }
     }
     var flag = auditNotYetFlagging;

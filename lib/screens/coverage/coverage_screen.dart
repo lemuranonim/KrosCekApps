@@ -143,7 +143,9 @@ List<FieldCoverageStatus> _projectAllCoverage(
   return fields
       .where((field) => !_isExcludedCoverageRegion(field.region))
       .map((field) => FieldCoverageStatus.fromRaw(field.raw,
-          weekStart: auditWeekStart(selected), lifecycleProjection: true))
+          weekStart: auditWeekStart(selected),
+          includeHistoricalTargets: true,
+          lifecycleProjection: true))
       .where((field) => flags.contains(field.weekly.flag))
       .toList(growable: false);
 }
@@ -251,7 +253,7 @@ class FieldCoverageStatus {
   List<String> get overduePhaseKeys =>
       weekly.targets.where((t) => t.overdue).map((t) => t.phase).toList();
 
-  bool get isAuditTarget => duePhaseKeys.isNotEmpty;
+  bool get isAuditTarget => effectiveAreaHa > 0 && duePhaseKeys.isNotEmpty;
 
   bool get hasActionRequired => actionCode != null;
 
@@ -511,8 +513,7 @@ class FICoverage {
     final totalArea = fields.fold(0.0, (s, f) => s + f.effectiveAreaHa);
     final totalTargets = fields.where((field) => field.isAuditTarget).length;
     final completedTargets = fields.where((field) => field.weekly.done).length;
-    final avgScore =
-        WeeklyAuditSummary(fields.map((f) => f.weekly)).achievementPercent;
+    final avgScore = aggregateCoverageScore(fields);
     final overdue = fields.where((f) => f.isOverdue).length;
     final action = fields.where((f) => f.hasActionRequired).length;
     return FICoverage(
@@ -717,7 +718,9 @@ List<FICoverage> buildFiCoverageList(List<FieldCoverageStatus> fields) {
 double aggregateCoverageScore(List<FieldCoverageStatus> fields) {
   final lifecycleFields = fields
       .where((field) =>
-          field.isLifecycleProjection && field.lifecycleTargetWeight > 0)
+          field.effectiveAreaHa > 0 &&
+          field.isLifecycleProjection &&
+          field.lifecycleTargetWeight > 0)
       .toList(growable: false);
   if (lifecycleFields.isNotEmpty) {
     return lifecycleFields.fold(
@@ -1197,11 +1200,13 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
             sharedFilters.coverageMode == CoverageDisplayMode.allCoverage
                 ? coverageFields
                 : targetFields;
+        final isAllCoverage =
+            sharedFilters.coverageMode == CoverageDisplayMode.allCoverage;
 
-        final filteredFIList = buildFiCoverageList(targetFields);
+        final filteredFIList = buildFiCoverageList(dashboardFields);
 
         final summary = calculateFilteredPhases(
-          targetFields,
+          dashboardFields,
         );
         final regionMap = _buildRegionMap(dashboardFields);
 
@@ -1271,8 +1276,8 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                   iconColor: AdvantaColors.deepForest,
                   bgColor: Colors.grey[200]!,
                   value: auditWorkload(
-                      _coverageArea(coverageFields), coverageFields.length),
-                  label: 'Total Coverage',
+                      _coverageArea(dashboardFields), dashboardFields.length),
+                  label: isAllCoverage ? 'All Coverage' : 'Target Audit',
                 ),
                 _StatCard(
                     icon: Icons.fact_check_rounded,
@@ -1280,7 +1285,9 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     bgColor: AdvantaColors.paleGreen,
                     value: auditWorkload(
                         summary.targetAreaHa, summary.totalTargets),
-                    label: 'Target Audit'),
+                    label: isAllCoverage
+                        ? 'Lifecycle Target'
+                        : 'Target Audit'),
                 _StatCard(
                     icon: Icons.task_alt_rounded,
                     iconColor: AdvantaColors.midGreen,
@@ -1293,11 +1300,13 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     iconColor: AdvantaColors.error,
                     bgColor: AdvantaColors.errorLight,
                     value: summary.overdueTargets.toString(),
-                    label: 'Overdue Target',
+                    label: isAllCoverage
+                        ? 'Overdue Lifecycle'
+                        : 'Overdue Target',
                     onTap: () => _showWeeklyFields(
                         context,
                         'Overdue',
-                        targetFields
+                        dashboardFields
                             .where((f) => f.isOverdue)
                             .map((f) => f.weekly)
                             .toList(),
@@ -1308,12 +1317,14 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
             SliverToBoxAdapter(
               child: _PhaseProgressSection(
                   summary: summary,
-                  fields: targetFields,
+                  fields: dashboardFields,
+                  isAllCoverage: isAllCoverage,
                   onChanged: () => _refreshCoverage(ref, coverageScope)),
             ),
             SliverToBoxAdapter(
                 child: WeeklyAuditCards(
-              summary: WeeklyAuditSummary(targetFields.map((f) => f.weekly)),
+              summary:
+                  WeeklyAuditSummary(dashboardFields.map((f) => f.weekly)),
               onDetail: (title, fields) => _showWeeklyFields(
                   context, title, fields,
                   onChanged: () => _refreshCoverage(ref, coverageScope)),
@@ -1474,15 +1485,17 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             sharedFilters.coverageMode == CoverageDisplayMode.allCoverage
                 ? coverageFields
                 : targetFields;
+        final isAllCoverage =
+            sharedFilters.coverageMode == CoverageDisplayMode.allCoverage;
 
         // Hitung Statistik
         final summary = calculateFilteredPhases(
-          targetFields,
+          dashboardFields,
         );
         final needsAttention =
-            targetFields.where((f) => f.needsAttention).length;
+            dashboardFields.where((f) => f.needsAttention).length;
 
-        final fiList = buildFiCoverageList(targetFields);
+        final fiList = buildFiCoverageList(dashboardFields);
 
         final districtMap = <String, List<FieldCoverageStatus>>{};
         for (final f in dashboardFields) {
@@ -1552,8 +1565,8 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                   iconColor: AdvantaColors.deepForest,
                   bgColor: Colors.grey[200]!,
                   value: auditWorkload(
-                      _coverageArea(coverageFields), coverageFields.length),
-                  label: 'Total Coverage',
+                      _coverageArea(dashboardFields), dashboardFields.length),
+                  label: isAllCoverage ? 'All Coverage' : 'Target Audit',
                 ),
                 _StatCard(
                     icon: Icons.fact_check_rounded,
@@ -1561,7 +1574,9 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     bgColor: AdvantaColors.paleGreen,
                     value: auditWorkload(
                         summary.targetAreaHa, summary.totalTargets),
-                    label: 'Target Audit'),
+                    label: isAllCoverage
+                        ? 'Lifecycle Target'
+                        : 'Target Audit'),
                 _StatCard(
                     icon: Icons.task_alt_rounded,
                     iconColor: AdvantaColors.midGreen,
@@ -1578,7 +1593,7 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     onTap: () => _showWeeklyFields(
                         context,
                         'Needs Attention',
-                        targetFields
+                        dashboardFields
                             .where((f) => f.needsAttention)
                             .map((f) => f.weekly)
                             .toList(),
@@ -1589,12 +1604,14 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             SliverToBoxAdapter(
               child: _PhaseProgressSection(
                   summary: summary,
-                  fields: targetFields,
+                  fields: dashboardFields,
+                  isAllCoverage: isAllCoverage,
                   onChanged: () => _refreshCoverage(ref)),
             ),
             SliverToBoxAdapter(
                 child: WeeklyAuditCards(
-              summary: WeeklyAuditSummary(targetFields.map((f) => f.weekly)),
+              summary:
+                  WeeklyAuditSummary(dashboardFields.map((f) => f.weekly)),
               onDetail: (title, fields) => _showWeeklyFields(
                   context, title, fields,
                   onChanged: () => _refreshCoverage(ref)),
@@ -1755,11 +1772,14 @@ class _FIViewState extends ConsumerState<_FIView> {
             sharedFilters.coverageMode == CoverageDisplayMode.allCoverage
                 ? coverageFields
                 : targetFields;
+        final isAllCoverage =
+            sharedFilters.coverageMode == CoverageDisplayMode.allCoverage;
 
         final summary = calculateFilteredPhases(
-          targetFields,
+          dashboardFields,
         );
-        final overdueFields = targetFields.where((f) => f.isOverdue).length;
+        final attentionFields =
+            dashboardFields.where((f) => f.needsAttention).length;
 
         final villageMap = <String, List<FieldCoverageStatus>>{};
         for (final f in dashboardFields) {
@@ -1850,15 +1870,17 @@ class _FIViewState extends ConsumerState<_FIView> {
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.paleGreen,
                     value: auditWorkload(
-                        _coverageArea(coverageFields), coverageFields.length),
-                    label: 'Coverage'),
+                        _coverageArea(dashboardFields), dashboardFields.length),
+                    label: isAllCoverage ? 'All Coverage' : 'Target Audit'),
                 _StatCard(
                     icon: Icons.fact_check_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.paleGreen,
                     value: auditWorkload(
                         summary.targetAreaHa, summary.totalTargets),
-                    label: 'Target'),
+                    label: isAllCoverage
+                        ? 'Lifecycle Target'
+                        : 'Target Audit'),
                 _StatCard(
                     icon: Icons.task_alt_rounded,
                     iconColor: AdvantaColors.midGreen,
@@ -1870,28 +1892,30 @@ class _FIViewState extends ConsumerState<_FIView> {
                     icon: Icons.assignment_late_rounded,
                     iconColor: AdvantaColors.error,
                     bgColor: AdvantaColors.errorLight,
-                    value: '${summary.actionFields + overdueFields} FN',
+                    value: '$attentionFields FN',
                     label: 'Need Attention / Overdue',
                     onTap: () => _showWeeklyFields(
                         context,
                         'Need Attention / Overdue',
-                        targetFields
+                        dashboardFields
                             .where((f) => f.needsAttention)
                             .map((f) => f.weekly)
                             .toList(),
                         onChanged: () => _refreshCoverage(ref)),
-                    highlight: summary.actionFields + overdueFields > 0),
+                    highlight: attentionFields > 0),
               ]),
             ),
             SliverToBoxAdapter(
               child: _PhaseProgressSection(
                   summary: summary,
-                  fields: targetFields,
+                  fields: dashboardFields,
+                  isAllCoverage: isAllCoverage,
                   onChanged: () => _refreshCoverage(ref)),
             ),
             SliverToBoxAdapter(
                 child: WeeklyAuditCards(
-              summary: WeeklyAuditSummary(targetFields.map((f) => f.weekly)),
+              summary:
+                  WeeklyAuditSummary(dashboardFields.map((f) => f.weekly)),
               onDetail: (title, fields) => _showWeeklyFields(
                   context, title, fields,
                   onChanged: () => _refreshCoverage(ref)),
@@ -2579,9 +2603,13 @@ class _StatCard extends StatelessWidget {
 class _PhaseProgressSection extends StatelessWidget {
   final PhaseSummary summary;
   final List<FieldCoverageStatus> fields;
+  final bool isAllCoverage;
   final VoidCallback onChanged;
   const _PhaseProgressSection(
-      {required this.summary, required this.fields, required this.onChanged});
+      {required this.summary,
+      required this.fields,
+      required this.isAllCoverage,
+      required this.onChanged});
   @override
   Widget build(BuildContext context) => Container(
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -2593,15 +2621,20 @@ class _PhaseProgressSection extends StatelessWidget {
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Text('Target achievement per phase',
-                  style: TextStyle(
+              Text(
+                  isAllCoverage
+                      ? 'Lifecycle achievement per phase'
+                      : 'Target achievement per phase',
+                  style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: AdvantaColors.deepForest)),
               TextButton(
                   onPressed: () => _showWeeklyFields(
                       context,
-                      'Target audit minggu terpilih',
+                      isAllCoverage
+                          ? 'All Coverage sampai week terpilih'
+                          : 'Target audit minggu terpilih',
                       fields.map((f) => f.weekly).toList(),
                       onChanged: onChanged),
                   child: const Text('Lihat detail')),
@@ -2613,7 +2646,8 @@ class _PhaseProgressSection extends StatelessWidget {
                 color: AdvantaColors.midGreen)),
         const SizedBox(height: 8),
         Wrap(spacing: 16, runSpacing: 8, children: [
-          _value('Target audit', summary.targetAreaHa, summary.totalTargets),
+          _value(isAllCoverage ? 'Lifecycle target' : 'Target audit',
+              summary.targetAreaHa, summary.totalTargets),
           _value(
               'Achievement', summary.achievedAreaHa, summary.completedTargets),
           _value('Overdue', summary.overdueAreaHa, summary.overdueTargets),
