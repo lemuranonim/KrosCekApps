@@ -52,6 +52,103 @@ import '../../models/audit_planning_filters.dart';
 // ─── Work mode enum ──────────────────────────────────────
 enum _WorkMode { single, mass }
 
+const double _homeMapDetailMarkerMinZoom = 12.5;
+
+double homeMapGridCellDegrees(double zoom) {
+  final normalizedZoom = zoom.clamp(6.0, _homeMapDetailMarkerMinZoom);
+  return 0.5 / math.pow(2, normalizedZoom - 8.0);
+}
+
+String homeMapGridCellKey(double lat, double lng, double zoom) {
+  final cellSize = homeMapGridCellDegrees(zoom);
+  return '${(lat / cellSize).floor()}:${(lng / cellSize).floor()}';
+}
+
+class _MarkerGridBucket {
+  double latSum = 0;
+  double lngSum = 0;
+  int count = 0;
+
+  void add(ParsedFieldData field) {
+    latSum += field.lat;
+    lngSum += field.lng;
+    count++;
+  }
+
+  LatLng get center => LatLng(latSum / count, lngSum / count);
+}
+
+class _MarkerSpatialIndex {
+  static const double _cellSize = 0.25;
+
+  final List<ParsedFieldData> fields;
+  final Map<(int, int), List<ParsedFieldData>> _cells = {};
+
+  _MarkerSpatialIndex(this.fields) {
+    for (final field in fields) {
+      _cells.putIfAbsent(_cellFor(field.lat, field.lng), () => []).add(field);
+    }
+  }
+
+  static (int, int) _cellFor(double lat, double lng) =>
+      (((lat + 90) / _cellSize).floor(), ((lng + 180) / _cellSize).floor());
+
+  List<ParsedFieldData> within(LatLngBounds bounds) {
+    final south = math.min(bounds.south, bounds.north);
+    final north = math.max(bounds.south, bounds.north);
+    final west = bounds.west;
+    final east = bounds.east;
+
+    // The KC map is centred on Indonesia, but retain a correct fallback for
+    // a viewport that crosses the anti-meridian.
+    if (west > east) {
+      return fields
+          .where(
+            (field) =>
+                field.lat >= south &&
+                field.lat <= north &&
+                (field.lng >= west || field.lng <= east),
+          )
+          .toList(growable: false);
+    }
+
+    final southCell = _cellFor(south, west);
+    final northCell = _cellFor(north, east);
+    final latCellCount = northCell.$1 - southCell.$1 + 1;
+    final lngCellCount = northCell.$2 - southCell.$2 + 1;
+
+    // Avoid iterating a near-global grid when a linear scan is cheaper.
+    if (latCellCount * lngCellCount > fields.length * 2) {
+      return fields
+          .where(
+            (field) =>
+                field.lat >= south &&
+                field.lat <= north &&
+                field.lng >= west &&
+                field.lng <= east,
+          )
+          .toList(growable: false);
+    }
+
+    final result = <ParsedFieldData>[];
+    for (var latCell = southCell.$1; latCell <= northCell.$1; latCell++) {
+      for (var lngCell = southCell.$2; lngCell <= northCell.$2; lngCell++) {
+        final candidates = _cells[(latCell, lngCell)];
+        if (candidates == null) continue;
+        for (final field in candidates) {
+          if (field.lat >= south &&
+              field.lat <= north &&
+              field.lng >= west &&
+              field.lng <= east) {
+            result.add(field);
+          }
+        }
+      }
+    }
+    return result;
+  }
+}
+
 // ─── Audit Status filter enum ────────────────────────────
 enum _AuditFilter {
   all, // Semua lahan
@@ -105,7 +202,11 @@ class _QAScreenState extends ConsumerState<QAScreen>
   static const double _polygonMinZoom = 14.0;
   static const double _polygonViewportPaddingFactor = 0.35;
   static const double _markerViewportPaddingFactor = 0.20;
+  static const Duration _mapViewportDebounceDuration = Duration(
+    milliseconds: 120,
+  );
   double _currentZoom = 8.0;
+  Timer? _mapViewportDebounce;
   bool _showPolygons = true; // toggle on/off oleh user
   final LayerHitNotifier<ParsedFieldData> _polygonHitNotifier =
       ValueNotifier<LayerHitResult<ParsedFieldData>?>(null);
@@ -151,12 +252,20 @@ class _QAScreenState extends ConsumerState<QAScreen>
   // ── Cache for markers ──────────────────────────────────
   List<Marker>? _cachedMarkers;
   Object? _lastMarkerKey;
+  List<Marker>? _cachedGridMarkers;
+  Object? _lastGridMarkerKey;
+  _MarkerSpatialIndex? _markerSpatialIndex;
+  Object? _markerSpatialIndexKey;
 
   void _clearMapCaches() {
     _cachedFilteredFields = null;
     _lastFilterKey = null;
     _cachedMarkers = null;
     _lastMarkerKey = null;
+    _cachedGridMarkers = null;
+    _lastGridMarkerKey = null;
+    _markerSpatialIndex = null;
+    _markerSpatialIndexKey = null;
   }
 
   MasterFieldMapScope get _currentMapScope => MasterFieldMapScope(
@@ -643,6 +752,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
   @override
   void dispose() {
     _searchFocusDebounce?.cancel();
+    _mapViewportDebounce?.cancel();
     _positionSub?.cancel();
     _polygonHitNotifier.removeListener(_handlePolygonHit);
     _polygonHitNotifier.dispose();
@@ -2255,6 +2365,89 @@ class _QAScreenState extends ConsumerState<QAScreen>
     return _cachedMarkers!;
   }
 
+  List<Marker> _getGridMarkers(
+    List<ParsedFieldData> fieldsData, {
+    required bool stackDefaultMarkers,
+  }) {
+    final dataToMark = stackDefaultMarkers
+        ? fieldsData.where((field) => !field.isDefault).toList(growable: false)
+        : fieldsData;
+    final cellSize = homeMapGridCellDegrees(_currentZoom);
+    final markerDataHash = Object.hashAll(
+      dataToMark.map((field) => identityHashCode(field)),
+    );
+    final gridKey = [
+      markerDataHash,
+      dataToMark.length,
+      cellSize,
+      stackDefaultMarkers,
+    ].join('|');
+    if (_cachedGridMarkers != null && _lastGridMarkerKey == gridKey) {
+      return _cachedGridMarkers!;
+    }
+
+    final buckets = <String, _MarkerGridBucket>{};
+    for (final field in dataToMark) {
+      buckets
+          .putIfAbsent(
+            homeMapGridCellKey(field.lat, field.lng, _currentZoom),
+            _MarkerGridBucket.new,
+          )
+          .add(field);
+    }
+
+    final targetZoom = math.min(
+      _homeMapDetailMarkerMinZoom,
+      _currentZoom + 2.0,
+    );
+    _lastGridMarkerKey = gridKey;
+    _cachedGridMarkers = buckets.values
+        .map((bucket) {
+          final center = bucket.center;
+          return Marker(
+            point: center,
+            width: 46,
+            height: 46,
+            alignment: Alignment.center,
+            child: RepaintBoundary(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _mapController.move(center, targetZoom),
+                child: _buildCluster(bucket.count),
+              ),
+            ),
+          );
+        })
+        .toList(growable: false);
+    return _cachedGridMarkers!;
+  }
+
+  void _handleMapEvent(MapEvent event) {
+    final newZoom = _mapController.camera.zoom;
+    final viewportSettled =
+        event is MapEventMoveEnd ||
+        event is MapEventFlingAnimationEnd ||
+        event is MapEventDoubleTapZoomEnd;
+    final crossedRenderThreshold =
+        (_currentZoom < _homeMapDetailMarkerMinZoom &&
+            newZoom >= _homeMapDetailMarkerMinZoom) ||
+        (_currentZoom >= _homeMapDetailMarkerMinZoom &&
+            newZoom < _homeMapDetailMarkerMinZoom) ||
+        (_currentZoom < _polygonMinZoom && newZoom >= _polygonMinZoom) ||
+        (_currentZoom >= _polygonMinZoom && newZoom < _polygonMinZoom);
+    final shouldDebounce =
+        viewportSettled ||
+        crossedRenderThreshold ||
+        event is MapEventScrollWheelZoom;
+    if (!shouldDebounce) return;
+
+    _mapViewportDebounce?.cancel();
+    _mapViewportDebounce = Timer(_mapViewportDebounceDuration, () {
+      if (!mounted) return;
+      setState(() => _currentZoom = _mapController.camera.zoom);
+    });
+  }
+
   Widget _buildMap(
     List<ParsedFieldData> fieldsData,
     List<ParsedFieldData> allFields,
@@ -2278,23 +2471,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
         interactionOptions: _isEditingPolygon
             ? const InteractionOptions(flags: InteractiveFlag.none)
             : const InteractionOptions(),
-        // ── Optimasi: Kurangi frekuensi rebuild saat zoom ──
-        onMapEvent: (event) {
-          final newZoom = _mapController.camera.zoom;
-          final crossedPolygonZoom =
-              (_currentZoom < _polygonMinZoom && newZoom >= _polygonMinZoom) ||
-              (_currentZoom >= _polygonMinZoom && newZoom < _polygonMinZoom);
-          final zoomChangedEnough = (newZoom - _currentZoom).abs() > 0.5;
-          final viewportSettled =
-              event is MapEventMoveEnd ||
-              event is MapEventFlingAnimationEnd ||
-              event is MapEventDoubleTapZoomEnd ||
-              event is MapEventScrollWheelZoom;
-
-          if (zoomChangedEnough || crossedPolygonZoom || viewportSettled) {
-            setState(() => _currentZoom = newZoom);
-          }
-        },
+        // Rebuild the expensive viewport layers only after camera movement
+        // settles. Continuous pinch/wheel events are coalesced by a debounce.
+        onMapEvent: _handleMapEvent,
         onTap: (_, point) {
           if (_isEditingPolygon) return;
           if (_handlePolygonMapTap(point, polygonFields)) return;
@@ -2355,8 +2534,19 @@ class _QAScreenState extends ConsumerState<QAScreen>
             ],
           ),
 
-        // ── 5. Field markers (cluster) ────────────────────
-        if (_editingPolygonField == null)
+        // ── 5. Field markers ──────────────────────────────
+        // At regional zoom levels, aggregate into lightweight grid markers.
+        // Thousands of individual Flutter widgets are created only once the
+        // viewport is close enough that their count is naturally bounded.
+        if (_editingPolygonField == null &&
+            _currentZoom < _homeMapDetailMarkerMinZoom)
+          MarkerLayer(
+            markers: _getGridMarkers(
+              visibleMarkerFields,
+              stackDefaultMarkers: uncoordRaw.length > 4,
+            ),
+          )
+        else if (_editingPolygonField == null)
           MarkerClusterLayerWidget(
             options: MarkerClusterLayerOptions(
               maxClusterRadius: 45,
@@ -3494,11 +3684,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
     );
     if (visibleBounds == null) return fieldsData;
 
-    return fieldsData
-        .where((f) {
-          return _boundsContainsLatLng(visibleBounds, f.lat, f.lng);
-        })
-        .toList(growable: false);
+    final indexKey = Object.hash(
+      identityHashCode(fieldsData),
+      fieldsData.length,
+    );
+    if (_markerSpatialIndex == null || _markerSpatialIndexKey != indexKey) {
+      _markerSpatialIndex = _MarkerSpatialIndex(fieldsData);
+      _markerSpatialIndexKey = indexKey;
+    }
+    return _markerSpatialIndex!.within(visibleBounds);
   }
 
   List<ParsedFieldData> _getVisiblePolygonFields(
