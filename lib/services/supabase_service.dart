@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'master_field_read_cache.dart';
+
 class SupabaseService {
   final SupabaseClient _supabase;
   final Duration _auditPlanningTimeout;
@@ -454,6 +456,16 @@ class SupabaseService {
         district,
       ].any((value) => value?.trim().isNotEmpty == true);
       if (_mapCacheEnabled && hasCacheScope) {
+        final userId = _supabase.auth.currentUser?.id;
+        final localSnapshot = !bypassCache && userId != null
+            ? await MasterFieldReadCache.read(
+                userId: userId,
+                dataset: 'map',
+                season: season,
+                region: region,
+                district: district,
+              )
+            : null;
         try {
           final response = await _supabase.functions
               .invoke(
@@ -463,21 +475,46 @@ class SupabaseService {
                   'region': region,
                   'district': district,
                   'bypassCache': bypassCache,
+                  if (localSnapshot != null)
+                    'knownVersion': localSnapshot.version,
                 },
               )
               .timeout(const Duration(seconds: 60));
           final body = response.data;
           if (body is Map) {
+            if (body['notModified'] == true && localSnapshot != null) {
+              debugPrint(
+                'Map cache status: local_not_modified '
+                '(v${localSnapshot.version})',
+              );
+              return localSnapshot.rows;
+            }
             final rows = body['data'];
             if (rows is List) {
               final cache = body['cache'];
+              int? cacheVersion;
               if (cache is Map) {
                 debugPrint('Map cache status: ${cache['status']}');
+                final rawVersion = cache['version'];
+                if (rawVersion is num) cacheVersion = rawVersion.toInt();
               }
               final result = rows
                   .whereType<Map>()
                   .map((row) => Map<String, dynamic>.from(row))
                   .toList(growable: false);
+              if (userId != null && cacheVersion != null) {
+                unawaited(
+                  MasterFieldReadCache.write(
+                    userId: userId,
+                    dataset: 'map',
+                    version: cacheVersion,
+                    rows: result,
+                    season: season,
+                    region: region,
+                    district: district,
+                  ),
+                );
+              }
               debugPrint('Total map records fetched: ${result.length}');
               return result;
             }
@@ -704,6 +741,16 @@ class SupabaseService {
         district,
       ].any((value) => value?.trim().isNotEmpty == true);
       if (_mapCacheEnabled && hasCacheScope) {
+        final userId = _supabase.auth.currentUser?.id;
+        final localSnapshot = !bypassCache && userId != null
+            ? await MasterFieldReadCache.read(
+                userId: userId,
+                dataset: 'coverage',
+                season: season,
+                region: region,
+                district: district,
+              )
+            : null;
         try {
           final response = await _supabase.functions
               .invoke(
@@ -714,21 +761,46 @@ class SupabaseService {
                   'region': region,
                   'district': district,
                   'bypassCache': bypassCache,
+                  if (localSnapshot != null)
+                    'knownVersion': localSnapshot.version,
                 },
               )
               .timeout(const Duration(seconds: 90));
           final body = response.data;
           if (body is Map) {
+            if (body['notModified'] == true && localSnapshot != null) {
+              debugPrint(
+                'Coverage cache status: local_not_modified '
+                '(v${localSnapshot.version})',
+              );
+              return localSnapshot.rows;
+            }
             final rows = body['data'];
             if (rows is List) {
               final cache = body['cache'];
+              int? cacheVersion;
               if (cache is Map) {
                 debugPrint('Coverage cache status: ${cache['status']}');
+                final rawVersion = cache['version'];
+                if (rawVersion is num) cacheVersion = rawVersion.toInt();
               }
               final result = rows
                   .whereType<Map>()
                   .map((row) => Map<String, dynamic>.from(row))
                   .toList(growable: false);
+              if (userId != null && cacheVersion != null) {
+                unawaited(
+                  MasterFieldReadCache.write(
+                    userId: userId,
+                    dataset: 'coverage',
+                    version: cacheVersion,
+                    rows: result,
+                    season: season,
+                    region: region,
+                    district: district,
+                  ),
+                );
+              }
               debugPrint('Total coverage records fetched: ${result.length}');
               return result;
             }

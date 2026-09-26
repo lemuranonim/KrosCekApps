@@ -2,8 +2,18 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const CACHE_NAMESPACE = "master_fields_map";
-const CACHE_TTL_SECONDS = 3600;
-const MAX_CACHE_VALUE_BYTES = 7_500_000;
+const MAP_CACHE_TTL_SECONDS = 21_600;
+const COVERAGE_CACHE_TTL_SECONDS = 7_200;
+// Keep the combined first-load budget around 2.5 MB/user/day. Repeated app
+// starts use knownVersion and do not touch Redis at all.
+const MAP_MAX_CACHE_VALUE_BYTES = 1_000_000;
+const COVERAGE_MAX_CACHE_VALUE_BYTES = 1_500_000;
+const CACHE_BUILD_LOCK_SECONDS = 60;
+const CACHE_BUILD_WAIT_MS = [250, 500, 750, 1000, 1500];
+// Conservative guard based on the smaller public Free Tier allowance, even
+// though the connected Upstash dashboard currently reports a larger quota.
+const MONTHLY_REDIS_BYTES_LIMIT = 8_000_000_000;
+const MONTHLY_REDIS_OPS_LIMIT = 350_000;
 const PAGE_SIZE = 1000;
 const PARALLEL_PAGES = 3;
 
@@ -253,6 +263,7 @@ interface CacheRequest {
   district?: unknown;
   bypassCache?: unknown;
   healthCheck?: unknown;
+  knownVersion?: unknown;
 }
 
 interface Scope {
@@ -275,6 +286,22 @@ function optionalScopeValue(value: unknown, field: string): string | null {
   if (!normalized) return null;
   if (normalized.length > 160) throw new Error(`${field} is too long`);
   return normalized;
+}
+
+function normalizedIdentity(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
+}
+
+function requestedVersion(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error("knownVersion must be a non-negative integer");
+  }
+  return value;
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function jwtRole(token: string): string | null {
@@ -349,6 +376,105 @@ async function redisCommand(
   const body = await response.json() as { result?: unknown; error?: string };
   if (body.error) throw new Error(body.error);
   return body.result;
+}
+
+function monthlyBudgetKey(now = new Date()): string {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `kc:budget:${year}-${month}`;
+}
+
+interface BudgetedCacheRead {
+  status: "hit" | "miss" | "quota_guard";
+  value: string | null;
+}
+
+async function readCacheWithinBudget(
+  redisUrl: string,
+  redisToken: string,
+  cacheKey: string,
+): Promise<BudgetedCacheRead> {
+  const sizeKey = `${cacheKey}:bytes`;
+  const script = `
+    local ops = tonumber(redis.call('HGET', KEYS[3], 'ops') or '0')
+    if ops + 1 > tonumber(ARGV[2]) then
+      redis.call('HINCRBY', KEYS[3], 'denied', 1)
+      redis.call('EXPIRE', KEYS[3], tonumber(ARGV[3]))
+      return {2, false}
+    end
+    redis.call('HINCRBY', KEYS[3], 'ops', 1)
+    redis.call('EXPIRE', KEYS[3], tonumber(ARGV[3]))
+    local size = tonumber(redis.call('GET', KEYS[2]) or '')
+    if not size then return {0, false} end
+    local bytes = tonumber(redis.call('HGET', KEYS[3], 'bytes') or '0')
+    if bytes + size > tonumber(ARGV[1]) then
+      redis.call('HINCRBY', KEYS[3], 'denied', 1)
+      return {2, false}
+    end
+    local value = redis.call('GET', KEYS[1])
+    if not value then return {0, false} end
+    redis.call('HINCRBY', KEYS[3], 'bytes', size)
+    return {1, value}
+  `;
+  const result = await redisCommand(redisUrl, redisToken, [
+    "EVAL",
+    script,
+    "3",
+    cacheKey,
+    sizeKey,
+    monthlyBudgetKey(),
+    String(MONTHLY_REDIS_BYTES_LIMIT),
+    String(MONTHLY_REDIS_OPS_LIMIT),
+    String(45 * 24 * 60 * 60),
+  ]);
+  if (!Array.isArray(result)) return { status: "miss", value: null };
+  const state = Number(result[0]);
+  const value = typeof result[1] === "string" ? result[1] : null;
+  if (state === 2) return { status: "quota_guard", value: null };
+  if (state === 1 && value) return { status: "hit", value };
+  return { status: "miss", value: null };
+}
+
+async function writeCacheWithinBudget(
+  redisUrl: string,
+  redisToken: string,
+  cacheKey: string,
+  value: string,
+  valueBytes: number,
+  ttlSeconds: number,
+): Promise<boolean> {
+  const sizeKey = `${cacheKey}:bytes`;
+  const script = `
+    local ops = tonumber(redis.call('HGET', KEYS[3], 'ops') or '0')
+    local bytes = tonumber(redis.call('HGET', KEYS[3], 'bytes') or '0')
+    local incoming = tonumber(ARGV[1])
+    if ops + 1 > tonumber(ARGV[3]) or bytes + incoming > tonumber(ARGV[2]) then
+      redis.call('HINCRBY', KEYS[3], 'denied', 1)
+      redis.call('EXPIRE', KEYS[3], tonumber(ARGV[5]))
+      return 0
+    end
+    redis.call('HINCRBY', KEYS[3], 'ops', 1)
+    redis.call('HINCRBY', KEYS[3], 'bytes', incoming)
+    redis.call('EXPIRE', KEYS[3], tonumber(ARGV[5]))
+    redis.call('SET', KEYS[1], ARGV[6], 'EX', tonumber(ARGV[4]))
+    redis.call('SET', KEYS[2], ARGV[1], 'EX', tonumber(ARGV[4]))
+    return 1
+  `;
+  const result = await redisCommand(redisUrl, redisToken, [
+    "EVAL",
+    script,
+    "3",
+    cacheKey,
+    sizeKey,
+    monthlyBudgetKey(),
+    String(valueBytes),
+    String(MONTHLY_REDIS_BYTES_LIMIT),
+    String(MONTHLY_REDIS_OPS_LIMIT),
+    String(ttlSeconds),
+    String(45 * 24 * 60 * 60),
+    value,
+  ]);
+  return Number(result) === 1;
 }
 
 Deno.serve(async (req) => {
@@ -431,6 +557,19 @@ Deno.serve(async (req) => {
     ? "master_fields_coverage"
     : CACHE_NAMESPACE;
   const selectColumns = dataset === "coverage" ? COVERAGE_SELECT : MAP_SELECT;
+  const cacheTtlSeconds = dataset === "coverage"
+    ? COVERAGE_CACHE_TTL_SECONDS
+    : MAP_CACHE_TTL_SECONDS;
+  const maxCacheValueBytes = dataset === "coverage"
+    ? COVERAGE_MAX_CACHE_VALUE_BYTES
+    : MAP_MAX_CACHE_VALUE_BYTES;
+
+  let knownVersion: number | null;
+  try {
+    knownVersion = requestedVersion(input.knownVersion);
+  } catch (error) {
+    return jsonResponse({ error: error instanceof Error ? error.message : "Invalid version" }, 400);
+  }
 
   const client = createClient(supabaseUrl, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -464,38 +603,134 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "A scoped map request is required" }, 400);
   }
 
-  const { data: versionRow, error: versionError } = await client
+  const globalVersionNamespace = CACHE_NAMESPACE;
+  const versionNamespace = scope.region
+    ? `${CACHE_NAMESPACE}:region:${normalizedIdentity(scope.region)}`
+    : globalVersionNamespace;
+  let { data: versionRow, error: versionError } = await client
     .from("app_cache_versions")
     .select("version")
-    .eq("namespace", CACHE_NAMESPACE)
-    .single();
+    .eq("namespace", versionNamespace)
+    .maybeSingle();
+  // Safe rollout fallback while the regional migration is being applied.
+  if (!versionError && !versionRow && versionNamespace !== globalVersionNamespace) {
+    const fallback = await client
+      .from("app_cache_versions")
+      .select("version")
+      .eq("namespace", globalVersionNamespace)
+      .single();
+    versionRow = fallback.data;
+    versionError = fallback.error;
+  }
   if (versionError) {
     return jsonResponse({ error: "Unable to read cache version" }, 500);
   }
+  if (!versionRow) {
+    return jsonResponse({ error: "Cache version is not initialized" }, 500);
+  }
   const version = Number(versionRow.version);
 
+  const bypassCache = input.bypassCache === true;
+  if (!bypassCache && knownVersion === version) {
+    return jsonResponse({
+      notModified: true,
+      cache: {
+        status: "not_modified",
+        dataset,
+        version,
+        ttlSeconds: cacheTtlSeconds,
+      },
+    });
+  }
+
+  const accessIdentity = qaFi
+    ? { action: "audit", role: "FI", name: normalizedIdentity(qaFi) }
+    : qaSpv
+    ? { action: "audit", role: "SPV", name: normalizedIdentity(qaSpv) }
+    : { action: "all" };
   const cacheIdentity = JSON.stringify({
     version,
-    userId: userData.user.id,
+    access: accessIdentity,
     scope,
   });
   const cacheKey = `kc:${cacheNamespace}:v${version}:${await sha256(cacheIdentity)}`;
-  const bypassCache = input.bypassCache === true;
+  const lockKey = `${cacheKey}:building`;
 
+  let redisAllowed = redisEnabled;
   if (redisEnabled && !bypassCache) {
     try {
-      const cached = await redisCommand(redisUrl!, redisToken!, ["GET", cacheKey]);
+      const budgetedRead = await readCacheWithinBudget(
+        redisUrl!,
+        redisToken!,
+        cacheKey,
+      );
+      if (budgetedRead.status === "quota_guard") redisAllowed = false;
+      const cached = budgetedRead.value;
       if (typeof cached === "string" && cached) {
         const rows = await decompressJson(cached);
         if (Array.isArray(rows)) {
           return jsonResponse({
             data: rows,
-            cache: { status: "hit", version, ttlSeconds: CACHE_TTL_SECONDS },
+            cache: {
+              status: "hit",
+              dataset,
+              version,
+              ttlSeconds: cacheTtlSeconds,
+              bytes: cached.length,
+            },
           });
         }
       }
     } catch (error) {
       console.warn("Map cache read skipped:", error instanceof Error ? error.message : error);
+    }
+  }
+
+  // Only one invocation builds a missing regional payload. Other concurrent
+  // callers wait briefly for it, preventing 100 identical Supabase scans.
+  let ownsBuildLock = false;
+  if (redisAllowed && !bypassCache) {
+    try {
+      const lockResult = await redisCommand(redisUrl!, redisToken!, [
+        "SET",
+        lockKey,
+        crypto.randomUUID(),
+        "NX",
+        "EX",
+        String(CACHE_BUILD_LOCK_SECONDS),
+      ]);
+      ownsBuildLock = lockResult === "OK";
+      if (!ownsBuildLock) {
+        for (const waitMs of CACHE_BUILD_WAIT_MS) {
+          await delay(waitMs);
+          const budgetedRead = await readCacheWithinBudget(
+            redisUrl!,
+            redisToken!,
+            cacheKey,
+          );
+          if (budgetedRead.status === "quota_guard") {
+            redisAllowed = false;
+            break;
+          }
+          const cached = budgetedRead.value;
+          if (typeof cached !== "string" || !cached) continue;
+          const rows = await decompressJson(cached);
+          if (Array.isArray(rows)) {
+            return jsonResponse({
+              data: rows,
+              cache: {
+                status: "coalesced_hit",
+                dataset,
+                version,
+                ttlSeconds: cacheTtlSeconds,
+                bytes: cached.length,
+              },
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("Cache build lock skipped:", error instanceof Error ? error.message : error);
     }
   }
 
@@ -542,19 +777,27 @@ Deno.serve(async (req) => {
       }
     }
 
-    let cacheStatus = redisEnabled ? "miss" : "disabled";
-    if (redisEnabled) {
+    let cacheStatus = !redisEnabled
+      ? "disabled"
+      : redisAllowed
+      ? "miss"
+      : "quota_guard";
+    if (redisAllowed && (bypassCache || ownsBuildLock)) {
       try {
         const encoded = await compressJson(rows);
-        if (new TextEncoder().encode(encoded).byteLength <= MAX_CACHE_VALUE_BYTES) {
-          await redisCommand(redisUrl!, redisToken!, [
-            "SET",
+        const encodedBytes = new TextEncoder().encode(encoded).byteLength;
+        if (encodedBytes <= maxCacheValueBytes) {
+          const stored = await writeCacheWithinBudget(
+            redisUrl!,
+            redisToken!,
             cacheKey,
             encoded,
-            "EX",
-            String(CACHE_TTL_SECONDS),
-          ]);
-          cacheStatus = bypassCache ? "refresh" : "stored";
+            encodedBytes,
+            cacheTtlSeconds,
+          );
+          cacheStatus = stored
+            ? bypassCache ? "refresh" : "stored"
+            : "quota_guard";
         } else {
           cacheStatus = "oversize";
         }
@@ -570,7 +813,7 @@ Deno.serve(async (req) => {
         status: cacheStatus,
         dataset,
         version,
-        ttlSeconds: CACHE_TTL_SECONDS,
+        ttlSeconds: cacheTtlSeconds,
       },
     });
   } catch (error) {
