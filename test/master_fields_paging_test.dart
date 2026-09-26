@@ -43,8 +43,10 @@ void main() {
     );
     addTearDown(client.dispose);
 
-    final rows = await SupabaseService(client: client)
-        .getMasterFieldsForMap(region: 'Region 5');
+    final rows = await SupabaseService(
+      client: client,
+      mapCacheEnabled: false,
+    ).getMasterFieldsForMap(region: 'Region 5');
     expect(rows.single['geometry_wkt'], wkt);
     expect(rows.single['correction_geometry_wkt'], correctionWkt);
     expect(requestCount, 1);

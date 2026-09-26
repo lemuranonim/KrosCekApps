@@ -6,14 +6,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class SupabaseService {
   final SupabaseClient _supabase;
   final Duration _auditPlanningTimeout;
+  final bool _mapCacheEnabled;
 
   SupabaseService({
     SupabaseClient? client,
     Duration auditPlanningTimeout = const Duration(seconds: 45),
+    bool mapCacheEnabled = true,
   }) : _supabase = client ?? Supabase.instance.client,
        // Keep the public parameter name used by callers and tests.
        // ignore: prefer_initializing_formals
-       _auditPlanningTimeout = auditPlanningTimeout;
+       _auditPlanningTimeout = auditPlanningTimeout,
+       _mapCacheEnabled = mapCacheEnabled;
 
   // Eligibility only: no geometry, crop monitoring or flagging payloads.
   // Keep revised planting dates and PSP passes so weekly targets stay exact.
@@ -434,8 +437,54 @@ class SupabaseService {
     String? season,
     String? region,
     String? district,
+    bool bypassCache = false,
   }) async {
     try {
+      // Redis lives behind an authenticated Edge Function, never in Flutter.
+      // If that optional cache is unavailable, keep the existing direct
+      // Supabase query as a fail-open path so the map remains usable.
+      final hasCacheScope = [
+        qaFi,
+        qaSpv,
+        season,
+        region,
+        district,
+      ].any((value) => value?.trim().isNotEmpty == true);
+      if (_mapCacheEnabled && hasCacheScope) {
+        try {
+          final response = await _supabase.functions
+              .invoke(
+                'master-fields-map-cache',
+                body: {
+                  'season': season,
+                  'region': region,
+                  'district': district,
+                  'bypassCache': bypassCache,
+                },
+              )
+              .timeout(const Duration(seconds: 60));
+          final body = response.data;
+          if (body is Map) {
+            final rows = body['data'];
+            if (rows is List) {
+              final cache = body['cache'];
+              if (cache is Map) {
+                debugPrint('Map cache status: ${cache['status']}');
+              }
+              final result = rows
+                  .whereType<Map>()
+                  .map((row) => Map<String, dynamic>.from(row))
+                  .toList(growable: false);
+              debugPrint('Total map records fetched: ${result.length}');
+              return result;
+            }
+          }
+          throw const FormatException('Invalid map cache response');
+        } catch (cacheError) {
+          debugPrint('Map cache unavailable; using Supabase: $cacheError');
+        }
+      }
+
       final allData = await _fetchScopedMasterFieldPages(
         _masterFieldMapSelect,
         qaFi: qaFi,
