@@ -48,7 +48,7 @@ void main() {
     expect(weeks, [week, week.add(const Duration(days: 7))]);
   });
 
-  test('All Weeks projects unlimited history only through the active week', () {
+  test('All Weeks compacts lifecycle history through the active week', () {
     final oldRaw = {...fieldAt(210, id: 'OLD'), 'season': 'OLD-SEASON'};
     final nextRaw = {...fieldAt(0, id: 'NEXT'), 'season': 'NEW-SEASON'};
     final source = [oldRaw, nextRaw]
@@ -66,15 +66,15 @@ void main() {
     );
 
     expect(projected, isNotEmpty);
+    expect(projected, hasLength(1));
     expect(projected.map((field) => field.fieldNumber), contains('OLD'));
     expect(
         projected.map((field) => field.fieldNumber), isNot(contains('NEXT')));
+    expect(projected.single.weekly.weekStart, week);
     expect(
-        projected.any((field) => field.weekly.weekStart
-            .isBefore(week.subtract(const Duration(days: 20 * 7)))),
-        true);
-    expect(projected.every((field) => !field.weekly.weekStart.isAfter(week)),
-        true);
+      projected.single.weekly.targets.map((target) => target.phase).toSet(),
+      containsAll({'vegetative', 'generative_1', 'harvest'}),
+    );
 
     final nextWeek = projectCoverageWeeks(
       source,
@@ -83,6 +83,29 @@ void main() {
       now: end,
     );
     expect(nextWeek.map((field) => field.fieldNumber), contains('NEXT'));
+  });
+
+  test('All Weeks keeps a large region bounded to one projection per FN', () {
+    final source = List.generate(5000, (index) {
+      final raw = {
+        ...fieldAt(210, id: 'R5-$index'),
+        'season': 'REGION-5',
+      };
+      return FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end);
+    });
+
+    final projected = projectCoverageWeeks(
+      source,
+      weeks: auditAllWeeksRange(week),
+      flags: defaultAuditFlags,
+      allWeeks: true,
+      primaryWeek: week,
+      now: end,
+    );
+
+    expect(projected, hasLength(source.length));
+    expect(projected.map((field) => field.fieldNumber).toSet(),
+        hasLength(source.length));
   });
 
   test('multi-week coverage counts a season, FN, and phase only once', () {
@@ -395,6 +418,28 @@ void main() {
     expect(aggregateCoverageScore(fields), 50);
     expect(FICoverage.fromFields('FI 1', fields).coverageScore, 50);
     expect(calculateFilteredPhases(fields).targetCompletionPct, 50);
+  });
+
+  test('All Coverage score keeps completed lifecycle phases visible', () {
+    final raw = fieldAt(
+      60,
+      veg: {'date_of_audit': '2026-08-01'},
+    );
+    final weekly = FieldCoverageStatus.fromRaw(
+      raw,
+      weekStart: week,
+      now: end,
+    );
+    final lifecycle = FieldCoverageStatus.fromRaw(
+      raw,
+      weekStart: week,
+      now: end,
+      lifecycleProjection: true,
+    );
+
+    expect(weekly.coverageScore, 0);
+    expect(lifecycle.coverageScore, 50);
+    expect(aggregateCoverageScore([lifecycle]), 50);
   });
 
   test('SC highland rules use location, PSP has no PreHarvest', () {

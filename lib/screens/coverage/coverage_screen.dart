@@ -66,15 +66,27 @@ List<FieldCoverageStatus> projectCoverageWeeks(
       ? <DateTime>[auditWeekStart(evaluatedAt)]
       : weeks.map(auditWeekStart).toList())
     ..sort();
+
+  if (allWeeks) {
+    final throughWeek = auditWeekStart(primaryWeek ?? evaluatedAt);
+    return fields
+        .where((field) => !_isExcludedCoverageRegion(field.region))
+        .map((field) => FieldCoverageStatus.fromRaw(
+              field.raw,
+              weekStart: throughWeek,
+              now: evaluatedAt,
+              includeHistoricalTargets: true,
+            ))
+        .where((field) =>
+            field.isAuditTarget && flags.contains(field.weekly.flag))
+        .toList(growable: false);
+  }
+
   final latestTarget = <String, _CoverageTargetProjection>{};
 
   for (final field
       in fields.where((field) => !_isExcludedCoverageRegion(field.region))) {
-    final fieldWeeks = allWeeks
-        ? auditHistoricalTargetWeeks(field.raw,
-            throughWeek: primaryWeek ?? evaluatedAt)
-        : selected;
-    for (final week in fieldWeeks) {
+    for (final week in selected) {
       final weekly = WeeklyAuditField.fromRaw(field.raw,
           weekStart: week, now: evaluatedAt);
       for (final target in weekly.targets) {
@@ -131,7 +143,7 @@ List<FieldCoverageStatus> _projectAllCoverage(
   return fields
       .where((field) => !_isExcludedCoverageRegion(field.region))
       .map((field) => FieldCoverageStatus.fromRaw(field.raw,
-          weekStart: auditWeekStart(selected)))
+          weekStart: auditWeekStart(selected), lifecycleProjection: true))
       .where((field) => flags.contains(field.weekly.flag))
       .toList(growable: false);
 }
@@ -180,6 +192,7 @@ class FieldCoverageStatus {
   final String? actionPhase;
   final bool hasCorrectionTagging;
   final bool hasPldDiscardValue;
+  final bool isLifecycleProjection;
 
   /// Apakah ada fase yang seharusnya On Going / Overdue tapi belum diaudit.
   final bool isOverdue;
@@ -222,6 +235,7 @@ class FieldCoverageStatus {
     required this.actionPhase,
     required this.hasCorrectionTagging,
     required this.hasPldDiscardValue,
+    this.isLifecycleProjection = false,
     required this.isOverdue,
   });
 
@@ -278,8 +292,41 @@ class FieldCoverageStatus {
   bool get allRequiredPhasesDone =>
       phaseKeys.isNotEmpty && donePhasesCount == phaseKeys.length;
 
-  /// Coverage score 0-100 berdasarkan fase yang sudah On Going / Overdue.
-  double get coverageScore => weekly.completion * 100;
+  double get lifecycleTargetWeight {
+    final eligibleRules = DapHelper.getPhaseRules(
+      hybrid: hybrid,
+      district: district,
+      region: region,
+      subDistrict: subDistrict,
+    ).where((rule) => rule.onGoingStart <= dap);
+    return eligibleRules.fold(
+      0.0,
+      (sum, rule) => sum + auditTargetWeight(rule.key, hybrid: hybrid),
+    );
+  }
+
+  double get lifecycleCompletion {
+    final eligibleRules = DapHelper.getPhaseRules(
+      hybrid: hybrid,
+      district: district,
+      region: region,
+      subDistrict: subDistrict,
+    ).where((rule) => rule.onGoingStart <= dap);
+    var weight = 0.0;
+    var completed = 0.0;
+    for (final rule in eligibleRules) {
+      final phaseWeight = auditTargetWeight(rule.key, hybrid: hybrid);
+      weight += phaseWeight;
+      completed +=
+          (weekly.phaseCompletions[rule.key] ?? 0.0) * phaseWeight;
+    }
+    return weight <= 0 ? 0 : completed / weight;
+  }
+
+  /// Weekly targets use the selected week. All Coverage uses lifecycle
+  /// progress through that week, so earlier completed phases do not appear 0%.
+  double get coverageScore =>
+      (isLifecycleProjection ? lifecycleCompletion : weekly.completion) * 100;
 
   double get vegetativeCompletionFraction {
     if (!isPsp) return vegetativeDone ? 1.0 : 0.0;
@@ -331,11 +378,16 @@ class FieldCoverageStatus {
   }
 
   factory FieldCoverageStatus.fromRaw(Map<String, dynamic> raw,
-      {DateTime? weekStart, DateTime? now, Set<String>? targetPhases}) {
+      {DateTime? weekStart,
+      DateTime? now,
+      Set<String>? targetPhases,
+      bool includeHistoricalTargets = false,
+      bool lifecycleProjection = false}) {
     final weekly = WeeklyAuditField.fromRaw(raw,
         weekStart: weekStart ?? auditWeekStart(now ?? DateTime.now()),
         now: now,
-        targetPhases: targetPhases);
+        targetPhases: targetPhases,
+        includeHistoricalTargets: includeHistoricalTargets);
     final veg = auditRow(raw['audit_vegetative']);
     final hybrid = _cleanText(raw['hybrid']);
     final psp = DapHelper.isPsp(hybrid);
@@ -402,6 +454,7 @@ class FieldCoverageStatus {
           _cleanText(veg['correction_tagging'] ?? raw['correction_tagging'])
               .isNotEmpty,
       hasPldDiscardValue: weekly.flag == 'PLD',
+      isLifecycleProjection: lifecycleProjection,
       isOverdue: weekly.overdue,
     );
   }
@@ -662,6 +715,18 @@ List<FICoverage> buildFiCoverageList(List<FieldCoverageStatus> fields) {
 }
 
 double aggregateCoverageScore(List<FieldCoverageStatus> fields) {
+  final lifecycleFields = fields
+      .where((field) =>
+          field.isLifecycleProjection && field.lifecycleTargetWeight > 0)
+      .toList(growable: false);
+  if (lifecycleFields.isNotEmpty) {
+    return lifecycleFields.fold(
+          0.0,
+          (sum, field) => sum + field.lifecycleCompletion,
+        ) /
+        lifecycleFields.length *
+        100;
+  }
   if (fields.any((field) => field.isAuditTarget)) {
     return WeeklyAuditSummary(fields.map((field) => field.weekly))
         .achievementPercent;
@@ -671,6 +736,144 @@ double aggregateCoverageScore(List<FieldCoverageStatus> fields) {
       fields.length *
       100;
 }
+
+class _CoverageProjectionSet {
+  final List<FieldCoverageStatus> source;
+  final List<FieldCoverageStatus> allCoverage;
+  final List<FieldCoverageStatus> weekly;
+  final DateTime earliestWeek;
+
+  const _CoverageProjectionSet({
+    required this.source,
+    required this.allCoverage,
+    required this.weekly,
+    required this.earliestWeek,
+  });
+}
+
+class _CoverageProjectionRequest {
+  final MasterFieldMapScope scope;
+  final Set<DateTime> weeks;
+  final Set<String> flags;
+  final bool allWeeks;
+  final DateTime primaryWeek;
+  final String? qaFi;
+  final String? qaSpv;
+  final String _weeksKey;
+  final String _flagsKey;
+
+  _CoverageProjectionRequest(
+    this.scope,
+    AuditDashboardFilters filters, {
+    String? qaFi,
+    String? qaSpv,
+  })  : weeks = Set.unmodifiable(filters.weeks.map(auditWeekStart)),
+        flags = Set.unmodifiable(filters.flags),
+        allWeeks = filters.allWeeks,
+        primaryWeek = auditWeekStart(filters.primaryWeek),
+        qaFi = qaFi?.trim().toLowerCase(),
+        qaSpv = qaSpv?.trim().toLowerCase(),
+        _weeksKey = (filters.weeks.map(auditWeekStart).toList()..sort())
+            .map((week) => week.microsecondsSinceEpoch)
+            .join(','),
+        _flagsKey = (filters.flags.toList()..sort()).join(',');
+
+  @override
+  bool operator ==(Object other) =>
+      other is _CoverageProjectionRequest &&
+      other.scope == scope &&
+      other.allWeeks == allWeeks &&
+      other.primaryWeek == primaryWeek &&
+      other.qaFi == qaFi &&
+      other.qaSpv == qaSpv &&
+      other._weeksKey == _weeksKey &&
+      other._flagsKey == _flagsKey;
+
+  @override
+  int get hashCode => Object.hash(
+        scope,
+        allWeeks,
+        primaryWeek,
+        qaFi,
+        qaSpv,
+        _weeksKey,
+        _flagsKey,
+      );
+}
+
+class _CoverageProjectionInput {
+  final List<FieldCoverageStatus> fields;
+  final Set<DateTime> weeks;
+  final Set<String> flags;
+  final bool allWeeks;
+  final DateTime primaryWeek;
+  final String? qaFi;
+  final String? qaSpv;
+
+  const _CoverageProjectionInput({
+    required this.fields,
+    required this.weeks,
+    required this.flags,
+    required this.allWeeks,
+    required this.primaryWeek,
+    required this.qaFi,
+    required this.qaSpv,
+  });
+}
+
+_CoverageProjectionSet _buildCoverageProjection(
+    _CoverageProjectionInput input) {
+  final scoped = input.fields.where((field) {
+    if (input.qaFi != null &&
+        !QaNameHelper.containsExactName(field.qaFi, input.qaFi!)) {
+      return false;
+    }
+    if (input.qaSpv != null &&
+        !QaNameHelper.containsExactName(field.qaSpv, input.qaSpv!)) {
+      return false;
+    }
+    return true;
+  }).toList(growable: false);
+  return _CoverageProjectionSet(
+    source: scoped,
+    allCoverage: _projectAllCoverage(
+      scoped,
+      week: input.primaryWeek,
+      flags: input.flags,
+    ),
+    weekly: projectCoverageWeeks(
+      scoped,
+      weeks: input.weeks,
+      flags: input.flags,
+      allWeeks: input.allWeeks,
+      primaryWeek: input.primaryWeek,
+    ),
+    earliestWeek: auditEarliestTargetWeek(
+      scoped.map((field) => field.raw),
+      fallback: input.primaryWeek,
+    ),
+  );
+}
+
+/// Parsing already runs outside the UI isolate. Large regional projections do
+/// too, so changing to All Weeks cannot block gestures or trigger an Android
+/// watchdog while thousands of FN are being grouped.
+final _coverageProjectionProvider = FutureProvider.family<
+    _CoverageProjectionSet, _CoverageProjectionRequest>((ref, request) async {
+  final fields =
+      await ref.watch(coverageStatusListScopedProvider(request.scope).future);
+  final input = _CoverageProjectionInput(
+    fields: fields,
+    weeks: request.weeks,
+    flags: request.flags,
+    allWeeks: request.allWeeks,
+    primaryWeek: request.primaryWeek,
+    qaFi: request.qaFi,
+    qaSpv: request.qaSpv,
+  );
+  if (fields.length < 200) return _buildCoverageProjection(input);
+  return compute(_buildCoverageProjection, input);
+});
 
 final fiCoverageListProvider = FutureProvider<List<FICoverage>>((ref) async {
   final fields = await ref.watch(coverageStatusListProvider.future);
@@ -853,48 +1056,6 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
   String? _selectedDistrict; // cascade dari region
   String? _selectedSpv;
   int _expandedAreaIndex = -1;
-  List<FieldCoverageStatus>? _projectionSource;
-  Set<DateTime>? _projectionWeeks;
-  Set<String>? _projectionFlags;
-  DateTime? _projectionPrimaryWeek;
-  DateTime? _projectionAsOfDay;
-  bool? _projectionAllWeeks;
-  List<FieldCoverageStatus> _allCoverageProjection = const [];
-  List<FieldCoverageStatus> _weeklyProjection = const [];
-  DateTime? _earliestTargetWeek;
-
-  void _ensureProjections(
-    List<FieldCoverageStatus> fields,
-    AuditDashboardFilters filters,
-  ) {
-    final primaryWeek = filters.primaryWeek;
-    final now = DateTime.now();
-    final asOfDay = DateTime(now.year, now.month, now.day);
-    if (identical(_projectionSource, fields) &&
-        identical(_projectionWeeks, filters.weeks) &&
-        identical(_projectionFlags, filters.flags) &&
-        _projectionPrimaryWeek == primaryWeek &&
-        _projectionAsOfDay == asOfDay &&
-        _projectionAllWeeks == filters.allWeeks) {
-      return;
-    }
-    _allCoverageProjection =
-        _projectAllCoverage(fields, week: primaryWeek, flags: filters.flags);
-    _weeklyProjection = projectCoverageWeeks(fields,
-        weeks: filters.weeks,
-        flags: filters.flags,
-        allWeeks: filters.allWeeks,
-        primaryWeek: primaryWeek);
-    _earliestTargetWeek = auditEarliestTargetWeek(
-        fields.map((field) => field.raw),
-        fallback: primaryWeek);
-    _projectionSource = fields;
-    _projectionWeeks = filters.weeks;
-    _projectionFlags = filters.flags;
-    _projectionPrimaryWeek = primaryWeek;
-    _projectionAsOfDay = asOfDay;
-    _projectionAllWeeks = filters.allWeeks;
-  }
 
   @override
   void initState() {
@@ -966,19 +1127,20 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
     final waitingForRegionScope = !_showAllRegions &&
         _selectedRegion == null &&
         (regionOptionsAsync is AsyncLoading || needsRegionScope);
-    final AsyncValue<List<FieldCoverageStatus>> fieldsAsync =
+    final projectionRequest =
+        _CoverageProjectionRequest(coverageScope, sharedFilters);
+    final AsyncValue<_CoverageProjectionSet> fieldsAsync =
         waitingForRegionScope
             ? const AsyncValue.loading()
-            : ref.watch(coverageStatusListScopedProvider(coverageScope));
+            : ref.watch(_coverageProjectionProvider(projectionRequest));
 
     return fieldsAsync.when(
       loading: () => const _SkeletonLoader(),
       error: (e, _) => _CoverageErrorWidget(error: e.toString()),
-      data: (allFields) {
-        _ensureProjections(allFields, sharedFilters);
-        final allCoverageFields = _allCoverageProjection;
-        final weeklyFields = _weeklyProjection;
-        final earliestWeek = _earliestTargetWeek!;
+      data: (projections) {
+        final allCoverageFields = projections.allCoverage;
+        final weeklyFields = projections.weekly;
+        final earliestWeek = projections.earliestWeek;
 
         // CASCADING LOGIC — Region → District → SPV
         final regions = regionOptions.isNotEmpty
@@ -1249,29 +1411,22 @@ class _SPVViewState extends ConsumerState<_SPVView> {
   @override
   Widget build(BuildContext context) {
     final sharedFilters = ref.watch(auditDashboardFilterProvider);
-    final fieldsAsync = ref.watch(coverageStatusListProvider);
+    final String myName = widget.session.name.trim().toLowerCase();
+    final request = _CoverageProjectionRequest(
+      const MasterFieldMapScope.all(),
+      sharedFilters,
+      qaSpv: widget.isDevPreview ? null : myName,
+    );
+    final fieldsAsync = ref.watch(_coverageProjectionProvider(request));
 
     return fieldsAsync.when(
       loading: () => const _SkeletonLoader(),
       error: (e, _) => _CoverageErrorWidget(error: e.toString()),
-      data: (allFields) {
+      data: (projections) {
         // 1. FILTER DASAR: Ambil hanya lahan milik SPV yang sedang login
-        final String myName = widget.session.name.trim().toLowerCase();
-        final mySpvFields = widget.isDevPreview
-            ? allFields
-            : allFields
-                .where((f) => QaNameHelper.containsExactName(f.qaSpv, myName))
-                .toList();
-        final allCoverageFields = _projectAllCoverage(mySpvFields,
-            week: sharedFilters.primaryWeek, flags: sharedFilters.flags);
-        final weeklyFields = projectCoverageWeeks(mySpvFields,
-            weeks: sharedFilters.weeks,
-            flags: sharedFilters.flags,
-            allWeeks: sharedFilters.allWeeks,
-            primaryWeek: sharedFilters.primaryWeek);
-        final earliestWeek = auditEarliestTargetWeek(
-            mySpvFields.map((field) => field.raw),
-            fallback: sharedFilters.primaryWeek);
+        final allCoverageFields = projections.allCoverage;
+        final weeklyFields = projections.weekly;
+        final earliestWeek = projections.earliestWeek;
 
         // 2. CASCADING LOGIC SPV (Berdasarkan lahan milik SPV ini saja)
         final spvOptions = allCoverageFields
@@ -1531,29 +1686,22 @@ class _FIViewState extends ConsumerState<_FIView> {
   @override
   Widget build(BuildContext context) {
     final sharedFilters = ref.watch(auditDashboardFilterProvider);
-    final fieldsAsync = ref.watch(coverageStatusListProvider);
+    final String myName = widget.session.name.trim().toLowerCase();
+    final request = _CoverageProjectionRequest(
+      const MasterFieldMapScope.all(),
+      sharedFilters,
+      qaFi: widget.isDevPreview ? null : myName,
+    );
+    final fieldsAsync = ref.watch(_coverageProjectionProvider(request));
 
     return fieldsAsync.when(
       loading: () => const _SkeletonLoader(),
       error: (e, _) => _CoverageErrorWidget(error: e.toString()),
-      data: (allFields) {
+      data: (projections) {
         // 1. FILTER DASAR: Ambil hanya lahan milik QA FI yang sedang login
-        final String myName = widget.session.name.trim().toLowerCase();
-        final myFiFields = widget.isDevPreview
-            ? allFields
-            : allFields
-                .where((f) => QaNameHelper.containsExactName(f.qaFi, myName))
-                .toList();
-        final allCoverageFields = _projectAllCoverage(myFiFields,
-            week: sharedFilters.primaryWeek, flags: sharedFilters.flags);
-        final weeklyFields = projectCoverageWeeks(myFiFields,
-            weeks: sharedFilters.weeks,
-            flags: sharedFilters.flags,
-            allWeeks: sharedFilters.allWeeks,
-            primaryWeek: sharedFilters.primaryWeek);
-        final earliestWeek = auditEarliestTargetWeek(
-            myFiFields.map((field) => field.raw),
-            fallback: sharedFilters.primaryWeek);
+        final allCoverageFields = projections.allCoverage;
+        final weeklyFields = projections.weekly;
+        final earliestWeek = projections.earliestWeek;
 
         // 2. CASCADING LOGIC FI (Gunakan myFiFields)
         final fiOptions = allCoverageFields

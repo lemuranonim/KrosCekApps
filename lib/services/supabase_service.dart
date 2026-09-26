@@ -16,6 +16,9 @@ class SupabaseService {
        // Keep the public parameter name used by callers and tests.
        // ignore: prefer_initializing_formals
        _auditPlanningTimeout = auditPlanningTimeout,
+       // Keep mapCacheEnabled as the compatibility switch for both map and
+       // coverage Redis paths in tests and fail-open deployments.
+       // ignore: prefer_initializing_formals
        _mapCacheEnabled = mapCacheEnabled;
 
   // Eligibility only: no geometry, crop monitoring or flagging payloads.
@@ -690,8 +693,52 @@ class SupabaseService {
     String? season,
     String? region,
     String? district,
+    bool bypassCache = false,
   }) async {
     try {
+      final hasCacheScope = [
+        qaFi,
+        qaSpv,
+        season,
+        region,
+        district,
+      ].any((value) => value?.trim().isNotEmpty == true);
+      if (_mapCacheEnabled && hasCacheScope) {
+        try {
+          final response = await _supabase.functions
+              .invoke(
+                'master-fields-map-cache',
+                body: {
+                  'dataset': 'coverage',
+                  'season': season,
+                  'region': region,
+                  'district': district,
+                  'bypassCache': bypassCache,
+                },
+              )
+              .timeout(const Duration(seconds: 90));
+          final body = response.data;
+          if (body is Map) {
+            final rows = body['data'];
+            if (rows is List) {
+              final cache = body['cache'];
+              if (cache is Map) {
+                debugPrint('Coverage cache status: ${cache['status']}');
+              }
+              final result = rows
+                  .whereType<Map>()
+                  .map((row) => Map<String, dynamic>.from(row))
+                  .toList(growable: false);
+              debugPrint('Total coverage records fetched: ${result.length}');
+              return result;
+            }
+          }
+          throw const FormatException('Invalid coverage cache response');
+        } catch (cacheError) {
+          debugPrint('Coverage cache unavailable; using Supabase: $cacheError');
+        }
+      }
+
       final allData = await _fetchScopedMasterFieldPages(
         _masterFieldCoverageSelect,
         qaFi: qaFi,

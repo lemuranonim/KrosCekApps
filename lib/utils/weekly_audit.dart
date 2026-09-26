@@ -320,7 +320,10 @@ class WeeklyAuditField {
       const {'RFI', 'RFD', 'BF', 'PLD', 'OF', 'RF'}.contains(flag);
 
   factory WeeklyAuditField.fromRaw(Map<String, dynamic> raw,
-      {required DateTime weekStart, DateTime? now, Set<String>? targetPhases}) {
+      {required DateTime weekStart,
+      DateTime? now,
+      Set<String>? targetPhases,
+      bool includeHistoricalTargets = false}) {
     final start = auditWeekStart(weekStart);
     final end = start.add(const Duration(days: 6));
     final today = auditDateOnly(now ?? DateTime.now());
@@ -452,18 +455,31 @@ class WeeklyAuditField {
       for (final rule in rules) {
         final windowStart = planting.add(Duration(days: rule.onGoingStart));
         final windowEnd = planting.add(Duration(days: rule.onGoingEnd));
-        if (windowStart.isAfter(end) || windowEnd.isBefore(start)) continue;
+        if (includeHistoricalTargets) {
+          // All Weeks needs one compact lifecycle projection per FN. Include
+          // every phase whose target window has started through the selected
+          // week, instead of rebuilding the same field for every calendar
+          // week in its lifecycle.
+          if (windowStart.isAfter(end)) continue;
+        } else if (windowStart.isAfter(end) || windowEnd.isBefore(start)) {
+          continue;
+        }
         if (targetPhases != null && !targetPhases.contains(rule.key)) continue;
         final dates = phaseDates[rule.key] ?? const <DateTime>[];
-        if (dates.where((d) => d.isBefore(start) && !d.isAfter(today)).length >=
-            requiredPasses(rule.key)) {
+        if (!includeHistoricalTargets &&
+            dates
+                    .where((d) => d.isBefore(start) && !d.isAfter(today))
+                    .length >=
+                requiredPasses(rule.key)) {
           continue;
         }
         final completion = phaseCompletions[rule.key] ?? 0;
         final deadline = windowEnd.isBefore(end) ? windowEnd : end;
         targets.add(WeeklyAuditTarget(
             phase: rule.key,
-            plannedDate: windowStart.isAfter(start) ? windowStart : start,
+            plannedDate: includeHistoricalTargets
+                ? windowStart
+                : (windowStart.isAfter(start) ? windowStart : start),
             deadline: deadline,
             completion: completion,
             weight: auditTargetWeight(rule.key, hybrid: hybrid),

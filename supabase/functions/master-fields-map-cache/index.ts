@@ -90,9 +90,164 @@ const MAP_SELECT = `
   )
 `;
 
+// Coverage intentionally has its own Redis keyspace because its nested audit
+// payload is much larger than the map payload. Both datasets share the same
+// database generation counter, so an audit/master-field write invalidates
+// them together without waiting for the TTL.
+const COVERAGE_SELECT = `
+  field_number,
+  season,
+  farmer_name,
+  grower,
+  hybrid,
+  total_area_planted_ha,
+  discard_area_ha,
+  effective_area_ha,
+  planting_date_pdn,
+  hamlet_dusun,
+  village_desa,
+  sub_district_kec,
+  district_kab,
+  fa,
+  field_spv,
+  coordinate,
+  correction_tagging,
+  region,
+  area_manager,
+  harvested_area_ha,
+  harvested_qty_kg,
+  previous_crop_data_a_b,
+  standing_crops,
+  type,
+  prov,
+  planting_date_rev,
+  is_active,
+  qa_fi,
+  qa_spv,
+  planting_ratio,
+  planting_space,
+  flagging_final,
+  target_dt_date,
+  season_id,
+  audit_vegetative(
+    date_of_audit,
+    audit_date_user,
+    audit_week,
+    qa_fi,
+    rev_planting_date,
+    field_size_by_audit_ha,
+    correction_tagging,
+    decision,
+    action_needed,
+    flagging,
+    co_detasseling,
+    roguing_status,
+    lsv_status,
+    isolation_problem_by_audit,
+    crop_uniformity,
+    crop_health,
+    date_of_inspeksi_roguing_1,
+    date_of_inspeksi_roguing_2,
+    date_of_inspeksi_roguing_3,
+    date_of_inspeksi_roguing_4,
+    audit_lsv_roguing_2,
+    audit_lsv_roguing_3,
+    audit_lsv_roguing_4,
+    crop_health_roguing_1,
+    crop_uniformity_roguing_1,
+    crop_health_roguing_2,
+    crop_uniformity_roguing_2,
+    crop_health_roguing_3,
+    crop_uniformity_roguing_3,
+    crop_health_roguing_4,
+    crop_uniformity_roguing_4,
+    isolation_audit_roguing_1
+  ),
+  audit_generative(
+    date_of_audit_1,
+    week_of_audit_1,
+    qa_fi_1,
+    roguing_status_1,
+    lsv_status_1,
+    crop_uniformity_1,
+    crop_health_1,
+    date_of_audit_2,
+    week_of_audit_2,
+    qa_fi_2,
+    roguing_status_2,
+    lsv_status_2,
+    crop_uniformity_2,
+    crop_health_2,
+    date_of_audit_3,
+    week_of_audit_3,
+    qa_fi_3,
+    lsv_status_3,
+    crop_uniformity_3,
+    crop_health_3,
+    date_of_audit_4,
+    week_of_audit_4,
+    qa_fi_4,
+    roguing_status_4,
+    lsv_status_4,
+    crop_uniformity_4,
+    crop_health_4,
+    date_of_audit_5,
+    week_of_audit_5,
+    qa_fi_5,
+    lsv_status_5,
+    crop_uniformity_5,
+    crop_health_5,
+    action_needed_1,
+    action_needed_2,
+    action_needed_3,
+    action_needed_4,
+    final_decision_3,
+    final_decision_5,
+    flagging,
+    final_flagging_5,
+    detasseling_assesment_3,
+    detasseling_assesment_5,
+    isolation_problem_5,
+    submitted_at_5,
+    date_of_inspeksi_roguing_5,
+    audit_lsv_roguing_5,
+    crop_uniformity_roguing_5,
+    crop_health_roguing_5,
+    isolation_audit_roguing_5,
+    flagging_roguing_5,
+    date_of_inspeksi_roguing_6,
+    audit_lsv_roguing_6,
+    crop_uniformity_roguing_6,
+    crop_health_roguing_6,
+    isolation_audit_roguing_6,
+    flagging_roguing_6
+  ),
+  audit_pre_harvest(
+    audit_date,
+    audit_week,
+    qa_fi,
+    final_decision,
+    final_flagging,
+    male_chopping_rows,
+    crop_uniformity,
+    crop_health
+  ),
+  audit_harvest(
+    date_of_audit,
+    audit_week,
+    qa_fi,
+    final_flagging,
+    status_downgrade,
+    downgrade_flagging,
+    crop_uniformity,
+    crop_health
+  )
+`;
+
 type JsonMap = Record<string, unknown>;
 
 interface CacheRequest {
+  dataset?: unknown;
   season?: unknown;
   region?: unknown;
   district?: unknown;
@@ -268,6 +423,15 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: error instanceof Error ? error.message : "Invalid scope" }, 400);
   }
 
+  const dataset = input.dataset == null ? "map" : input.dataset;
+  if (dataset !== "map" && dataset !== "coverage") {
+    return jsonResponse({ error: "dataset must be map or coverage" }, 400);
+  }
+  const cacheNamespace = dataset === "coverage"
+    ? "master_fields_coverage"
+    : CACHE_NAMESPACE;
+  const selectColumns = dataset === "coverage" ? COVERAGE_SELECT : MAP_SELECT;
+
   const client = createClient(supabaseUrl, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { headers: { Authorization: `Bearer ${token}` } },
@@ -315,7 +479,7 @@ Deno.serve(async (req) => {
     userId: userData.user.id,
     scope,
   });
-  const cacheKey = `kc:${CACHE_NAMESPACE}:v${version}:${await sha256(cacheIdentity)}`;
+  const cacheKey = `kc:${cacheNamespace}:v${version}:${await sha256(cacheIdentity)}`;
   const bypassCache = input.bypassCache === true;
 
   if (redisEnabled && !bypassCache) {
@@ -338,7 +502,7 @@ Deno.serve(async (req) => {
   const fetchPage = async (from: number): Promise<JsonMap[]> => {
     let query = client
       .from("master_fields")
-      .select(MAP_SELECT)
+      .select(selectColumns)
       .eq("is_active", true);
     if (qaFi) query = query.ilike("qa_fi", `%${qaFi}%`);
     if (qaSpv) query = query.ilike("qa_spv", `%${qaSpv}%`);
@@ -402,7 +566,12 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       data: rows,
-      cache: { status: cacheStatus, version, ttlSeconds: CACHE_TTL_SECONDS },
+      cache: {
+        status: cacheStatus,
+        dataset,
+        version,
+        ttlSeconds: CACHE_TTL_SECONDS,
+      },
     });
   } catch (error) {
     console.error("Map query failed:", error instanceof Error ? error.message : error);

@@ -140,6 +140,8 @@ void main() {
     final ready = Completer<List<FieldCoverageStatus>>();
     await tester.pumpWidget(ProviderScope(overrides: [
       coverageStatusListProvider.overrideWith((ref) => ready.future),
+      coverageStatusListScopedProvider(const MasterFieldMapScope.all())
+          .overrideWith((ref) => ready.future),
     ], child: const MaterialApp(home: CoverageScreen())));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));

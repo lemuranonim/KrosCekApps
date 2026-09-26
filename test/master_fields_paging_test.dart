@@ -151,7 +151,7 @@ void main() {
     );
     addTearDown(client.dispose);
 
-    final rows = await SupabaseService(client: client)
+    final rows = await SupabaseService(client: client, mapCacheEnabled: false)
         .getMasterFieldsForCoverage(
           region: 'Region 5',
           season: 'S1',
@@ -175,6 +175,41 @@ void main() {
       expect(params['select'], contains('audit_vegetative'));
       expect(params['select'], isNot(contains('geometry_wkt')));
     }
+  });
+
+  test('scoped coverage uses the Redis-backed Edge Function', () async {
+    final requests = <http.Request>[];
+    final client = SupabaseClient(
+      'https://fields.invalid',
+      'test-key',
+      httpClient: MockClient((request) async {
+        requests.add(request);
+        expect(request.url.path, '/functions/v1/master-fields-map-cache');
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['dataset'], 'coverage');
+        expect(body['region'], 'Region 5');
+        return http.Response.bytes(
+          utf8.encode(
+            jsonEncode({
+              'data': [
+                {'field_number': 'CACHE-1'},
+              ],
+              'cache': {'status': 'hit'},
+            }),
+          ),
+          200,
+          headers: {'content-type': 'application/json'},
+          request: request,
+        );
+      }),
+    );
+    addTearDown(client.dispose);
+
+    final rows = await SupabaseService(client: client)
+        .getMasterFieldsForCoverage(region: 'Region 5');
+
+    expect(rows.single['field_number'], 'CACHE-1');
+    expect(requests, hasLength(1));
   });
 
   test(
