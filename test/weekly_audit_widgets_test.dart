@@ -70,7 +70,7 @@ void main() {
         expect(find.text('All QA SPV'), findsOneWidget);
       }
       await tester.scrollUntilVisible(
-          find.text('Target achievement per phase'), 220,
+          find.textContaining('achievement per phase'), 220,
           scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);

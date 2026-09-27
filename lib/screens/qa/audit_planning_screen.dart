@@ -707,13 +707,14 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
       .where((target) => auditStage(target.phase) == _phase)
       .toList(growable: false);
 
-  bool _targetDone(AuditPlanField field) {
-    final targets = _phaseTargets(field);
-    return targets.isNotEmpty && targets.every((target) => target.done);
-  }
+  bool _targetDone(AuditPlanField field) =>
+      field.weekly.isStageDone(_phase);
 
   bool _targetOverdue(AuditPlanField field) =>
-      _phaseTargets(field).any((target) => target.overdue);
+      field.weekly.isStageOverdue(_phase);
+
+  bool _targetPending(AuditPlanField field) =>
+      field.weekly.isStagePending(_phase);
 
   bool _isProjectedOnWeekday(AuditPlanField field, int weekday) {
     final date = field.weekly.weekStart.add(Duration(days: weekday - 1));
@@ -769,7 +770,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
         : 'FC';
     if (_crop != 'All Crop' && crop != _crop) return false;
     if (_status == 'Completed' && !_targetDone(field)) return false;
-    if (_status == 'Pending' && _targetDone(field)) return false;
+    if (_status == 'Pending' && !_targetPending(field)) return false;
     if (_status == 'Overdue' && !_targetOverdue(field)) return false;
     return _search.isEmpty ||
         ['village_desa', 'field_number', 'farmer_name', 'qa_fi'].any(

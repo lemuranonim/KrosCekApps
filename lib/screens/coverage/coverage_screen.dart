@@ -25,7 +25,9 @@ import 'package:geolocator/geolocator.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../providers/audit_filter_provider.dart';
 import '../../services/session_manager.dart';
+
 import 'package:go_router/go_router.dart';
+
 import '../../utils/weekly_audit.dart';
 import '../../utils/qa_name_helper.dart';
 import '../../widgets/weekly_audit_widgets.dart';
@@ -71,24 +73,31 @@ List<FieldCoverageStatus> projectCoverageWeeks(
     final throughWeek = auditWeekStart(primaryWeek ?? evaluatedAt);
     return fields
         .where((field) => !_isExcludedCoverageRegion(field.region))
-        .map((field) => FieldCoverageStatus.fromRaw(
-              field.raw,
-              weekStart: throughWeek,
-              now: evaluatedAt,
-              includeHistoricalTargets: true,
-            ))
-        .where((field) =>
-            field.isAuditTarget && flags.contains(field.weekly.flag))
+        .map(
+          (field) => FieldCoverageStatus.fromRaw(
+            field.raw,
+            weekStart: throughWeek,
+            now: evaluatedAt,
+            includeHistoricalTargets: true,
+          ),
+        )
+        .where(
+          (field) => field.isAuditTarget && flags.contains(field.weekly.flag),
+        )
         .toList(growable: false);
   }
 
   final latestTarget = <String, _CoverageTargetProjection>{};
 
-  for (final field
-      in fields.where((field) => !_isExcludedCoverageRegion(field.region))) {
+  for (final field in fields.where(
+    (field) => !_isExcludedCoverageRegion(field.region),
+  )) {
     for (final week in selected) {
-      final weekly = WeeklyAuditField.fromRaw(field.raw,
-          weekStart: week, now: evaluatedAt);
+      final weekly = WeeklyAuditField.fromRaw(
+        field.raw,
+        weekStart: week,
+        now: evaluatedAt,
+      );
       for (final target in weekly.targets) {
         // Replacing an existing value keeps one phase per season/FN and uses
         // the last eligible week, whose deadline represents the full window.
@@ -124,12 +133,14 @@ List<FieldCoverageStatus> projectCoverageWeeks(
   }
 
   return grouped.values
-      .map((projection) => FieldCoverageStatus.fromRaw(
-            projection.raw,
-            weekStart: projection.weekStart,
-            now: evaluatedAt,
-            targetPhases: projection.phases,
-          ))
+      .map(
+        (projection) => FieldCoverageStatus.fromRaw(
+          projection.raw,
+          weekStart: projection.weekStart,
+          now: evaluatedAt,
+          targetPhases: projection.phases,
+        ),
+      )
       .where((field) => flags.contains(field.weekly.flag))
       .toList(growable: false);
 }
@@ -142,10 +153,14 @@ List<FieldCoverageStatus> _projectAllCoverage(
   final selected = auditWeekStart(week);
   return fields
       .where((field) => !_isExcludedCoverageRegion(field.region))
-      .map((field) => FieldCoverageStatus.fromRaw(field.raw,
+      .map(
+        (field) => FieldCoverageStatus.fromRaw(
+          field.raw,
           weekStart: auditWeekStart(selected),
           includeHistoricalTargets: true,
-          lifecycleProjection: true))
+          lifecycleProjection: true,
+        ),
+      )
       .where((field) => flags.contains(field.weekly.flag))
       .toList(growable: false);
 }
@@ -242,12 +257,11 @@ class FieldCoverageStatus {
   });
 
   List<String> get phaseKeys => DapHelper.getPhaseRules(
-          hybrid: hybrid,
-          district: district,
-          region: region,
-          subDistrict: subDistrict)
-      .map((r) => r.key)
-      .toList();
+        hybrid: hybrid,
+        district: district,
+        region: region,
+        subDistrict: subDistrict,
+      ).map((r) => r.key).toList();
 
   List<String> get duePhaseKeys => weekly.targets.map((t) => t.phase).toList();
   List<String> get overduePhaseKeys =>
@@ -258,6 +272,9 @@ class FieldCoverageStatus {
   bool get hasActionRequired => actionCode != null;
 
   bool get needsAttention => isOverdue || hasActionRequired;
+
+  bool needsAttentionForStage(String stage) =>
+      weekly.needsAttentionForStage(stage);
 
   bool get hasAuditAreaOverride =>
       auditAreaHa > 0 && (auditAreaHa - registeredAreaHa).abs() > 0.001;
@@ -272,7 +289,7 @@ class FieldCoverageStatus {
         gen2Done,
         gen3Done,
         if (isSweetCorn) gen4Done,
-        if (isSweetCorn) gen5Done
+        if (isSweetCorn) gen5Done,
       ].where((done) => done).length;
 
   int get generativeTotalCount => isSweetCorn ? 5 : 3;
@@ -319,8 +336,7 @@ class FieldCoverageStatus {
     for (final rule in eligibleRules) {
       final phaseWeight = auditTargetWeight(rule.key, hybrid: hybrid);
       weight += phaseWeight;
-      completed +=
-          (weekly.phaseCompletions[rule.key] ?? 0.0) * phaseWeight;
+      completed += (weekly.phaseCompletions[rule.key] ?? 0.0) * phaseWeight;
     }
     return weight <= 0 ? 0 : completed / weight;
   }
@@ -379,26 +395,32 @@ class FieldCoverageStatus {
     }
   }
 
-  factory FieldCoverageStatus.fromRaw(Map<String, dynamic> raw,
-      {DateTime? weekStart,
-      DateTime? now,
-      Set<String>? targetPhases,
-      bool includeHistoricalTargets = false,
-      bool lifecycleProjection = false}) {
-    final weekly = WeeklyAuditField.fromRaw(raw,
-        weekStart: weekStart ?? auditWeekStart(now ?? DateTime.now()),
-        now: now,
-        targetPhases: targetPhases,
-        includeHistoricalTargets: includeHistoricalTargets);
+  factory FieldCoverageStatus.fromRaw(
+    Map<String, dynamic> raw, {
+    DateTime? weekStart,
+    DateTime? now,
+    Set<String>? targetPhases,
+    bool includeHistoricalTargets = false,
+    bool lifecycleProjection = false,
+  }) {
+    final weekly = WeeklyAuditField.fromRaw(
+      raw,
+      weekStart: weekStart ?? auditWeekStart(now ?? DateTime.now()),
+      now: now,
+      targetPhases: targetPhases,
+      includeHistoricalTargets: includeHistoricalTargets,
+    );
     final veg = auditRow(raw['audit_vegetative']);
     final hybrid = _cleanText(raw['hybrid']);
     final psp = DapHelper.isPsp(hybrid);
     bool complete(String phase) => (weekly.phaseCompletions[phase] ?? 0) >= 1;
-    final activePhase = DapHelper.getRecommendedPhase(weekly.dap,
-        hybrid: hybrid,
-        district: raw['district_kab']?.toString(),
-        region: raw['region']?.toString(),
-        subDistrict: raw['sub_district_kec']?.toString());
+    final activePhase = DapHelper.getRecommendedPhase(
+      weekly.dap,
+      hybrid: hybrid,
+      district: raw['district_kab']?.toString(),
+      region: raw['region']?.toString(),
+      subDistrict: raw['sub_district_kec']?.toString(),
+    );
     final last = weekly.observations.isEmpty ? null : weekly.observations.last;
     final actions = <String>[
       if (weekly.roguingNegative) 'Roguing',
@@ -439,12 +461,15 @@ class FieldCoverageStatus {
       harvestDone: complete('harvest'),
       activePhaseKey: activePhase,
       activePhaseLabel: auditStageLabels[weekly.stage]!,
-      activePhaseBadge: DapHelper.getDapBadgeLabel(weekly.dap, activePhase,
-          hybrid: hybrid,
-          district: raw['district_kab']?.toString(),
-          region: raw['region']?.toString(),
-          subDistrict: raw['sub_district_kec']?.toString(),
-          isDone: complete(activePhase)),
+      activePhaseBadge: DapHelper.getDapBadgeLabel(
+        weekly.dap,
+        activePhase,
+        hybrid: hybrid,
+        district: raw['district_kab']?.toString(),
+        region: raw['region']?.toString(),
+        subDistrict: raw['sub_district_kec']?.toString(),
+        isDone: complete(activePhase),
+      ),
       latestAuditDate:
           last == null ? null : DateFormat('yyyy-MM-dd').format(last.date),
       latestAuditWeek: null,
@@ -452,9 +477,9 @@ class FieldCoverageStatus {
       actionCode: actions.isEmpty ? null : actions.join(', '),
       actionPhase:
           last == null ? null : auditStageLabels[auditStage(last.phase)],
-      hasCorrectionTagging:
-          _cleanText(veg['correction_tagging'] ?? raw['correction_tagging'])
-              .isNotEmpty,
+      hasCorrectionTagging: _cleanText(
+        veg['correction_tagging'] ?? raw['correction_tagging'],
+      ).isNotEmpty,
       hasPldDiscardValue: weekly.flag == 'PLD',
       isLifecycleProjection: lifecycleProjection,
       isOverdue: weekly.overdue,
@@ -611,28 +636,33 @@ PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields) {
     AdvantaColors.lightGreen,
     AdvantaColors.gold,
     AdvantaColors.midGreen,
-    AdvantaColors.error
+    AdvantaColors.error,
   ];
   final phases = <PhaseCoverage>[];
   var index = 0;
   for (final entry in auditStageLabels.entries) {
     final phaseFields = fields
-        .where((f) =>
-            f.weekly.targets.any((t) => auditStage(t.phase) == entry.key))
+        .where(
+          (f) => f.weekly.targets.any((t) => auditStage(t.phase) == entry.key),
+        )
         .toList();
     bool done(FieldCoverageStatus f) => f.weekly.targets
         .where((t) => auditStage(t.phase) == entry.key)
         .every((t) => t.done);
-    bool overdue(FieldCoverageStatus f) => f.weekly.targets
-        .any((t) => auditStage(t.phase) == entry.key && t.overdue);
+    bool overdue(FieldCoverageStatus f) => f.weekly.targets.any(
+          (t) => auditStage(t.phase) == entry.key && t.overdue,
+        );
     final phaseTargets = phaseFields
         .expand((field) => field.weekly.targets)
         .where((target) => auditStage(target.phase) == entry.key)
         .toList(growable: false);
-    final phaseWeight =
-        phaseTargets.fold(0.0, (sum, target) => sum + target.weight);
+    final phaseWeight = phaseTargets.fold(
+      0.0,
+      (sum, target) => sum + target.weight,
+    );
 
-    phases.add(PhaseCoverage(
+    phases.add(
+      PhaseCoverage(
         label: entry.value,
         shortLabel: entry.value,
         color: colors[index++],
@@ -648,49 +678,59 @@ PhaseSummary calculateFilteredPhases(List<FieldCoverageStatus> filteredFields) {
             .fold(0.0, (sum, f) => sum + f.effectiveAreaHa),
         completionPercent: phaseFields.isEmpty
             ? 0
-            : phaseTargets.fold(0.0,
-                    (sum, target) => sum + target.completion * target.weight) /
+            : phaseTargets.fold(
+                  0.0,
+                  (sum, target) => sum + target.completion * target.weight,
+                ) /
                 phaseWeight *
-                100));
+                100,
+      ),
+    );
   }
   return PhaseSummary(
-      phases: phases,
-      totalFields: fields.length,
-      targetFields: fields.length,
-      upcomingFields: 0,
-      completedTargets: fields.where((field) => field.weekly.done).length,
-      totalTargets: fields.length,
-      overdueTargets: fields.where((field) => field.weekly.overdue).length,
-      actionFields: fields.where((f) => f.hasActionRequired).length,
-      correctedFields: fields.where((f) => f.hasCorrectionTagging).length,
-      auditAreaOverrides: fields.where((f) => f.hasAuditAreaOverride).length,
-      registeredAreaHa: weekly.targetHa,
-      effectiveAreaHa: weekly.targetHa,
-      completionPercent: weekly.achievementPercent,
-      targetAreaHa: weekly.targetHa,
-      achievedAreaHa: weekly.achievedHa,
-      overdueAreaHa: weekly.overdueHa);
+    phases: phases,
+    totalFields: fields.length,
+    targetFields: fields.length,
+    upcomingFields: 0,
+    completedTargets: fields.where((field) => field.weekly.done).length,
+    totalTargets: fields.length,
+    overdueTargets: fields.where((field) => field.weekly.overdue).length,
+    actionFields: fields.where((f) => f.hasActionRequired).length,
+    correctedFields: fields.where((f) => f.hasCorrectionTagging).length,
+    auditAreaOverrides: fields.where((f) => f.hasAuditAreaOverride).length,
+    registeredAreaHa: weekly.targetHa,
+    effectiveAreaHa: weekly.targetHa,
+    completionPercent: weekly.achievementPercent,
+    targetAreaHa: weekly.targetHa,
+    achievedAreaHa: weekly.achievedHa,
+    overdueAreaHa: weekly.overdueHa,
+  );
 }
 
-final coverageStatusListProvider =
-    FutureProvider<List<FieldCoverageStatus>>((ref) async {
+final coverageStatusListProvider = FutureProvider<List<FieldCoverageStatus>>((
+  ref,
+) async {
   return ref.watch(
     coverageStatusListScopedProvider(const MasterFieldMapScope.all()).future,
   );
 });
 
 final coverageStatusListScopedProvider =
-    FutureProvider.family<List<FieldCoverageStatus>, MasterFieldMapScope>(
-        (ref, scope) async {
-  final rawFields =
-      await ref.watch(masterFieldCoverageScopedProvider(scope).future);
+    FutureProvider.family<List<FieldCoverageStatus>, MasterFieldMapScope>((
+  ref,
+  scope,
+) async {
+  final rawFields = await ref.watch(
+    masterFieldCoverageScopedProvider(scope).future,
+  );
 
   if (rawFields.length < 200) return _parseCoverageStatuses(rawFields);
   return compute(_parseCoverageStatuses, rawFields);
 });
 
 List<FieldCoverageStatus> _parseCoverageStatuses(
-    List<Map<String, dynamic>> rawFields) {
+  List<Map<String, dynamic>> rawFields,
+) {
   final now = DateTime.now();
   return rawFields
       .map((raw) => FieldCoverageStatus.fromRaw(raw, now: now))
@@ -717,10 +757,12 @@ List<FICoverage> buildFiCoverageList(List<FieldCoverageStatus> fields) {
 
 double aggregateCoverageScore(List<FieldCoverageStatus> fields) {
   final lifecycleFields = fields
-      .where((field) =>
-          field.effectiveAreaHa > 0 &&
-          field.isLifecycleProjection &&
-          field.lifecycleTargetWeight > 0)
+      .where(
+        (field) =>
+            field.effectiveAreaHa > 0 &&
+            field.isLifecycleProjection &&
+            field.lifecycleTargetWeight > 0,
+      )
       .toList(growable: false);
   if (lifecycleFields.isNotEmpty) {
     return lifecycleFields.fold(
@@ -825,7 +867,8 @@ class _CoverageProjectionInput {
 }
 
 _CoverageProjectionSet _buildCoverageProjection(
-    _CoverageProjectionInput input) {
+  _CoverageProjectionInput input,
+) {
   final scoped = input.fields.where((field) {
     if (input.qaFi != null &&
         !QaNameHelper.containsExactName(field.qaFi, input.qaFi!)) {
@@ -861,10 +904,14 @@ _CoverageProjectionSet _buildCoverageProjection(
 /// Parsing already runs outside the UI isolate. Large regional projections do
 /// too, so changing to All Weeks cannot block gestures or trigger an Android
 /// watchdog while thousands of FN are being grouped.
-final _coverageProjectionProvider = FutureProvider.family<
-    _CoverageProjectionSet, _CoverageProjectionRequest>((ref, request) async {
-  final fields =
-      await ref.watch(coverageStatusListScopedProvider(request.scope).future);
+final _coverageProjectionProvider =
+    FutureProvider.family<_CoverageProjectionSet, _CoverageProjectionRequest>((
+  ref,
+  request,
+) async {
+  final fields = await ref.watch(
+    coverageStatusListScopedProvider(request.scope).future,
+  );
   final input = _CoverageProjectionInput(
     fields: fields,
     weeks: request.weeks,
@@ -945,7 +992,9 @@ class _CoverageScreenState extends ConsumerState<CoverageScreen>
   void initState() {
     super.initState();
     _fadeCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 400));
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _loadSession();
   }
@@ -988,10 +1037,7 @@ class _CoverageScreenState extends ConsumerState<CoverageScreen>
     }
     return Scaffold(
       backgroundColor: AdvantaColors.softGrey,
-      body: FadeTransition(
-        opacity: _fadeAnim,
-        child: _buildRoleView(),
-      ),
+      body: FadeTransition(opacity: _fadeAnim, child: _buildRoleView()),
     );
   }
 
@@ -1130,12 +1176,13 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
     final waitingForRegionScope = !_showAllRegions &&
         _selectedRegion == null &&
         (regionOptionsAsync is AsyncLoading || needsRegionScope);
-    final projectionRequest =
-        _CoverageProjectionRequest(coverageScope, sharedFilters);
-    final AsyncValue<_CoverageProjectionSet> fieldsAsync =
-        waitingForRegionScope
-            ? const AsyncValue.loading()
-            : ref.watch(_coverageProjectionProvider(projectionRequest));
+    final projectionRequest = _CoverageProjectionRequest(
+      coverageScope,
+      sharedFilters,
+    );
+    final AsyncValue<_CoverageProjectionSet> fieldsAsync = waitingForRegionScope
+        ? const AsyncValue.loading()
+        : ref.watch(_coverageProjectionProvider(projectionRequest));
 
     return fieldsAsync.when(
       loading: () => const _SkeletonLoader(),
@@ -1156,7 +1203,8 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
               ..sort());
         final districtOptions = allCoverageFields
             .where(
-                (f) => _selectedRegion == null || f.region == _selectedRegion)
+              (f) => _selectedRegion == null || f.region == _selectedRegion,
+            )
             .map((f) => f.district)
             .where((d) => d.isNotEmpty)
             .toSet()
@@ -1205,16 +1253,17 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
 
         final filteredFIList = buildFiCoverageList(dashboardFields);
 
-        final summary = calculateFilteredPhases(
-          dashboardFields,
-        );
+        final summary = calculateFilteredPhases(dashboardFields);
         final regionMap = _buildRegionMap(dashboardFields);
 
         return CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
-                child: _CoverageHeader(
-                    title: 'Coverage Monitoring', session: widget.session)),
+              child: _CoverageHeader(
+                title: 'Coverage Monitoring',
+                session: widget.session,
+              ),
+            ),
             if (widget.isDevPreview)
               SliverToBoxAdapter(
                 child: _DevRolePreviewBar(
@@ -1223,7 +1272,8 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                 ),
               ),
             SliverToBoxAdapter(
-                child: _WeeklyCoverageControls(earliestWeek: earliestWeek)),
+              child: _WeeklyCoverageControls(earliestWeek: earliestWeek),
+            ),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -1263,72 +1313,86 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     selected: _selectedSpv,
                     icon: Icons.supervisor_account_rounded,
                     onSelected: (v) => setState(
-                        () => _selectedSpv = v == 'All QA SPV' ? null : v),
+                      () => _selectedSpv = v == 'All QA SPV' ? null : v,
+                    ),
                   ),
                 ],
                 onRefresh: () => _refreshCoverage(ref, coverageScope),
               ),
             ),
             SliverToBoxAdapter(
-              child: _StatsRow(stats: [
-                _StatCard(
-                  icon: Icons.landscape_rounded,
-                  iconColor: AdvantaColors.deepForest,
-                  bgColor: Colors.grey[200]!,
-                  value: auditWorkload(
-                      _coverageArea(dashboardFields), dashboardFields.length),
-                  label: isAllCoverage ? 'All Coverage' : 'Target Audit',
-                ),
-                _StatCard(
+              child: _StatsRow(
+                stats: [
+                  _StatCard(
+                    icon: Icons.landscape_rounded,
+                    iconColor: AdvantaColors.deepForest,
+                    bgColor: Colors.grey[200]!,
+                    value: auditWorkload(
+                      _coverageArea(dashboardFields),
+                      dashboardFields.length,
+                    ),
+                    label: isAllCoverage ? 'All Coverage' : 'Target Audit',
+                  ),
+                  _StatCard(
                     icon: Icons.fact_check_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.paleGreen,
                     value: auditWorkload(
-                        summary.targetAreaHa, summary.totalTargets),
-                    label: isAllCoverage
-                        ? 'Lifecycle Target'
-                        : 'Target Audit'),
-                _StatCard(
+                      summary.targetAreaHa,
+                      summary.totalTargets,
+                    ),
+                    label: isAllCoverage ? 'Lifecycle Target' : 'Target Audit',
+                  ),
+                  _StatCard(
                     icon: Icons.task_alt_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.successLight,
                     value:
                         '${summary.targetCompletionPct.toStringAsFixed(0)}% · ${summary.completedTargets}/${summary.totalTargets} FN selesai',
-                    label: 'Achieved'),
-                _StatCard(
+                    label: 'Achieved',
+                  ),
+                  _StatCard(
                     icon: Icons.warning_amber_rounded,
                     iconColor: AdvantaColors.error,
                     bgColor: AdvantaColors.errorLight,
                     value: summary.overdueTargets.toString(),
-                    label: isAllCoverage
-                        ? 'Overdue Lifecycle'
-                        : 'Overdue Target',
+                    label:
+                        isAllCoverage ? 'Overdue Lifecycle' : 'Overdue Target',
                     onTap: () => _showWeeklyFields(
-                        context,
-                        'Overdue',
-                        dashboardFields
-                            .where((f) => f.isOverdue)
-                            .map((f) => f.weekly)
-                            .toList(),
-                        onChanged: () => _refreshCoverage(ref, coverageScope)),
-                    highlight: summary.overdueTargets > 0),
-              ]),
+                      context,
+                      'Overdue',
+                      dashboardFields
+                          .where((f) => f.isOverdue)
+                          .map((f) => f.weekly)
+                          .toList(),
+                      onChanged: () => _refreshCoverage(ref, coverageScope),
+                    ),
+                    highlight: summary.overdueTargets > 0,
+                  ),
+                ],
+              ),
             ),
             SliverToBoxAdapter(
               child: _PhaseProgressSection(
-                  summary: summary,
-                  fields: dashboardFields,
-                  isAllCoverage: isAllCoverage,
-                  onChanged: () => _refreshCoverage(ref, coverageScope)),
+                summary: summary,
+                fields: dashboardFields,
+                isAllCoverage: isAllCoverage,
+                onChanged: () => _refreshCoverage(ref, coverageScope),
+              ),
             ),
             SliverToBoxAdapter(
-                child: WeeklyAuditCards(
-              summary:
-                  WeeklyAuditSummary(dashboardFields.map((f) => f.weekly)),
-              onDetail: (title, fields) => _showWeeklyFields(
-                  context, title, fields,
-                  onChanged: () => _refreshCoverage(ref, coverageScope)),
-            )),
+              child: WeeklyAuditCards(
+                summary: WeeklyAuditSummary(
+                  dashboardFields.map((f) => f.weekly),
+                ),
+                onDetail: (title, fields) => _showWeeklyFields(
+                  context,
+                  title,
+                  fields,
+                  onChanged: () => _refreshCoverage(ref, coverageScope),
+                ),
+              ),
+            ),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -1352,10 +1416,13 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                     ),
                     const SizedBox(height: 12),
                     _RegionalStructurePanel(
-                        regionMap: regionMap,
-                        expandedIndex: _expandedAreaIndex,
-                        onToggle: (i) => setState(() => _expandedAreaIndex =
-                            _expandedAreaIndex == i ? -1 : i)),
+                      regionMap: regionMap,
+                      expandedIndex: _expandedAreaIndex,
+                      onToggle: (i) => setState(
+                        () => _expandedAreaIndex =
+                            _expandedAreaIndex == i ? -1 : i,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1367,17 +1434,19 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
   }
 
   Map<String, Map<String, dynamic>> _buildRegionMap(
-      List<FieldCoverageStatus> fields) {
+    List<FieldCoverageStatus> fields,
+  ) {
     final map = <String, Map<String, dynamic>>{};
     for (final f in fields) {
       final region = f.region.isEmpty ? 'Unknown' : f.region;
       map.putIfAbsent(
-          region,
-          () => {
-                'fields': <FieldCoverageStatus>[],
-                'spvSet': <String>{},
-                'fiSet': <String>{}
-              });
+        region,
+        () => {
+          'fields': <FieldCoverageStatus>[],
+          'spvSet': <String>{},
+          'fiSet': <String>{},
+        },
+      );
       (map[region]!['fields'] as List).add(f);
       if (f.qaSpv.isNotEmpty) (map[region]!['spvSet'] as Set).add(f.qaSpv);
       if (f.qaFi.isNotEmpty) (map[region]!['fiSet'] as Set).add(f.qaFi);
@@ -1457,8 +1526,10 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             .toList()
           ..sort();
         final fiOptions = spvScopedFields
-            .where((f) =>
-                _selectedDistrict == null || f.district == _selectedDistrict)
+            .where(
+              (f) =>
+                  _selectedDistrict == null || f.district == _selectedDistrict,
+            )
             .map((f) => f.qaFi)
             .where((s) => s.isNotEmpty)
             .toSet()
@@ -1489,9 +1560,7 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             sharedFilters.coverageMode == CoverageDisplayMode.allCoverage;
 
         // Hitung Statistik
-        final summary = calculateFilteredPhases(
-          dashboardFields,
-        );
+        final summary = calculateFilteredPhases(dashboardFields);
         final needsAttention =
             dashboardFields.where((f) => f.needsAttention).length;
 
@@ -1508,8 +1577,11 @@ class _SPVViewState extends ConsumerState<_SPVView> {
         return CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
-                child: _CoverageHeader(
-                    title: 'Coverage Monitoring', session: widget.session)),
+              child: _CoverageHeader(
+                title: 'Coverage Monitoring',
+                session: widget.session,
+              ),
+            ),
             if (widget.isDevPreview)
               SliverToBoxAdapter(
                 child: _DevRolePreviewBar(
@@ -1518,7 +1590,8 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                 ),
               ),
             SliverToBoxAdapter(
-                child: _WeeklyCoverageControls(earliestWeek: earliestWeek)),
+              child: _WeeklyCoverageControls(earliestWeek: earliestWeek),
+            ),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -1552,70 +1625,85 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     selected: _selectedFi,
                     icon: Icons.person_search_rounded,
                     onSelected: (v) => setState(
-                        () => _selectedFi = v == 'All QA FI' ? null : v),
+                      () => _selectedFi = v == 'All QA FI' ? null : v,
+                    ),
                   ),
                 ],
                 onRefresh: () => _refreshCoverage(ref),
               ),
             ),
             SliverToBoxAdapter(
-              child: _StatsRow(stats: [
-                _StatCard(
-                  icon: Icons.landscape_rounded,
-                  iconColor: AdvantaColors.deepForest,
-                  bgColor: Colors.grey[200]!,
-                  value: auditWorkload(
-                      _coverageArea(dashboardFields), dashboardFields.length),
-                  label: isAllCoverage ? 'All Coverage' : 'Target Audit',
-                ),
-                _StatCard(
+              child: _StatsRow(
+                stats: [
+                  _StatCard(
+                    icon: Icons.landscape_rounded,
+                    iconColor: AdvantaColors.deepForest,
+                    bgColor: Colors.grey[200]!,
+                    value: auditWorkload(
+                      _coverageArea(dashboardFields),
+                      dashboardFields.length,
+                    ),
+                    label: isAllCoverage ? 'All Coverage' : 'Target Audit',
+                  ),
+                  _StatCard(
                     icon: Icons.fact_check_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.paleGreen,
                     value: auditWorkload(
-                        summary.targetAreaHa, summary.totalTargets),
-                    label: isAllCoverage
-                        ? 'Lifecycle Target'
-                        : 'Target Audit'),
-                _StatCard(
+                      summary.targetAreaHa,
+                      summary.totalTargets,
+                    ),
+                    label: isAllCoverage ? 'Lifecycle Target' : 'Target Audit',
+                  ),
+                  _StatCard(
                     icon: Icons.task_alt_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.successLight,
                     value:
                         '${summary.targetCompletionPct.toStringAsFixed(0)}% · ${summary.completedTargets}/${summary.totalTargets} FN selesai',
-                    label: 'Achieved'),
-                _StatCard(
+                    label: 'Achieved',
+                  ),
+                  _StatCard(
                     icon: Icons.warning_amber_rounded,
                     iconColor: AdvantaColors.error,
                     bgColor: AdvantaColors.errorLight,
                     value: needsAttention.toString(),
                     label: 'Needs Attention',
                     onTap: () => _showWeeklyFields(
-                        context,
-                        'Needs Attention',
-                        dashboardFields
-                            .where((f) => f.needsAttention)
-                            .map((f) => f.weekly)
-                            .toList(),
-                        onChanged: () => _refreshCoverage(ref)),
-                    highlight: needsAttention > 0),
-              ]),
+                      context,
+                      'Needs Attention',
+                      dashboardFields
+                          .where((f) => f.needsAttention)
+                          .map((f) => f.weekly)
+                          .toList(),
+                      onChanged: () => _refreshCoverage(ref),
+                    ),
+                    highlight: needsAttention > 0,
+                  ),
+                ],
+              ),
             ),
             SliverToBoxAdapter(
               child: _PhaseProgressSection(
-                  summary: summary,
-                  fields: dashboardFields,
-                  isAllCoverage: isAllCoverage,
-                  onChanged: () => _refreshCoverage(ref)),
+                summary: summary,
+                fields: dashboardFields,
+                isAllCoverage: isAllCoverage,
+                onChanged: () => _refreshCoverage(ref),
+              ),
             ),
             SliverToBoxAdapter(
-                child: WeeklyAuditCards(
-              summary:
-                  WeeklyAuditSummary(dashboardFields.map((f) => f.weekly)),
-              onDetail: (title, fields) => _showWeeklyFields(
-                  context, title, fields,
-                  onChanged: () => _refreshCoverage(ref)),
-            )),
+              child: WeeklyAuditCards(
+                summary: WeeklyAuditSummary(
+                  dashboardFields.map((f) => f.weekly),
+                ),
+                onDetail: (title, fields) => _showWeeklyFields(
+                  context,
+                  title,
+                  fields,
+                  onChanged: () => _refreshCoverage(ref),
+                ),
+              ),
+            ),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -1645,10 +1733,13 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     ),
                     const SizedBox(height: 12),
                     _CoverageStructurePanel(
-                        districts: districtEntries,
-                        expandedIndex: _expandedDistrictIndex,
-                        onToggle: (i) => setState(() => _expandedDistrictIndex =
-                            _expandedDistrictIndex == i ? -1 : i)),
+                      districts: districtEntries,
+                      expandedIndex: _expandedDistrictIndex,
+                      onToggle: (i) => setState(
+                        () => _expandedDistrictIndex =
+                            _expandedDistrictIndex == i ? -1 : i,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1737,8 +1828,10 @@ class _FIViewState extends ConsumerState<_FIView> {
             .toList()
           ..sort();
         final villageOptions = fiScopedFields
-            .where((f) =>
-                _selectedDistrict == null || f.district == _selectedDistrict)
+            .where(
+              (f) =>
+                  _selectedDistrict == null || f.district == _selectedDistrict,
+            )
             .map((f) => f.village)
             .where((v) => v.isNotEmpty)
             .toSet()
@@ -1746,6 +1839,14 @@ class _FIViewState extends ConsumerState<_FIView> {
           ..sort();
 
         // 3. APPLY FILTERS DROPDOWN USER
+        final selectedStage = switch (_selectedPhase) {
+          'Vegetative' => 'vegetative',
+          'Generative' => 'generative',
+          'Pre-Harvest' => 'pre_harvest',
+          'Harvest' => 'harvest',
+          _ => null,
+        };
+
         bool matchesScope(FieldCoverageStatus f) {
           if (_selectedFi != null && f.qaFi != _selectedFi) return false;
           if (_selectedDistrict != null && f.district != _selectedDistrict) {
@@ -1754,13 +1855,15 @@ class _FIViewState extends ConsumerState<_FIView> {
           if (_selectedVillage != null && f.village != _selectedVillage) {
             return false;
           }
-          if (_selectedPhase != null) {
-            final selected =
-                _selectedPhase == 'Pre-Harvest' ? 'PreHarvest' : _selectedPhase;
-            return auditStageLabels[f.weekly.stage] == selected;
+          if (selectedStage != null) {
+            return f.weekly.hasTargetForStage(selectedStage);
           }
           return true;
         }
+
+        bool needsAttention(FieldCoverageStatus field) => selectedStage == null
+            ? field.needsAttention
+            : field.needsAttentionForStage(selectedStage);
 
         final coverageFields =
             allCoverageFields.where(matchesScope).toList(growable: false);
@@ -1775,11 +1878,8 @@ class _FIViewState extends ConsumerState<_FIView> {
         final isAllCoverage =
             sharedFilters.coverageMode == CoverageDisplayMode.allCoverage;
 
-        final summary = calculateFilteredPhases(
-          dashboardFields,
-        );
-        final attentionFields =
-            dashboardFields.where((f) => f.needsAttention).length;
+        final summary = calculateFilteredPhases(dashboardFields);
+        final attentionFields = dashboardFields.where(needsAttention).length;
 
         final villageMap = <String, List<FieldCoverageStatus>>{};
         for (final f in dashboardFields) {
@@ -1788,14 +1888,18 @@ class _FIViewState extends ConsumerState<_FIView> {
         }
 
         final villageEntries = villageMap.entries.toList()
-          ..sort((a, b) =>
-              _avgScore(a.value).compareTo(_avgScore(b.value))); // Worst first
+          ..sort(
+            (a, b) => _avgScore(a.value).compareTo(_avgScore(b.value)),
+          ); // Worst first
 
         return CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
-                child: _CoverageHeader(
-                    title: 'Coverage Monitoring', session: widget.session)),
+              child: _CoverageHeader(
+                title: 'Coverage Monitoring',
+                session: widget.session,
+              ),
+            ),
             if (widget.isDevPreview)
               SliverToBoxAdapter(
                 child: _DevRolePreviewBar(
@@ -1804,7 +1908,8 @@ class _FIViewState extends ConsumerState<_FIView> {
                 ),
               ),
             SliverToBoxAdapter(
-                child: _WeeklyCoverageControls(earliestWeek: earliestWeek)),
+              child: _WeeklyCoverageControls(earliestWeek: earliestWeek),
+            ),
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
@@ -1852,113 +1957,134 @@ class _FIViewState extends ConsumerState<_FIView> {
                       'Vegetative',
                       'Generative',
                       'Pre-Harvest',
-                      'Harvest'
+                      'Harvest',
                     ],
                     selected: _selectedPhase,
                     icon: Icons.grass_rounded,
                     onSelected: (v) => setState(
-                        () => _selectedPhase = v == 'All Phase' ? null : v),
+                      () => _selectedPhase = v == 'All Phase' ? null : v,
+                    ),
                   ),
                 ],
                 onRefresh: () => _refreshCoverage(ref),
               ),
             ),
             SliverToBoxAdapter(
-              child: _StatsRow(stats: [
-                _StatCard(
+              child: _StatsRow(
+                stats: [
+                  _StatCard(
                     icon: Icons.landscape_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.paleGreen,
                     value: auditWorkload(
-                        _coverageArea(dashboardFields), dashboardFields.length),
-                    label: isAllCoverage ? 'All Coverage' : 'Target Audit'),
-                _StatCard(
+                      _coverageArea(dashboardFields),
+                      dashboardFields.length,
+                    ),
+                    label: isAllCoverage ? 'All Coverage' : 'Target Audit',
+                  ),
+                  _StatCard(
                     icon: Icons.fact_check_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.paleGreen,
                     value: auditWorkload(
-                        summary.targetAreaHa, summary.totalTargets),
-                    label: isAllCoverage
-                        ? 'Lifecycle Target'
-                        : 'Target Audit'),
-                _StatCard(
+                      summary.targetAreaHa,
+                      summary.totalTargets,
+                    ),
+                    label: isAllCoverage ? 'Lifecycle Target' : 'Target Audit',
+                  ),
+                  _StatCard(
                     icon: Icons.task_alt_rounded,
                     iconColor: AdvantaColors.midGreen,
                     bgColor: AdvantaColors.successLight,
                     value:
                         '${summary.targetCompletionPct.toStringAsFixed(0)}% · ${summary.completedTargets}/${summary.totalTargets} FN selesai',
-                    label: 'Achieved'),
-                _StatCard(
+                    label: 'Achieved',
+                  ),
+                  _StatCard(
                     icon: Icons.assignment_late_rounded,
                     iconColor: AdvantaColors.error,
                     bgColor: AdvantaColors.errorLight,
                     value: '$attentionFields FN',
                     label: 'Need Attention / Overdue',
                     onTap: () => _showWeeklyFields(
-                        context,
-                        'Need Attention / Overdue',
-                        dashboardFields
-                            .where((f) => f.needsAttention)
-                            .map((f) => f.weekly)
-                            .toList(),
-                        onChanged: () => _refreshCoverage(ref)),
-                    highlight: attentionFields > 0),
-              ]),
+                      context,
+                      'Need Attention / Overdue',
+                      dashboardFields
+                          .where(needsAttention)
+                          .map((f) => f.weekly)
+                          .toList(),
+                      onChanged: () => _refreshCoverage(ref),
+                      targetStage: selectedStage,
+                    ),
+                    highlight: attentionFields > 0,
+                  ),
+                ],
+              ),
             ),
             SliverToBoxAdapter(
               child: _PhaseProgressSection(
-                  summary: summary,
-                  fields: dashboardFields,
-                  isAllCoverage: isAllCoverage,
-                  onChanged: () => _refreshCoverage(ref)),
+                summary: summary,
+                fields: dashboardFields,
+                isAllCoverage: isAllCoverage,
+                onChanged: () => _refreshCoverage(ref),
+              ),
             ),
             SliverToBoxAdapter(
-                child: WeeklyAuditCards(
-              summary:
-                  WeeklyAuditSummary(dashboardFields.map((f) => f.weekly)),
-              onDetail: (title, fields) => _showWeeklyFields(
-                  context, title, fields,
-                  onChanged: () => _refreshCoverage(ref)),
-            )),
+              child: WeeklyAuditCards(
+                summary: WeeklyAuditSummary(
+                  dashboardFields.map((f) => f.weekly),
+                ),
+                onDetail: (title, fields) => _showWeeklyFields(
+                  context,
+                  title,
+                  fields,
+                  onChanged: () => _refreshCoverage(ref),
+                ),
+              ),
+            ),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: Row(
                   children: [
                     const Expanded(
-                        child: Text('Village Coverage List',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AdvantaColors.deepForest))),
+                      child: Text(
+                        'Village Coverage List',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AdvantaColors.deepForest,
+                        ),
+                      ),
+                    ),
                     const SizedBox(width: 8),
-                    Text('${villageEntries.length} desa',
-                        style:
-                            TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    Text(
+                      '${villageEntries.length} desa',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
                   ],
                 ),
               ),
             ),
             SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (ctx, i) {
-                  final entry = villageEntries[i];
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                    child: _VillageCard(
-                      villageName:
-                          '${entry.value.first.village} · ${entry.value.first.subDistrict}',
-                      fields: entry.value,
-                      isExpanded: _expandedVillageIndex == i,
-                      onTap: () => setState(() => _expandedVillageIndex =
-                          _expandedVillageIndex == i ? -1 : i),
+              delegate: SliverChildBuilderDelegate((ctx, i) {
+                final entry = villageEntries[i];
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: _VillageCard(
+                    villageName:
+                        '${entry.value.first.village} · ${entry.value.first.subDistrict}',
+                    fields: entry.value,
+                    isExpanded: _expandedVillageIndex == i,
+                    onTap: () => setState(
+                      () => _expandedVillageIndex =
+                          _expandedVillageIndex == i ? -1 : i,
                     ),
-                  );
-                },
-                childCount: villageEntries.length,
-              ),
+                  ),
+                );
+              }, childCount: villageEntries.length),
             ),
             SliverToBoxAdapter(
               child: Padding(
@@ -2011,7 +2137,8 @@ class PremiumFilterChip extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: isActive
               ? const LinearGradient(
-                  colors: [AdvantaColors.deepForest, AdvantaColors.midGreen])
+                  colors: [AdvantaColors.deepForest, AdvantaColors.midGreen],
+                )
               : const LinearGradient(colors: [Colors.white, Colors.white]),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
@@ -2031,9 +2158,11 @@ class PremiumFilterChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon,
-                size: 14,
-                color: isActive ? Colors.white : AdvantaColors.mutedGrey),
+            Icon(
+              icon,
+              size: 14,
+              color: isActive ? Colors.white : AdvantaColors.mutedGrey,
+            ),
             const SizedBox(width: 6),
             Text(
               label,
@@ -2044,9 +2173,11 @@ class PremiumFilterChip extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            Icon(Icons.keyboard_arrow_down_rounded,
-                size: 16,
-                color: isActive ? Colors.white : AdvantaColors.mutedGrey),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 16,
+              color: isActive ? Colors.white : AdvantaColors.mutedGrey,
+            ),
           ],
         ),
       ),
@@ -2074,11 +2205,12 @@ class _PremiumFilterModal extends StatefulWidget {
   final String? selected;
   final ValueChanged<String> onSelected;
 
-  const _PremiumFilterModal(
-      {required this.title,
-      required this.options,
-      required this.selected,
-      required this.onSelected});
+  const _PremiumFilterModal({
+    required this.title,
+    required this.options,
+    required this.selected,
+    required this.onSelected,
+  });
 
   @override
   State<_PremiumFilterModal> createState() => _PremiumFilterModalState();
@@ -2106,24 +2238,31 @@ class _PremiumFilterModalState extends State<_PremiumFilterModal> {
           children: [
             const SizedBox(height: 12),
             Container(
-                width: 48,
-                height: 5,
-                decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(4))),
+              width: 48,
+              height: 5,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
             const SizedBox(height: 16),
-            Text(widget.title,
-                style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: AdvantaColors.deepForest)),
+            Text(
+              widget.title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AdvantaColors.deepForest,
+              ),
+            ),
             const SizedBox(height: 16),
 
             // Search Bar
             if (widget.options.length > 5)
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
                 child: Container(
                   decoration: BoxDecoration(
                     color: AdvantaColors.softGrey,
@@ -2133,10 +2272,14 @@ class _PremiumFilterModalState extends State<_PremiumFilterModal> {
                     onChanged: (val) => setState(() => _searchQuery = val),
                     decoration: InputDecoration(
                       hintText: 'Cari data...',
-                      hintStyle:
-                          TextStyle(color: Colors.grey[500], fontSize: 14),
-                      prefixIcon:
-                          const Icon(Icons.search_rounded, color: Colors.grey),
+                      hintStyle: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 14,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.search_rounded,
+                        color: Colors.grey,
+                      ),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(vertical: 14),
                     ),
@@ -2148,11 +2291,16 @@ class _PremiumFilterModalState extends State<_PremiumFilterModal> {
             Expanded(
               child: filteredOptions.isEmpty
                   ? Center(
-                      child: Text('Tidak ditemukan',
-                          style: TextStyle(color: Colors.grey[400])))
+                      child: Text(
+                        'Tidak ditemukan',
+                        style: TextStyle(color: Colors.grey[400]),
+                      ),
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       itemCount: filteredOptions.length,
                       itemBuilder: (ctx, i) {
                         final opt = filteredOptions[i];
@@ -2168,34 +2316,44 @@ class _PremiumFilterModalState extends State<_PremiumFilterModal> {
                             duration: const Duration(milliseconds: 200),
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
                             decoration: BoxDecoration(
                               color: isSelected
                                   ? AdvantaColors.paleGreen
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                  color: isSelected
-                                      ? AdvantaColors.deepForest
-                                          .withValues(alpha: 0.3)
-                                      : Colors.transparent),
+                                color: isSelected
+                                    ? AdvantaColors.deepForest.withValues(
+                                        alpha: 0.3,
+                                      )
+                                    : Colors.transparent,
+                              ),
                             ),
                             child: Row(
                               children: [
                                 Expanded(
-                                    child: Text(opt,
-                                        style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: isSelected
-                                                ? FontWeight.w700
-                                                : FontWeight.w500,
-                                            color: isSelected
-                                                ? AdvantaColors.deepForest
-                                                : AdvantaColors.charcoal))),
+                                  child: Text(
+                                    opt,
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      color: isSelected
+                                          ? AdvantaColors.deepForest
+                                          : AdvantaColors.charcoal,
+                                    ),
+                                  ),
+                                ),
                                 if (isSelected)
-                                  const Icon(Icons.check_circle_rounded,
-                                      color: AdvantaColors.deepForest,
-                                      size: 22),
+                                  const Icon(
+                                    Icons.check_circle_rounded,
+                                    color: AdvantaColors.deepForest,
+                                    size: 22,
+                                  ),
                               ],
                             ),
                           ),
@@ -2222,9 +2380,10 @@ class _CoverageHeader extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AdvantaColors.deepForest, AdvantaColors.primaryGreen]),
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AdvantaColors.deepForest, AdvantaColors.primaryGreen],
+        ),
       ),
       child: SafeArea(
         bottom: false,
@@ -2233,41 +2392,59 @@ class _CoverageHeader extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10)),
-                  child: Center(
-                      child: Text(
-                          session.name.isNotEmpty
-                              ? session.name[0].toUpperCase()
-                              : '?',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16)))),
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Center(
+                  child: Text(
+                    session.name.isNotEmpty
+                        ? session.name[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ),
               const SizedBox(width: 12),
               Expanded(
-                  child: Text(title,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700))),
-              Stack(children: [
-                IconButton(
-                    icon: const Icon(Icons.notifications_outlined,
-                        color: Colors.white),
-                    onPressed: () {}),
-                Positioned(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(
+                      Icons.notifications_outlined,
+                      color: Colors.white,
+                    ),
+                    onPressed: () {},
+                  ),
+                  Positioned(
                     right: 8,
                     top: 8,
                     child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                            color: Color(0xFFFFB300), shape: BoxShape.circle)))
-              ])
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFFB300),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -2280,10 +2457,7 @@ class _DevRolePreviewBar extends StatelessWidget {
   final _CoverageViewRole selected;
   final ValueChanged<_CoverageViewRole> onSelected;
 
-  const _DevRolePreviewBar({
-    required this.selected,
-    required this.onSelected,
-  });
+  const _DevRolePreviewBar({required this.selected, required this.onSelected});
 
   @override
   Widget build(BuildContext context) {
@@ -2427,9 +2601,12 @@ class _FilterBar extends StatelessWidget {
       color: AdvantaColors.deepForest,
       child: Container(
         decoration: const BoxDecoration(
-            color: AdvantaColors.softGrey,
-            borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(20), topRight: Radius.circular(20))),
+          color: AdvantaColors.softGrey,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
@@ -2476,15 +2653,17 @@ class _RefreshButtonState extends State<_RefreshButton> {
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AdvantaColors.dividerGrey),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2))
-            ]),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AdvantaColors.dividerGrey),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
         child: _isRefreshing
             ? const SizedBox(
                 width: 16,
@@ -2494,8 +2673,11 @@ class _RefreshButtonState extends State<_RefreshButton> {
                   color: AdvantaColors.charcoal,
                 ),
               )
-            : const Icon(Icons.refresh_rounded,
-                size: 16, color: AdvantaColors.charcoal),
+            : const Icon(
+                Icons.refresh_rounded,
+                size: 16,
+                color: AdvantaColors.charcoal,
+              ),
       ),
     );
   }
@@ -2507,23 +2689,31 @@ class _StatsRow extends StatelessWidget {
   const _StatsRow({required this.stats});
   @override
   Widget build(BuildContext context) => Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: LayoutBuilder(builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 1000
-            ? stats.length
-            : constraints.maxWidth >= 600
-                ? 3
-                : 2;
-        return Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: stats
-                .map((card) => SizedBox(
-                    width: (constraints.maxWidth - (columns - 1) * 8) / columns,
-                    height: 114,
-                    child: card))
-                .toList());
-      }));
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 1000
+                ? stats.length
+                : constraints.maxWidth >= 600
+                    ? 3
+                    : 2;
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: stats
+                  .map(
+                    (card) => SizedBox(
+                      width:
+                          (constraints.maxWidth - (columns - 1) * 8) / columns,
+                      height: 120,
+                      child: card,
+                    ),
+                  )
+                  .toList(),
+            );
+          },
+        ),
+      );
 }
 
 class _StatCard extends StatelessWidget {
@@ -2534,54 +2724,59 @@ class _StatCard extends StatelessWidget {
   final String label;
   final bool highlight;
   final VoidCallback? onTap;
-  const _StatCard(
-      {required this.icon,
-      required this.iconColor,
-      required this.bgColor,
-      required this.value,
-      required this.label,
-      this.highlight = false,
-      this.onTap});
+  const _StatCard({
+    required this.icon,
+    required this.iconColor,
+    required this.bgColor,
+    required this.value,
+    required this.label,
+    this.highlight = false,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 86),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: highlight
-                  ? iconColor.withValues(alpha: 0.35)
-                  : AdvantaColors.dividerGrey.withValues(alpha: 0.6),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AdvantaColors.deepForest.withValues(alpha: 0.06),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 86),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: highlight
+                ? iconColor.withValues(alpha: 0.35)
+                : AdvantaColors.dividerGrey.withValues(alpha: 0.6),
           ),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          boxShadow: [
+            BoxShadow(
+              color: AdvantaColors.deepForest.withValues(alpha: 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Container(
               width: 30,
               height: 30,
               decoration: BoxDecoration(
-                  color: bgColor, borderRadius: BorderRadius.circular(9)),
+                color: bgColor,
+                borderRadius: BorderRadius.circular(9),
+              ),
               child: Icon(icon, size: 16, color: iconColor),
             ),
             const Spacer(),
             Text(
               value,
               style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: highlight ? iconColor : AdvantaColors.deepForest),
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: highlight ? iconColor : AdvantaColors.deepForest,
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -2589,14 +2784,17 @@ class _StatCard extends StatelessWidget {
             Text(
               label,
               style: const TextStyle(
-                  fontSize: 9,
-                  color: AdvantaColors.mutedGrey,
-                  fontWeight: FontWeight.w700),
+                fontSize: 9,
+                color: AdvantaColors.mutedGrey,
+                fontWeight: FontWeight.w700,
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-          ]),
-        ));
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -2605,86 +2803,140 @@ class _PhaseProgressSection extends StatelessWidget {
   final List<FieldCoverageStatus> fields;
   final bool isAllCoverage;
   final VoidCallback onChanged;
-  const _PhaseProgressSection(
-      {required this.summary,
-      required this.fields,
-      required this.isAllCoverage,
-      required this.onChanged});
+  const _PhaseProgressSection({
+    required this.summary,
+    required this.fields,
+    required this.isAllCoverage,
+    required this.onChanged,
+  });
   @override
   Widget build(BuildContext context) => Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(
+        margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
                   isAllCoverage
                       ? 'Lifecycle achievement per phase'
                       : 'Target achievement per phase',
                   style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: AdvantaColors.deepForest)),
-              TextButton(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AdvantaColors.deepForest,
+                  ),
+                ),
+                TextButton(
                   onPressed: () => _showWeeklyFields(
-                      context,
-                      isAllCoverage
-                          ? 'All Coverage sampai week terpilih'
-                          : 'Target audit minggu terpilih',
-                      fields.map((f) => f.weekly).toList(),
-                      onChanged: onChanged),
-                  child: const Text('Lihat detail')),
-            ]),
-        Text('${summary.targetCompletionPct.toStringAsFixed(1)}%',
-            style: const TextStyle(
+                    context,
+                    isAllCoverage
+                        ? 'All Coverage sampai week terpilih'
+                        : 'Target audit minggu terpilih',
+                    fields.map((f) => f.weekly).toList(),
+                    onChanged: onChanged,
+                  ),
+                  child: const Text('Lihat detail'),
+                ),
+              ],
+            ),
+            Text(
+              '${summary.targetCompletionPct.toStringAsFixed(1)}%',
+              style: const TextStyle(
                 fontSize: 30,
                 fontWeight: FontWeight.w900,
-                color: AdvantaColors.midGreen)),
-        const SizedBox(height: 8),
-        Wrap(spacing: 16, runSpacing: 8, children: [
-          _value(isAllCoverage ? 'Lifecycle target' : 'Target audit',
-              summary.targetAreaHa, summary.totalTargets),
-          _value(
-              'Achievement', summary.achievedAreaHa, summary.completedTargets),
-          _value('Overdue', summary.overdueAreaHa, summary.overdueTargets),
-        ]),
-        const SizedBox(height: 16),
-        LayoutBuilder(
-            builder: (context, box) => Wrap(
+                color: AdvantaColors.midGreen,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              children: [
+                _value(
+                  isAllCoverage ? 'Lifecycle target' : 'Target audit',
+                  summary.targetAreaHa,
+                  summary.totalTargets,
+                ),
+                _value(
+                  'Achievement',
+                  summary.achievedAreaHa,
+                  summary.completedTargets,
+                ),
+                _value(
+                    'Overdue', summary.overdueAreaHa, summary.overdueTargets),
+              ],
+            ),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, box) => Wrap(
                 spacing: 16,
                 runSpacing: 16,
                 children: summary.phases
-                    .map((phase) => SizedBox(
+                    .map(
+                      (phase) => SizedBox(
                         width:
                             (box.maxWidth - (box.maxWidth >= 720 ? 48 : 16)) /
                                 (box.maxWidth >= 720 ? 4 : 2),
                         child: _PhaseBar(
-                            phase: phase,
-                            onTap: () => _showWeeklyFields(
-                                context,
-                                phase.label,
-                                fields
-                                    .where((field) => field.weekly.targets.any(
-                                        (target) =>
-                                            auditStage(target.phase) == auditStageLabels.entries.firstWhere((entry) => entry.value == phase.label).key))
-                                    .map((field) => field.weekly)
-                                    .toList(),
-                                onChanged: onChanged))))
-                    .toList())),
-      ]));
-  Widget _value(String label, double area, int fn) =>
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(auditWorkload(area, fn),
+                          phase: phase,
+                          onTap: () => _showWeeklyFields(
+                            context,
+                            phase.label,
+                            fields
+                                .where(
+                                  (field) => field.weekly.targets.any(
+                                    (target) =>
+                                        auditStage(target.phase) ==
+                                        auditStageLabels.entries
+                                            .firstWhere(
+                                              (entry) =>
+                                                  entry.value == phase.label,
+                                            )
+                                            .key,
+                                  ),
+                                )
+                                .map((field) => field.weekly)
+                                .toList(),
+                            onChanged: onChanged,
+                            targetStage: auditStageLabels.entries
+                                .firstWhere(
+                                    (entry) => entry.value == phase.label)
+                                .key,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ],
+        ),
+      );
+  Widget _value(String label, double area, int fn) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            auditWorkload(area, fn),
             style: const TextStyle(
-                fontWeight: FontWeight.w800, color: AdvantaColors.deepForest)),
-        Text(label,
+              fontWeight: FontWeight.w800,
+              color: AdvantaColors.deepForest,
+            ),
+          ),
+          Text(
+            label,
             style:
-                const TextStyle(fontSize: 11, color: AdvantaColors.mutedGrey)),
-      ]);
+                const TextStyle(fontSize: 11, color: AdvantaColors.mutedGrey),
+          ),
+        ],
+      );
 }
 
 class _PhaseBar extends StatelessWidget {
@@ -2695,46 +2947,60 @@ class _PhaseBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-            padding: const EdgeInsets.all(4),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // Label Fase (Veg, Gen, dst)
-              Text(phase.shortLabel,
-                  style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: AdvantaColors.charcoal)),
-              const SizedBox(height: 2),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Label Fase (Veg, Gen, dst)
+            Text(
+              phase.shortLabel,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: AdvantaColors.charcoal,
+              ),
+            ),
+            const SizedBox(height: 2),
 
-              // Persentase
-              Text('${phase.pct.toStringAsFixed(0)}%',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: phase.color)),
-              const SizedBox(height: 4),
+            // Persentase
+            Text(
+              '${phase.pct.toStringAsFixed(0)}%',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: phase.color,
+              ),
+            ),
+            const SizedBox(height: 4),
 
-              // Progress Bar
-              ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                      value: phase.pct / 100,
-                      backgroundColor: phase.color.withValues(alpha: 0.15),
-                      valueColor: AlwaysStoppedAnimation<Color>(phase.color),
-                      minHeight: 6)),
-              const SizedBox(height: 3),
+            // Progress Bar
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: phase.pct / 100,
+                backgroundColor: phase.color.withValues(alpha: 0.15),
+                valueColor: AlwaysStoppedAnimation<Color>(phase.color),
+                minHeight: 6,
+              ),
+            ),
+            const SizedBox(height: 3),
 
-              // 👇 JUMLAH LAHAN (RIIL)
-              Text(
-                  '${phase.done} / ${phase.total} FN · ${_formatHa(phase.totalHa)}',
-                  style: TextStyle(
-                      fontSize: 9,
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w600)),
-            ])));
+            // 👇 JUMLAH LAHAN (RIIL)
+            Text(
+              '${phase.done} / ${phase.total} FN · ${_formatHa(phase.totalHa)}',
+              style: TextStyle(
+                fontSize: 9,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -2775,45 +3041,58 @@ class _FIRatingPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 6,
-                offset: const Offset(0, 2))
-          ]),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Text(title,
+          Row(
+            children: [
+              Text(
+                title,
                 style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AdvantaColors.deepForest)),
-            const Spacer(),
-            if (showViewAll)
-              _ViewAllIconButton(
-                tooltip: 'Lihat semua $title',
-                onTap: () => _showAllFi(context),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AdvantaColors.deepForest,
+                ),
               ),
-          ]),
+              const Spacer(),
+              if (showViewAll)
+                _ViewAllIconButton(
+                  tooltip: 'Lihat semua $title',
+                  onTap: () => _showAllFi(context),
+                ),
+            ],
+          ),
           const SizedBox(height: 8),
           if (visibleList.isEmpty)
             Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Center(
-                    child: Text('Tidak ada data',
-                        style:
-                            TextStyle(color: Colors.grey[400], fontSize: 12))))
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(
+                  'Tidak ada data',
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                ),
+              ),
+            )
           else
             // 👇 2. Kirim seluruh objek `e.value` (yang berisi FICoverage)
-            ...visibleList.asMap().entries.map((e) => _FIRatingItem(
-                  rank: e.key + 1,
-                  fi: e.value,
-                  onTap: onFiTapped != null ? () => onFiTapped!(e.value) : null,
-                )),
+            ...visibleList.asMap().entries.map(
+                  (e) => _FIRatingItem(
+                    rank: e.key + 1,
+                    fi: e.value,
+                    onTap:
+                        onFiTapped != null ? () => onFiTapped!(e.value) : null,
+                  ),
+                ),
         ],
       ),
     );
@@ -2882,15 +3161,19 @@ class _SheetHeader extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title,
-                        style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: AdvantaColors.deepForest)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AdvantaColors.deepForest,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text(subtitle,
-                        style:
-                            TextStyle(fontSize: 12, color: Colors.grey[500])),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    ),
                   ],
                 ),
               ),
@@ -2956,15 +3239,22 @@ class _FIRatingListSheet extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(title,
-                                style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                    color: AdvantaColors.deepForest)),
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: AdvantaColors.deepForest,
+                              ),
+                            ),
                             const SizedBox(height: 2),
-                            Text(subtitle,
-                                style: TextStyle(
-                                    fontSize: 12, color: Colors.grey[500])),
+                            Text(
+                              subtitle,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[500],
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -3028,60 +3318,89 @@ class _FIRatingItem extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(
-            vertical: 6, horizontal: 4), // Sesuaikan padding
-        child: Row(children: [
-          Container(
+          vertical: 6,
+          horizontal: 4,
+        ), // Sesuaikan padding
+        child: Row(
+          children: [
+            Container(
               width: 20,
               height: 20,
               decoration: BoxDecoration(
-                  color: rank <= 3 ? AdvantaColors.paleGreen : Colors.grey[100],
-                  borderRadius: BorderRadius.circular(6)),
+                color: rank <= 3 ? AdvantaColors.paleGreen : Colors.grey[100],
+                borderRadius: BorderRadius.circular(6),
+              ),
               child: Center(
-                  child: Text('$rank',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: rank <= 3
-                              ? AdvantaColors.deepForest
-                              : Colors.grey[500])))),
-          const SizedBox(width: 6),
-          Expanded(
+                child: Text(
+                  '$rank',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color:
+                        rank <= 3 ? AdvantaColors.deepForest : Colors.grey[500],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
               child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text(fi.name,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    fi.name,
                     style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AdvantaColors.deepForest),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AdvantaColors.deepForest,
+                    ),
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                Text(
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
                     '${fi.targetFields} target field · ${fi.completedTargets}/${fi.totalTargets} FN selesai${fi.actionFields > 0 ? ' · ${fi.actionFields} action' : ''}',
                     style: TextStyle(
-                        fontSize: 9,
-                        color: fi.actionFields > 0
-                            ? AdvantaColors.gold
-                            : Colors.grey[500]),
+                      fontSize: 9,
+                      color: fi.actionFields > 0
+                          ? AdvantaColors.gold
+                          : Colors.grey[500],
+                    ),
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis)
-              ])),
-          const SizedBox(width: 4),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text('${fi.coverageScore.toStringAsFixed(0)}%',
-                style: TextStyle(
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${fi.coverageScore.toStringAsFixed(0)}%',
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
-                    color: fi.statusColor)),
-            Text(fi.statusLabel,
-                style: TextStyle(
+                    color: fi.statusColor,
+                  ),
+                ),
+                Text(
+                  fi.statusLabel,
+                  style: TextStyle(
                     fontSize: 9,
                     color: fi.statusColor,
-                    fontWeight: FontWeight.w600))
-          ]),
-          const SizedBox(width: 4),
-          Icon(Icons.chevron_right_rounded, size: 14, color: Colors.grey[300])
-        ]),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 14,
+              color: Colors.grey[300],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3101,8 +3420,9 @@ class _FIDetailSheet extends StatelessWidget {
       villageMap.putIfAbsent(key, () => []).add(f);
     }
     final villageEntries = villageMap.entries.toList()
-      ..sort((a, b) => b.value.length
-          .compareTo(a.value.length)); // Urutkan dari lahan terbanyak
+      ..sort(
+        (a, b) => b.value.length.compareTo(a.value.length),
+      ); // Urutkan dari lahan terbanyak
 
     final avatarLetter = fi.name.isNotEmpty ? fi.name[0].toUpperCase() : '?';
 
@@ -3126,12 +3446,15 @@ class _FIDetailSheet extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 12, bottom: 16),
                   child: Center(
-                      child: Container(
-                          width: 48,
-                          height: 5,
-                          decoration: BoxDecoration(
-                              color: Colors.grey[300],
-                              borderRadius: BorderRadius.circular(4)))),
+                    child: Container(
+                      width: 48,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
                 ),
 
                 // Header Profile
@@ -3143,47 +3466,63 @@ class _FIDetailSheet extends StatelessWidget {
                         width: 50,
                         height: 50,
                         decoration: BoxDecoration(
-                            color: AdvantaColors.deepForest,
-                            borderRadius: BorderRadius.circular(14)),
+                          color: AdvantaColors.deepForest,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                         child: Center(
-                            child: Text(avatarLetter,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w800))),
+                          child: Text(
+                            avatarLetter,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(fi.name,
-                                style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                    color: AdvantaColors.deepForest)),
+                            Text(
+                              fi.name,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: AdvantaColors.deepForest,
+                              ),
+                            ),
                             const SizedBox(height: 2),
                             Text(
-                                '${fi.totalFields} Lahan · ${villageEntries.length} Desa',
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey[600],
-                                    fontWeight: FontWeight.w500)),
+                              '${fi.totalFields} Lahan · ${villageEntries.length} Desa',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ],
                         ),
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
-                            color: fi.statusColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10)),
-                        child: Text('${fi.coverageScore.toStringAsFixed(0)}%',
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: fi.statusColor)),
-                      )
+                          color: fi.statusColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${fi.coverageScore.toStringAsFixed(0)}%',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: fi.statusColor,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -3197,40 +3536,48 @@ class _FIDetailSheet extends StatelessWidget {
                     child: Row(
                       children: [
                         SizedBox(
-                            width: 150,
-                            child: _buildInfoCard(
-                                'Area Assigned',
-                                _formatHa(fi.totalAreaHa),
-                                Icons.landscape_rounded,
-                                AdvantaColors.midGreen)),
+                          width: 150,
+                          child: _buildInfoCard(
+                            'Area Assigned',
+                            _formatHa(fi.totalAreaHa),
+                            Icons.landscape_rounded,
+                            AdvantaColors.midGreen,
+                          ),
+                        ),
                         const SizedBox(width: 10),
                         SizedBox(
-                            width: 140,
-                            child: _buildInfoCard(
-                                'Target Done',
-                                '${fi.completedTargets}/${fi.totalTargets}',
-                                Icons.fact_check_rounded,
-                                AdvantaColors.success)),
+                          width: 140,
+                          child: _buildInfoCard(
+                            'Target Done',
+                            '${fi.completedTargets}/${fi.totalTargets}',
+                            Icons.fact_check_rounded,
+                            AdvantaColors.success,
+                          ),
+                        ),
                         const SizedBox(width: 10),
                         SizedBox(
-                            width: 128,
-                            child: _buildInfoCard(
-                                'Action',
-                                fi.actionFields.toString(),
-                                Icons.assignment_late_rounded,
-                                fi.actionFields > 0
-                                    ? AdvantaColors.gold
-                                    : Colors.grey)),
+                          width: 128,
+                          child: _buildInfoCard(
+                            'Action',
+                            fi.actionFields.toString(),
+                            Icons.assignment_late_rounded,
+                            fi.actionFields > 0
+                                ? AdvantaColors.gold
+                                : Colors.grey,
+                          ),
+                        ),
                         const SizedBox(width: 10),
                         SizedBox(
-                            width: 128,
-                            child: _buildInfoCard(
-                                'Overdue',
-                                fi.overdueFields.toString(),
-                                Icons.warning_amber_rounded,
-                                fi.overdueFields > 0
-                                    ? AdvantaColors.error
-                                    : Colors.grey)),
+                          width: 128,
+                          child: _buildInfoCard(
+                            'Overdue',
+                            fi.overdueFields.toString(),
+                            Icons.warning_amber_rounded,
+                            fi.overdueFields > 0
+                                ? AdvantaColors.error
+                                : Colors.grey,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -3242,8 +3589,9 @@ class _FIDetailSheet extends StatelessWidget {
                   child: Container(
                     decoration: const BoxDecoration(
                       color: Colors.white,
-                      borderRadius:
-                          BorderRadius.vertical(top: Radius.circular(20)),
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
                     ),
                     child: ListView.separated(
                       controller: scrollCtrl,
@@ -3268,37 +3616,49 @@ class _FIDetailSheet extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                  color: AdvantaColors.paleGreen,
-                                  borderRadius: BorderRadius.circular(10)),
-                              child: const Icon(Icons.holiday_village_rounded,
-                                  size: 16, color: AdvantaColors.deepForest),
+                                color: AdvantaColors.paleGreen,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.holiday_village_rounded,
+                                size: 16,
+                                color: AdvantaColors.deepForest,
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(vName,
-                                      style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: AdvantaColors.deepForest)),
+                                  Text(
+                                    vName,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AdvantaColors.deepForest,
+                                    ),
+                                  ),
                                   const SizedBox(height: 2),
                                   Text(
-                                      '${vFields.length} lahan${vOverdue > 0 ? ' · $vOverdue overdue' : ''}',
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          color: vOverdue > 0
-                                              ? AdvantaColors.error
-                                              : Colors.grey[500])),
+                                    '${vFields.length} lahan${vOverdue > 0 ? ' · $vOverdue overdue' : ''}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: vOverdue > 0
+                                          ? AdvantaColors.error
+                                          : Colors.grey[500],
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
-                            Text('${vScore.toStringAsFixed(0)}%',
-                                style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                    color: vColor)),
+                            Text(
+                              '${vScore.toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: vColor,
+                              ),
+                            ),
                           ],
                         );
                       },
@@ -3314,13 +3674,18 @@ class _FIDetailSheet extends StatelessWidget {
   }
 
   Widget _buildInfoCard(
-      String title, String value, IconData icon, Color color) {
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AdvantaColors.dividerGrey)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AdvantaColors.dividerGrey),
+      ),
       child: Row(
         children: [
           Icon(icon, size: 18, color: color),
@@ -3328,18 +3693,24 @@ class _FIDetailSheet extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title,
-                  style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey[500],
-                      fontWeight: FontWeight.w600)),
-              Text(value,
-                  style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: AdvantaColors.deepForest)),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey[500],
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AdvantaColors.deepForest,
+                ),
+              ),
             ],
-          )
+          ),
         ],
       ),
     );
@@ -3350,10 +3721,11 @@ class _RegionalStructurePanel extends StatefulWidget {
   final Map<String, Map<String, dynamic>> regionMap;
   final int expandedIndex;
   final ValueChanged<int> onToggle;
-  const _RegionalStructurePanel(
-      {required this.regionMap,
-      required this.expandedIndex,
-      required this.onToggle});
+  const _RegionalStructurePanel({
+    required this.regionMap,
+    required this.expandedIndex,
+    required this.onToggle,
+  });
 
   @override
   State<_RegionalStructurePanel> createState() =>
@@ -3361,8 +3733,10 @@ class _RegionalStructurePanel extends StatefulWidget {
 }
 
 class _RegionalStructurePanelState extends State<_RegionalStructurePanel> {
-  void _showAllRegions(BuildContext context,
-      List<MapEntry<String, Map<String, dynamic>>> entries) {
+  void _showAllRegions(
+    BuildContext context,
+    List<MapEntry<String, Map<String, dynamic>>> entries,
+  ) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -3374,8 +3748,10 @@ class _RegionalStructurePanelState extends State<_RegionalStructurePanel> {
   @override
   Widget build(BuildContext context) {
     final entries = widget.regionMap.entries.toList()
-      ..sort((a, b) =>
-          _avgScore(b.value['fields']).compareTo(_avgScore(a.value['fields'])));
+      ..sort(
+        (a, b) => _avgScore(b.value['fields'])
+            .compareTo(_avgScore(a.value['fields'])),
+      );
     final visible = entries.take(5).toList();
 
     return Container(
@@ -3385,27 +3761,33 @@ class _RegionalStructurePanelState extends State<_RegionalStructurePanel> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 6,
-              offset: const Offset(0, 2))
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            const Text('Regional Structure',
+          Row(
+            children: [
+              const Text(
+                'Regional Structure',
                 style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AdvantaColors.deepForest)),
-            const Spacer(),
-            if (entries.length > 5)
-              _ViewAllIconButton(
-                tooltip: 'Lihat semua regional',
-                onTap: () => _showAllRegions(context, entries),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AdvantaColors.deepForest,
+                ),
               ),
-          ]),
+              const Spacer(),
+              if (entries.length > 5)
+                _ViewAllIconButton(
+                  tooltip: 'Lihat semua regional',
+                  onTap: () => _showAllRegions(context, entries),
+                ),
+            ],
+          ),
           const SizedBox(height: 8),
           ...visible.asMap().entries.map((entry) {
             final regionName = entry.value.key;
@@ -3475,8 +3857,10 @@ class _RegionalStructureListSheetState
                   final data = entry.value.value;
                   final fields = data['fields'] as List<FieldCoverageStatus>;
                   final score = aggregateCoverageScore(fields);
-                  final area =
-                      fields.fold(0.0, (s, f) => s + f.effectiveAreaHa);
+                  final area = fields.fold(
+                    0.0,
+                    (s, f) => s + f.effectiveAreaHa,
+                  );
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _RegionAccordion(
@@ -3487,8 +3871,10 @@ class _RegionalStructureListSheetState
                       fiCount: (data['fiSet'] as Set).length,
                       fieldCount: fields.length,
                       isExpanded: _expandedIndex == entry.key,
-                      onToggle: () => setState(() => _expandedIndex =
-                          _expandedIndex == entry.key ? -1 : entry.key),
+                      onToggle: () => setState(
+                        () => _expandedIndex =
+                            _expandedIndex == entry.key ? -1 : entry.key,
+                      ),
                       fields: fields,
                     ),
                   );
@@ -3512,16 +3898,17 @@ class _RegionAccordion extends StatelessWidget {
   final bool isExpanded;
   final VoidCallback onToggle;
   final List<FieldCoverageStatus> fields;
-  const _RegionAccordion(
-      {required this.name,
-      required this.score,
-      required this.area,
-      required this.spvCount,
-      required this.fiCount,
-      required this.fieldCount,
-      required this.isExpanded,
-      required this.onToggle,
-      required this.fields});
+  const _RegionAccordion({
+    required this.name,
+    required this.score,
+    required this.area,
+    required this.spvCount,
+    required this.fiCount,
+    required this.fieldCount,
+    required this.isExpanded,
+    required this.onToggle,
+    required this.fields,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3530,59 +3917,80 @@ class _RegionAccordion extends StatelessWidget {
         : score >= 60
             ? const Color(0xFFD4A017)
             : AdvantaColors.error;
-    return Column(children: [
-      GestureDetector(
+    return Column(
+      children: [
+        GestureDetector(
           onTap: onToggle,
           child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-              child: Row(children: [
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Row(
+              children: [
                 Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                      Text(name,
-                          style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: AdvantaColors.deepForest)),
-                      Text('$spvCount SPV · $fiCount FI · ${_formatHa(area)}',
-                          style:
-                              TextStyle(fontSize: 9, color: Colors.grey[500]))
-                    ])),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AdvantaColors.deepForest,
+                        ),
+                      ),
+                      Text(
+                        '$spvCount SPV · $fiCount FI · ${_formatHa(area)}',
+                        style: TextStyle(fontSize: 9, color: Colors.grey[500]),
+                      ),
+                    ],
+                  ),
+                ),
                 SizedBox(
-                    width: 50,
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text('${score.toStringAsFixed(0)}%',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: color)),
-                          const SizedBox(height: 2),
-                          ClipRRect(
-                              borderRadius: BorderRadius.circular(3),
-                              child: LinearProgressIndicator(
-                                  value: score / 100,
-                                  minHeight: 4,
-                                  backgroundColor:
-                                      color.withValues(alpha: 0.15),
-                                  valueColor:
-                                      AlwaysStoppedAnimation<Color>(color)))
-                        ])),
+                  width: 50,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${score.toStringAsFixed(0)}%',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: color,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: score / 100,
+                          minHeight: 4,
+                          backgroundColor: color.withValues(alpha: 0.15),
+                          valueColor: AlwaysStoppedAnimation<Color>(color),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(width: 4),
                 AnimatedRotation(
-                    turns: isExpanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    child: Icon(Icons.keyboard_arrow_down_rounded,
-                        size: 16, color: Colors.grey[400]))
-              ]))),
+                  turns: isExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 16,
+                    color: Colors.grey[400],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
 
-      // 👇 PERUBAHAN: Meneruskan `context` ke _buildBreakdown
-      if (isExpanded) ..._buildBreakdown(context),
+        // 👇 PERUBAHAN: Meneruskan `context` ke _buildBreakdown
+        if (isExpanded) ..._buildBreakdown(context),
 
-      Divider(height: 1, color: Colors.grey[100])
-    ]);
+        Divider(height: 1, color: Colors.grey[100]),
+      ],
+    );
   }
 
   // 👇 PERUBAHAN: Menambahkan fitur klik dan Bottom Sheet Daftar Field
@@ -3600,46 +4008,68 @@ class _RegionAccordion extends StatelessWidget {
         onTap: () => _showDistrictFieldsSheet(context, e.key, e.value),
         borderRadius: BorderRadius.circular(6),
         child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
-            child: Row(children: [
+          padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
+          child: Row(
+            children: [
               Container(
-                  width: 3,
-                  height: 3,
-                  decoration: BoxDecoration(
-                      color: Colors.grey[400], shape: BoxShape.circle)),
+                width: 3,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: Colors.grey[400],
+                  shape: BoxShape.circle,
+                ),
+              ),
               const SizedBox(width: 6),
               Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(e.key,
-                        style: const TextStyle(
-                            fontSize: 10,
-                            color: AdvantaColors.charcoal,
-                            fontWeight: FontWeight.w700)),
-                    Text('${e.value.length} fields',
-                        style: TextStyle(fontSize: 8, color: Colors.grey[500]))
-                  ])),
-              Text('${s.toStringAsFixed(0)}%',
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      color: s >= 85
-                          ? AdvantaColors.success
-                          : s >= 60
-                              ? const Color(0xFFD4A017)
-                              : AdvantaColors.error)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      e.key,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: AdvantaColors.charcoal,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      '${e.value.length} fields',
+                      style: TextStyle(fontSize: 8, color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '${s.toStringAsFixed(0)}%',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: s >= 85
+                      ? AdvantaColors.success
+                      : s >= 60
+                          ? const Color(0xFFD4A017)
+                          : AdvantaColors.error,
+                ),
+              ),
               const SizedBox(width: 4),
-              Icon(Icons.chevron_right_rounded,
-                  size: 12, color: Colors.grey[300])
-            ])),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 12,
+                color: Colors.grey[300],
+              ),
+            ],
+          ),
+        ),
       );
     }).toList();
   }
 
   // Fungsi baru untuk memunculkan Bottom Sheet persis seperti QA FI View
-  void _showDistrictFieldsSheet(BuildContext context, String districtName,
-      List<FieldCoverageStatus> distFields) {
+  void _showDistrictFieldsSheet(
+    BuildContext context,
+    String districtName,
+    List<FieldCoverageStatus> distFields,
+  ) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -3655,9 +4085,9 @@ class _RegionAccordion extends StatelessWidget {
             minChildSize: 0.4,
             builder: (_, ctrl) => Container(
               decoration: const BoxDecoration(
-                  color: AdvantaColors.softGrey,
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(24))),
+                color: AdvantaColors.softGrey,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
               child: Column(
                 children: [
                   Padding(
@@ -3666,23 +4096,32 @@ class _RegionAccordion extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Center(
-                            child: Container(
-                                width: 40,
-                                height: 5,
-                                decoration: BoxDecoration(
-                                    color: Colors.grey[300],
-                                    borderRadius: BorderRadius.circular(4)))),
+                          child: Container(
+                            width: 40,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 16),
-                        Text('Fields — $districtName',
-                            style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: AdvantaColors.deepForest)),
+                        Text(
+                          'Fields — $districtName',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AdvantaColors.deepForest,
+                          ),
+                        ),
                         const SizedBox(height: 4),
                         Text(
-                            '${distFields.length} field · ${distFields.where((f) => f.isOverdue).length} overdue',
-                            style: TextStyle(
-                                fontSize: 13, color: Colors.grey[500])),
+                          '${distFields.length} field · ${distFields.where((f) => f.isOverdue).length} overdue',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[500],
+                          ),
+                        ),
                         const SizedBox(height: 12),
                       ],
                     ),
@@ -3691,7 +4130,9 @@ class _RegionAccordion extends StatelessWidget {
                     child: ListView.separated(
                       controller: ctrl,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       itemCount: distFields.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (_, i) {
@@ -3712,7 +4153,9 @@ class _RegionAccordion extends StatelessWidget {
                           onTap: () {
                             Navigator.pop(context); // Tutup list
                             FieldDetailBottomSheet.show(
-                                context, f.raw); // Buka detail
+                              context,
+                              f.raw,
+                            ); // Buka detail
                           },
                           child: Container(
                             padding: const EdgeInsets.all(14),
@@ -3722,42 +4165,50 @@ class _RegionAccordion extends StatelessWidget {
                               border: Border.all(color: Colors.grey[200]!),
                               boxShadow: [
                                 BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.03),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2))
+                                  color: Colors.black.withValues(alpha: 0.03),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
                               ],
                             ),
                             child: Row(
                               children: [
                                 Container(
-                                    width: 10,
-                                    height: 10,
-                                    decoration: BoxDecoration(
-                                        color: leadColor,
-                                        shape: BoxShape.circle)),
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: leadColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(f.fieldNumber,
-                                          style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w700,
-                                              color: AdvantaColors.deepForest)),
+                                      Text(
+                                        f.fieldNumber,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: AdvantaColors.deepForest,
+                                        ),
+                                      ),
                                       const SizedBox(height: 2),
                                       if (f.farmerName.isNotEmpty ||
                                           f.hybrid.isNotEmpty)
                                         Text(
                                           [f.farmerName, f.hybrid]
                                               .where(
-                                                  (value) => value.isNotEmpty)
+                                                (value) => value.isNotEmpty,
+                                              )
                                               .join(' · '),
                                           style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: Colors.grey[700]),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.grey[700],
+                                          ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -3767,27 +4218,30 @@ class _RegionAccordion extends StatelessWidget {
                                       Text(
                                         '${f.activePhaseLabel} - DAP ${f.dap}${f.isOverdue ? ' - Overdue' : ''}',
                                         style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500,
-                                            color: f.isOverdue
-                                                ? AdvantaColors.error
-                                                : Colors.grey[500]),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: f.isOverdue
+                                              ? AdvantaColors.error
+                                              : Colors.grey[500],
+                                        ),
                                       ),
                                       if (f.latestAuditDate != null)
                                         Text(
                                           'Last audit ${f.latestAuditDate}${f.latestAuditWeek == null ? '' : ' - ${f.latestAuditWeek}'}',
                                           style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w700,
-                                              color: Colors.grey[500]),
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.grey[500],
+                                          ),
                                         ),
                                       if (f.hasActionRequired)
                                         Text(
                                           'Action ${f.actionPhase}-${f.actionCode}',
                                           style: const TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w800,
-                                              color: AdvantaColors.gold),
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800,
+                                            color: AdvantaColors.gold,
+                                          ),
                                         ),
                                     ],
                                   ),
@@ -3795,23 +4249,35 @@ class _RegionAccordion extends StatelessWidget {
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    Text('${score.toStringAsFixed(0)}%',
-                                        style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w800,
-                                            color: sc)),
+                                    Text(
+                                      '${score.toStringAsFixed(0)}%',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: sc,
+                                      ),
+                                    ),
                                     const SizedBox(height: 4),
-                                    Row(children: [
-                                      _PhaseDot(
-                                          done: f.vegetativeDone, label: 'V'),
-                                      _PhaseDot(
+                                    Row(
+                                      children: [
+                                        _PhaseDot(
+                                          done: f.vegetativeDone,
+                                          label: 'V',
+                                        ),
+                                        _PhaseDot(
                                           done: f.anyGenerativeDone,
-                                          label: 'G'),
-                                      _PhaseDot(
-                                          done: f.preHarvestDone, label: 'P'),
-                                      _PhaseDot(
-                                          done: f.harvestDone, label: 'H'),
-                                    ]),
+                                          label: 'G',
+                                        ),
+                                        _PhaseDot(
+                                          done: f.preHarvestDone,
+                                          label: 'P',
+                                        ),
+                                        _PhaseDot(
+                                          done: f.harvestDone,
+                                          label: 'H',
+                                        ),
+                                      ],
+                                    ),
                                   ],
                                 ),
                               ],
@@ -3835,10 +4301,11 @@ class _CoverageStructurePanel extends StatefulWidget {
   final List<MapEntry<String, List<FieldCoverageStatus>>> districts;
   final int expandedIndex;
   final ValueChanged<int> onToggle;
-  const _CoverageStructurePanel(
-      {required this.districts,
-      required this.expandedIndex,
-      required this.onToggle});
+  const _CoverageStructurePanel({
+    required this.districts,
+    required this.expandedIndex,
+    required this.onToggle,
+  });
 
   @override
   State<_CoverageStructurePanel> createState() =>
@@ -3866,27 +4333,33 @@ class _CoverageStructurePanelState extends State<_CoverageStructurePanel> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 6,
-              offset: const Offset(0, 2))
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            const Text('Coverage Structure',
+          Row(
+            children: [
+              const Text(
+                'Coverage Structure',
                 style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AdvantaColors.deepForest)),
-            const Spacer(),
-            if (widget.districts.length > 4)
-              _ViewAllIconButton(
-                tooltip: 'Lihat semua coverage structure',
-                onTap: () => _showAllDistricts(context),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AdvantaColors.deepForest,
+                ),
               ),
-          ]),
+              const Spacer(),
+              if (widget.districts.length > 4)
+                _ViewAllIconButton(
+                  tooltip: 'Lihat semua coverage structure',
+                  onTap: () => _showAllDistricts(context),
+                ),
+            ],
+          ),
           const SizedBox(height: 8),
           ...visible.asMap().entries.map((entry) {
             final dFields = entry.value.value;
@@ -3898,57 +4371,83 @@ class _CoverageStructurePanelState extends State<_CoverageStructurePanel> {
                     : AdvantaColors.error;
             final isExpanded = widget.expandedIndex == entry.key;
 
-            return Column(children: [
-              GestureDetector(
-                onTap: () => widget.onToggle(entry.key),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  child: Row(children: [
-                    Expanded(
-                        child: Column(
+            return Column(
+              children: [
+                GestureDetector(
+                  onTap: () => widget.onToggle(entry.key),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                          Text(entry.value.key,
-                              style: const TextStyle(
-                                  fontSize: 11, fontWeight: FontWeight.w600)),
-                          Text(
-                              '${dFields.map((f) => f.qaFi).where((s) => s.isNotEmpty).toSet().length} FI · ${dFields.length} Lahan',
-                              style: TextStyle(
-                                  fontSize: 9, color: Colors.grey[500])),
-                        ])),
-                    SizedBox(
-                        width: 55,
-                        child: Column(
+                              Text(
+                                entry.value.key,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Text(
+                                '${dFields.map((f) => f.qaFi).where((s) => s.isNotEmpty).toSet().length} FI · ${dFields.length} Lahan',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(
+                          width: 55,
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Text('${score.toStringAsFixed(0)}%',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      color: color)),
+                              Text(
+                                '${score.toStringAsFixed(0)}%',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: color,
+                                ),
+                              ),
                               const SizedBox(height: 2),
                               ClipRRect(
-                                  borderRadius: BorderRadius.circular(3),
-                                  child: LinearProgressIndicator(
-                                      value: score / 100,
-                                      minHeight: 4,
-                                      backgroundColor:
-                                          color.withValues(alpha: 0.15),
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                          color))),
-                            ])),
-                    const SizedBox(width: 4),
-                    AnimatedRotation(
-                        turns: isExpanded ? 0.5 : 0,
-                        duration: const Duration(milliseconds: 200),
-                        child: Icon(Icons.keyboard_arrow_down_rounded,
-                            size: 14, color: Colors.grey[300])),
-                  ]),
+                                borderRadius: BorderRadius.circular(3),
+                                child: LinearProgressIndicator(
+                                  value: score / 100,
+                                  minHeight: 4,
+                                  backgroundColor: color.withValues(
+                                    alpha: 0.15,
+                                  ),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    color,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        AnimatedRotation(
+                          turns: isExpanded ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 200),
+                          child: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            size: 14,
+                            color: Colors.grey[300],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-              if (isExpanded) _buildVillageBreakdown(dFields),
-              Divider(height: 1, color: Colors.grey[100]),
-            ]);
+                if (isExpanded) _buildVillageBreakdown(dFields),
+                Divider(height: 1, color: Colors.grey[100]),
+              ],
+            );
           }),
         ],
       ),
@@ -3963,36 +4462,52 @@ class _CoverageStructurePanelState extends State<_CoverageStructurePanel> {
           .add(f);
     }
     return Column(
-        children: map.entries.map((e) {
-      final s = aggregateCoverageScore(e.value);
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(8, 0, 4, 5),
-        child: Row(children: [
-          Container(
-              width: 3,
-              height: 3,
-              decoration: BoxDecoration(
-                  color: Colors.grey[300], shape: BoxShape.circle)),
-          const SizedBox(width: 6),
-          Expanded(
-              child: Text(e.key,
+      children: map.entries.map((e) {
+        final s = aggregateCoverageScore(e.value);
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 4, 5),
+          child: Row(
+            children: [
+              Container(
+                width: 3,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  e.key,
                   style: const TextStyle(
-                      fontSize: 9, color: AdvantaColors.charcoal))),
-          Text('${e.value.length} field',
-              style: TextStyle(fontSize: 9, color: Colors.grey[400])),
-          const SizedBox(width: 8),
-          Text('${s.toStringAsFixed(0)}%',
-              style: TextStyle(
+                    fontSize: 9,
+                    color: AdvantaColors.charcoal,
+                  ),
+                ),
+              ),
+              Text(
+                '${e.value.length} field',
+                style: TextStyle(fontSize: 9, color: Colors.grey[400]),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${s.toStringAsFixed(0)}%',
+                style: TextStyle(
                   fontSize: 9,
                   fontWeight: FontWeight.w700,
                   color: s >= 85
                       ? AdvantaColors.success
                       : s >= 60
                           ? const Color(0xFFD4A017)
-                          : AdvantaColors.error)),
-        ]),
-      );
-    }).toList());
+                          : AdvantaColors.error,
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
   }
 }
 
@@ -4050,65 +4565,89 @@ class _CoverageStructureListSheetState
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: AdvantaColors.dividerGrey),
                     ),
-                    child: Column(children: [
-                      GestureDetector(
-                        onTap: () => setState(() => _expandedIndex =
-                            _expandedIndex == entry.key ? -1 : entry.key),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 11),
-                          child: Row(children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(entry.value.key,
-                                      style: const TextStyle(
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: () => setState(
+                            () => _expandedIndex =
+                                _expandedIndex == entry.key ? -1 : entry.key,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 11),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        entry.value.key,
+                                        style: const TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w700,
-                                          color: AdvantaColors.deepForest)),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                      '${dFields.map((f) => f.qaFi).where((s) => s.isNotEmpty).toSet().length} FI · ${dFields.length} Lahan',
-                                      style: TextStyle(
+                                          color: AdvantaColors.deepForest,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${dFields.map((f) => f.qaFi).where((s) => s.isNotEmpty).toSet().length} FI · ${dFields.length} Lahan',
+                                        style: TextStyle(
                                           fontSize: 11,
-                                          color: Colors.grey[500])),
-                                ],
-                              ),
-                            ),
-                            SizedBox(
-                                width: 62,
-                                child: Column(
+                                          color: Colors.grey[500],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 62,
+                                  child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
-                                      Text('${score.toStringAsFixed(0)}%',
-                                          style: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w800,
-                                              color: color)),
+                                      Text(
+                                        '${score.toStringAsFixed(0)}%',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                          color: color,
+                                        ),
+                                      ),
                                       const SizedBox(height: 3),
                                       ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(3),
-                                          child: LinearProgressIndicator(
-                                              value: score / 100,
-                                              minHeight: 4,
-                                              backgroundColor:
-                                                  color.withValues(alpha: 0.15),
-                                              valueColor:
-                                                  AlwaysStoppedAnimation<Color>(
-                                                      color))),
-                                    ])),
-                            const SizedBox(width: 4),
-                            AnimatedRotation(
-                                turns: isExpanded ? 0.5 : 0,
-                                duration: const Duration(milliseconds: 200),
-                                child: Icon(Icons.keyboard_arrow_down_rounded,
-                                    size: 18, color: Colors.grey[400])),
-                          ]),
+                                        borderRadius: BorderRadius.circular(3),
+                                        child: LinearProgressIndicator(
+                                          value: score / 100,
+                                          minHeight: 4,
+                                          backgroundColor: color.withValues(
+                                            alpha: 0.15,
+                                          ),
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                            color,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                AnimatedRotation(
+                                  turns: isExpanded ? 0.5 : 0,
+                                  duration: const Duration(milliseconds: 200),
+                                  child: Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    size: 18,
+                                    color: Colors.grey[400],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                      if (isExpanded) _buildVillageBreakdown(dFields),
-                    ]),
+                        if (isExpanded) _buildVillageBreakdown(dFields),
+                      ],
+                    ),
                   );
                 }).toList(),
               ),
@@ -4129,36 +4668,52 @@ class _CoverageStructureListSheetState
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
-          children: map.entries.map((e) {
-        final s = aggregateCoverageScore(e.value);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(2, 0, 0, 7),
-          child: Row(children: [
-            Container(
-                width: 4,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: Colors.grey[300], shape: BoxShape.circle)),
-            const SizedBox(width: 8),
-            Expanded(
-                child: Text(e.key,
+        children: map.entries.map((e) {
+          final s = aggregateCoverageScore(e.value);
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(2, 0, 0, 7),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    e.key,
                     style: const TextStyle(
-                        fontSize: 11, color: AdvantaColors.charcoal))),
-            Text('${e.value.length} field',
-                style: TextStyle(fontSize: 10, color: Colors.grey[500])),
-            const SizedBox(width: 10),
-            Text('${s.toStringAsFixed(0)}%',
-                style: TextStyle(
+                      fontSize: 11,
+                      color: AdvantaColors.charcoal,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${e.value.length} field',
+                  style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  '${s.toStringAsFixed(0)}%',
+                  style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                     color: s >= 85
                         ? AdvantaColors.success
                         : s >= 60
                             ? const Color(0xFFD4A017)
-                            : AdvantaColors.error)),
-          ]),
-        );
-      }).toList()),
+                            : AdvantaColors.error,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 }
@@ -4172,11 +4727,12 @@ class _VillageCard extends StatelessWidget {
   final List<FieldCoverageStatus> fields;
   final bool isExpanded;
   final VoidCallback onTap;
-  const _VillageCard(
-      {required this.villageName,
-      required this.fields,
-      required this.isExpanded,
-      required this.onTap});
+  const _VillageCard({
+    required this.villageName,
+    required this.fields,
+    required this.isExpanded,
+    required this.onTap,
+  });
 
   void _showFieldList(BuildContext context) {
     showModalBottomSheet(
@@ -4195,9 +4751,9 @@ class _VillageCard extends StatelessWidget {
             minChildSize: 0.4,
             builder: (_, ctrl) => Container(
               decoration: const BoxDecoration(
-                  color: AdvantaColors.softGrey,
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(24))),
+                color: AdvantaColors.softGrey,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
               child: Column(
                 children: [
                   Padding(
@@ -4206,23 +4762,32 @@ class _VillageCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Center(
-                            child: Container(
-                                width: 40,
-                                height: 5,
-                                decoration: BoxDecoration(
-                                    color: Colors.grey[300],
-                                    borderRadius: BorderRadius.circular(4)))),
+                          child: Container(
+                            width: 40,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 16),
-                        Text('Fields — $villageName',
-                            style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: AdvantaColors.deepForest)),
+                        Text(
+                          'Fields — $villageName',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AdvantaColors.deepForest,
+                          ),
+                        ),
                         const SizedBox(height: 4),
                         Text(
-                            '${fields.length} field · ${fields.where((f) => f.isOverdue).length} overdue',
-                            style: TextStyle(
-                                fontSize: 13, color: Colors.grey[500])),
+                          '${fields.length} field · ${fields.where((f) => f.isOverdue).length} overdue',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[500],
+                          ),
+                        ),
                         const SizedBox(height: 12),
                       ],
                     ),
@@ -4231,7 +4796,9 @@ class _VillageCard extends StatelessWidget {
                     child: ListView.separated(
                       controller: ctrl,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       itemCount: fields.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (_, i) {
@@ -4264,69 +4831,80 @@ class _VillageCard extends StatelessWidget {
                               border: Border.all(color: Colors.grey[200]!),
                               boxShadow: [
                                 BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.03),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2))
+                                  color: Colors.black.withValues(alpha: 0.03),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
                               ],
                             ),
                             child: Row(
                               children: [
                                 Container(
-                                    width: 10,
-                                    height: 10,
-                                    decoration: BoxDecoration(
-                                        color: leadColor,
-                                        shape: BoxShape.circle)),
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: leadColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(f.fieldNumber,
-                                          style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w700,
-                                              color: AdvantaColors.deepForest)),
+                                      Text(
+                                        f.fieldNumber,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: AdvantaColors.deepForest,
+                                        ),
+                                      ),
                                       const SizedBox(height: 2),
                                       if (f.farmerName.isNotEmpty ||
                                           f.hybrid.isNotEmpty)
                                         Text(
                                           [f.farmerName, f.hybrid]
                                               .where(
-                                                  (value) => value.isNotEmpty)
+                                                (value) => value.isNotEmpty,
+                                              )
                                               .join(' · '),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: Colors.grey[700]),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.grey[700],
+                                          ),
                                         ),
                                       Text(
                                         '${f.activePhaseLabel} - DAP ${f.dap}${f.isOverdue ? ' - Overdue' : ''}',
                                         style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500,
-                                            color: f.isOverdue
-                                                ? AdvantaColors.error
-                                                : Colors.grey[500]),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: f.isOverdue
+                                              ? AdvantaColors.error
+                                              : Colors.grey[500],
+                                        ),
                                       ),
                                       if (f.latestAuditDate != null)
                                         Text(
                                           'Last audit ${f.latestAuditDate}${f.latestAuditWeek == null ? '' : ' - ${f.latestAuditWeek}'}',
                                           style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w700,
-                                              color: Colors.grey[500]),
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.grey[500],
+                                          ),
                                         ),
                                       if (f.hasActionRequired)
                                         Text(
                                           'Action ${f.actionPhase}-${f.actionCode}',
                                           style: const TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w800,
-                                              color: AdvantaColors.gold),
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800,
+                                            color: AdvantaColors.gold,
+                                          ),
                                         ),
                                     ],
                                   ),
@@ -4334,23 +4912,35 @@ class _VillageCard extends StatelessWidget {
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    Text('${score.toStringAsFixed(0)}%',
-                                        style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w800,
-                                            color: sc)),
+                                    Text(
+                                      '${score.toStringAsFixed(0)}%',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: sc,
+                                      ),
+                                    ),
                                     const SizedBox(height: 4),
-                                    Row(children: [
-                                      _PhaseDot(
-                                          done: f.vegetativeDone, label: 'V'),
-                                      _PhaseDot(
+                                    Row(
+                                      children: [
+                                        _PhaseDot(
+                                          done: f.vegetativeDone,
+                                          label: 'V',
+                                        ),
+                                        _PhaseDot(
                                           done: f.anyGenerativeDone,
-                                          label: 'G'),
-                                      _PhaseDot(
-                                          done: f.preHarvestDone, label: 'P'),
-                                      _PhaseDot(
-                                          done: f.harvestDone, label: 'H'),
-                                    ]),
+                                          label: 'G',
+                                        ),
+                                        _PhaseDot(
+                                          done: f.preHarvestDone,
+                                          label: 'P',
+                                        ),
+                                        _PhaseDot(
+                                          done: f.harvestDone,
+                                          label: 'H',
+                                        ),
+                                      ],
+                                    ),
                                   ],
                                 ),
                               ],
@@ -4388,25 +4978,26 @@ class _VillageCard extends StatelessWidget {
       AdvantaColors.midGreen,
       AdvantaColors.gold,
       AdvantaColors.error,
-      AdvantaColors.lightGreen
+      AdvantaColors.lightGreen,
     ];
     final avatarColor =
         avatarColors[villageName.hashCode.abs() % avatarColors.length];
 
     return Container(
       decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: isExpanded
-              ? Border.all(
-                  color: AdvantaColors.deepForest.withValues(alpha: 0.3))
-              : null,
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 6,
-                offset: const Offset(0, 2))
-          ]),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: isExpanded
+            ? Border.all(color: AdvantaColors.deepForest.withValues(alpha: 0.3))
+            : null,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Column(
         children: [
           GestureDetector(
@@ -4416,46 +5007,66 @@ class _VillageCard extends StatelessWidget {
               child: Row(
                 children: [
                   Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                          color: avatarColor,
-                          borderRadius: BorderRadius.circular(12)),
-                      child: Center(
-                          child: Text(letter,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 16)))),
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: avatarColor,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Text(
+                        letter,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        Text(villageName,
-                            style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                                color: AdvantaColors.deepForest)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                            [
-                              if (subDistrict.isNotEmpty) subDistrict,
-                              if (district.isNotEmpty) district
-                            ].join(', '),
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey[500]))
-                      ])),
-                  Text('${score.toStringAsFixed(0)}%',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: scoreColor)),
+                          villageName,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: AdvantaColors.deepForest,
+                          ),
+                        ),
+                        Text(
+                          [
+                            if (subDistrict.isNotEmpty) subDistrict,
+                            if (district.isNotEmpty) district,
+                          ].join(', '),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    '${score.toStringAsFixed(0)}%',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: scoreColor,
+                    ),
+                  ),
                   const SizedBox(width: 6),
                   AnimatedRotation(
-                      turns: isExpanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 200),
-                      child: Icon(Icons.keyboard_arrow_down_rounded,
-                          color: Colors.grey[400])),
+                    turns: isExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: Colors.grey[400],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -4465,44 +5076,64 @@ class _VillageCard extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                    child: Wrap(spacing: 10, runSpacing: 5, children: [
-                  _MicroStat(
-                      label: _formatHa(totalArea),
-                      icon: Icons.landscape_rounded,
-                      color: AdvantaColors.mutedGrey),
-                  _MicroStat(
-                      label: '${fields.length} FN',
-                      icon: Icons.grid_view_rounded,
-                      color: AdvantaColors.lightGreen),
-                  _MicroStat(
-                      label: 'Overdue $overdueCount',
-                      icon: Icons.warning_amber_rounded,
-                      color:
-                          overdueCount > 0 ? AdvantaColors.error : Colors.grey),
-                ])),
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 5,
+                    children: [
+                      _MicroStat(
+                        label: _formatHa(totalArea),
+                        icon: Icons.landscape_rounded,
+                        color: AdvantaColors.mutedGrey,
+                      ),
+                      _MicroStat(
+                        label: '${fields.length} FN',
+                        icon: Icons.grid_view_rounded,
+                        color: AdvantaColors.lightGreen,
+                      ),
+                      _MicroStat(
+                        label: 'Overdue $overdueCount',
+                        icon: Icons.warning_amber_rounded,
+                        color: overdueCount > 0
+                            ? AdvantaColors.error
+                            : Colors.grey,
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(width: 6),
                 GestureDetector(
-                    onTap: () => _showFieldList(context),
-                    child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                            color: AdvantaColors.paleGreen,
-                            borderRadius: BorderRadius.circular(10)),
-                        child: const Text('View Fields',
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: AdvantaColors.deepForest)))),
+                  onTap: () => _showFieldList(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AdvantaColors.paleGreen,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'View Fields',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AdvantaColors.deepForest,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
           if (isExpanded) ...[
             Divider(height: 1, color: Colors.grey[100]),
-            ...fields.map((f) => _FieldMiniRow(
+            ...fields.map(
+              (f) => _FieldMiniRow(
                 field: f,
-                onTap: () => FieldDetailBottomSheet.show(context, f.raw))),
-            const SizedBox(height: 6)
+                onTap: () => FieldDetailBottomSheet.show(context, f.raw),
+              ),
+            ),
+            const SizedBox(height: 6),
           ],
         ],
       ),
@@ -4514,17 +5145,27 @@ class _MicroStat extends StatelessWidget {
   final String label;
   final IconData icon;
   final Color color;
-  const _MicroStat(
-      {required this.label, required this.icon, required this.color});
+  const _MicroStat({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
   @override
-  Widget build(BuildContext context) =>
-      Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 12, color: color),
-        const SizedBox(width: 4),
-        Text(label,
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
             style: TextStyle(
-                fontSize: 11, color: color, fontWeight: FontWeight.w600))
-      ]);
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      );
 }
 
 class _FieldMiniRow extends StatelessWidget {
@@ -4548,59 +5189,80 @@ class _FieldMiniRow extends StatelessWidget {
         child: Row(
           children: [
             Container(
-                width: 6,
-                height: 24,
-                decoration: BoxDecoration(
-                    color: dotColor, borderRadius: BorderRadius.circular(999))),
+              width: 6,
+              height: 24,
+              decoration: BoxDecoration(
+                color: dotColor,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(field.fieldNumber,
-                        style: const TextStyle(
-                            fontSize: 12,
-                            color: AdvantaColors.charcoal,
-                            fontWeight: FontWeight.w700)),
-                    if (field.farmerName.isNotEmpty || field.hybrid.isNotEmpty)
-                      Text(
-                          [field.farmerName, field.hybrid]
-                              .where((value) => value.isNotEmpty)
-                              .join(' · '),
-                          style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey[700],
-                              fontWeight: FontWeight.w700),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    field.fieldNumber,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AdvantaColors.charcoal,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (field.farmerName.isNotEmpty || field.hybrid.isNotEmpty)
                     Text(
-                        '${field.activePhaseLabel} - ${field.activePhaseBadge}${field.latestAuditDate == null ? '' : ' - ${field.latestAuditDate}'}',
-                        style: TextStyle(
-                            fontSize: 9,
-                            color: Colors.grey[500],
-                            fontWeight: FontWeight.w600)),
-                  ]),
-            ),
-            Row(children: [
-              _PhaseDot(
-                done: field.vegetativeDone,
-                partial: field.isPsp &&
-                    !field.vegetativeDone &&
-                    field.vegetativeAuditDoneCount > 0,
-                label: 'V',
+                      [
+                        field.farmerName,
+                        field.hybrid,
+                      ].where((value) => value.isNotEmpty).join(' · '),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  Text(
+                    '${field.activePhaseLabel} - ${field.activePhaseBadge}${field.latestAuditDate == null ? '' : ' - ${field.latestAuditDate}'}',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: Colors.grey[500],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-              _PhaseDot(done: field.anyGenerativeDone, label: 'G'),
-              _PhaseDot(done: field.preHarvestDone, label: 'P'),
-              _PhaseDot(done: field.harvestDone, label: 'H')
-            ]),
+            ),
+            Row(
+              children: [
+                _PhaseDot(
+                  done: field.vegetativeDone,
+                  partial: field.isPsp &&
+                      !field.vegetativeDone &&
+                      field.vegetativeAuditDoneCount > 0,
+                  label: 'V',
+                ),
+                _PhaseDot(done: field.anyGenerativeDone, label: 'G'),
+                _PhaseDot(done: field.preHarvestDone, label: 'P'),
+                _PhaseDot(done: field.harvestDone, label: 'H'),
+              ],
+            ),
             const SizedBox(width: 10),
-            Text('DAP ${field.dap}',
-                style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey[400],
-                    fontWeight: FontWeight.w500)),
+            Text(
+              'DAP ${field.dap}',
+              style: TextStyle(
+                fontSize: 10,
+                color: Colors.grey[400],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
             const SizedBox(width: 4),
-            Icon(Icons.chevron_right_rounded, size: 14, color: Colors.grey[300])
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 14,
+              color: Colors.grey[300],
+            ),
           ],
         ),
       ),
@@ -4686,17 +5348,18 @@ class _OpenRouteButton extends StatelessWidget {
             Icon(Icons.route_rounded, color: Colors.white, size: 22),
             SizedBox(width: 10),
             Expanded(
-                child: Text(
-              'Rekomendasi Rute (Smart Route)',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.3,
+              child: Text(
+                'Rekomendasi Rute (Smart Route)',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
               ),
-            )),
+            ),
           ],
         ),
       ),
@@ -4852,9 +5515,10 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: f.isOverdue
-                ? AdvantaColors.error.withValues(alpha: 0.2)
-                : Colors.grey[200]!),
+          color: f.isOverdue
+              ? AdvantaColors.error.withValues(alpha: 0.2)
+              : Colors.grey[200]!,
+        ),
       ),
       child: Row(
         children: [
@@ -4862,11 +5526,18 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
             width: 32,
             height: 32,
             decoration: const BoxDecoration(
-                color: AdvantaColors.deepForest, shape: BoxShape.circle),
+              color: AdvantaColors.deepForest,
+              shape: BoxShape.circle,
+            ),
             child: Center(
-                child: Text('${index + 1}',
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w800))),
+              child: Text(
+                '${index + 1}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -4877,9 +5548,10 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
                 Text(
                   f.fieldNumber,
                   style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AdvantaColors.deepForest),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AdvantaColors.deepForest,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -4898,9 +5570,10 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
             child: Text(
               farmerName,
               style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: AdvantaColors.deepForest),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AdvantaColors.deepForest,
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -4909,23 +5582,32 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(distanceLabel,
-                  style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AdvantaColors.deepForest)),
+              Text(
+                distanceLabel,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AdvantaColors.deepForest,
+                ),
+              ),
               if (f.isOverdue)
-                const Text('OVERDUE',
-                    style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        color: AdvantaColors.error)),
+                const Text(
+                  'OVERDUE',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    color: AdvantaColors.error,
+                  ),
+                ),
               if (!f.isOverdue && f.hasActionRequired)
-                Text('ACT ${f.actionCode}',
-                    style: const TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        color: AdvantaColors.gold)),
+                Text(
+                  'ACT ${f.actionCode}',
+                  style: const TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    color: AdvantaColors.gold,
+                  ),
+                ),
             ],
           ),
         ],
@@ -4945,7 +5627,9 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
           width: 48,
           height: 5,
           decoration: BoxDecoration(
-              color: Colors.grey[300], borderRadius: BorderRadius.circular(4)),
+            color: Colors.grey[300],
+            borderRadius: BorderRadius.circular(4),
+          ),
         ),
       ),
     );
@@ -4962,24 +5646,32 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                    color: AdvantaColors.paleGreen,
-                    borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.assistant_direction_rounded,
-                    color: AdvantaColors.deepForest),
+                  color: AdvantaColors.paleGreen,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.assistant_direction_rounded,
+                  color: AdvantaColors.deepForest,
+                ),
               ),
               const SizedBox(width: 12),
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Rekomendasi Rute Harian',
-                        style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: AdvantaColors.deepForest)),
+                    Text(
+                      'Rekomendasi Rute Harian',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AdvantaColors.deepForest,
+                      ),
+                    ),
                     SizedBox(height: 2),
-                    Text('Prioritas: Overdue & Jarak Terdekat',
-                        style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    Text(
+                      'Prioritas: Overdue & Jarak Terdekat',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
                   ],
                 ),
               ),
@@ -4993,18 +5685,25 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () => _openMultiStopMaps(context, recommendedRoute),
-                icon: const Icon(Icons.map_rounded,
-                    color: Colors.white, size: 20),
-                label:
-                    Text('Mulai Perjalanan (${recommendedRoute.length} Titik)'),
+                icon: const Icon(
+                  Icons.map_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                label: Text(
+                  'Mulai Perjalanan (${recommendedRoute.length} Titik)',
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AdvantaColors.success,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   textStyle: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
@@ -5024,17 +5723,20 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
           children: [
             Icon(Icons.check_circle, color: AdvantaColors.success, size: 56),
             SizedBox(height: 16),
-            Text('Luar biasa!',
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AdvantaColors.deepForest)),
+            Text(
+              'Luar biasa!',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AdvantaColors.deepForest,
+              ),
+            ),
             SizedBox(height: 8),
             Text(
-                'Semua lahan prioritas sudah diaudit atau tidak ada lahan tertunda yang memiliki koordinat GPS valid.',
-                textAlign: TextAlign.center,
-                style:
-                    TextStyle(color: Colors.grey, fontSize: 13, height: 1.5)),
+              'Semua lahan prioritas sudah diaudit atau tidak ada lahan tertunda yang memiliki koordinat GPS valid.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 13, height: 1.5),
+            ),
           ],
         ),
       ),
@@ -5043,7 +5745,9 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
 
   // LOGIKA MULTI-STOP GOOGLE MAPS
   Future<void> _openMultiStopMaps(
-      BuildContext context, List<FieldCoverageStatus> routeFields) async {
+    BuildContext context,
+    List<FieldCoverageStatus> routeFields,
+  ) async {
     final coords = <String>[];
 
     // Kumpulkan koordinat yang valid
@@ -5062,8 +5766,11 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
     }
 
     if (coords.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Tidak ada koordinat valid pada rute ini.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tidak ada koordinat valid pada rute ini.'),
+        ),
+      );
       return;
     }
 
@@ -5083,7 +5790,8 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
     } else {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Gagal membuka Google Maps.')));
+          const SnackBar(content: Text('Gagal membuka Google Maps.')),
+        );
       }
     }
   }
@@ -5094,25 +5802,34 @@ class _CoverageErrorWidget extends StatelessWidget {
   const _CoverageErrorWidget({required this.error});
   @override
   Widget build(BuildContext context) => Scaffold(
-      backgroundColor: AdvantaColors.softGrey,
-      body: Center(
+        backgroundColor: AdvantaColors.softGrey,
+        body: Center(
           child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline_rounded,
-                        size: 56, color: AdvantaColors.error),
-                    const SizedBox(height: 16),
-                    const Text('Gagal memuat data',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 8),
-                    Text(error,
-                        style:
-                            const TextStyle(fontSize: 12, color: Colors.grey),
-                        textAlign: TextAlign.center)
-                  ]))));
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline_rounded,
+                  size: 56,
+                  color: AdvantaColors.error,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Gagal memuat data',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  error,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 class _SkeletonLoader extends StatefulWidget {
@@ -5137,10 +5854,13 @@ class _SkeletonLoaderState extends State<_SkeletonLoader>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1400))
-      ..repeat();
-    _anim = Tween<double>(begin: -1.5, end: 2.5)
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
+    _anim = Tween<double>(
+      begin: -1.5,
+      end: 2.5,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -5151,148 +5871,203 @@ class _SkeletonLoaderState extends State<_SkeletonLoader>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-      backgroundColor: AdvantaColors.softGrey,
-      body: AnimatedBuilder(
+        backgroundColor: AdvantaColors.softGrey,
+        body: AnimatedBuilder(
           animation: _anim,
           builder: (_, __) => CustomScrollView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  slivers: [
-                    SliverToBoxAdapter(child: _loadingHeader(context)),
-                    SliverToBoxAdapter(
-                        child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
-                            child: AdvantaLoadingState(
-                                title: widget.title,
-                                subtitle: widget.subtitle,
-                                icon: widget.icon,
-                                accentColor: AdvantaColors.primaryGreen,
-                                padding: EdgeInsets.zero))),
-                    const SliverToBoxAdapter(
-                        child: Padding(
-                            padding: EdgeInsets.fromLTRB(18, 0, 18, 10),
-                            child: Text('MENYIAPKAN RINGKASAN',
-                                style: TextStyle(
-                                    color: AdvantaColors.mutedGrey,
-                                    fontSize: 10,
-                                    letterSpacing: 1.1,
-                                    fontWeight: FontWeight.w800)))),
-                    SliverToBoxAdapter(
-                        child: SizedBox(
-                            height: 92,
-                            child: ListView.separated(
-                                physics: const NeverScrollableScrollPhysics(),
-                                scrollDirection: Axis.horizontal,
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 16),
-                                itemCount: 3,
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(width: 10),
-                                itemBuilder: (_, index) => SizedBox(
-                                    width: 116,
-                                    child: _shimmerBox(height: 92))))),
-                    const SliverToBoxAdapter(child: SizedBox(height: 18)),
-                    SliverToBoxAdapter(
-                        child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: _shimmerBox(height: 124))),
-                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                    SliverToBoxAdapter(
-                        child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: _shimmerBox(height: 190))),
-                  ])));
+            physics: const NeverScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(child: _loadingHeader(context)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+                  child: AdvantaLoadingState(
+                    title: widget.title,
+                    subtitle: widget.subtitle,
+                    icon: widget.icon,
+                    accentColor: AdvantaColors.primaryGreen,
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(18, 0, 18, 10),
+                  child: Text(
+                    'MENYIAPKAN RINGKASAN',
+                    style: TextStyle(
+                      color: AdvantaColors.mutedGrey,
+                      fontSize: 10,
+                      letterSpacing: 1.1,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 92,
+                  child: ListView.separated(
+                    physics: const NeverScrollableScrollPhysics(),
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: 3,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (_, index) =>
+                        SizedBox(width: 116, child: _shimmerBox(height: 92)),
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 18)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _shimmerBox(height: 124),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _shimmerBox(height: 190),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 
   Widget _loadingHeader(BuildContext context) => Container(
-      decoration: const BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [AdvantaColors.deepForest, AdvantaColors.primaryGreen])),
-      child: SafeArea(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AdvantaColors.deepForest, AdvantaColors.primaryGreen],
+          ),
+        ),
+        child: SafeArea(
           bottom: false,
           child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 10, 18, 22),
-              child: Row(children: [
+            padding: const EdgeInsets.fromLTRB(8, 10, 18, 22),
+            child: Row(
+              children: [
                 IconButton(
-                    tooltip: 'Kembali',
-                    onPressed: () => Navigator.maybePop(context),
-                    icon: const Icon(Icons.arrow_back_rounded,
-                        color: Colors.white)),
+                  tooltip: 'Kembali',
+                  onPressed: () => Navigator.maybePop(context),
+                  icon:
+                      const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                ),
                 const SizedBox(width: 4),
                 const Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                      Text('Coverage Monitoring',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Coverage Monitoring',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                       SizedBox(height: 3),
-                      Text('Sinkronisasi data audit lapangan',
-                          style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600))
-                    ])),
+                      Text(
+                        'Sinkronisasi data audit lapangan',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: .12),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                            color: Colors.white.withValues(alpha: .2))),
-                    child: const Icon(Icons.monitor_heart_rounded,
-                        color: AdvantaColors.goldLight, size: 20))
-              ]))));
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .12),
+                    shape: BoxShape.circle,
+                    border:
+                        Border.all(color: Colors.white.withValues(alpha: .2)),
+                  ),
+                  child: const Icon(
+                    Icons.monitor_heart_rounded,
+                    color: AdvantaColors.goldLight,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 
   Widget _shimmerBox({required double height}) {
     final pulse = (math.sin(_ctrl.value * math.pi * 2) + 1) / 2;
     return Container(
-        height: height,
-        decoration: BoxDecoration(
-            color: Color.lerp(Colors.white, AdvantaColors.paleGreen, pulse),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-                color: AdvantaColors.primaryGreen
-                    .withValues(alpha: .08 + (pulse * .07))),
-            boxShadow: [
-              BoxShadow(
-                  color: AdvantaColors.deepForest
-                      .withValues(alpha: .035 + (pulse * .025)),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8))
-            ]),
-        child: Padding(
-            padding: const EdgeInsets.all(14),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Container(
-                  width: 34,
-                  height: 10,
-                  decoration: BoxDecoration(
-                      color: AdvantaColors.primaryGreen
-                          .withValues(alpha: .10 + (pulse * .08)),
-                      borderRadius: BorderRadius.circular(20))),
-              const Spacer(),
-              Container(
-                  width: double.infinity,
-                  height: 8,
-                  decoration: BoxDecoration(
-                      color: AdvantaColors.deepForest
-                          .withValues(alpha: .05 + (pulse * .04)),
-                      borderRadius: BorderRadius.circular(20))),
-              const SizedBox(height: 7),
-              FractionallySizedBox(
-                  widthFactor: .62,
-                  child: Container(
-                      height: 8,
-                      decoration: BoxDecoration(
-                          color: AdvantaColors.deepForest
-                              .withValues(alpha: .04 + (pulse * .035)),
-                          borderRadius: BorderRadius.circular(20))))
-            ])));
+      height: height,
+      decoration: BoxDecoration(
+        color: Color.lerp(Colors.white, AdvantaColors.paleGreen, pulse),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AdvantaColors.primaryGreen.withValues(
+            alpha: .08 + (pulse * .07),
+          ),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AdvantaColors.deepForest.withValues(
+              alpha: .035 + (pulse * .025),
+            ),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 34,
+              height: 10,
+              decoration: BoxDecoration(
+                color: AdvantaColors.primaryGreen.withValues(
+                  alpha: .10 + (pulse * .08),
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            const Spacer(),
+            Container(
+              width: double.infinity,
+              height: 8,
+              decoration: BoxDecoration(
+                color: AdvantaColors.deepForest.withValues(
+                  alpha: .05 + (pulse * .04),
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            const SizedBox(height: 7),
+            FractionallySizedBox(
+              widthFactor: .62,
+              child: Container(
+                height: 8,
+                decoration: BoxDecoration(
+                  color: AdvantaColors.deepForest.withValues(
+                    alpha: .04 + (pulse * .035),
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -5316,85 +6091,120 @@ class _WeeklyCoverageControls extends ConsumerWidget {
     final filters = ref.watch(auditDashboardFilterProvider);
     final notifier = ref.read(auditDashboardFilterProvider.notifier);
     return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AdvantaColors.dividerGrey)),
-              child: Row(children: [
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AdvantaColors.dividerGrey),
+            ),
+            child: Row(
+              children: [
                 for (final mode in CoverageDisplayMode.values)
                   Expanded(
-                      child: ChoiceChip(
-                    label: SizedBox(
+                    child: ChoiceChip(
+                      label: SizedBox(
                         width: double.infinity,
                         child: Text(
-                            mode == CoverageDisplayMode.allCoverage
-                                ? 'All Coverage'
-                                : 'Target Audit',
-                            textAlign: TextAlign.center)),
-                    selected: filters.coverageMode == mode,
-                    showCheckmark: false,
-                    selectedColor: AdvantaColors.gold,
-                    side: BorderSide.none,
-                    onSelected: (_) => notifier.setCoverageMode(mode),
-                  )),
-              ])),
+                          mode == CoverageDisplayMode.allCoverage
+                              ? 'All Coverage'
+                              : 'Target Audit',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      selected: filters.coverageMode == mode,
+                      showCheckmark: false,
+                      selectedColor: AdvantaColors.gold,
+                      side: BorderSide.none,
+                      onSelected: (_) => notifier.setCoverageMode(mode),
+                    ),
+                  ),
+              ],
+            ),
+          ),
           const SizedBox(height: 8),
           Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                AuditWeekFilter(
-                    selectedWeeks: filters.weeks,
-                    allWeeks: filters.allWeeks,
-                    allLabel: 'All Weeks',
-                    allDescription:
-                        'Seluruh histori sampai week aktif; 1 week ke depan tersedia untuk planning',
-                    earliestWeek: earliestWeek,
-                    onChanged: (weeks, all) {
-                      final selected =
-                          all ? auditAllWeeksRange(filters.primaryWeek) : weeks;
-                      notifier.setWeeks(selected, all: all);
-                    }),
-                AuditFlagFilter(
-                    selected: filters.flags, onChanged: notifier.setFlags),
-                TextButton.icon(
-                    icon: const Icon(Icons.event_note_rounded, size: 18),
-                    label: const Text('Planning Semua Fase'),
-                    onPressed: () => context.push(
-                        '/audit-planning?weekStart=${Uri.encodeComponent(filters.primaryWeek.toIso8601String())}')),
-              ]),
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              AuditWeekFilter(
+                selectedWeeks: filters.weeks,
+                allWeeks: filters.allWeeks,
+                allLabel: 'All Weeks',
+                allDescription:
+                    'Seluruh histori sampai week aktif; 1 week ke depan tersedia untuk planning',
+                earliestWeek: earliestWeek,
+                onChanged: (weeks, all) {
+                  final selected =
+                      all ? auditAllWeeksRange(filters.primaryWeek) : weeks;
+                  notifier.setWeeks(selected, all: all);
+                },
+              ),
+              AuditFlagFilter(
+                selected: filters.flags,
+                onChanged: notifier.setFlags,
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.event_note_rounded, size: 18),
+                label: const Text('Planning Semua Fase'),
+                onPressed: () => context.push(
+                  '/audit-planning?weekStart=${Uri.encodeComponent(filters.primaryWeek.toIso8601String())}',
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 6),
           Text(
-              'Overdue berarti batas target sudah lewat dan fasenya belum diaudit sampai hari ini. Audit yang masuk terlambat otomatis mengubah target lama menjadi Done.',
-              style: TextStyle(
-                  fontSize: 11, height: 1.35, color: AdvantaColors.mutedGrey)),
-        ]));
+            'Overdue berarti batas target sudah lewat dan fasenya belum diaudit sampai hari ini. Audit yang masuk terlambat otomatis mengubah target lama menjadi Done.',
+            style: TextStyle(
+              fontSize: 11,
+              height: 1.35,
+              color: AdvantaColors.mutedGrey,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
 void _showWeeklyFields(
-    BuildContext context, String title, List<WeeklyAuditField> fields,
-    {VoidCallback? onChanged}) {
+  BuildContext context,
+  String title,
+  List<WeeklyAuditField> fields, {
+  VoidCallback? onChanged,
+  String? targetStage,
+}) {
   showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _WeeklyFieldSelectionSheet(
-          title: title, fields: fields, onChanged: onChanged));
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (_) => _WeeklyFieldSelectionSheet(
+      title: title,
+      fields: fields,
+      onChanged: onChanged,
+      targetStage: targetStage,
+    ),
+  );
 }
 
 class _WeeklyFieldSelectionSheet extends StatefulWidget {
   final String title;
   final List<WeeklyAuditField> fields;
   final VoidCallback? onChanged;
+  final String? targetStage;
 
-  const _WeeklyFieldSelectionSheet(
-      {required this.title, required this.fields, this.onChanged});
+  const _WeeklyFieldSelectionSheet({
+    required this.title,
+    required this.fields,
+    this.onChanged,
+    this.targetStage,
+  });
 
   @override
   State<_WeeklyFieldSelectionSheet> createState() =>
@@ -5407,10 +6217,20 @@ class _WeeklyFieldSelectionSheetState
   String _status = 'All';
   String _search = '';
 
+  bool _done(WeeklyAuditField field) => widget.targetStage == null
+      ? field.done
+      : field.isStageDone(widget.targetStage!);
+
+  bool _overdue(WeeklyAuditField field) => widget.targetStage == null
+      ? field.overdue
+      : field.isStageOverdue(widget.targetStage!);
+
+  bool _pending(WeeklyAuditField field) => !_done(field) && !_overdue(field);
+
   List<WeeklyAuditField> get _visible => widget.fields.where((field) {
-        if (_status == 'Pending' && field.done) return false;
-        if (_status == 'Completed' && !field.done) return false;
-        if (_status == 'Overdue' && !field.overdue) return false;
+        if (_status == 'Pending' && !_pending(field)) return false;
+        if (_status == 'Completed' && !_done(field)) return false;
+        if (_status == 'Overdue' && !_overdue(field)) return false;
         if (_search.isEmpty) return true;
         final haystack = [
           field.raw['field_number'],
@@ -5428,115 +6248,160 @@ class _WeeklyFieldSelectionSheetState
   Widget build(BuildContext context) {
     final visible = _visible;
     return SizedBox(
-        height: MediaQuery.sizeOf(context).height * .82,
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      height: MediaQuery.sizeOf(context).height * .82,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${widget.title} · ${widget.fields.length} FN',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  onChanged: (value) =>
+                      setState(() => _search = value.trim().toLowerCase()),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    prefixIcon: Icon(Icons.search_rounded),
+                    hintText: 'Cari FN, petani, desa, atau FI',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: ['All', 'Pending', 'Completed', 'Overdue']
+                        .map(
+                          (status) => Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text(status),
+                              selected: _status == status,
+                              onSelected: (_) =>
+                                  setState(() => _status = status),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
                   children: [
-                    Text('${widget.title} · ${widget.fields.length} FN',
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 10),
-                    TextField(
-                        onChanged: (value) => setState(
-                            () => _search = value.trim().toLowerCase()),
-                        decoration: const InputDecoration(
-                            isDense: true,
-                            prefixIcon: Icon(Icons.search_rounded),
-                            hintText: 'Cari FN, petani, desa, atau FI')),
-                    const SizedBox(height: 8),
-                    SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                            children: ['All', 'Pending', 'Completed', 'Overdue']
-                                .map((status) => Padding(
-                                    padding: const EdgeInsets.only(right: 6),
-                                    child: ChoiceChip(
-                                        label: Text(status),
-                                        selected: _status == status,
-                                        onSelected: (_) =>
-                                            setState(() => _status = status))))
-                                .toList())),
-                    Wrap(spacing: 8, runSpacing: 4, children: [
-                      TextButton(
-                          onPressed: visible.isEmpty
-                              ? null
-                              : () => setState(() => _selected.addAll(visible
-                                  .map(_number)
-                                  .where((value) => value.isNotEmpty))),
-                          child: Text('Select visible (${visible.length})')),
-                      TextButton(
-                          onPressed: widget.fields.isEmpty
-                              ? null
-                              : () => setState(() => _selected.addAll(widget
-                                  .fields
-                                  .map(_number)
-                                  .where((value) => value.isNotEmpty))),
-                          child: Text(
-                              'Select all target (${widget.fields.length})')),
-                      if (_selected.isNotEmpty)
-                        TextButton(
-                            onPressed: () => setState(_selected.clear),
-                            child: const Text('Clear')),
-                    ]),
+                    TextButton(
+                      onPressed: visible.isEmpty
+                          ? null
+                          : () => setState(
+                                () => _selected.addAll(
+                                  visible
+                                      .map(_number)
+                                      .where((value) => value.isNotEmpty),
+                                ),
+                              ),
+                      child: Text('Select visible (${visible.length})'),
+                    ),
+                    TextButton(
+                      onPressed: widget.fields.isEmpty
+                          ? null
+                          : () => setState(
+                                () => _selected.addAll(
+                                  widget.fields
+                                      .map(_number)
+                                      .where((value) => value.isNotEmpty),
+                                ),
+                              ),
+                      child: Text(
+                        'Select all target (${widget.fields.length})',
+                      ),
+                    ),
                     if (_selected.isNotEmpty)
-                      Row(children: [
-                        Expanded(
-                            child: Text('${_selected.length} FN selected',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w900))),
-                        FilledButton.icon(
-                            onPressed: _startMassInspection,
-                            icon:
-                                const Icon(Icons.play_arrow_rounded, size: 18),
-                            label: const Text('Mass Inspection')),
-                      ])
-                  ])),
+                      TextButton(
+                        onPressed: () => setState(_selected.clear),
+                        child: const Text('Clear'),
+                      ),
+                  ],
+                ),
+                if (_selected.isNotEmpty)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${_selected.length} FN selected',
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _startMassInspection,
+                        icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                        label: const Text('Mass Inspection'),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
           const Divider(height: 1),
           if (visible.isEmpty)
             const Expanded(
-                child: Center(child: Text('Tidak ada FN untuk filter ini.')))
+              child: Center(child: Text('Tidak ada FN untuk filter ini.')),
+            )
           else
             Expanded(
-                child: ListView.builder(
-                    itemCount: visible.length,
-                    itemBuilder: (_, index) {
-                      final field = visible[index];
-                      final number = _number(field);
-                      final fi = field.raw['qa_fi']?.toString().trim() ?? '';
-                      final farmer =
-                          field.raw['farmer_name']?.toString().trim() ?? '';
-                      final hybrid =
-                          field.raw['hybrid']?.toString().trim() ?? '';
-                      return CheckboxListTile(
-                          value: _selected.contains(number),
-                          onChanged: (checked) => setState(() {
-                                checked == true
-                                    ? _selected.add(number)
-                                    : _selected.remove(number);
-                              }),
-                          title: Text([
-                            number,
-                            if (farmer.isNotEmpty) farmer,
-                            if (hybrid.isNotEmpty) hybrid,
-                          ].join(' · ')),
-                          subtitle: Text(
-                              '${field.village} · ${fi.isEmpty ? 'Unmapped / Need Mapping' : fi}\n${auditWorkload(field.areaHa, 1)} · ${field.flag} · ${field.done ? 'Completed' : field.overdue ? 'Overdue' : 'Pending'}'),
-                          isThreeLine: true,
-                          secondary: IconButton(
-                              tooltip: 'Detail dan single inspection',
-                              icon: const Icon(Icons.chevron_right),
-                              onPressed: () => FieldDetailBottomSheet.show(
-                                  context, field.raw,
-                                  dapReferenceDate: field.weekStart
-                                      .add(const Duration(days: 6)),
-                                  onInspectDone: (_) =>
-                                      widget.onChanged?.call())));
-                    })),
-        ]));
+              child: ListView.builder(
+                itemCount: visible.length,
+                itemBuilder: (_, index) {
+                  final field = visible[index];
+                  final number = _number(field);
+                  final fi = field.raw['qa_fi']?.toString().trim() ?? '';
+                  final farmer =
+                      field.raw['farmer_name']?.toString().trim() ?? '';
+                  final hybrid = field.raw['hybrid']?.toString().trim() ?? '';
+                  return CheckboxListTile(
+                    value: _selected.contains(number),
+                    onChanged: (checked) => setState(() {
+                      checked == true
+                          ? _selected.add(number)
+                          : _selected.remove(number);
+                    }),
+                    title: Text(
+                      [
+                        number,
+                        if (farmer.isNotEmpty) farmer,
+                        if (hybrid.isNotEmpty) hybrid,
+                      ].join(' · '),
+                    ),
+                    subtitle: Text(
+                      '${field.village} · ${fi.isEmpty ? 'Unmapped / Need Mapping' : fi}\n${auditWorkload(field.areaHa, 1)} · ${field.flag} · ${_done(field) ? 'Completed' : _overdue(field) ? 'Overdue' : 'Pending'}',
+                    ),
+                    isThreeLine: true,
+                    secondary: IconButton(
+                      tooltip: 'Detail dan single inspection',
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: () => FieldDetailBottomSheet.show(
+                        context,
+                        field.raw,
+                        dapReferenceDate: field.weekStart.add(
+                          const Duration(days: 6),
+                        ),
+                        onInspectDone: (_) => widget.onChanged?.call(),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _startMassInspection() async {
@@ -5544,7 +6409,15 @@ class _WeeklyFieldSelectionSheetState
         .where((field) => _selected.contains(_number(field)))
         .toList(growable: false);
     final phases = selectedFields
-        .expand((field) => field.targets.map((target) => target.phase))
+        .expand(
+          (field) => field.targets
+              .where(
+                (target) =>
+                    widget.targetStage == null ||
+                    auditStage(target.phase) == widget.targetStage,
+              )
+              .map((target) => target.phase),
+        )
         .toSet()
         .toList()
       ..sort();
@@ -5558,19 +6431,33 @@ class _WeeklyFieldSelectionSheetState
         : await showModalBottomSheet<String>(
             context: context,
             builder: (context) => SafeArea(
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   const ListTile(
-                      title: Text('Pilih fase Mass Inspection',
-                          style: TextStyle(fontWeight: FontWeight.w900))),
-                  ...phases.map((phase) => ListTile(
+                    title: Text(
+                      'Pilih fase Mass Inspection',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  ...phases.map(
+                    (phase) => ListTile(
                       title: Text(phase.replaceAll('_', ' ').toUpperCase()),
-                      onTap: () => Navigator.pop(context, phase))),
-                ])));
+                      onTap: () => Navigator.pop(context, phase),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
     if (phase == null || !mounted) return;
-    await context.push('/inspect/mass', extra: {
-      'fieldNumbers': selectedFields.map(_number).toSet().toList(),
-      'phase': phase,
-    });
+    await context.push(
+      '/inspect/mass',
+      extra: {
+        'fieldNumbers': selectedFields.map(_number).toSet().toList(),
+        'phase': phase,
+      },
+    );
     widget.onChanged?.call();
   }
 }

@@ -5,14 +5,16 @@ import 'package:kroscek/screens/coverage/coverage_screen.dart';
 final week = DateTime(2026, 8, 24);
 final end = DateTime(2026, 8, 30);
 
-Map<String, dynamic> fieldAt(int dap,
-        {String id = 'F1',
-        String hybrid = 'FC',
-        double area = 10,
-        Map<String, dynamic>? veg,
-        Map<String, dynamic>? gen,
-        Map<String, dynamic>? ph,
-        Map<String, dynamic>? hv}) =>
+Map<String, dynamic> fieldAt(
+  int dap, {
+  String id = 'F1',
+  String hybrid = 'FC',
+  double area = 10,
+  Map<String, dynamic>? veg,
+  Map<String, dynamic>? gen,
+  Map<String, dynamic>? ph,
+  Map<String, dynamic>? hv,
+}) =>
     {
       'field_number': id,
       'hybrid': hybrid,
@@ -30,8 +32,11 @@ Map<String, dynamic> fieldAt(int dap,
       if (hv != null) 'audit_harvest': hv,
     };
 
-WeeklyAuditField project(Map<String, dynamic> raw,
-        {DateTime? now, DateTime? start}) =>
+WeeklyAuditField project(
+  Map<String, dynamic> raw, {
+  DateTime? now,
+  DateTime? start,
+}) =>
     WeeklyAuditField.fromRaw(raw, weekStart: start ?? week, now: now ?? end);
 
 void main() {
@@ -52,8 +57,9 @@ void main() {
     final oldRaw = {...fieldAt(210, id: 'OLD'), 'season': 'OLD-SEASON'};
     final nextRaw = {...fieldAt(0, id: 'NEXT'), 'season': 'NEW-SEASON'};
     final source = [oldRaw, nextRaw]
-        .map((raw) =>
-            FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end))
+        .map(
+          (raw) => FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end),
+        )
         .toList();
 
     final projected = projectCoverageWeeks(
@@ -69,7 +75,9 @@ void main() {
     expect(projected, hasLength(1));
     expect(projected.map((field) => field.fieldNumber), contains('OLD'));
     expect(
-        projected.map((field) => field.fieldNumber), isNot(contains('NEXT')));
+      projected.map((field) => field.fieldNumber),
+      isNot(contains('NEXT')),
+    );
     expect(projected.single.weekly.weekStart, week);
     expect(
       projected.single.weekly.targets.map((target) => target.phase).toSet(),
@@ -87,10 +95,7 @@ void main() {
 
   test('All Weeks keeps a large region bounded to one projection per FN', () {
     final source = List.generate(5000, (index) {
-      final raw = {
-        ...fieldAt(210, id: 'R5-$index'),
-        'season': 'REGION-5',
-      };
+      final raw = {...fieldAt(210, id: 'R5-$index'), 'season': 'REGION-5'};
       return FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end);
     });
 
@@ -104,8 +109,10 @@ void main() {
     );
 
     expect(projected, hasLength(source.length));
-    expect(projected.map((field) => field.fieldNumber).toSet(),
-        hasLength(source.length));
+    expect(
+      projected.map((field) => field.fieldNumber).toSet(),
+      hasLength(source.length),
+    );
   });
 
   test('multi-week coverage counts a season, FN, and phase only once', () {
@@ -127,8 +134,10 @@ void main() {
     expect(projected, hasLength(1));
     expect(projected.single.weekly.targets.single.phase, 'vegetative');
     expect(projected.single.weekly.weekStart, week);
-    expect(WeeklyAuditSummary(projected.map((field) => field.weekly)).targetHa,
-        10);
+    expect(
+      WeeklyAuditSummary(projected.map((field) => field.weekly)).targetHa,
+      10,
+    );
   });
 
   test('the same FN in different seasons remains a separate target', () {
@@ -137,8 +146,9 @@ void main() {
       {...fieldAt(20), 'season': 'S2'},
     ];
     final source = raws
-        .map((raw) =>
-            FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end))
+        .map(
+          (raw) => FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end),
+        )
         .toList();
     final projected = projectCoverageWeeks(
       source,
@@ -155,42 +165,48 @@ void main() {
     expect(auditTargetWeight('generative_1', hybrid: 'FC'), .25);
     expect(auditTargetWeight('generative_2', hybrid: 'FC'), .25);
     expect(auditTargetWeight('generative_3', hybrid: 'FC'), .5);
-    expect(auditTargetWeight('generative_1', hybrid: 'AX01'),
-        closeTo(1 / 6, 1e-9));
-    expect(auditTargetWeight('generative_2', hybrid: 'AX01'),
-        closeTo(1 / 6, 1e-9));
-    expect(auditTargetWeight('generative_3', hybrid: 'AX01'),
-        closeTo(1 / 6, 1e-9));
+    expect(
+      auditTargetWeight('generative_1', hybrid: 'AX01'),
+      closeTo(1 / 6, 1e-9),
+    );
+    expect(
+      auditTargetWeight('generative_2', hybrid: 'AX01'),
+      closeTo(1 / 6, 1e-9),
+    );
+    expect(
+      auditTargetWeight('generative_3', hybrid: 'AX01'),
+      closeTo(1 / 6, 1e-9),
+    );
     expect(auditTargetWeight('generative_4', hybrid: 'AX01'), .25);
     expect(auditTargetWeight('generative_5', hybrid: 'AX01'), .25);
     expect(
-        List.generate(
-                5,
-                (index) => auditTargetWeight('generative_${index + 1}',
-                    hybrid: 'AX01'))
-            .take(3)
-            .fold(0.0, (sum, weight) => sum + weight),
-        closeTo(.5, 1e-9));
+      List.generate(
+        5,
+        (index) => auditTargetWeight('generative_${index + 1}', hybrid: 'AX01'),
+      ).take(3).fold(0.0, (sum, weight) => sum + weight),
+      closeTo(.5, 1e-9),
+    );
     expect(
-        List.generate(
-                5,
-                (index) => auditTargetWeight('generative_${index + 1}',
-                    hybrid: 'AX01'))
-            .skip(3)
-            .fold(0.0, (sum, weight) => sum + weight),
-        .5);
+      List.generate(
+        5,
+        (index) => auditTargetWeight('generative_${index + 1}', hybrid: 'AX01'),
+      ).skip(3).fold(0.0, (sum, weight) => sum + weight),
+      .5,
+    );
     expect(auditTargetWeight('generative_5', hybrid: 'ASF123'), 1);
     expect(auditTargetWeight('vegetative', hybrid: 'FC'), 1);
   });
 
   test('FC generative progress is split 25, 25, and 50 percent', () {
-    final earlyChecks = project(fieldAt(54, gen: {
-      'date_of_audit_1': '2026-08-24',
-      'date_of_audit_2': '2026-08-25',
-    }));
-    final finalCheck = project(fieldAt(54, gen: {
-      'date_of_audit_3': '2026-08-30',
-    }));
+    final earlyChecks = project(
+      fieldAt(
+        54,
+        gen: {'date_of_audit_1': '2026-08-24', 'date_of_audit_2': '2026-08-25'},
+      ),
+    );
+    final finalCheck = project(
+      fieldAt(54, gen: {'date_of_audit_3': '2026-08-30'}),
+    );
     expect(earlyChecks.targets.map((target) => target.phase), [
       'generative_1',
       'generative_2',
@@ -203,11 +219,7 @@ void main() {
   });
 
   test('SC CP1-CP3 and CP4-CP5 each contribute half of full progress', () {
-    const firstGroup = {
-      'generative_1',
-      'generative_2',
-      'generative_3',
-    };
+    const firstGroup = {'generative_1', 'generative_2', 'generative_3'};
     const secondGroup = {'generative_4', 'generative_5'};
     final secondWeek = week.add(const Duration(days: 7));
     final asOf = secondWeek.add(const Duration(days: 6));
@@ -215,54 +227,68 @@ void main() {
     WeeklyAuditSummary summary(Map<String, dynamic> gen) {
       final raw = fieldAt(47, hybrid: 'AX01', gen: gen);
       return WeeklyAuditSummary([
-        WeeklyAuditField.fromRaw(raw,
-            weekStart: week, now: asOf, targetPhases: firstGroup),
-        WeeklyAuditField.fromRaw(raw,
-            weekStart: secondWeek, now: asOf, targetPhases: secondGroup),
+        WeeklyAuditField.fromRaw(
+          raw,
+          weekStart: week,
+          now: asOf,
+          targetPhases: firstGroup,
+        ),
+        WeeklyAuditField.fromRaw(
+          raw,
+          weekStart: secondWeek,
+          now: asOf,
+          targetPhases: secondGroup,
+        ),
       ]);
     }
 
     expect(
-        summary({
-          'date_of_audit_1': '2026-08-24',
-          'date_of_audit_2': '2026-08-25',
-          'date_of_audit_3': '2026-08-26',
-        }).achievementPercent,
-        closeTo(50, 1e-9));
+      summary({
+        'date_of_audit_1': '2026-08-24',
+        'date_of_audit_2': '2026-08-25',
+        'date_of_audit_3': '2026-08-26',
+      }).achievementPercent,
+      closeTo(50, 1e-9),
+    );
     expect(
-        summary({
-          'date_of_audit_4': '2026-08-31',
-          'date_of_audit_5': '2026-09-01',
-        }).achievementPercent,
-        closeTo(50, 1e-9));
+      summary({
+        'date_of_audit_4': '2026-08-31',
+        'date_of_audit_5': '2026-09-01',
+      }).achievementPercent,
+      closeTo(50, 1e-9),
+    );
   });
 
   test('invalid or missing planting date never creates audit target', () {
     for (final date in [null, '', 'bad-date', '31/02/2026', '2026-02-31']) {
       expect(
-          project({...fieldAt(20), 'planting_date_pdn': date}).isTarget, false);
+        project({...fieldAt(20), 'planting_date_pdn': date}).isTarget,
+        false,
+      );
     }
   });
 
-  test('DAP eligibility includes entry into a phase later in the selected week',
-      () {
-    final f = project(fieldAt(2));
-    expect(f.targets.single.phase, 'vegetative');
-    expect(f.targets.single.plannedDate, DateTime(2026, 8, 29));
-    expect(f.targets.single.includesDate(DateTime(2026, 8, 28)), false);
-    expect(f.targets.single.includesDate(DateTime(2026, 8, 29)), true);
-    expect(f.targets.single.includesDate(DateTime(2026, 8, 30)), true);
-    expect(f.targets.single.includesDate(DateTime(2026, 8, 31)), false);
-    expect(project(fieldAt(0)).isTarget, false);
-    expect(project(fieldAt(200)).isTarget, false);
-  });
+  test(
+    'DAP eligibility includes entry into a phase later in the selected week',
+    () {
+      final f = project(fieldAt(2));
+      expect(f.targets.single.phase, 'vegetative');
+      expect(f.targets.single.plannedDate, DateTime(2026, 8, 29));
+      expect(f.targets.single.includesDate(DateTime(2026, 8, 28)), false);
+      expect(f.targets.single.includesDate(DateTime(2026, 8, 29)), true);
+      expect(f.targets.single.includesDate(DateTime(2026, 8, 30)), true);
+      expect(f.targets.single.includesDate(DateTime(2026, 8, 31)), false);
+      expect(project(fieldAt(0)).isTarget, false);
+      expect(project(fieldAt(200)).isTarget, false);
+    },
+  );
 
   test('revised planting date and list joins are respected', () {
     final f = project({
       ...fieldAt(200),
       'audit_vegetative': [
-        {'rev_planting_date': '04/08/2026'}
-      ]
+        {'rev_planting_date': '04/08/2026'},
+      ],
     });
     expect(f.targets.single.phase, 'vegetative');
     expect(f.dap, 26);
@@ -281,11 +307,14 @@ void main() {
   });
 
   test('audit dated after today cannot complete a target yet', () {
-    final raw = fieldAt(20, veg: {
-      'date_of_audit': '2026-08-29',
-      'flagging': 'PLD',
-      'crop_health': 'Best'
-    });
+    final raw = fieldAt(
+      20,
+      veg: {
+        'date_of_audit': '2026-08-29',
+        'flagging': 'PLD',
+        'crop_health': 'Best',
+      },
+    );
     final f = project(raw, now: DateTime(2026, 8, 26));
     expect(f.done, false);
     expect(f.flag, auditNotYetFlagging);
@@ -293,8 +322,10 @@ void main() {
   });
 
   test('a late audit closes its earlier target instead of staying overdue', () {
-    final f = project(fieldAt(20, veg: {'date_of_audit': '2026-08-31'}),
-        now: DateTime(2026, 9, 5));
+    final f = project(
+      fieldAt(20, veg: {'date_of_audit': '2026-08-31'}),
+      now: DateTime(2026, 9, 5),
+    );
     expect(f.done, true);
     expect(f.overdue, false);
     expect(WeeklyAuditSummary([f]).achievedHa, 10);
@@ -316,8 +347,7 @@ void main() {
       now: DateTime(2026, 8, 26),
     );
     final completed = FieldCoverageStatus.fromRaw(
-      fieldAt(20,
-          id: 'ACTIVE', veg: {'date_of_audit': '2026-08-24'}),
+      fieldAt(20, id: 'ACTIVE', veg: {'date_of_audit': '2026-08-24'}),
       weekStart: week,
       now: DateTime(2026, 8, 26),
     );
@@ -336,20 +366,59 @@ void main() {
     expect(summary.overdueAreaHa, 0);
   });
 
+  test('attention and status stay scoped to the selected lifecycle phase', () {
+    final raw = fieldAt(
+      95,
+      veg: {'date_of_audit': '2026-06-01', 'flagging': 'GF'},
+    );
+    final field = WeeklyAuditField.fromRaw(
+      raw,
+      weekStart: week,
+      now: end,
+      includeHistoricalTargets: true,
+    );
+
+    expect(field.isStageDone('vegetative'), true);
+    expect(field.isStagePending('vegetative'), false);
+    expect(field.isStageOverdue('vegetative'), false);
+    expect(field.needsAttentionForStage('vegetative'), false);
+
+    expect(field.isStageDone('pre_harvest'), false);
+    expect(field.isStagePending('pre_harvest'), false);
+    expect(field.isStageOverdue('pre_harvest'), true);
+    expect(field.needsAttentionForStage('pre_harvest'), true);
+
+    expect(field.isStageDone('harvest'), false);
+    expect(field.isStagePending('harvest'), true);
+    expect(field.isStageOverdue('harvest'), false);
+  });
+
   test('PLD exclusion normalizes 95/3/2 to 100 percent, keeps hectares', () {
     final all = [
-      project(fieldAt(20,
+      project(
+        fieldAt(
+          20,
           id: 'GF',
           area: 95,
-          veg: {'date_of_audit': '2026-08-24', 'flagging': 'GF'})),
-      project(fieldAt(20,
+          veg: {'date_of_audit': '2026-08-24', 'flagging': 'GF'},
+        ),
+      ),
+      project(
+        fieldAt(
+          20,
           id: 'RFI',
           area: 3,
-          veg: {'date_of_audit': '2026-08-24', 'flagging': 'RFI'})),
-      project(fieldAt(20,
+          veg: {'date_of_audit': '2026-08-24', 'flagging': 'RFI'},
+        ),
+      ),
+      project(
+        fieldAt(
+          20,
           id: 'PLD',
           area: 2,
-          veg: {'date_of_audit': '2026-08-24', 'flagging': 'PLD'})),
+          veg: {'date_of_audit': '2026-08-24', 'flagging': 'PLD'},
+        ),
+      ),
     ];
     final full = WeeklyAuditSummary(all).composition((f) => f.flag);
     expect(full['PLD']!.percent, 2);
@@ -360,36 +429,51 @@ void main() {
     expect(flags['GF']!.areaHa, 95);
     expect(flags['GF']!.percent, closeTo(96.9387755, .00001));
     expect(flags['RFI']!.percent, closeTo(3.0612245, .00001));
-    expect(flags.values.fold(0.0, (sum, value) => sum + value.percent),
-        closeTo(100, .00001));
+    expect(
+      flags.values.fold(0.0, (sum, value) => sum + value.percent),
+      closeTo(100, .00001),
+    );
   });
 
   test('missing flagging is explicit and is never silently good', () {
     final f = project(fieldAt(20));
     expect(f.flag, auditNotYetFlagging);
-    expect(WeeklyAuditSummary([f]).composition((f) => f.flag).keys,
-        [auditNotYetFlagging]);
+    expect(WeeklyAuditSummary([f]).composition((f) => f.flag).keys, [
+      auditNotYetFlagging,
+    ]);
   });
 
-  test('latest dated flagging wins; old PLD does not permanently hide a field',
-      () {
-    final f = project(fieldAt(71,
-        veg: {'date_of_audit': '2026-08-01', 'flagging': 'PLD'},
-        ph: {'audit_date': '2026-08-24', 'final_flagging': 'GF'}));
-    expect(f.flag, 'GF');
-    expect(defaultAuditFlags.contains(f.flag), true);
-  });
+  test(
+    'latest dated flagging wins; old PLD does not permanently hide a field',
+    () {
+      final f = project(
+        fieldAt(
+          71,
+          veg: {'date_of_audit': '2026-08-01', 'flagging': 'PLD'},
+          ph: {'audit_date': '2026-08-24', 'final_flagging': 'GF'},
+        ),
+      );
+      expect(f.flag, 'GF');
+      expect(defaultAuditFlags.contains(f.flag), true);
+    },
+  );
 
   test('Monitor action D is not Discard decision D', () {
     expect(
-        project(fieldAt(50,
-                gen: {'date_of_audit_1': '2026-08-24', 'action_needed_1': 'D'}))
-            .flag,
-        auditNotYetFlagging);
+      project(
+        fieldAt(
+          50,
+          gen: {'date_of_audit_1': '2026-08-24', 'action_needed_1': 'D'},
+        ),
+      ).flag,
+      auditNotYetFlagging,
+    );
     expect(
-        project(fieldAt(71,
-            ph: {'audit_date': '2026-08-24', 'final_decision': 'D'})).flag,
-        'PLD');
+      project(
+        fieldAt(71, ph: {'audit_date': '2026-08-24', 'final_decision': 'D'}),
+      ).flag,
+      'PLD',
+    );
   });
 
   test('undated master flag does not leak into historical weeks', () {
@@ -399,19 +483,23 @@ void main() {
   });
 
   test('multiple generative checkpoints count field area only once', () {
-    final raw = fieldAt(50, area: 12, gen: {
-      'date_of_audit_1': '2026-08-24',
-      'date_of_audit_2': '2026-08-29',
-    });
+    final raw = fieldAt(
+      50,
+      area: 12,
+      gen: {'date_of_audit_1': '2026-08-24', 'date_of_audit_2': '2026-08-29'},
+    );
     final f = project(raw);
     expect(f.targets.map((t) => t.phase), ['generative_1', 'generative_2']);
     final summary = WeeklyAuditSummary([f]);
     expect(summary.targetHa, 12);
     expect(summary.achievedHa, 12);
-    final coverage = calculateFilteredPhases(
-        [FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end)]);
-    expect(coverage.phases.singleWhere((p) => p.label == 'Generative').totalHa,
-        12);
+    final coverage = calculateFilteredPhases([
+      FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end),
+    ]);
+    expect(
+      coverage.phases.singleWhere((p) => p.label == 'Generative').totalHa,
+      12,
+    );
     expect(coverage.targetCompletionPct, 100);
   });
 
@@ -419,30 +507,37 @@ void main() {
     final raw = fieldAt(50, gen: {'date_of_audit_1': '2026-08-24'});
     final f = project(raw);
     final summary = WeeklyAuditSummary([f]);
-    final coverage = calculateFilteredPhases(
-        [FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end)]);
+    final coverage = calculateFilteredPhases([
+      FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end),
+    ]);
     expect(f.completion, .5);
     expect(summary.achievedHa, 0);
     expect(summary.achievementPercent, 50);
     expect(coverage.targetCompletionPct, 50);
     expect(
-        coverage.phases.singleWhere((phase) => phase.label == 'Generative').pct,
-        50);
+      coverage.phases.singleWhere((phase) => phase.label == 'Generative').pct,
+      50,
+    );
     expect(
-        FICoverage.fromFields('FI 1', [
-          FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end),
-        ]).coverageScore,
-        50);
+      FICoverage.fromFields('FI 1', [
+        FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end),
+      ]).coverageScore,
+      50,
+    );
   });
 
   test('FN achievement is not distorted by field area', () {
     final fields = [
       FieldCoverageStatus.fromRaw(
-          fieldAt(20, area: 95, veg: {'date_of_audit': '2026-08-24'}),
-          weekStart: week,
-          now: end),
-      FieldCoverageStatus.fromRaw(fieldAt(20, id: 'F2', area: 5),
-          weekStart: week, now: end),
+        fieldAt(20, area: 95, veg: {'date_of_audit': '2026-08-24'}),
+        weekStart: week,
+        now: end,
+      ),
+      FieldCoverageStatus.fromRaw(
+        fieldAt(20, id: 'F2', area: 5),
+        weekStart: week,
+        now: end,
+      ),
     ];
     expect(aggregateCoverageScore(fields), 50);
     expect(FICoverage.fromFields('FI 1', fields).coverageScore, 50);
@@ -450,15 +545,8 @@ void main() {
   });
 
   test('All Coverage score keeps completed lifecycle phases visible', () {
-    final raw = fieldAt(
-      60,
-      veg: {'date_of_audit': '2026-08-01'},
-    );
-    final weekly = FieldCoverageStatus.fromRaw(
-      raw,
-      weekStart: week,
-      now: end,
-    );
+    final raw = fieldAt(60, veg: {'date_of_audit': '2026-08-01'});
+    final weekly = FieldCoverageStatus.fromRaw(raw, weekStart: week, now: end);
     final lifecycle = FieldCoverageStatus.fromRaw(
       raw,
       weekStart: week,
@@ -473,25 +561,36 @@ void main() {
 
   test('SC highland rules use location, PSP has no PreHarvest', () {
     final lowland = project(fieldAt(40, hybrid: 'AX01'));
-    final highland =
-        project({...fieldAt(40, hybrid: 'AX01'), 'district_kab': 'Malang'});
+    final highland = project({
+      ...fieldAt(40, hybrid: 'AX01'),
+      'district_kab': 'Malang',
+    });
     expect(lowland.targets.any((t) => t.phase == 'generative_1'), true);
     expect(highland.isTarget, false);
     expect(
-        project(fieldAt(75, hybrid: 'ASF123'))
-            .targets
-            .any((t) => t.phase == 'pre_harvest'),
-        false);
-    expect(project(fieldAt(110, hybrid: 'ASF123')).targets.single.phase,
-        'harvest');
+      project(fieldAt(75, hybrid: 'ASF123'))
+          .targets
+          .any((t) => t.phase == 'pre_harvest'),
+      false,
+    );
+    expect(
+      project(fieldAt(110, hybrid: 'ASF123')).targets.single.phase,
+      'harvest',
+    );
   });
 
   test('PSP pass dates, even with only pass two present, remain partial', () {
-    final f = project(fieldAt(35, hybrid: 'ASF123', veg: {
-      'date_of_inspeksi_roguing_2': '2026-08-24',
-      'audit_lsv_roguing_2': '>0',
-      'crop_health_roguing_2': 'Fair',
-    }));
+    final f = project(
+      fieldAt(
+        35,
+        hybrid: 'ASF123',
+        veg: {
+          'date_of_inspeksi_roguing_2': '2026-08-24',
+          'audit_lsv_roguing_2': '>0',
+          'crop_health_roguing_2': 'Fair',
+        },
+      ),
+    );
     expect(f.targets.single.completion, .25);
     expect(f.done, false);
     expect(WeeklyAuditSummary([f]).achievementPercent, 25);
@@ -500,42 +599,52 @@ void main() {
   });
 
   test(
-      'PSP draft summary dates do not mark a phase completed, PLD still filters',
-      () {
-    final f = project(fieldAt(35, hybrid: 'ASF123', veg: {
-      'audit_date_user': '2026-08-24',
-      'decision': 'Discard',
-      'flagging': 'PLD',
-    }));
-    expect(f.done, false);
-    expect(f.flag, 'PLD');
-  });
+    'PSP draft summary dates do not mark a phase completed, PLD still filters',
+    () {
+      final f = project(
+        fieldAt(
+          35,
+          hybrid: 'ASF123',
+          veg: {
+            'audit_date_user': '2026-08-24',
+            'decision': 'Discard',
+            'flagging': 'PLD',
+          },
+        ),
+      );
+      expect(f.done, false);
+      expect(f.flag, 'PLD');
+    },
+  );
 
   test('SC checkpoint three uses the shared flagging column', () {
-    final f = project(fieldAt(51, hybrid: 'AX01', gen: {
-      'date_of_audit_3': '2026-08-24',
-      'flagging': 'RFI',
-    }));
+    final f = project(
+      fieldAt(
+        51,
+        hybrid: 'AX01',
+        gen: {'date_of_audit_3': '2026-08-24', 'flagging': 'RFI'},
+      ),
+    );
     expect(f.flag, 'RFI');
   });
 
   test('target flagging only comes from the phase being evaluated', () {
     final f = project(
-        fieldAt(60, veg: {'date_of_audit': '2026-08-01', 'flagging': 'GF'}));
+      fieldAt(60, veg: {'date_of_audit': '2026-08-01', 'flagging': 'GF'}),
+    );
     expect(f.targets.single.phase, 'generative_3');
     expect(f.flag, auditNotYetFlagging);
   });
 
   test('late target audit supplies the resolved target flagging', () {
     final f = project(
-        fieldAt(60, veg: {
-          'date_of_audit': '2026-08-01',
-          'flagging': 'GF'
-        }, gen: {
-          'date_of_audit_3': '2026-08-31',
-          'flagging': 'RFI',
-        }),
-        now: DateTime(2026, 9, 5));
+      fieldAt(
+        60,
+        veg: {'date_of_audit': '2026-08-01', 'flagging': 'GF'},
+        gen: {'date_of_audit_3': '2026-08-31', 'flagging': 'RFI'},
+      ),
+      now: DateTime(2026, 9, 5),
+    );
     expect(f.done, true);
     expect(f.overdue, false);
     expect(f.flag, 'RFI');
@@ -543,8 +652,10 @@ void main() {
 
   test('village grouping ignores Codet and crop, respects geography', () {
     final a = project({...fieldAt(20), 'co_detasseling': 'A'});
-    final b = project(
-        {...fieldAt(20, hybrid: 'AX01', id: 'F2'), 'co_detasseling': 'B'});
+    final b = project({
+      ...fieldAt(20, hybrid: 'AX01', id: 'F2'),
+      'co_detasseling': 'B',
+    });
     final c = project({...fieldAt(20, id: 'F3'), 'district_kab': 'Kediri'});
     final groups = groupAuditFieldsByVillage([a, b, c]);
     expect(groups.length, 2);
@@ -553,14 +664,20 @@ void main() {
 
   test('NC and crop data do not treat missing values as compliant', () {
     final fields = [
-      project(fieldAt(20, area: 6, veg: {
-        'date_of_audit': '2026-08-24',
-        'roguing_status': 'On Going',
-        'lsv_status': 'Low',
-        'isolation_problem_by_audit': 'Yes',
-        'crop_uniformity': 'Good',
-      })),
-      project(fieldAt(20, id: 'F2', area: 4))
+      project(
+        fieldAt(
+          20,
+          area: 6,
+          veg: {
+            'date_of_audit': '2026-08-24',
+            'roguing_status': 'On Going',
+            'lsv_status': 'Low',
+            'isolation_problem_by_audit': 'Yes',
+            'crop_uniformity': 'Good',
+          },
+        ),
+      ),
+      project(fieldAt(20, id: 'F2', area: 4)),
     ];
     expect(fields.first.needsAttention, true);
     expect(fields.first.roguingNegative, true);
@@ -577,22 +694,26 @@ void main() {
       project(fieldAt(20)),
       project(fieldAt(50)),
       project(fieldAt(71)),
-      project(fieldAt(95))
+      project(fieldAt(95)),
     ]);
-    expect(summary.composition((f) => f.stage).keys.toSet(),
-        auditStageLabels.keys.toSet());
+    expect(
+      summary.composition((f) => f.stage).keys.toSet(),
+      auditStageLabels.keys.toSet(),
+    );
     expect(summary.targetHa, 40);
   });
 
-  test('empty and zero area selections never produce NaN or divide by zero',
-      () {
-    final empty = WeeklyAuditSummary([]);
-    expect(empty.achievementPercent, 0);
-    expect(empty.composition((f) => f.flag), isEmpty);
-    for (final area in [0.0, -3.0, double.nan, double.infinity]) {
-      final summary = WeeklyAuditSummary([project(fieldAt(20, area: area))]);
-      expect(summary.targetHa, 0);
-      expect(summary.achievementPercent.isFinite, true);
-    }
-  });
+  test(
+    'empty and zero area selections never produce NaN or divide by zero',
+    () {
+      final empty = WeeklyAuditSummary([]);
+      expect(empty.achievementPercent, 0);
+      expect(empty.composition((f) => f.flag), isEmpty);
+      for (final area in [0.0, -3.0, double.nan, double.infinity]) {
+        final summary = WeeklyAuditSummary([project(fieldAt(20, area: area))]);
+        expect(summary.targetHa, 0);
+        expect(summary.achievementPercent.isFinite, true);
+      }
+    },
+  );
 }
