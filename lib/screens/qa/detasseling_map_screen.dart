@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' as io;
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -11,29 +10,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:media_store_plus/media_store_plus.dart';
-import 'package:open_file/open_file.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../providers/detasseling_plan_provider.dart';
 import '../../providers/master_fields_provider.dart';
+import '../../services/export_file_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/audit_status_helper.dart';
 import '../../widgets/advanta_loading_state.dart';
+import '../../widgets/export_status_dialog.dart';
 import '../../widgets/field_detail_bottom_sheet.dart';
-
-class _ExportSaveResult {
-  final String displayPath;
-  final String openPath;
-
-  const _ExportSaveResult({
-    required this.displayPath,
-    required this.openPath,
-  });
-}
 
 class DetasselingMapScreen extends ConsumerStatefulWidget {
   const DetasselingMapScreen({super.key});
@@ -960,7 +947,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         plan,
         selectedDate: _selectedPlanningDate,
       );
-      final destination = await _saveBytes(
+      final destination = await ExportFileService.saveBytes(
         bytes: bytes,
         fileName: _exportFileName(
           plan,
@@ -969,7 +956,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         ),
         mimeType: 'image/png',
       );
-      _snackExportSuccess('Picture weekly planning', destination);
+      await _showExportSuccess('Picture weekly planning', destination);
     } catch (e) {
       _snack('Gagal download picture: $e', isError: true);
     } finally {
@@ -998,7 +985,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
           ),
         ),
       );
-      final destination = await _saveBytes(
+      final destination = await ExportFileService.saveBytes(
         bytes: await doc.save(),
         fileName: _exportFileName(
           plan,
@@ -1007,7 +994,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         ),
         mimeType: 'application/pdf',
       );
-      _snackExportSuccess('PDF weekly planning', destination);
+      await _showExportSuccess('PDF weekly planning', destination);
     } catch (e) {
       _snack('Gagal download PDF: $e', isError: true);
     } finally {
@@ -1030,7 +1017,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         selectedDate: selectedDate,
         selectedPass: selectedPass,
       );
-      final destination = await _saveBytes(
+      final destination = await ExportFileService.saveBytes(
         bytes: bytes,
         fileName: _exportCodetFileName(
           plan,
@@ -1041,7 +1028,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         ),
         mimeType: 'image/png',
       );
-      _snackExportSuccess('Picture detail Codet', destination);
+      await _showExportSuccess('Picture detail Codet', destination);
     } catch (e) {
       _snack('Gagal download picture detail Codet: $e', isError: true);
     } finally {
@@ -1077,7 +1064,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
           ),
         ),
       );
-      final destination = await _saveBytes(
+      final destination = await ExportFileService.saveBytes(
         bytes: await doc.save(),
         fileName: _exportCodetFileName(
           plan,
@@ -1088,7 +1075,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         ),
         mimeType: 'application/pdf',
       );
-      _snackExportSuccess('PDF detail Codet', destination);
+      await _showExportSuccess('PDF detail Codet', destination);
     } catch (e) {
       _snack('Gagal download PDF detail Codet: $e', isError: true);
     } finally {
@@ -2550,70 +2537,6 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     return status == DetasselingGroupStatus.done ? 'Done' : 'Planned';
   }
 
-  Future<_ExportSaveResult> _saveBytes({
-    required Uint8List bytes,
-    required String fileName,
-    required String mimeType,
-  }) async {
-    final tempDir = await getTemporaryDirectory();
-    final tempFile = io.File(p.join(tempDir.path, fileName));
-    await tempFile.writeAsBytes(bytes, flush: true);
-
-    if (io.Platform.isAndroid) {
-      try {
-        MediaStore.appFolder = 'Kroscek';
-        await MediaStore.ensureInitialized();
-        final saved = await MediaStore().saveFile(
-          tempFilePath: tempFile.path,
-          dirType: DirType.download,
-          dirName: DirName.download,
-        );
-        if (saved == null) {
-          throw Exception('MediaStore tidak mengembalikan lokasi file.');
-        }
-        return _ExportSaveResult(
-          displayPath: 'Download/Kroscek/$fileName',
-          openPath: tempFile.path,
-        );
-      } catch (_) {
-        final fallback = await _saveToAppDocuments(bytes, fileName);
-        return _ExportSaveResult(
-          displayPath:
-              'Documents/${fallback.uri.pathSegments.last} ($mimeType)',
-          openPath: fallback.path,
-        );
-      }
-    }
-
-    final downloadDir = await _downloadDirectory();
-    final outputFile = io.File(p.join(downloadDir.path, fileName));
-    await outputFile.writeAsBytes(bytes, flush: true);
-    return _ExportSaveResult(
-      displayPath: outputFile.path,
-      openPath: outputFile.path,
-    );
-  }
-
-  Future<io.File> _saveToAppDocuments(Uint8List bytes, String fileName) async {
-    final directory = await getApplicationDocumentsDirectory();
-    final outputDir = io.Directory(p.join(directory.path, 'exports'));
-    if (!await outputDir.exists()) {
-      await outputDir.create(recursive: true);
-    }
-    final outputFile = io.File(p.join(outputDir.path, fileName));
-    await outputFile.writeAsBytes(bytes, flush: true);
-    return outputFile;
-  }
-
-  Future<io.Directory> _downloadDirectory() async {
-    if (io.Platform.isIOS) {
-      return getApplicationDocumentsDirectory();
-    }
-    final downloads = await getDownloadsDirectory();
-    if (downloads != null) return downloads;
-    return getApplicationDocumentsDirectory();
-  }
-
   String _exportFileName(
     DetasselingPlanningData plan,
     String extension, {
@@ -2773,25 +2696,20 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     setState(() {});
   }
 
-  void _snackExportSuccess(String title, _ExportSaveResult result) {
-    _snack(
-      '$title berhasil didownload: ${result.displayPath}',
-      action: SnackBarAction(
-        label: 'BUKA',
-        textColor: AdvantaColors.goldLight,
-        onPressed: () => _openExportResult(result),
+  Future<void> _showExportSuccess(
+    String title,
+    StoredExportFile result,
+  ) async {
+    if (!mounted) return;
+    await showExportCompletedDialog(
+      context,
+      title: '$title berhasil didownload',
+      displayPath: result.displayPath,
+      onOpen: () => ExportFileService.open(
+        path: result.openPath,
+        mimeType: result.mimeType,
       ),
     );
-  }
-
-  Future<void> _openExportResult(_ExportSaveResult result) async {
-    try {
-      await OpenFile.open(result.openPath);
-    } catch (e) {
-      if (mounted) {
-        _snack('Tidak dapat membuka file export: $e', isError: true);
-      }
-    }
   }
 
   void _snack(String message, {bool isError = false, SnackBarAction? action}) {
