@@ -1045,27 +1045,14 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     if (_isExportingPdf) return;
     setState(() => _isExportingPdf = true);
     try {
-      final reportImage = await _buildCodetDetailPng(
+      final reportPdf = await _buildCodetDetailPdf(
         plan,
         group,
         selectedDate: selectedDate,
         selectedPass: selectedPass,
       );
-      final doc = pw.Document();
-      doc.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          margin: pw.EdgeInsets.zero,
-          build: (_) => pw.Center(
-            child: pw.Image(
-              pw.MemoryImage(reportImage),
-              fit: pw.BoxFit.contain,
-            ),
-          ),
-        ),
-      );
       final destination = await ExportFileService.saveBytes(
-        bytes: await doc.save(),
+        bytes: reportPdf,
         fileName: _exportCodetFileName(
           plan,
           group,
@@ -1083,6 +1070,254 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     }
   }
 
+  Future<Uint8List> _buildCodetDetailPdf(
+    DetasselingPlanningData plan,
+    DetasselingPlanGroup group, {
+    DateTime? selectedDate,
+    int? selectedPass,
+  }) async {
+    const deep = PdfColor.fromInt(0xff003b24);
+    const green = PdfColor.fromInt(0xff006b3e);
+    const softGreen = PdfColor.fromInt(0xffeaf4ec);
+    const line = PdfColor.fromInt(0xffdce3dd);
+    const ink = PdfColor.fromInt(0xff092817);
+
+    final reportGroup = _groupForDateFilter(group, selectedDate);
+    final reportFields = _fieldsForPassFilter(
+      reportGroup.fields,
+      selectedDate: selectedDate,
+      selectedPass: selectedPass,
+    );
+    final reportArea = reportFields.fold(
+      0.0,
+      (sum, field) => sum + field.areaHa,
+    );
+    final dateScopeLabel = _datePassFilterLabel(selectedDate, selectedPass);
+    final raw = group.fields.isEmpty ? null : group.fields.first.parsed.raw;
+    final season = _rawText(
+      raw,
+      const ['season', 'season_code', 'planting_season'],
+    );
+    final region = _rawText(raw, const ['region']);
+    final generatedAt =
+        DateFormat('d MMM yyyy | HH:mm', 'id_ID').format(DateTime.now());
+
+    final rows = reportFields.map((field) {
+      final rowDate = selectedDate ?? field.plannedDate;
+      final phase = _detasselingPhaseForField(
+        field,
+        rowDate,
+        selectedPass,
+      );
+      return <String>[
+        field.fieldNumber.isEmpty ? '-' : field.fieldNumber,
+        field.farmerName.isEmpty ? '-' : field.farmerName,
+        '${_formatHa(field.areaHa)} Ha',
+        DateFormat('d MMM yyyy', 'id_ID').format(rowDate),
+        field.dtDapRangeLabel.replaceFirst('DT ', ''),
+        selectedDate == null
+            ? 'P${field.plannedPass}'
+            : detasselingPassLabelForFieldOnDate(field, rowDate),
+        _isDetasselingPhaseDone(field, phase) ? 'Done' : 'Planned',
+      ];
+    }).toList(growable: false);
+
+    pw.Widget summaryItem(String label, String value) {
+      return pw.Container(
+        width: 142,
+        padding: const pw.EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+        decoration: pw.BoxDecoration(
+          color: softGreen,
+          border: pw.Border.all(color: line, width: 0.6),
+          borderRadius: pw.BorderRadius.circular(5),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              label,
+              style: const pw.TextStyle(fontSize: 7.5, color: green),
+            ),
+            pw.SizedBox(height: 2),
+            pw.Text(
+              value.isEmpty ? '-' : value,
+              maxLines: 2,
+              style: pw.TextStyle(
+                fontSize: 9.5,
+                color: ink,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final document = pw.Document();
+    document.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.fromLTRB(28, 24, 28, 26),
+        header: (context) => pw.Container(
+          margin: const pw.EdgeInsets.only(bottom: 12),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: pw.BoxDecoration(
+            color: deep,
+            borderRadius: pw.BorderRadius.circular(6),
+          ),
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'WEEKLY DETASSELLING DETAIL BY CODET',
+                      style: pw.TextStyle(
+                        color: PdfColors.white,
+                        fontSize: 15,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.SizedBox(height: 3),
+                    pw.Text(
+                      '${plan.week.label} - ${group.codet} - $dateScopeLabel',
+                      style: const pw.TextStyle(
+                        color: PdfColors.white,
+                        fontSize: 8,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.Text(
+                '${reportFields.length} FN',
+                style: pw.TextStyle(
+                  color: PdfColors.white,
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+        footer: (context) => pw.Container(
+          margin: const pw.EdgeInsets.only(top: 10),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'Generated by KROSCEK - $generatedAt WIB',
+                style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700),
+              ),
+              pw.Text(
+                'Halaman ${context.pageNumber} dari ${context.pagesCount}',
+                style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700),
+              ),
+            ],
+          ),
+        ),
+        build: (_) => [
+          pw.Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              summaryItem('Codet', group.codet),
+              summaryItem('Desa', group.village),
+              summaryItem('Hybrid / Crop', '${group.hybrid} / ${group.cropLabel}'),
+              summaryItem('Total Area', '${_formatHa(reportArea)} Ha'),
+              summaryItem('Season / Region', '$season / $region'),
+              summaryItem('Week / Scope', '${plan.week.label} / $dateScopeLabel'),
+              summaryItem('Pass Rule', _groupPassRule(group)),
+              summaryItem('Total FN', '${reportFields.length} FN'),
+            ],
+          ),
+          pw.SizedBox(height: 14),
+          pw.Text(
+            'FN LIST BY CODET - SELURUH DATA',
+            style: pw.TextStyle(
+              fontSize: 11,
+              color: deep,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          pw.SizedBox(height: 7),
+          if (rows.isEmpty)
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(18),
+              decoration: pw.BoxDecoration(
+                color: softGreen,
+                border: pw.Border.all(color: line),
+              ),
+              child: pw.Center(
+                child: pw.Text(
+                  'Tidak ada FN pada filter ini.',
+                  style: const pw.TextStyle(fontSize: 9, color: ink),
+                ),
+              ),
+            )
+          else
+            pw.TableHelper.fromTextArray(
+              headers: const [
+                'FN Code',
+                'Farmer',
+                'Area',
+                'Plan Date',
+                'DAP',
+                'Pass',
+                'Status',
+              ],
+              data: rows,
+              headerDecoration: const pw.BoxDecoration(color: deep),
+              headerStyle: pw.TextStyle(
+                color: PdfColors.white,
+                fontSize: 8,
+                fontWeight: pw.FontWeight.bold,
+              ),
+              headerAlignment: pw.Alignment.centerLeft,
+              headerPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 6,
+              ),
+              cellStyle: const pw.TextStyle(fontSize: 7.5, color: ink),
+              cellPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 5,
+              ),
+              border: pw.TableBorder.all(color: line, width: 0.5),
+              oddRowDecoration: const pw.BoxDecoration(color: softGreen),
+              columnWidths: const {
+                0: pw.FlexColumnWidth(1.25),
+                1: pw.FlexColumnWidth(1.7),
+                2: pw.FlexColumnWidth(0.75),
+                3: pw.FlexColumnWidth(1.15),
+                4: pw.FlexColumnWidth(0.9),
+                5: pw.FlexColumnWidth(0.65),
+                6: pw.FlexColumnWidth(0.85),
+              },
+            ),
+          pw.SizedBox(height: 12),
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(9),
+            decoration: pw.BoxDecoration(
+              color: softGreen,
+              border: pw.Border.all(color: line),
+              borderRadius: pw.BorderRadius.circular(5),
+            ),
+            child: pw.Text(
+              'Detail ini memuat seluruh ${reportFields.length} FN untuk Codet ${group.codet} pada $dateScopeLabel. Pass rule: FC P1-P3, SC P1-P5.',
+              style: const pw.TextStyle(fontSize: 8, color: ink),
+            ),
+          ),
+        ],
+      ),
+    );
+    return document.save();
+  }
+
   Future<Uint8List> _buildCodetDetailPng(
     DetasselingPlanningData plan,
     DetasselingPlanGroup group, {
@@ -1090,8 +1325,9 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     int? selectedPass,
   }) async {
     const width = 1200.0;
-    const height = 1600.0;
     const margin = 44.0;
+    const tableTop = 606.0;
+    const rowHeight = 42.0;
     const deep = Color(0xFF003B24);
     const green = Color(0xFF006B3E);
     const softGreen = Color(0xFFEAF4EC);
@@ -1106,6 +1342,11 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     final reportArea =
         reportFields.fold(0.0, (sum, field) => sum + field.areaHa);
     final dateScopeLabel = _datePassFilterLabel(selectedDate, selectedPass);
+    final tableHeight =
+        112.0 + math.max(1, reportFields.length).toDouble() * rowHeight;
+    final noteTop = tableTop + tableHeight + 24.0;
+    final footerTop = noteTop + 150.0;
+    final height = footerTop + 82.0;
 
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
@@ -1257,7 +1498,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         DateFormat('d MMM yyyy | HH:mm', 'id_ID').format(DateTime.now());
 
     canvas.drawRect(
-      const Rect.fromLTWH(0, 0, width, height),
+      Rect.fromLTWH(0, 0, width, height),
       Paint()..color = Colors.white,
     );
 
@@ -1428,7 +1669,12 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       );
     }
 
-    final tableRect = Rect.fromLTWH(margin, 606, width - margin * 2, 700);
+    final tableRect = Rect.fromLTWH(
+      margin,
+      tableTop,
+      width - margin * 2,
+      tableHeight,
+    );
     drawRound(tableRect, Colors.white, radius: 12, border: line);
     drawPanelTitle(tableRect, 'FN LIST BY CODET');
     final headers = [
@@ -1465,8 +1711,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       x += widths[i];
     }
 
-    final rows = reportFields.take(13).toList();
-    const rowHeight = 42.0;
+    final rows = reportFields;
     for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
       final field = rows[rowIndex];
       final rowDate = selectedDate ?? field.plannedDate;
@@ -1533,18 +1778,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       }
     }
 
-    if (reportFields.length > rows.length) {
-      drawCenteredText(
-        '+${reportFields.length - rows.length} FN lainnya',
-        Rect.fromLTWH(tableRect.left + 24, tableRect.bottom - 38,
-            tableRect.width - 48, 24),
-        fontSize: 13,
-        color: const Color(0xFF5E6A62),
-        weight: FontWeight.w900,
-      );
-    }
-
-    final noteRect = Rect.fromLTWH(margin, 1330, width - margin * 2, 110);
+    final noteRect = Rect.fromLTWH(margin, noteTop, width - margin * 2, 110);
     drawRound(noteRect, const Color(0xFFF0F5F1), radius: 10, border: line);
     drawIcon(
       Icons.info_outline_rounded,
@@ -1570,7 +1804,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       weight: FontWeight.w600,
     );
 
-    final footerRect = Rect.fromLTWH(0, 1518, width, 82);
+    final footerRect = Rect.fromLTWH(0, footerTop, width, 82);
     canvas.drawRect(footerRect, Paint()..color = deep);
     drawText(
       'Generated by KROSCEK',
