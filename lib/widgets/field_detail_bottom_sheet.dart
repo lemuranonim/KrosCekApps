@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../utils/dap_helper.dart';
 import '../utils/audit_status_helper.dart';
 import '../utils/pld_visibility_helper.dart';
+import 'export_status_dialog.dart';
 import 'phase_asset_icon.dart';
 
 class FieldDetailBottomSheet extends ConsumerStatefulWidget {
@@ -476,13 +477,11 @@ class _FieldDetailBottomSheetState
           ? await DetasselingIsoExportService.downloadPdf(payload)
           : await DetasselingIsoExportService.downloadPicture(payload);
       if (mounted) {
-        _showSheetSnack(
-          'ISO Generative/QPIR berhasil didownload: ${result.displayPath}',
-          action: SnackBarAction(
-            label: 'BUKA',
-            textColor: AdvantaColors.goldLight,
-            onPressed: () => _openGenerativeIsoExport(result),
-          ),
+        await showExportCompletedDialog(
+          context,
+          title: 'ISO Generative/QPIR berhasil didownload',
+          displayPath: result.displayPath,
+          onOpen: () => DetasselingIsoExportService.openExport(result),
         );
       }
     } catch (e) {
@@ -491,20 +490,6 @@ class _FieldDetailBottomSheetState
       }
     } finally {
       if (mounted) setState(() => _isExportingGenerativeIso = false);
-    }
-  }
-
-  Future<void> _openGenerativeIsoExport(
-      DetasselingIsoExportResult result) async {
-    try {
-      await DetasselingIsoExportService.openExport(result);
-    } catch (e) {
-      if (mounted) {
-        _showSheetSnack(
-          'Tidak dapat membuka file ISO Generative/QPIR: $e',
-          err: true,
-        );
-      }
     }
   }
 
@@ -531,13 +516,12 @@ class _FieldDetailBottomSheetState
           ? await PhaseIsoExportService.downloadPdf(payload)
           : await PhaseIsoExportService.downloadPicture(payload);
       if (mounted) {
-        _showSheetSnack(
-          'ISO ${PhaseIsoExportService.phaseLabel(phase)} berhasil didownload: ${result.displayPath}',
-          action: SnackBarAction(
-            label: 'BUKA',
-            textColor: AdvantaColors.goldLight,
-            onPressed: () => _openPhaseIsoExport(result),
-          ),
+        await showExportCompletedDialog(
+          context,
+          title:
+              'ISO ${PhaseIsoExportService.phaseLabel(phase)} berhasil didownload',
+          displayPath: result.displayPath,
+          onOpen: () => PhaseIsoExportService.openExport(result),
         );
       }
     } catch (e) {
@@ -552,34 +536,12 @@ class _FieldDetailBottomSheetState
     }
   }
 
-  Future<void> _openPhaseIsoExport(PhaseIsoExportResult result) async {
-    try {
-      await PhaseIsoExportService.openExport(result);
-    } catch (e) {
-      if (mounted) {
-        _showSheetSnack('Tidak dapat membuka file ISO: $e', err: true);
-      }
-    }
-  }
-
-  void _showSheetSnack(String msg, {bool err = false, SnackBarAction? action}) {
+  void _showSheetSnack(String msg, {bool err = false}) {
     if (!mounted) return;
-    final theme = Theme.of(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: AdvantaText.body2.copyWith(color: Colors.white),
-        ),
-        backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(12),
-        duration: action == null
-            ? const Duration(seconds: 4)
-            : const Duration(seconds: 8),
-        action: action,
-      ),
+    showExportMessageDialog(
+      context,
+      message: msg,
+      isError: err,
     );
   }
 

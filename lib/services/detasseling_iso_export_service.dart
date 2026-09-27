@@ -1,17 +1,13 @@
-import 'dart:io' as io;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:media_store_plus/media_store_plus.dart';
-import 'package:open_file/open_file.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../utils/dap_helper.dart';
+import 'export_file_service.dart';
 
 class DetasselingIsoFormData {
   final Map<String, dynamic> fieldData;
@@ -30,10 +26,12 @@ class DetasselingIsoFormData {
 class DetasselingIsoExportResult {
   final String displayPath;
   final String openPath;
+  final String mimeType;
 
   const DetasselingIsoExportResult({
     required this.displayPath,
     required this.openPath,
+    required this.mimeType,
   });
 }
 
@@ -724,73 +722,29 @@ class DetasselingIsoExportService {
     }
   }
 
-  static Future<void> openExport(DetasselingIsoExportResult result) async {
-    await OpenFile.open(result.openPath);
-  }
+  static Future<ExportOpenOutcome> openExport(
+    DetasselingIsoExportResult result,
+  ) =>
+      ExportFileService.open(
+        path: result.openPath,
+        mimeType: result.mimeType,
+      );
 
   static Future<DetasselingIsoExportResult> _saveBytes({
     required Uint8List bytes,
     required String fileName,
     required String mimeType,
   }) async {
-    final tempDir = await getTemporaryDirectory();
-    final tempFile = io.File(p.join(tempDir.path, fileName));
-    await tempFile.writeAsBytes(bytes, flush: true);
-
-    if (io.Platform.isAndroid) {
-      try {
-        MediaStore.appFolder = 'Kroscek';
-        await MediaStore.ensureInitialized();
-        final saved = await MediaStore().saveFile(
-          tempFilePath: tempFile.path,
-          dirType: DirType.download,
-          dirName: DirName.download,
-        );
-        if (saved == null) {
-          throw Exception('MediaStore tidak mengembalikan lokasi file.');
-        }
-        return DetasselingIsoExportResult(
-          displayPath: 'Download/Kroscek/$fileName',
-          openPath: tempFile.path,
-        );
-      } catch (_) {
-        final fallback = await _saveToAppDocuments(bytes, fileName);
-        return DetasselingIsoExportResult(
-          displayPath:
-              'Documents/${fallback.uri.pathSegments.last} ($mimeType)',
-          openPath: fallback.path,
-        );
-      }
-    }
-
-    final downloadDir = await _downloadDirectory();
-    final outputFile = io.File(p.join(downloadDir.path, fileName));
-    await outputFile.writeAsBytes(bytes, flush: true);
-    return DetasselingIsoExportResult(
-      displayPath: outputFile.path,
-      openPath: outputFile.path,
+    final stored = await ExportFileService.saveBytes(
+      bytes: bytes,
+      fileName: fileName,
+      mimeType: mimeType,
     );
-  }
-
-  static Future<io.File> _saveToAppDocuments(
-      Uint8List bytes, String fileName) async {
-    final directory = await getApplicationDocumentsDirectory();
-    final outputDir = io.Directory(p.join(directory.path, 'exports'));
-    if (!await outputDir.exists()) {
-      await outputDir.create(recursive: true);
-    }
-    final outputFile = io.File(p.join(outputDir.path, fileName));
-    await outputFile.writeAsBytes(bytes, flush: true);
-    return outputFile;
-  }
-
-  static Future<io.Directory> _downloadDirectory() async {
-    if (io.Platform.isIOS) {
-      return getApplicationDocumentsDirectory();
-    }
-    final downloads = await getDownloadsDirectory();
-    if (downloads != null) return downloads;
-    return getApplicationDocumentsDirectory();
+    return DetasselingIsoExportResult(
+      displayPath: stored.displayPath,
+      openPath: stored.openPath,
+      mimeType: stored.mimeType,
+    );
   }
 
   static Future<ui.Image?> _loadUiImage(String assetPath) async {
