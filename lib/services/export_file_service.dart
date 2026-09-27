@@ -48,14 +48,14 @@ class ExportFileService {
     required String fileName,
     required String mimeType,
   }) async {
-    final stableFile = await _writeStableCopy(bytes, fileName);
-
     if (io.Platform.isAndroid) {
+      final mediaStoreSource = await _writeMediaStoreSource(bytes, fileName);
+      var savedToDownloads = false;
       try {
         MediaStore.appFolder = 'Kroscek';
         await MediaStore.ensureInitialized();
         final saved = await MediaStore().saveFile(
-          tempFilePath: stableFile.path,
+          tempFilePath: mediaStoreSource.path,
           dirType: DirType.download,
           dirName: DirName.download,
         );
@@ -64,18 +64,24 @@ class ExportFileService {
             'MediaStore tidak mengembalikan lokasi file.',
           );
         }
-        return StoredExportFile(
-          displayPath: 'Download/Kroscek/$fileName',
-          openPath: stableFile.path,
-          mimeType: mimeType,
-        );
+        savedToDownloads = true;
       } catch (_) {
-        return StoredExportFile(
-          displayPath: 'Penyimpanan aplikasi/Kroscek/$fileName',
-          openPath: stableFile.path,
-          mimeType: mimeType,
-        );
+        // A private copy below still lets the user open the generated file.
+      } finally {
+        await _deleteMediaStoreSource(mediaStoreSource);
       }
+
+      // Android MediaStore consumes/deletes its source file on recent Android
+      // versions. Create the durable FileProvider source only after that work
+      // finishes so "Buka sekarang" always points to an existing file.
+      final stableFile = await _writeStableCopy(bytes, fileName);
+      return StoredExportFile(
+        displayPath: savedToDownloads
+            ? 'Download/Kroscek/$fileName'
+            : 'Penyimpanan aplikasi/Kroscek/$fileName',
+        openPath: stableFile.path,
+        mimeType: mimeType,
+      );
     }
 
     final outputDirectory = io.Platform.isIOS
@@ -89,6 +95,33 @@ class ExportFileService {
       openPath: outputFile.path,
       mimeType: mimeType,
     );
+  }
+
+  static Future<io.File> _writeMediaStoreSource(
+    Uint8List bytes,
+    String fileName,
+  ) async {
+    final temporaryDirectory = await getTemporaryDirectory();
+    final sourceDirectory = io.Directory(
+      p.join(
+        temporaryDirectory.path,
+        'export_${DateTime.now().microsecondsSinceEpoch}',
+      ),
+    );
+    await sourceDirectory.create(recursive: true);
+    final sourceFile = io.File(p.join(sourceDirectory.path, fileName));
+    await sourceFile.writeAsBytes(bytes, flush: true);
+    return sourceFile;
+  }
+
+  static Future<void> _deleteMediaStoreSource(io.File sourceFile) async {
+    try {
+      if (await sourceFile.exists()) await sourceFile.delete();
+      final sourceDirectory = sourceFile.parent;
+      if (await sourceDirectory.exists()) await sourceDirectory.delete();
+    } catch (_) {
+      // Best-effort cleanup only; never fail a completed export for this.
+    }
   }
 
   static Future<ExportOpenOutcome> open({
