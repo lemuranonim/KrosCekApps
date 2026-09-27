@@ -1124,46 +1124,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   bool _hasPldDiscardValue(Map<String, dynamic> raw) {
-    final veg = _firstAuditRow(raw, 'audit_vegetative');
-    final gen = _firstAuditRow(raw, 'audit_generative');
-    final preHarvest = _firstAuditRow(raw, 'audit_pre_harvest');
-    final harvest = _firstAuditRow(raw, 'audit_harvest');
-
-    if (PldVisibilityHelper.isExplicitPld(raw['flagging_final']) ||
-        PldVisibilityHelper.isDecisionPld(veg?['decision']) ||
-        PldVisibilityHelper.isDecisionPld(veg?['final_decision']) ||
-        PldVisibilityHelper.isVegetativeActionPldFull(veg?['action_needed']) ||
-        PldVisibilityHelper.isPldOrDiscardFull(preHarvest?['final_decision']) ||
-        PldVisibilityHelper.isExplicitPld(preHarvest?['final_flagging']) ||
-        PldVisibilityHelper.isPldOrDiscardFull(harvest?['status_downgrade']) ||
-        PldVisibilityHelper.isExplicitPld(harvest?['final_flagging']) ||
-        PldVisibilityHelper.isExplicitPld(harvest?['downgrade_flagging'])) {
-      return true;
-    }
-
-    for (var i = 1; i <= 5; i++) {
-      if (PldVisibilityHelper.isPldOrDiscardFull(gen?['action_needed_$i']) ||
-          PldVisibilityHelper.isPldOrDiscardFull(gen?['final_decision_$i'])) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  Map<String, dynamic>? _firstAuditRow(
-    Map<String, dynamic> raw,
-    String tableKey,
-  ) {
-    final value = raw[tableKey];
-    if (value is Map<String, dynamic>) return value;
-    if (value is Map) return Map<String, dynamic>.from(value);
-    if (value is List && value.isNotEmpty) {
-      final first = value.first;
-      if (first is Map<String, dynamic>) return first;
-      if (first is Map) return Map<String, dynamic>.from(first);
-    }
-    return null;
+    return !PldVisibilityHelper.resolveField(raw).isOperational;
   }
 
   List<String> _uniqueValues(

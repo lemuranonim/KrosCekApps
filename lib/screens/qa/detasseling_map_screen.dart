@@ -1103,11 +1103,20 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         DateFormat('d MMM yyyy | HH:mm', 'id_ID').format(DateTime.now());
 
     final rows = reportFields.map((field) {
-      final rowDate = selectedDate ?? field.plannedDate;
+      final rowDate = _detasselingReportDate(
+        field,
+        selectedDate: selectedDate,
+        selectedPass: selectedPass,
+      );
+      final rowPass = _detasselingReportPass(
+        field,
+        rowDate,
+        selectedPass: selectedPass,
+      );
       final phase = _detasselingPhaseForField(
         field,
         rowDate,
-        selectedPass,
+        rowPass,
       );
       return <String>[
         field.fieldNumber.isEmpty ? '-' : field.fieldNumber,
@@ -1115,9 +1124,8 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         '${_formatHa(field.areaHa)} Ha',
         DateFormat('d MMM yyyy', 'id_ID').format(rowDate),
         field.dtDapRangeLabel.replaceFirst('DT ', ''),
-        selectedDate == null
-            ? 'P${field.plannedPass}'
-            : detasselingPassLabelForFieldOnDate(field, rowDate),
+        'P$rowPass',
+        '${detasselingRecommendedTkdForPass(areaHa: field.areaHa, crop: field.crop, pass: rowPass)} TKD',
         _isDetasselingPhaseDone(field, phase) ? 'Done' : 'Planned',
       ];
     }).toList(growable: false);
@@ -1267,6 +1275,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
                 'Plan Date',
                 'DAP',
                 'Pass',
+                'TKD/FN',
                 'Status',
               ],
               data: rows,
@@ -1295,7 +1304,8 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
                 3: pw.FlexColumnWidth(1.15),
                 4: pw.FlexColumnWidth(0.9),
                 5: pw.FlexColumnWidth(0.65),
-                6: pw.FlexColumnWidth(0.85),
+                6: pw.FlexColumnWidth(0.75),
+                7: pw.FlexColumnWidth(0.85),
               },
             ),
           pw.SizedBox(height: 12),
@@ -1684,9 +1694,19 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       'Plan Date',
       'DAP',
       'Pass',
+      'TKD/FN',
       'Status',
     ];
-    final widths = [160.0, 210.0, 104.0, 134.0, 110.0, 90.0, 130.0];
+    final widths = [
+      142.0,
+      190.0,
+      90.0,
+      120.0,
+      100.0,
+      78.0,
+      104.0,
+      114.0,
+    ];
     final tableLeft = tableRect.left + 24;
     final headerTop = tableRect.top + 58;
     var x = tableLeft;
@@ -1714,10 +1734,17 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     final rows = reportFields;
     for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
       final field = rows[rowIndex];
-      final rowDate = selectedDate ?? field.plannedDate;
-      final passLabel = selectedDate == null
-          ? 'P${field.plannedPass}'
-          : detasselingPassLabelForFieldOnDate(field, rowDate);
+      final rowDate = _detasselingReportDate(
+        field,
+        selectedDate: selectedDate,
+        selectedPass: selectedPass,
+      );
+      final rowPass = _detasselingReportPass(
+        field,
+        rowDate,
+        selectedPass: selectedPass,
+      );
+      final passLabel = 'P$rowPass';
       final top = headerTop + 31 + rowHeight * rowIndex;
       canvas.drawLine(
         Offset(tableRect.left + 24, top - 8),
@@ -1733,9 +1760,10 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         DateFormat('d MMM', 'id_ID').format(rowDate),
         field.dtDapRangeLabel.replaceFirst('DT ', ''),
         passLabel,
+        '${detasselingRecommendedTkdForPass(areaHa: field.areaHa, crop: field.crop, pass: rowPass)} TKD',
         _isDetasselingPhaseDone(
           field,
-          _detasselingPhaseForField(field, rowDate, selectedPass),
+          _detasselingPhaseForField(field, rowDate, rowPass),
         )
             ? 'Done'
             : 'Planned',
@@ -1753,7 +1781,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
                 ? const Color(0xFF175CFF)
                 : green,
           );
-        } else if (i == 6) {
+        } else if (i == 7) {
           canvas.drawCircle(
               Offset(x + 16, top + 10), 5, Paint()..color = green);
           drawText(
@@ -4034,19 +4062,33 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
                       for (final field in selectedFields)
                         _DetailFnRow(
                           field: field,
-                          displayDate: _selectedDate ?? field.plannedDate,
-                          passLabel: _selectedDate == null
-                              ? 'P${field.plannedPass}'
-                              : detasselingPassLabelForFieldOnDate(
-                                  field,
-                                  _selectedDate!,
-                                ),
-                          tkdLabel: _selectedDate == null
-                              ? '${field.recommendedTkd} TKD'
-                              : '${detasselingRecommendedTkdForFieldOnDate(
-                                  field,
-                                  _selectedDate!,
-                                )} TKD',
+                          displayDate: _detasselingReportDate(
+                            field,
+                            selectedDate: _selectedDate,
+                            selectedPass: selectedPass,
+                          ),
+                          passLabel: 'P${_detasselingReportPass(
+                            field,
+                            _detasselingReportDate(
+                              field,
+                              selectedDate: _selectedDate,
+                              selectedPass: selectedPass,
+                            ),
+                            selectedPass: selectedPass,
+                          )}',
+                          tkdLabel: '${detasselingRecommendedTkdForPass(
+                            areaHa: field.areaHa,
+                            crop: field.crop,
+                            pass: _detasselingReportPass(
+                              field,
+                              _detasselingReportDate(
+                                field,
+                                selectedDate: _selectedDate,
+                                selectedPass: selectedPass,
+                              ),
+                              selectedPass: selectedPass,
+                            ),
+                          )} TKD',
                           onTap: () => widget.onFieldTap(field),
                         ),
                     ],
@@ -5202,6 +5244,28 @@ String _detailStatusLabel(DetasselingGroupStatus status) {
 String _phaseForDetasselingPass(String passLabel) {
   final pass = int.tryParse(passLabel.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1;
   return 'generative_${pass.clamp(1, 5)}';
+}
+
+DateTime _detasselingReportDate(
+  DetasselingPlanField field, {
+  required DateTime? selectedDate,
+  required int? selectedPass,
+}) {
+  if (selectedDate != null) return selectedDate;
+  if (selectedPass != null) {
+    return detasselingPassDateForField(field, selectedPass);
+  }
+  return field.plannedDate;
+}
+
+int _detasselingReportPass(
+  DetasselingPlanField field,
+  DateTime reportDate, {
+  required int? selectedPass,
+}) {
+  return selectedPass ??
+      detasselingPassForFieldOnDate(field, reportDate) ??
+      field.plannedPass;
 }
 
 String _detasselingPhaseForField(
