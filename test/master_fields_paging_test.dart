@@ -213,6 +213,64 @@ void main() {
   });
 
   test(
+    'all-region coverage is split into bounded region cache requests',
+    () async {
+      final requestedRegions = <String>[];
+      var activeRequests = 0;
+      var peakRequests = 0;
+      final client = SupabaseClient(
+        'https://fields.invalid',
+        'test-key',
+        httpClient: MockClient((request) async {
+          expect(request.url.path, '/functions/v1/master-fields-map-cache');
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['dataset'], 'coverage');
+          final region = body['region'] as String;
+          requestedRegions.add(region);
+          activeRequests++;
+          if (activeRequests > peakRequests) peakRequests = activeRequests;
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          activeRequests--;
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode({
+                'data': [
+                  {'field_number': 'FIELD-$region', 'region': region},
+                ],
+                'cache': {'status': 'hit'},
+              }),
+            ),
+            200,
+            headers: {'content-type': 'application/json'},
+            request: request,
+          );
+        }),
+      );
+      addTearDown(client.dispose);
+
+      final rows = await SupabaseService(client: client)
+          .getMasterFieldsForCoverageByRegions([
+            'Region 5',
+            'Region 1',
+            'Region 4',
+            'Region 2',
+            'Region 3',
+            ' region 5 ',
+          ]);
+
+      expect(rows, hasLength(5));
+      expect(requestedRegions.toSet(), {
+        'Region 1',
+        'Region 2',
+        'Region 3',
+        'Region 4',
+        'Region 5',
+      });
+      expect(peakRequests, 3);
+    },
+  );
+
+  test(
     'large coverage status lists can be parsed off the UI isolate',
     () async {
       final rawFields = List.generate(

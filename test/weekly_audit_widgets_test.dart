@@ -167,6 +167,39 @@ void main() {
   });
 
   testWidgets(
+      'Coverage shows a safe professional error instead of a raw database URL',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({
+      SessionKeys.activeUserId: 'test-user',
+      SessionKeys.activeUserRole: 'FI',
+      SessionKeys.activeUserName: 'FI 1',
+    });
+    await tester.pumpWidget(ProviderScope(overrides: [
+      coverageStatusListScopedProvider(const MasterFieldMapScope.all())
+          .overrideWith(
+        (ref) async => throw const SocketException(
+          'Failed host lookup: crwvenlejfkrouimnxui.supabase.co '
+          'offset=0&limit=1000',
+        ),
+      ),
+    ], child: const MaterialApp(home: CoverageScreen())));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Koneksi ke server terputus'), findsOneWidget);
+    expect(find.text('Coba lagi'), findsOneWidget);
+    expect(find.textContaining('crwvenlejfkrouimnxui'), findsNothing);
+    expect(find.textContaining('offset=0'), findsNothing);
+    expect(find.textContaining('Data audit yang sudah tersimpan tetap aman'),
+        findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
       'flag filter includes all required categories and supports selecting nothing',
       (tester) async {
     Set<String>? chosen;

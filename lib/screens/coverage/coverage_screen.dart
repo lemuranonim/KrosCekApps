@@ -726,7 +726,7 @@ final coverageStatusListScopedProvider =
 
   if (rawFields.length < 200) return _parseCoverageStatuses(rawFields);
   return compute(_parseCoverageStatuses, rawFields);
-});
+}, retry: (_, __) => null);
 
 List<FieldCoverageStatus> _parseCoverageStatuses(
   List<Map<String, dynamic>> rawFields,
@@ -794,6 +794,42 @@ class _CoverageProjectionSet {
     required this.weekly,
     required this.earliestWeek,
   });
+}
+
+class _CoverageStaleSnapshot {
+  final int rowCount;
+  final int totalRows;
+  final DateTime? oldestSavedAt;
+
+  const _CoverageStaleSnapshot({
+    required this.rowCount,
+    required this.totalRows,
+    required this.oldestSavedAt,
+  });
+}
+
+_CoverageStaleSnapshot? _coverageStaleSnapshot(
+  List<FieldCoverageStatus> fields,
+) {
+  var staleRows = 0;
+  DateTime? oldestSavedAt;
+  for (final field in fields) {
+    if (field.raw['_kc_cache_stale'] != true) continue;
+    staleRows++;
+    final parsed = DateTime.tryParse(
+      field.raw['_kc_cache_saved_at']?.toString() ?? '',
+    );
+    if (parsed != null &&
+        (oldestSavedAt == null || parsed.isBefore(oldestSavedAt))) {
+      oldestSavedAt = parsed;
+    }
+  }
+  if (staleRows == 0) return null;
+  return _CoverageStaleSnapshot(
+    rowCount: staleRows,
+    totalRows: fields.length,
+    oldestSavedAt: oldestSavedAt,
+  );
 }
 
 class _CoverageProjectionRequest {
@@ -923,7 +959,7 @@ final _coverageProjectionProvider =
   );
   if (fields.length < 200) return _buildCoverageProjection(input);
   return compute(_buildCoverageProjection, input);
-});
+}, retry: (_, __) => null);
 
 final fiCoverageListProvider = FutureProvider<List<FICoverage>>((ref) async {
   final fields = await ref.watch(coverageStatusListProvider.future);
@@ -1185,12 +1221,36 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
         : ref.watch(_coverageProjectionProvider(projectionRequest));
 
     return fieldsAsync.when(
-      loading: () => const _SkeletonLoader(),
-      error: (e, _) => _CoverageErrorWidget(error: e.toString()),
+      loading: () => _showAllRegions
+          ? const _SkeletonLoader(
+              title: 'Menyiapkan All Region',
+              subtitle: 'Menggabungkan data cache per region',
+            )
+          : const _SkeletonLoader(),
+      error: (e, _) => _CoverageErrorWidget(
+        error: e,
+        onRetry: () => _refreshCoverage(ref, coverageScope),
+        secondaryLabel:
+            _showAllRegions && regionOptions.isNotEmpty ? 'Buka per region' : null,
+        onSecondary: _showAllRegions && regionOptions.isNotEmpty
+            ? () {
+                setState(() {
+                  _showAllRegions = false;
+                  _selectedRegion = regionOptions.first;
+                  _selectedDistrict = null;
+                  _selectedSpv = null;
+                });
+                ref
+                    .read(auditDashboardFilterProvider.notifier)
+                    .setRegion(regionOptions.first);
+              }
+            : null,
+      ),
       data: (projections) {
         final allCoverageFields = projections.allCoverage;
         final weeklyFields = projections.weekly;
         final earliestWeek = projections.earliestWeek;
+        final staleSnapshot = _coverageStaleSnapshot(projections.source);
 
         // CASCADING LOGIC — Region → District → SPV
         final regions = regionOptions.isNotEmpty
@@ -1270,6 +1330,10 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
                   selected: widget.previewRole ?? _CoverageViewRole.manager,
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
+              ),
+            if (staleSnapshot != null)
+              SliverToBoxAdapter(
+                child: _CoverageOfflineBanner(snapshot: staleSnapshot),
               ),
             SliverToBoxAdapter(
               child: _WeeklyCoverageControls(earliestWeek: earliestWeek),
@@ -1501,12 +1565,16 @@ class _SPVViewState extends ConsumerState<_SPVView> {
 
     return fieldsAsync.when(
       loading: () => const _SkeletonLoader(),
-      error: (e, _) => _CoverageErrorWidget(error: e.toString()),
+      error: (e, _) => _CoverageErrorWidget(
+        error: e,
+        onRetry: () => _refreshCoverage(ref),
+      ),
       data: (projections) {
         // 1. FILTER DASAR: Ambil hanya lahan milik SPV yang sedang login
         final allCoverageFields = projections.allCoverage;
         final weeklyFields = projections.weekly;
         final earliestWeek = projections.earliestWeek;
+        final staleSnapshot = _coverageStaleSnapshot(projections.source);
 
         // 2. CASCADING LOGIC SPV (Berdasarkan lahan milik SPV ini saja)
         final spvOptions = allCoverageFields
@@ -1588,6 +1656,10 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                   selected: widget.previewRole ?? _CoverageViewRole.spv,
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
+              ),
+            if (staleSnapshot != null)
+              SliverToBoxAdapter(
+                child: _CoverageOfflineBanner(snapshot: staleSnapshot),
               ),
             SliverToBoxAdapter(
               child: _WeeklyCoverageControls(earliestWeek: earliestWeek),
@@ -1804,12 +1876,16 @@ class _FIViewState extends ConsumerState<_FIView> {
 
     return fieldsAsync.when(
       loading: () => const _SkeletonLoader(),
-      error: (e, _) => _CoverageErrorWidget(error: e.toString()),
+      error: (e, _) => _CoverageErrorWidget(
+        error: e,
+        onRetry: () => _refreshCoverage(ref),
+      ),
       data: (projections) {
         // 1. FILTER DASAR: Ambil hanya lahan milik QA FI yang sedang login
         final allCoverageFields = projections.allCoverage;
         final weeklyFields = projections.weekly;
         final earliestWeek = projections.earliestWeek;
+        final staleSnapshot = _coverageStaleSnapshot(projections.source);
 
         // 2. CASCADING LOGIC FI (Gunakan myFiFields)
         final fiOptions = allCoverageFields
@@ -1906,6 +1982,10 @@ class _FIViewState extends ConsumerState<_FIView> {
                   selected: widget.previewRole ?? _CoverageViewRole.fi,
                   onSelected: widget.onPreviewRoleChanged ?? (_) {},
                 ),
+              ),
+            if (staleSnapshot != null)
+              SliverToBoxAdapter(
+                child: _CoverageOfflineBanner(snapshot: staleSnapshot),
               ),
             SliverToBoxAdapter(
               child: _WeeklyCoverageControls(earliestWeek: earliestWeek),
@@ -5797,39 +5877,348 @@ class _SmartRouteSheetState extends State<_SmartRouteSheet> {
   }
 }
 
-class _CoverageErrorWidget extends StatelessWidget {
-  final String error;
-  const _CoverageErrorWidget({required this.error});
+class _CoverageErrorPresentation {
+  final String eyebrow;
+  final String title;
+  final String message;
+  final String guidance;
+  final IconData icon;
+
+  const _CoverageErrorPresentation({
+    required this.eyebrow,
+    required this.title,
+    required this.message,
+    required this.guidance,
+    required this.icon,
+  });
+}
+
+_CoverageErrorPresentation _coverageErrorPresentation(Object error) {
+  final message = error.toString().toLowerCase();
+  if (message.contains('timeout') || message.contains('timed out')) {
+    return const _CoverageErrorPresentation(
+      eyebrow: 'KONEKSI LAMBAT',
+      title: 'Server belum merespons',
+      message:
+          'Permintaan dihentikan agar aplikasi tidak terus berada di layar loading.',
+      guidance: 'Gunakan koneksi yang stabil, lalu coba muat kembali.',
+      icon: Icons.schedule_rounded,
+    );
+  }
+  if (message.contains('failed host lookup') ||
+      message.contains('socketexception') ||
+      message.contains('no address associated') ||
+      message.contains('network is unreachable') ||
+      message.contains('connection reset')) {
+    return const _CoverageErrorPresentation(
+      eyebrow: 'KONEKSI BERMASALAH',
+      title: 'Koneksi ke server terputus',
+      message:
+          'Coverage belum dapat dijangkau. Data audit yang sudah tersimpan tetap aman.',
+      guidance:
+          'Periksa Wi-Fi atau data seluler. Jika perlu, nonaktifkan Private DNS/VPN sementara.',
+      icon: Icons.cloud_off_rounded,
+    );
+  }
+  if (message.contains('unauthorized') ||
+      message.contains('statuscode: 401') ||
+      message.contains('invalid jwt') ||
+      message.contains('jwt expired')) {
+    return const _CoverageErrorPresentation(
+      eyebrow: 'SESI BERAKHIR',
+      title: 'Sesi perlu diperbarui',
+      message: 'Akses Coverage perlu diverifikasi kembali sebelum data dimuat.',
+      guidance: 'Silakan login ulang, kemudian buka Coverage Monitoring.',
+      icon: Icons.lock_clock_rounded,
+    );
+  }
+  return const _CoverageErrorPresentation(
+    eyebrow: 'DATA BELUM TERSEDIA',
+    title: 'Coverage belum dapat dimuat',
+    message:
+        'Terjadi kendala sementara saat menyiapkan data Coverage Monitoring.',
+    guidance: 'Coba lagi. Jika berulang, laporkan waktu kejadian ke admin KC.',
+    icon: Icons.sync_problem_rounded,
+  );
+}
+
+class _CoverageErrorWidget extends StatefulWidget {
+  final Object error;
+  final Future<void> Function() onRetry;
+  final String? secondaryLabel;
+  final VoidCallback? onSecondary;
+
+  const _CoverageErrorWidget({
+    required this.error,
+    required this.onRetry,
+    this.secondaryLabel,
+    this.onSecondary,
+  });
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: AdvantaColors.softGrey,
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.error_outline_rounded,
-                  size: 56,
-                  color: AdvantaColors.error,
+  State<_CoverageErrorWidget> createState() => _CoverageErrorWidgetState();
+}
+
+class _CoverageErrorWidgetState extends State<_CoverageErrorWidget> {
+  bool _retrying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    debugPrint('Coverage load failed: ${widget.error}');
+  }
+
+  Future<void> _retry() async {
+    if (_retrying) return;
+    setState(() => _retrying = true);
+    try {
+      await widget.onRetry();
+    } catch (error) {
+      debugPrint('Coverage retry failed: $error');
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final content = _coverageErrorPresentation(widget.error);
+    return Scaffold(
+      backgroundColor: AdvantaColors.softGrey,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AdvantaColors.deepForest, AdvantaColors.midGreen],
                 ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Gagal memuat data',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  error,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.analytics_rounded, color: Colors.white, size: 24),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Coverage Monitoring',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 440),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: AdvantaColors.dividerGrey),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.06),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 68,
+                            height: 68,
+                            decoration: const BoxDecoration(
+                              color: AdvantaColors.goldPale,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              content.icon,
+                              size: 34,
+                              color: AdvantaColors.gold,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            content.eyebrow,
+                            style: const TextStyle(
+                              color: AdvantaColors.midGreen,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            content.title,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: AdvantaColors.deepForest,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            content.message,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: AdvantaColors.charcoal,
+                              fontSize: 13,
+                              height: 1.45,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(13),
+                            decoration: BoxDecoration(
+                              color: AdvantaColors.softGrey,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.info_outline_rounded,
+                                  size: 18,
+                                  color: AdvantaColors.mutedGrey,
+                                ),
+                                const SizedBox(width: 9),
+                                Expanded(
+                                  child: Text(
+                                    content.guidance,
+                                    style: const TextStyle(
+                                      color: AdvantaColors.mutedGrey,
+                                      fontSize: 12,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _retrying ? null : _retry,
+                              icon: _retrying
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.refresh_rounded),
+                              label: Text(
+                                _retrying ? 'Menghubungkan...' : 'Coba lagi',
+                              ),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AdvantaColors.primaryGreen,
+                                foregroundColor: Colors.white,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 13),
+                              ),
+                            ),
+                          ),
+                          if (widget.secondaryLabel != null &&
+                              widget.onSecondary != null) ...[
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: TextButton.icon(
+                                onPressed: widget.onSecondary,
+                                icon: const Icon(Icons.map_outlined),
+                                label: Text(widget.secondaryLabel!),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
+}
+
+class _CoverageOfflineBanner extends StatelessWidget {
+  final _CoverageStaleSnapshot snapshot;
+
+  const _CoverageOfflineBanner({required this.snapshot});
+
+  @override
+  Widget build(BuildContext context) {
+    final savedAt = snapshot.oldestSavedAt;
+    final savedLabel = savedAt == null
+        ? 'snapshot terakhir di perangkat'
+        : 'snapshot ${DateFormat('d MMM yyyy, HH:mm', 'id_ID').format(savedAt.toLocal())}';
+    final allRows = snapshot.rowCount >= snapshot.totalRows;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: AdvantaColors.goldPale,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AdvantaColors.gold.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.cloud_off_rounded,
+              color: AdvantaColors.gold,
+              size: 21,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Mode koneksi terbatas',
+                    style: TextStyle(
+                      color: AdvantaColors.deepForest,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${allRows ? 'Menampilkan' : 'Sebagian wilayah memakai'} $savedLabel. Tarik refresh saat jaringan stabil.',
+                    style: const TextStyle(
+                      color: AdvantaColors.charcoal,
+                      fontSize: 11.5,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _SkeletonLoader extends StatefulWidget {
