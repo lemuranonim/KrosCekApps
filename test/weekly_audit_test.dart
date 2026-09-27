@@ -366,6 +366,36 @@ void main() {
     expect(summary.overdueAreaHa, 0);
   });
 
+  test('positive-area PLD remains traceable but creates no audit workload', () {
+    final raw = fieldAt(
+      35,
+      id: 'PLD-POSITIVE-AREA',
+      area: .2,
+      veg: {'date_of_audit': '2026-08-24', 'flagging': 'PLD'},
+    );
+    final weekly = project(raw, now: DateTime(2026, 8, 26));
+    final coverage = FieldCoverageStatus.fromRaw(
+      raw,
+      weekStart: week,
+      now: DateTime(2026, 8, 26),
+    );
+
+    expect(weekly.flag, 'PLD');
+    expect(weekly.areaHa, .2);
+    expect(weekly.targets, isNotEmpty);
+    expect(weekly.isAuditEligible, false);
+    expect(weekly.isTarget, false);
+    expect(weekly.overdue, false);
+    expect(weekly.needsAttention, false);
+    expect(weekly.isStageOverdue('vegetative'), false);
+    expect(WeeklyAuditSummary([weekly]).targetFn, 0);
+    expect(coverage.hasPldDiscardValue, true);
+    expect(coverage.isAuditEligible, false);
+    expect(coverage.isAuditTarget, false);
+    expect(coverage.isOverdue, false);
+    expect(coverage.needsAttention, false);
+  });
+
   test('attention and status stay scoped to the selected lifecycle phase', () {
     final raw = fieldAt(
       95,
@@ -393,7 +423,7 @@ void main() {
     expect(field.isStageOverdue('harvest'), false);
   });
 
-  test('PLD exclusion normalizes 95/3/2 to 100 percent, keeps hectares', () {
+  test('PLD exclusion normalizes 95/3/2 to 100 percent', () {
     final all = [
       project(
         fieldAt(
@@ -420,8 +450,9 @@ void main() {
         ),
       ),
     ];
-    final full = WeeklyAuditSummary(all).composition((f) => f.flag);
-    expect(full['PLD']!.percent, 2);
+    final full = WeeklyAuditSummary(all);
+    expect(full.targetHa, 98);
+    expect(full.composition((f) => f.flag), isNot(contains('PLD')));
     expect(defaultAuditFlags, contains('PLD'));
     final filtered = WeeklyAuditSummary(all.where((f) => f.flag != 'PLD'));
     final flags = filtered.composition((f) => f.flag);

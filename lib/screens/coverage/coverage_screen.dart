@@ -267,9 +267,11 @@ class FieldCoverageStatus {
   List<String> get overduePhaseKeys =>
       weekly.targets.where((t) => t.overdue).map((t) => t.phase).toList();
 
-  bool get isAuditTarget => effectiveAreaHa > 0 && duePhaseKeys.isNotEmpty;
+  bool get isAuditEligible => weekly.isAuditEligible;
 
-  bool get hasActionRequired => actionCode != null;
+  bool get isAuditTarget => isAuditEligible && duePhaseKeys.isNotEmpty;
+
+  bool get hasActionRequired => isAuditEligible && actionCode != null;
 
   bool get needsAttention => isOverdue || hasActionRequired;
 
@@ -6560,6 +6562,9 @@ void _showWeeklyFields(
   VoidCallback? onChanged,
   String? targetStage,
 }) {
+  final auditableFields = fields
+      .where((field) => field.isAuditEligible)
+      .toList(growable: false);
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -6568,7 +6573,7 @@ void _showWeeklyFields(
     barrierColor: Colors.black.withValues(alpha: 0.48),
     builder: (_) => _WeeklyFieldSelectionSheet(
       title: title,
-      fields: fields,
+      fields: auditableFields,
       onChanged: onChanged,
       targetStage: targetStage,
     ),

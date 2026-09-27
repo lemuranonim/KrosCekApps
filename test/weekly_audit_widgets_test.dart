@@ -75,7 +75,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(
-          find.text(role == 'MANAGER' ? '150.0 Ha | 4 FN' : '100.0 Ha | 3 FN'),
+          find.text(role == 'MANAGER' ? '148.0 Ha | 3 FN' : '98.0 Ha | 2 FN'),
           findsWidgets);
       await tester.ensureVisible(find.text('Lihat detail'));
       await tester.tap(find.text('Lihat detail'));
@@ -85,12 +85,7 @@ void main() {
       expect(find.text('Overdue'), findsWidgets);
       expect(find.text('GF1'), findsOneWidget);
       expect(find.text('Pak Tani · FC'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.text('PLD1'),
-        260,
-        scrollable: find.byType(Scrollable).last,
-      );
-      expect(find.text('PLD1'), findsOneWidget);
+      expect(find.text('PLD1'), findsNothing);
       if (role == 'MANAGER') {
         await tester.scrollUntilVisible(
           find.text('Other-team'),

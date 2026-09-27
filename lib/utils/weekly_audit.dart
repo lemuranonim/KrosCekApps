@@ -284,20 +284,25 @@ class WeeklyAuditField {
   });
 
   double get areaHa => auditArea(raw['effective_area_ha']);
-  bool get isTarget => areaHa > 0 && targets.isNotEmpty;
+  /// PLD/discard is a terminal field state: it remains available for
+  /// traceability, but must not create audit workload or overdue targets.
+  bool get isAuditEligible => areaHa > 0 && flag != 'PLD';
+  bool get isTarget => isAuditEligible && targets.isNotEmpty;
   bool get done => isTarget && targets.every((target) => target.done);
-  bool get overdue => targets.any((target) => target.overdue);
+  bool get overdue => isTarget && targets.any((target) => target.overdue);
   Iterable<WeeklyAuditTarget> targetsForStage(String stage) =>
       targets.where((target) => auditStage(target.phase) == stage);
-  bool hasTargetForStage(String stage) => targetsForStage(stage).isNotEmpty;
+  bool hasTargetForStage(String stage) =>
+      isAuditEligible && targetsForStage(stage).isNotEmpty;
   bool isStageDone(String stage) {
+    if (!isAuditEligible) return false;
     final stageTargets = targetsForStage(stage).toList(growable: false);
     return stageTargets.isNotEmpty &&
         stageTargets.every((target) => target.done);
   }
 
   bool isStageOverdue(String stage) =>
-      targetsForStage(stage).any((target) => target.overdue);
+      isAuditEligible && targetsForStage(stage).any((target) => target.overdue);
   bool isStagePending(String stage) =>
       hasTargetForStage(stage) && !isStageDone(stage) && !isStageOverdue(stage);
   double get targetWeight =>
@@ -344,15 +349,17 @@ class WeeklyAuditField {
   bool get isolationNegative =>
       const {'yes', 'a'}.contains(latest((o) => o.isolation)?.toLowerCase());
   bool get needsAttention =>
-      overdue ||
-      roguingNegative ||
-      lsvNegative ||
-      isolationNegative ||
-      const {'RFI', 'RFD', 'BF', 'PLD', 'OF', 'RF'}.contains(flag);
+      isAuditEligible &&
+      (overdue ||
+          roguingNegative ||
+          lsvNegative ||
+          isolationNegative ||
+          const {'RFI', 'RFD', 'BF', 'OF', 'RF'}.contains(flag));
 
   /// Restricts attention to one audit stage so an unresolved later phase does
   /// not leak into a completed earlier phase.
   bool needsAttentionForStage(String stage) {
+    if (!isAuditEligible) return false;
     final stageObservations = observations
         .where((observation) => auditStage(observation.phase) == stage)
         .toList(growable: false);
