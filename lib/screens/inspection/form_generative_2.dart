@@ -15,6 +15,7 @@ import '../../services/session_manager.dart'; // ← NEW
 import '../../services/detasseling_iso_export_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/advanta_loading_state.dart';
+import '../../widgets/export_status_dialog.dart';
 import '../../utils/guest_guard.dart'; // ← NEW
 import 'fc_form_widgets.dart';
 
@@ -294,27 +295,17 @@ class _FormGenerative2State extends ConsumerState<FormGenerative2> {
           ? await DetasselingIsoExportService.downloadPdf(payload)
           : await DetasselingIsoExportService.downloadPicture(payload);
       if (mounted) {
-        _snack(
-          'ISO Form berhasil didownload: ${result.displayPath}',
-          action: SnackBarAction(
-            label: 'BUKA',
-            textColor: AdvantaColors.goldLight,
-            onPressed: () => _openIsoExport(result),
-          ),
+        await showExportCompletedDialog(
+          context,
+          title: 'ISO Form berhasil didownload',
+          displayPath: result.displayPath,
+          onOpen: () => DetasselingIsoExportService.openExport(result),
         );
       }
     } catch (e) {
       if (mounted) _snack('Gagal generate ISO Form: $e', err: true);
     } finally {
       if (mounted) setState(() => _isExportingIso = false);
-    }
-  }
-
-  Future<void> _openIsoExport(DetasselingIsoExportResult result) async {
-    try {
-      await DetasselingIsoExportService.openExport(result);
-    } catch (e) {
-      if (mounted) _snack('Tidak dapat membuka ISO Form: $e', err: true);
     }
   }
 

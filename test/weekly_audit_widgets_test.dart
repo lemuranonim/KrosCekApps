@@ -70,20 +70,32 @@ void main() {
         expect(find.text('All QA SPV'), findsOneWidget);
       }
       await tester.scrollUntilVisible(
-          find.text('Target achievement per phase'), 220,
+          find.textContaining('achievement per phase'), 220,
           scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(
-          find.text(role == 'MANAGER' ? '150.0 Ha | 4 FN' : '100.0 Ha | 3 FN'),
+          find.text(role == 'MANAGER' ? '148.0 Ha | 3 FN' : '98.0 Ha | 2 FN'),
           findsWidgets);
       await tester.ensureVisible(find.text('Lihat detail'));
       await tester.tap(find.text('Lihat detail'));
       await tester.pumpAndSettle();
-      expect(find.text('GF1 · Pak Tani · FC'), findsOneWidget);
-      expect(find.textContaining('PLD1'), findsOneWidget);
-      expect(find.textContaining('Other-team'),
-          role == 'MANAGER' ? findsOneWidget : findsNothing);
+      expect(find.text('On Going'), findsWidgets);
+      expect(find.text('Done'), findsWidgets);
+      expect(find.text('Overdue'), findsWidgets);
+      expect(find.text('GF1'), findsOneWidget);
+      expect(find.text('Pak Tani · FC'), findsOneWidget);
+      expect(find.text('PLD1'), findsNothing);
+      if (role == 'MANAGER') {
+        await tester.scrollUntilVisible(
+          find.text('Other-team'),
+          260,
+          scrollable: find.byType(Scrollable).last,
+        );
+        expect(find.text('Other-team'), findsOneWidget);
+      } else {
+        expect(find.text('Other-team'), findsNothing);
+      }
       expect(tester.takeException(), isNull);
     });
   }
@@ -99,8 +111,14 @@ void main() {
       SessionKeys.activeUserName: 'Manager',
     });
     final fields = [
-      FieldCoverageStatus.fromRaw(fixtures.fieldAt(20),
-          weekStart: fixtures.week, now: fixtures.end),
+      FieldCoverageStatus.fromRaw(
+          fixtures.fieldAt(20, id: 'CURRENT', area: 10),
+          weekStart: fixtures.week,
+          now: fixtures.end),
+      FieldCoverageStatus.fromRaw(
+          fixtures.fieldAt(300, id: 'HISTORICAL', area: 5),
+          weekStart: fixtures.week,
+          now: fixtures.end),
     ];
     final container = ProviderContainer(overrides: [
       coverageStatusListProvider.overrideWith((ref) async => fields),
@@ -120,10 +138,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('W35'), findsOneWidget);
+    expect(find.text('15.0 Ha | 2 FN'), findsWidgets);
     await tester.tap(find.widgetWithText(ChoiceChip, 'Target Audit'));
     await tester.pumpAndSettle();
     expect(find.textContaining('W35'), findsOneWidget);
     expect(container.read(auditDashboardFilterProvider).weeks, {fixtures.week});
+    expect(find.text('15.0 Ha | 2 FN'), findsNothing);
+    expect(find.text('10.0 Ha | 1 FN'), findsWidgets);
   });
 
   testWidgets('Coverage shows a branded loading shell while data is fetched',
@@ -140,6 +161,8 @@ void main() {
     final ready = Completer<List<FieldCoverageStatus>>();
     await tester.pumpWidget(ProviderScope(overrides: [
       coverageStatusListProvider.overrideWith((ref) => ready.future),
+      coverageStatusListScopedProvider(const MasterFieldMapScope.all())
+          .overrideWith((ref) => ready.future),
     ], child: const MaterialApp(home: CoverageScreen())));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
@@ -153,6 +176,39 @@ void main() {
 
     ready.complete([]);
     await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+      'Coverage shows a safe professional error instead of a raw database URL',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({
+      SessionKeys.activeUserId: 'test-user',
+      SessionKeys.activeUserRole: 'FI',
+      SessionKeys.activeUserName: 'FI 1',
+    });
+    await tester.pumpWidget(ProviderScope(overrides: [
+      coverageStatusListScopedProvider(const MasterFieldMapScope.all())
+          .overrideWith(
+        (ref) async => throw const SocketException(
+          'Failed host lookup: crwvenlejfkrouimnxui.supabase.co '
+          'offset=0&limit=1000',
+        ),
+      ),
+    ], child: const MaterialApp(home: CoverageScreen())));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Koneksi ke server terputus'), findsOneWidget);
+    expect(find.text('Coba lagi'), findsOneWidget);
+    expect(find.textContaining('crwvenlejfkrouimnxui'), findsNothing);
+    expect(find.textContaining('offset=0'), findsNothing);
+    expect(find.textContaining('Data audit yang sudah tersimpan tetap aman'),
+        findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -364,6 +420,26 @@ void main() {
     await tester.tap(find.text('East').last);
     await tester.pumpAndSettle();
     expect(requestedRegions, [null, 'East']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('planning uses the shared branded loading state', (tester) async {
+    final loading = Completer<List<AuditPlanField>>();
+    await tester.pumpWidget(ProviderScope(
+        overrides: [
+          auditPlanningRegionsProvider.overrideWith((ref) async => ['East']),
+          auditPlanningProvider.overrideWith((ref, params) => loading.future),
+        ],
+        child: MaterialApp(
+            home: AuditPlanningScreen(initialWeek: fixtures.week))));
+    await tester.pump();
+
+    expect(find.text('Memuat planning audit'), findsOneWidget);
+    expect(find.text('Menghitung target DAP dan status audit'), findsOneWidget);
+
+    loading.complete([]);
+    await tester.pumpAndSettle();
+    expect(find.text('Memuat planning audit'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

@@ -418,3 +418,9 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/act-master-fields-sync/deno.json"
 entrypoint = "./functions/act-master-fields-sync/index.ts"
+
+[functions.master-fields-map-cache]
+enabled = true
+verify_jwt = true
+import_map = "./functions/master-fields-map-cache/deno.json"
+entrypoint = "./functions/master-fields-map-cache/index.ts"

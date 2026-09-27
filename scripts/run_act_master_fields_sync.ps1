@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [string]$ProjectRef = 'crwvenlejfkrouimnxui',
-  [int]$MaximumResumeCalls = 80
+  [int]$MaximumResumeCalls = 160,
+  [int]$ResumeDelaySeconds = 5
 )
 
 $ErrorActionPreference = 'Stop'
@@ -123,6 +124,15 @@ for ($attempt = 1; $attempt -le $MaximumResumeCalls; $attempt++) {
   $status = [string]$response.status
   if ($status -in @('COMPLETED', 'FAILED', 'BLOCKED', 'READY')) {
     break
+  }
+  if ($response.error) {
+    throw "ACT sync failed before reaching a terminal status: $($response.error)"
+  }
+  if (-not $status) {
+    throw 'ACT sync returned neither status nor a recognized terminal response.'
+  }
+  if ($ResumeDelaySeconds -gt 0) {
+    Start-Sleep -Seconds $ResumeDelaySeconds
   }
   $response = Invoke-SyncFunction -Headers $headers -FunctionUrl $functionUrl -Payload @{ runId = $runId }
 }

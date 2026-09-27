@@ -350,13 +350,48 @@ final masterFieldCoverageScopedProvider =
                     latestActiveMasterFieldSeasonProvider.future,
                   ));
 
-      final fields = (await supabaseService.getMasterFieldsForCoverage(
-        qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
-        qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
-        season: resolvedSeason,
-        region: scope.region,
-        district: scope.district,
-      )).map(_withResolvedCorrectionTagging).toList();
+      final qaFi = action == 'audit' && role == 'FI'
+          ? user.name.trim()
+          : null;
+      final qaSpv = action == 'audit' && role == 'SPV'
+          ? user.name.trim()
+          : null;
+      late final List<Map<String, dynamic>> rawFields;
+      if (action == 'all' && scope.region?.trim().isNotEmpty != true) {
+        final regionScope = MasterFieldMapScope(
+          season: scope.season,
+          allSeasons: scope.allSeasons,
+        );
+        final regions = (await ref.watch(
+          activeMasterFieldRegionsProvider(regionScope).future,
+        ))
+            .where(
+              (region) =>
+                  region.trim().isNotEmpty &&
+                  region.trim().toLowerCase() != 'region tester',
+            )
+            .toList(growable: false);
+        rawFields = regions.isEmpty
+            ? await supabaseService.getMasterFieldsForCoverage(
+                season: resolvedSeason,
+                district: scope.district,
+              )
+            : await supabaseService.getMasterFieldsForCoverageByRegions(
+                regions,
+                season: resolvedSeason,
+                district: scope.district,
+              );
+      } else {
+        rawFields = await supabaseService.getMasterFieldsForCoverage(
+          qaFi: qaFi,
+          qaSpv: qaSpv,
+          season: resolvedSeason,
+          region: scope.region,
+          district: scope.district,
+        );
+      }
+
+      final fields = rawFields.map(_withResolvedCorrectionTagging).toList();
 
       if (action == 'all') return fields;
 
@@ -373,7 +408,7 @@ final masterFieldCoverageScopedProvider =
       }
 
       return fields;
-    });
+    }, retry: (_, __) => null);
 
 // ============================================================
 // 4. DATA MODEL KHUSUS PETA

@@ -3,6 +3,21 @@ export interface XlsxRow {
   values: Map<number, unknown>;
 }
 
+export interface XlsxRowChunk {
+  headers: Map<number, string>;
+  rows: XlsxRow[];
+  processedRows: number;
+  nextCursor: number;
+  complete: boolean;
+}
+
+interface CellToken {
+  column: number;
+  type: string;
+  valueXml: string | undefined;
+  xml: string;
+}
+
 interface ZipEntry {
   compressionMethod: number;
   compressedStart: number;
@@ -166,6 +181,106 @@ function parseCellValue(cellXml: string, sharedStrings: string[]): unknown {
   return Number.isFinite(number) ? number : decoded;
 }
 
+function cellTokens(rowXml: string): CellToken[] {
+  const tokens: CellToken[] = [];
+  const matcher = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+  for (let match = matcher.exec(rowXml); match; match = matcher.exec(rowXml)) {
+    const cellXml = `<c${match[1]}>${match[2] ?? ""}</c>`;
+    const opening = cellXml.slice(0, cellXml.indexOf(">") + 1);
+    const reference = attribute(opening, "r");
+    const column = columnIndex(reference);
+    if (column < 0) continue;
+    tokens.push({
+      column,
+      type: attribute(opening, "t"),
+      valueXml: cellXml.match(/<v>([\s\S]*?)<\/v>/)?.[1],
+      xml: cellXml,
+    });
+  }
+  return tokens;
+}
+
+function sharedStringIndex(token: CellToken): number | null {
+  if (token.type !== "s" || token.valueXml === undefined) return null;
+  const value = Number(decodeXmlEntities(token.valueXml));
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function parseCellToken(
+  token: CellToken,
+  sharedStrings: ReadonlyMap<number, string>,
+): unknown {
+  if (token.type === "inlineStr") return textNodes(token.xml);
+  if (token.valueXml === undefined) return null;
+  const decoded = decodeXmlEntities(token.valueXml);
+  if (token.type === "s") return sharedStrings.get(Number(decoded)) ?? "";
+  if (token.type === "str" || token.type === "e") return decoded;
+  if (token.type === "b") return decoded === "1";
+  const number = Number(decoded);
+  return Number.isFinite(number) ? number : decoded;
+}
+
+function parseSelectiveRow(
+  xml: string,
+  sharedStrings: ReadonlyMap<number, string>,
+  includedColumns?: ReadonlySet<number>,
+): XlsxRow {
+  const rowNumber = Number(attribute(xml.slice(0, xml.indexOf(">") + 1), "r")) || 0;
+  const values = new Map<number, unknown>();
+  for (const token of cellTokens(xml)) {
+    if (includedColumns && !includedColumns.has(token.column)) continue;
+    values.set(token.column, parseCellToken(token, sharedStrings));
+  }
+  return { rowNumber, values };
+}
+
+async function readSelectedSharedStrings(
+  bytes: Uint8Array,
+  indexes: ReadonlySet<number>,
+): Promise<Map<number, string>> {
+  const values = new Map<number, string>();
+  if (indexes.size === 0) return values;
+
+  const highestIndex = Math.max(...indexes);
+  let index = 0;
+  for await (
+    const xml of xmlElements(zipEntryText(bytes, "xl/sharedStrings.xml"), "si")
+  ) {
+    if (indexes.has(index)) values.set(index, textNodes(xml));
+    if (index >= highestIndex) break;
+    index++;
+  }
+  return values;
+}
+
+function collectSharedStringIndexes(
+  rowXml: string,
+  indexes: Set<number>,
+  includedColumns?: ReadonlySet<number>,
+): void {
+  for (const token of cellTokens(rowXml)) {
+    if (includedColumns && !includedColumns.has(token.column)) continue;
+    const index = sharedStringIndex(token);
+    if (index !== null) indexes.add(index);
+  }
+}
+
+function serializedRowHasValue(
+  rowXml: string,
+  includedColumns: ReadonlySet<number>,
+): boolean {
+  for (const token of cellTokens(rowXml)) {
+    if (!includedColumns.has(token.column)) continue;
+    if (token.type === "inlineStr") {
+      if (textNodes(token.xml).trim() !== "") return true;
+      continue;
+    }
+    if (token.valueXml === undefined) continue;
+    if (token.type === "s" || decodeXmlEntities(token.valueXml).trim() !== "") return true;
+  }
+  return false;
+}
+
 function parseRow(xml: string, sharedStrings: string[]): XlsxRow {
   const rowNumber = Number(attribute(xml.slice(0, xml.indexOf(">") + 1), "r")) || 0;
   const values = new Map<number, unknown>();
@@ -186,4 +301,98 @@ export async function* iterateFirstSheetRows(bytes: Uint8Array): AsyncGenerator<
   ) {
     yield parseRow(xml, sharedStrings);
   }
+}
+
+/**
+ * Reads a resumable slice from the first worksheet without parsing the rows
+ * before the cursor. XLSX shared strings are also resolved only for the header
+ * and selected columns in the returned slice. This keeps CPU usage nearly
+ * constant as the cursor advances through a large workbook.
+ */
+export async function readFirstSheetRowsChunk(
+  bytes: Uint8Array,
+  cursor: number,
+  maxRows: number,
+  isHeaderRow: (values: ReadonlyMap<number, unknown>) => boolean,
+  includeHeader: (value: unknown) => boolean,
+): Promise<XlsxRowChunk> {
+  if (!Number.isInteger(cursor) || cursor < 0) throw new Error("XLSX cursor must be non-negative");
+  if (!Number.isInteger(maxRows) || maxRows <= 0) throw new Error("XLSX chunk size must be positive");
+
+  const iterator = xmlElements(zipEntryText(bytes, "xl/worksheets/sheet1.xml"), "row");
+  const bufferedRows: string[] = [];
+  const headerSharedIndexes = new Set<number>();
+
+  while (bufferedRows.length < 25) {
+    const next = await iterator.next();
+    if (next.done) break;
+    bufferedRows.push(next.value);
+    collectSharedStringIndexes(next.value, headerSharedIndexes);
+  }
+
+  const headerSharedStrings = await readSelectedSharedStrings(bytes, headerSharedIndexes);
+  let headerIndex = -1;
+  let headerRow: XlsxRow | null = null;
+  for (let index = 0; index < bufferedRows.length; index++) {
+    const parsed = parseSelectiveRow(bufferedRows[index], headerSharedStrings);
+    if (parsed.rowNumber <= 25 && isHeaderRow(parsed.values)) {
+      headerIndex = index;
+      headerRow = parsed;
+      break;
+    }
+  }
+  if (!headerRow) throw new Error("XLSX workbook has no Field Number header");
+
+  const allHeaderColumns = new Set(headerRow.values.keys());
+  const headers = new Map<number, string>();
+  for (const [column, value] of headerRow.values) {
+    if (includeHeader(value)) headers.set(column, String(value ?? "").trim());
+  }
+  if (headers.size === 0) throw new Error("XLSX workbook has no selected columns");
+  const selectedColumns = new Set(headers.keys());
+
+  async function* remainingRows(): AsyncGenerator<string> {
+    for (let index = headerIndex + 1; index < bufferedRows.length; index++) {
+      yield bufferedRows[index];
+    }
+    while (true) {
+      const next = await iterator.next();
+      if (next.done) break;
+      yield next.value;
+    }
+  }
+
+  let seenRows = 0;
+  let complete = true;
+  const selectedRowXml: string[] = [];
+  for await (const rowXml of remainingRows()) {
+    if (!serializedRowHasValue(rowXml, allHeaderColumns)) continue;
+    if (seenRows < cursor) {
+      seenRows++;
+      continue;
+    }
+    if (selectedRowXml.length >= maxRows) {
+      complete = false;
+      break;
+    }
+    seenRows++;
+    selectedRowXml.push(rowXml);
+  }
+
+  const selectedSharedIndexes = new Set<number>();
+  for (const rowXml of selectedRowXml) {
+    collectSharedStringIndexes(rowXml, selectedSharedIndexes, selectedColumns);
+  }
+  const selectedSharedStrings = await readSelectedSharedStrings(bytes, selectedSharedIndexes);
+  const rows = selectedRowXml.map((rowXml) =>
+    parseSelectiveRow(rowXml, selectedSharedStrings, selectedColumns)
+  );
+
+  return {
+    headers,
+    rows,
+    processedRows: rows.length,
+    nextCursor: cursor + rows.length,
+    complete,
+  };
 }

@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../utils/dap_helper.dart';
 import '../utils/audit_status_helper.dart';
 import '../utils/pld_visibility_helper.dart';
+import 'export_status_dialog.dart';
 import 'phase_asset_icon.dart';
 
 class FieldDetailBottomSheet extends ConsumerStatefulWidget {
@@ -63,14 +64,6 @@ class _FieldDetailBottomSheetState
   bool _isExportingPhaseIso = false;
   bool _isExportingGenerativeIso = false;
 
-  // 1. TAMBAHKAN VARIABEL STATE INI
-  late int _dap;
-  late String _recommendedPhase;
-  late String? _finalPlantingDate; // Menyimpan tanggal yang fix dipakai
-  late DateTime _dapReferenceDate;
-  late bool
-      _isPlantingDateRevisied; // Penanda untuk UI (Warna emas jika revisi)
-
   // ── Penentu Tipe Crop berdasarkan Hybrid ────────────────────
   bool get _isSweetCorn {
     final hybrid =
@@ -84,30 +77,6 @@ class _FieldDetailBottomSheetState
         widget.field['hybrid']?.toString().toUpperCase().trim() ?? '';
     // PSP (Next): ASF**
     return hybrid.startsWith('ASF');
-  }
-
-  // 2. TAMBAHKAN INIT STATE INI
-  @override
-  void initState() {
-    super.initState();
-
-    final revDate = DapHelper.getRevisedPlantingDate(widget.field);
-    _finalPlantingDate = DapHelper.getEffectivePlantingDate(widget.field);
-    _isPlantingDateRevisied = revDate != null;
-    final referenceDate = widget.dapReferenceDate ?? DateTime.now();
-    _dapReferenceDate = DateTime(
-      referenceDate.year,
-      referenceDate.month,
-      referenceDate.day,
-    );
-
-    // 3. Hitung DAP dan Rekomendasi Fase
-    _dap = DapHelper.calculateDAP(
-      _finalPlantingDate,
-      referenceDate: _dapReferenceDate,
-    );
-    _recommendedPhase = DapHelper.getRecommendedPhase(_dap,
-        hybrid: widget.field['hybrid']?.toString());
   }
 
   // ── Phase data dinamis menyesuaikan tipe crop ──────────────────
@@ -230,8 +199,11 @@ class _FieldDetailBottomSheetState
   }
 
   // ── Helpers ───────────────────────────────────────────────
-  Map<String, dynamic>? _auditMap(String key) {
-    final v = widget.field[key];
+  Map<String, dynamic>? _auditMap(
+    String key, {
+    Map<String, dynamic>? source,
+  }) {
+    final v = (source ?? widget.field)[key];
     if (v == null) return null;
     if (v is List && v.isNotEmpty) return v[0] as Map<String, dynamic>;
     if (v is Map) return Map<String, dynamic>.from(v);
@@ -285,38 +257,6 @@ class _FieldDetailBottomSheetState
     return _isVegetativePldDecision(audit['final_decision']) ||
         _isPldFlagging(audit['final_flagging']) ||
         _isPldFlagging(audit['downgrade_flagging']);
-  }
-
-  bool _isMasterPldFlag(Map<String, dynamic> field) {
-    return _isPldFlagging(field['flagging_final']) ||
-        _isExplicitPldValue(field['final_decision']);
-  }
-
-  List<String> _pldAuditPhases() {
-    final hits = <String>[];
-
-    void addIfPld(String phase, bool isPld) {
-      if (hits.contains(phase)) return;
-      if (isPld) hits.add(phase);
-    }
-
-    final veg = _auditMap('audit_vegetative');
-    addIfPld('Vegetatif', _isVegetativePldAudit(veg));
-
-    final gen = _auditMap('audit_generative');
-    for (var i = 1; i <= 5; i++) {
-      addIfPld('Generatif CP$i', _isGenerativePldAudit(gen, i));
-    }
-
-    final preHarvest = _auditMap('audit_pre_harvest');
-    addIfPld('Pre-Harvest', _isPreHarvestPldAudit(preHarvest));
-
-    final harvest = _auditMap('audit_harvest');
-    addIfPld('Harvest', _isHarvestPldAudit(harvest));
-
-    addIfPld('Master', _isMasterPldFlag(widget.field));
-
-    return hits;
   }
 
   Color _flagColor(String? flag) {
@@ -476,13 +416,11 @@ class _FieldDetailBottomSheetState
           ? await DetasselingIsoExportService.downloadPdf(payload)
           : await DetasselingIsoExportService.downloadPicture(payload);
       if (mounted) {
-        _showSheetSnack(
-          'ISO Generative/QPIR berhasil didownload: ${result.displayPath}',
-          action: SnackBarAction(
-            label: 'BUKA',
-            textColor: AdvantaColors.goldLight,
-            onPressed: () => _openGenerativeIsoExport(result),
-          ),
+        await showExportCompletedDialog(
+          context,
+          title: 'ISO Generative/QPIR berhasil didownload',
+          displayPath: result.displayPath,
+          onOpen: () => DetasselingIsoExportService.openExport(result),
         );
       }
     } catch (e) {
@@ -491,20 +429,6 @@ class _FieldDetailBottomSheetState
       }
     } finally {
       if (mounted) setState(() => _isExportingGenerativeIso = false);
-    }
-  }
-
-  Future<void> _openGenerativeIsoExport(
-      DetasselingIsoExportResult result) async {
-    try {
-      await DetasselingIsoExportService.openExport(result);
-    } catch (e) {
-      if (mounted) {
-        _showSheetSnack(
-          'Tidak dapat membuka file ISO Generative/QPIR: $e',
-          err: true,
-        );
-      }
     }
   }
 
@@ -531,13 +455,12 @@ class _FieldDetailBottomSheetState
           ? await PhaseIsoExportService.downloadPdf(payload)
           : await PhaseIsoExportService.downloadPicture(payload);
       if (mounted) {
-        _showSheetSnack(
-          'ISO ${PhaseIsoExportService.phaseLabel(phase)} berhasil didownload: ${result.displayPath}',
-          action: SnackBarAction(
-            label: 'BUKA',
-            textColor: AdvantaColors.goldLight,
-            onPressed: () => _openPhaseIsoExport(result),
-          ),
+        await showExportCompletedDialog(
+          context,
+          title:
+              'ISO ${PhaseIsoExportService.phaseLabel(phase)} berhasil didownload',
+          displayPath: result.displayPath,
+          onOpen: () => PhaseIsoExportService.openExport(result),
         );
       }
     } catch (e) {
@@ -552,34 +475,12 @@ class _FieldDetailBottomSheetState
     }
   }
 
-  Future<void> _openPhaseIsoExport(PhaseIsoExportResult result) async {
-    try {
-      await PhaseIsoExportService.openExport(result);
-    } catch (e) {
-      if (mounted) {
-        _showSheetSnack('Tidak dapat membuka file ISO: $e', err: true);
-      }
-    }
-  }
-
-  void _showSheetSnack(String msg, {bool err = false, SnackBarAction? action}) {
+  void _showSheetSnack(String msg, {bool err = false}) {
     if (!mounted) return;
-    final theme = Theme.of(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: AdvantaText.body2.copyWith(color: Colors.white),
-        ),
-        backgroundColor: err ? theme.colorScheme.error : AdvantaColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(12),
-        duration: action == null
-            ? const Duration(seconds: 4)
-            : const Duration(seconds: 8),
-        action: action,
-      ),
+    showExportMessageDialog(
+      context,
+      message: msg,
+      isError: err,
     );
   }
 
@@ -597,8 +498,26 @@ class _FieldDetailBottomSheetState
     final user = ref.watch(currentUserProvider).value;
     final canEditMasterData =
         user != null && user.role.toLowerCase() != 'guest';
-    final pldPhases = _pldAuditPhases();
-    final isPldField = pldPhases.isNotEmpty;
+    final requestedReference = widget.dapReferenceDate ?? DateTime.now();
+    final lifecycle = PldVisibilityHelper.resolveField(
+      field,
+      asOf: requestedReference,
+    );
+    final isStoppedField = lifecycle.isStopped;
+    final plantingDate = DapHelper.getEffectivePlantingDate(field);
+    final dapReferenceDate = lifecycle.stoppedAt ?? DateTime(
+      requestedReference.year,
+      requestedReference.month,
+      requestedReference.day,
+    );
+    final dap = DapHelper.calculateDAP(
+      plantingDate,
+      referenceDate: dapReferenceDate,
+    );
+    final recommendedPhase = DapHelper.getRecommendedPhase(
+      dap,
+      hybrid: field['hybrid']?.toString(),
+    );
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -623,7 +542,7 @@ class _FieldDetailBottomSheetState
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
                 borderRadius: AdvantaRadius.sheetRadius,
-                border: isPldField
+                border: isStoppedField
                     ? Border.all(
                         color: AdvantaColors.error.withAlpha(150),
                         width: 1.4,
@@ -639,11 +558,29 @@ class _FieldDetailBottomSheetState
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _DragHandle(isDark: isDark),
-                      _buildHeader(fieldNumber, _dap, _recommendedPhase, flag,
-                          field, theme, isDark, pldPhases),
-                      _buildTabBar(theme, isDark, isPldField),
-                      _buildContent(_dap, _recommendedPhase, fieldNumber, field,
-                          theme, isDark, canEditMasterData),
+                      _buildHeader(
+                        fieldNumber,
+                        dap,
+                        recommendedPhase,
+                        flag,
+                        field,
+                        theme,
+                        isDark,
+                        lifecycle,
+                        plantingDate,
+                        dapReferenceDate,
+                      ),
+                      _buildTabBar(theme, isDark, isStoppedField),
+                      _buildContent(
+                        dap,
+                        recommendedPhase,
+                        fieldNumber,
+                        field,
+                        theme,
+                        isDark,
+                        canEditMasterData,
+                        isStoppedField,
+                      ),
                     ],
                   ),
                 ),
@@ -664,11 +601,13 @@ class _FieldDetailBottomSheetState
     Map<String, dynamic> field,
     ThemeData theme,
     bool isDark,
-    List<String> pldPhases,
+    FieldLifecycleState lifecycle,
+    String? plantingDate,
+    DateTime dapReferenceDate,
   ) {
     final hybrid = field['hybrid']?.toString();
-    final isPldField = pldPhases.isNotEmpty;
-    final markerColor = isPldField
+    final isStoppedField = lifecycle.isStopped;
+    final markerColor = isStoppedField
         ? AdvantaColors.error
         : DapHelper.getDapMarkerColor(dap, hybrid: hybrid);
     final farmName = _fmt(field['farmer_name']);
@@ -695,11 +634,12 @@ class _FieldDetailBottomSheetState
     return Container(
       padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 12.0),
       decoration: BoxDecoration(
-        color:
-            isPldField ? AdvantaColors.error.withAlpha(isDark ? 40 : 18) : null,
+        color: isStoppedField
+            ? AdvantaColors.error.withAlpha(isDark ? 40 : 18)
+            : null,
         border: Border(
           bottom: BorderSide(
-            color: isPldField
+            color: isStoppedField
                 ? AdvantaColors.error.withAlpha(isDark ? 160 : 120)
                 : borderColor,
           ),
@@ -730,9 +670,11 @@ class _FieldDetailBottomSheetState
                         ),
                         _buildNavButton(targetLat, targetLng),
                         const SizedBox(width: 8),
-                        if (isPldField)
-                          const _FlagBadge(
-                              flag: 'PLD', color: AdvantaColors.error)
+                        if (isStoppedField)
+                          _FlagBadge(
+                            flag: lifecycle.statusLabel,
+                            color: AdvantaColors.error,
+                          )
                         else if (flag != null && flag.isNotEmpty)
                           _FlagBadge(flag: flag, color: _flagColor(flag)),
                       ],
@@ -759,35 +701,39 @@ class _FieldDetailBottomSheetState
             ],
           ),
           const SizedBox(height: 12.0),
-          if (isPldField) ...[
-            _PldAlertBanner(phases: pldPhases, isDark: isDark),
+          if (isStoppedField) ...[
+            _PldAlertBanner(
+              lifecycle: lifecycle,
+              frozenDap: dap,
+              isDark: isDark,
+            ),
             const SizedBox(height: 12.0),
           ],
 
-          // DAP Progress bar
-          _DapProgressBar(
-            dap: dap,
-            recommendedPhase: _getPhaseLabel(recommendedPhase),
-            phaseColors: _phaseColors,
-            hybrid: hybrid,
-          ),
-          Builder(builder: (context) {
-            final auditStatus = AuditStatusHelper.fromRaw(field);
-            final isRecPhaseAudited =
-                _isPhaseAudited(recommendedPhase, auditStatus);
-
-            return _DapCalculationBox(
-              plantingDate:
-                  _finalPlantingDate, // <-- Pakai _finalPlantingDate yang sudah difilter
+          if (!isStoppedField) ...[
+            _DapProgressBar(
               dap: dap,
-              phaseKey: recommendedPhase,
+              recommendedPhase: _getPhaseLabel(recommendedPhase),
+              phaseColors: _phaseColors,
               hybrid: hybrid,
-              isAudited: isRecPhaseAudited,
-              isDark: isDark,
-              referenceDate: _dapReferenceDate,
-              isRevisied: _isPlantingDateRevisied, // <-- Kirim penanda revisi
-            );
-          }),
+            ),
+            Builder(builder: (context) {
+              final auditStatus = AuditStatusHelper.fromRaw(field);
+              final isRecPhaseAudited =
+                  _isPhaseAudited(recommendedPhase, auditStatus);
+
+              return _DapCalculationBox(
+                plantingDate: plantingDate,
+                dap: dap,
+                phaseKey: recommendedPhase,
+                hybrid: hybrid,
+                isAudited: isRecPhaseAudited,
+                isDark: isDark,
+                referenceDate: dapReferenceDate,
+                isRevisied: DapHelper.getRevisedPlantingDate(field) != null,
+              );
+            }),
+          ],
         ],
       ),
     );
@@ -844,7 +790,7 @@ class _FieldDetailBottomSheetState
   }
 
   // ── TAB BAR ───────────────────────────────────────────────
-  Widget _buildTabBar(ThemeData theme, bool isDark, bool isPldField) {
+  Widget _buildTabBar(ThemeData theme, bool isDark, bool isStoppedField) {
     const tabs = ['Info Lahan', 'Histori', 'Mulai Inspeksi'];
     const tabIcons = [
       Icons.info_outline_rounded,
@@ -857,23 +803,24 @@ class _FieldDetailBottomSheetState
 
     return Container(
       decoration: BoxDecoration(
-        color: isPldField
+        color: isStoppedField
             ? AdvantaColors.error.withAlpha(isDark ? 32 : 14)
             : (isDark
                 ? AdvantaColors.deepForest.withAlpha(100)
                 : AdvantaColors.softGrey),
         border: Border(
           bottom: BorderSide(
-            color: isPldField
+            color: isStoppedField
                 ? AdvantaColors.error.withAlpha(isDark ? 140 : 90)
                 : borderColor,
           ),
         ),
       ),
       child: Row(
-        children: List.generate(3, (i) {
-          final active = _tab == i;
-          final activeColor = isPldField
+        children: List.generate(isStoppedField ? 2 : 3, (i) {
+          final effectiveTab = isStoppedField && _tab > 1 ? 0 : _tab;
+          final active = effectiveTab == i;
+          final activeColor = isStoppedField
               ? AdvantaColors.error
               : (i == 2
                   ? AdvantaColors.lightGreen
@@ -931,9 +878,11 @@ class _FieldDetailBottomSheetState
     ThemeData theme,
     bool isDark,
     bool canEditMasterData,
+    bool isStoppedField,
   ) {
     Widget activeTab;
-    switch (_tab) {
+    final effectiveTab = isStoppedField && _tab > 1 ? 0 : _tab;
+    switch (effectiveTab) {
       case 0:
         activeTab = _buildInfoTab(field, theme, isDark, canEditMasterData);
         break;
@@ -949,7 +898,7 @@ class _FieldDetailBottomSheetState
       duration: const Duration(milliseconds: 180),
       transitionBuilder: (child, anim) =>
           FadeTransition(opacity: anim, child: child),
-      child: KeyedSubtree(key: ValueKey(_tab), child: activeTab),
+      child: KeyedSubtree(key: ValueKey(effectiveTab), child: activeTab),
     );
   }
 
@@ -1234,7 +1183,7 @@ class _FieldDetailBottomSheetState
     for (int i = 0; i < _phaseKeys.length; i++) {
       final phaseKey = _phaseKeys[i];
       final auditKey = phaseToAudit[phaseKey]!;
-      final auditData = _auditMap(auditKey);
+      final auditData = _auditMap(auditKey, source: field);
       final color = _phaseColors[i];
       final isLast = i == _phaseKeys.length - 1;
 
@@ -1568,19 +1517,24 @@ class _FlagBadge extends StatelessWidget {
 }
 
 class _PldAlertBanner extends StatelessWidget {
-  final List<String> phases;
+  final FieldLifecycleState lifecycle;
+  final int frozenDap;
   final bool isDark;
 
   const _PldAlertBanner({
-    required this.phases,
+    required this.lifecycle,
+    required this.frozenDap,
     required this.isDark,
   });
 
   @override
   Widget build(BuildContext context) {
-    final phaseText = phases.take(3).join(', ');
-    final extraCount = phases.length - 3;
-    final suffix = extraCount > 0 ? ' +$extraCount fase' : '';
+    final stoppedDate = lifecycle.stoppedAt == null
+        ? 'tanggal audit belum tersedia'
+        : DateFormat('dd MMM yyyy', 'id_ID').format(lifecycle.stoppedAt!);
+    final phase = lifecycle.stoppedPhase == null
+        ? ''
+        : ' pada fase ${lifecycle.stoppedPhase}';
 
     return Container(
       width: double.infinity,
@@ -1602,7 +1556,7 @@ class _PldAlertBanner extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(
-              Icons.warning_amber_rounded,
+              Icons.stop_circle_outlined,
               color: AdvantaColors.error,
               size: 18,
             ),
@@ -1610,7 +1564,9 @@ class _PldAlertBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Status PLD terdeteksi: $phaseText$suffix',
+              '${lifecycle.statusLabel} · siklus lahan berhenti$phase pada '
+              '$stoppedDate. DAP dibekukan di $frozenDap hari dan lahan tidak '
+              'masuk planning, overdue, atau kebutuhan TKD.',
               style: AdvantaText.caption.copyWith(
                 color: isDark ? const Color(0xFFFFCDD2) : AdvantaColors.error,
                 fontWeight: FontWeight.w700,

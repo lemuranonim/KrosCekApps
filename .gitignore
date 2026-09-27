@@ -49,10 +49,14 @@ assets/config.json
 /supabase/functions/*
 !/supabase/functions/act-master-fields-sync/
 !/supabase/functions/act-master-fields-sync/**
+!/supabase/functions/master-fields-map-cache/
+!/supabase/functions/master-fields-map-cache/**
 !/supabase/migrations/
 /supabase/migrations/*
 !/supabase/migrations/20260924*.sql
 !/supabase/migrations/20260925*.sql
+!/supabase/migrations/20260926*.sql
+!/supabase/migrations/20260927*.sql
 .vscode/
 /local commit/
 

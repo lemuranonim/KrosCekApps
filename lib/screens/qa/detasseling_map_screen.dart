@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' as io;
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -11,29 +10,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:media_store_plus/media_store_plus.dart';
-import 'package:open_file/open_file.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../providers/detasseling_plan_provider.dart';
 import '../../providers/master_fields_provider.dart';
+import '../../services/export_file_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/audit_status_helper.dart';
 import '../../widgets/advanta_loading_state.dart';
+import '../../widgets/export_status_dialog.dart';
 import '../../widgets/field_detail_bottom_sheet.dart';
-
-class _ExportSaveResult {
-  final String displayPath;
-  final String openPath;
-
-  const _ExportSaveResult({
-    required this.displayPath,
-    required this.openPath,
-  });
-}
 
 class DetasselingMapScreen extends ConsumerStatefulWidget {
   const DetasselingMapScreen({super.key});
@@ -960,7 +947,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         plan,
         selectedDate: _selectedPlanningDate,
       );
-      final destination = await _saveBytes(
+      final destination = await ExportFileService.saveBytes(
         bytes: bytes,
         fileName: _exportFileName(
           plan,
@@ -969,7 +956,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         ),
         mimeType: 'image/png',
       );
-      _snackExportSuccess('Picture weekly planning', destination);
+      await _showExportSuccess('Picture weekly planning', destination);
     } catch (e) {
       _snack('Gagal download picture: $e', isError: true);
     } finally {
@@ -998,7 +985,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
           ),
         ),
       );
-      final destination = await _saveBytes(
+      final destination = await ExportFileService.saveBytes(
         bytes: await doc.save(),
         fileName: _exportFileName(
           plan,
@@ -1007,7 +994,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         ),
         mimeType: 'application/pdf',
       );
-      _snackExportSuccess('PDF weekly planning', destination);
+      await _showExportSuccess('PDF weekly planning', destination);
     } catch (e) {
       _snack('Gagal download PDF: $e', isError: true);
     } finally {
@@ -1030,7 +1017,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         selectedDate: selectedDate,
         selectedPass: selectedPass,
       );
-      final destination = await _saveBytes(
+      final destination = await ExportFileService.saveBytes(
         bytes: bytes,
         fileName: _exportCodetFileName(
           plan,
@@ -1041,7 +1028,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         ),
         mimeType: 'image/png',
       );
-      _snackExportSuccess('Picture detail Codet', destination);
+      await _showExportSuccess('Picture detail Codet', destination);
     } catch (e) {
       _snack('Gagal download picture detail Codet: $e', isError: true);
     } finally {
@@ -1058,27 +1045,14 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     if (_isExportingPdf) return;
     setState(() => _isExportingPdf = true);
     try {
-      final reportImage = await _buildCodetDetailPng(
+      final reportPdf = await _buildCodetDetailPdf(
         plan,
         group,
         selectedDate: selectedDate,
         selectedPass: selectedPass,
       );
-      final doc = pw.Document();
-      doc.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          margin: pw.EdgeInsets.zero,
-          build: (_) => pw.Center(
-            child: pw.Image(
-              pw.MemoryImage(reportImage),
-              fit: pw.BoxFit.contain,
-            ),
-          ),
-        ),
-      );
-      final destination = await _saveBytes(
-        bytes: await doc.save(),
+      final destination = await ExportFileService.saveBytes(
+        bytes: reportPdf,
         fileName: _exportCodetFileName(
           plan,
           group,
@@ -1088,12 +1062,270 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         ),
         mimeType: 'application/pdf',
       );
-      _snackExportSuccess('PDF detail Codet', destination);
+      await _showExportSuccess('PDF detail Codet', destination);
     } catch (e) {
       _snack('Gagal download PDF detail Codet: $e', isError: true);
     } finally {
       if (mounted) setState(() => _isExportingPdf = false);
     }
+  }
+
+  Future<Uint8List> _buildCodetDetailPdf(
+    DetasselingPlanningData plan,
+    DetasselingPlanGroup group, {
+    DateTime? selectedDate,
+    int? selectedPass,
+  }) async {
+    const deep = PdfColor.fromInt(0xff003b24);
+    const green = PdfColor.fromInt(0xff006b3e);
+    const softGreen = PdfColor.fromInt(0xffeaf4ec);
+    const line = PdfColor.fromInt(0xffdce3dd);
+    const ink = PdfColor.fromInt(0xff092817);
+
+    final reportGroup = _groupForDateFilter(group, selectedDate);
+    final reportFields = _fieldsForPassFilter(
+      reportGroup.fields,
+      selectedDate: selectedDate,
+      selectedPass: selectedPass,
+    );
+    final reportArea = reportFields.fold(
+      0.0,
+      (sum, field) => sum + field.areaHa,
+    );
+    final dateScopeLabel = _datePassFilterLabel(selectedDate, selectedPass);
+    final raw = group.fields.isEmpty ? null : group.fields.first.parsed.raw;
+    final season = _rawText(
+      raw,
+      const ['season', 'season_code', 'planting_season'],
+    );
+    final region = _rawText(raw, const ['region']);
+    final generatedAt =
+        DateFormat('d MMM yyyy | HH:mm', 'id_ID').format(DateTime.now());
+
+    final rows = reportFields.map((field) {
+      final rowDate = _detasselingReportDate(
+        field,
+        selectedDate: selectedDate,
+        selectedPass: selectedPass,
+      );
+      final rowPass = _detasselingReportPass(
+        field,
+        rowDate,
+        selectedPass: selectedPass,
+      );
+      final phase = _detasselingPhaseForField(
+        field,
+        rowDate,
+        rowPass,
+      );
+      return <String>[
+        field.fieldNumber.isEmpty ? '-' : field.fieldNumber,
+        field.farmerName.isEmpty ? '-' : field.farmerName,
+        '${_formatHa(field.areaHa)} Ha',
+        DateFormat('d MMM yyyy', 'id_ID').format(rowDate),
+        field.dtDapRangeLabel.replaceFirst('DT ', ''),
+        'P$rowPass',
+        '${detasselingRecommendedTkdForPass(areaHa: field.areaHa, crop: field.crop, pass: rowPass)} TKD',
+        _isDetasselingPhaseDone(field, phase) ? 'Done' : 'Planned',
+      ];
+    }).toList(growable: false);
+
+    pw.Widget summaryItem(String label, String value) {
+      return pw.Container(
+        width: 142,
+        padding: const pw.EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+        decoration: pw.BoxDecoration(
+          color: softGreen,
+          border: pw.Border.all(color: line, width: 0.6),
+          borderRadius: pw.BorderRadius.circular(5),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              label,
+              style: const pw.TextStyle(fontSize: 7.5, color: green),
+            ),
+            pw.SizedBox(height: 2),
+            pw.Text(
+              value.isEmpty ? '-' : value,
+              maxLines: 2,
+              style: pw.TextStyle(
+                fontSize: 9.5,
+                color: ink,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final document = pw.Document();
+    document.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.fromLTRB(28, 24, 28, 26),
+        header: (context) => pw.Container(
+          margin: const pw.EdgeInsets.only(bottom: 12),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: pw.BoxDecoration(
+            color: deep,
+            borderRadius: pw.BorderRadius.circular(6),
+          ),
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'WEEKLY DETASSELLING DETAIL BY CODET',
+                      style: pw.TextStyle(
+                        color: PdfColors.white,
+                        fontSize: 15,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.SizedBox(height: 3),
+                    pw.Text(
+                      '${plan.week.label} - ${group.codet} - $dateScopeLabel',
+                      style: const pw.TextStyle(
+                        color: PdfColors.white,
+                        fontSize: 8,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.Text(
+                '${reportFields.length} FN',
+                style: pw.TextStyle(
+                  color: PdfColors.white,
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+        footer: (context) => pw.Container(
+          margin: const pw.EdgeInsets.only(top: 10),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'Generated by KROSCEK - $generatedAt WIB',
+                style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700),
+              ),
+              pw.Text(
+                'Halaman ${context.pageNumber} dari ${context.pagesCount}',
+                style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700),
+              ),
+            ],
+          ),
+        ),
+        build: (_) => [
+          pw.Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              summaryItem('Codet', group.codet),
+              summaryItem('Desa', group.village),
+              summaryItem('Hybrid / Crop', '${group.hybrid} / ${group.cropLabel}'),
+              summaryItem('Total Area', '${_formatHa(reportArea)} Ha'),
+              summaryItem('Season / Region', '$season / $region'),
+              summaryItem('Week / Scope', '${plan.week.label} / $dateScopeLabel'),
+              summaryItem('Pass Rule', _groupPassRule(group)),
+              summaryItem('Total FN', '${reportFields.length} FN'),
+            ],
+          ),
+          pw.SizedBox(height: 14),
+          pw.Text(
+            'FN LIST BY CODET - SELURUH DATA',
+            style: pw.TextStyle(
+              fontSize: 11,
+              color: deep,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          pw.SizedBox(height: 7),
+          if (rows.isEmpty)
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(18),
+              decoration: pw.BoxDecoration(
+                color: softGreen,
+                border: pw.Border.all(color: line),
+              ),
+              child: pw.Center(
+                child: pw.Text(
+                  'Tidak ada FN pada filter ini.',
+                  style: const pw.TextStyle(fontSize: 9, color: ink),
+                ),
+              ),
+            )
+          else
+            pw.TableHelper.fromTextArray(
+              headers: const [
+                'FN Code',
+                'Farmer',
+                'Area',
+                'Plan Date',
+                'DAP',
+                'Pass',
+                'TKD/FN',
+                'Status',
+              ],
+              data: rows,
+              headerDecoration: const pw.BoxDecoration(color: deep),
+              headerStyle: pw.TextStyle(
+                color: PdfColors.white,
+                fontSize: 8,
+                fontWeight: pw.FontWeight.bold,
+              ),
+              headerAlignment: pw.Alignment.centerLeft,
+              headerPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 6,
+              ),
+              cellStyle: const pw.TextStyle(fontSize: 7.5, color: ink),
+              cellPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 5,
+              ),
+              border: pw.TableBorder.all(color: line, width: 0.5),
+              oddRowDecoration: const pw.BoxDecoration(color: softGreen),
+              columnWidths: const {
+                0: pw.FlexColumnWidth(1.25),
+                1: pw.FlexColumnWidth(1.7),
+                2: pw.FlexColumnWidth(0.75),
+                3: pw.FlexColumnWidth(1.15),
+                4: pw.FlexColumnWidth(0.9),
+                5: pw.FlexColumnWidth(0.65),
+                6: pw.FlexColumnWidth(0.75),
+                7: pw.FlexColumnWidth(0.85),
+              },
+            ),
+          pw.SizedBox(height: 12),
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(9),
+            decoration: pw.BoxDecoration(
+              color: softGreen,
+              border: pw.Border.all(color: line),
+              borderRadius: pw.BorderRadius.circular(5),
+            ),
+            child: pw.Text(
+              'Detail ini memuat seluruh ${reportFields.length} FN untuk Codet ${group.codet} pada $dateScopeLabel. Pass rule: FC P1-P3, SC P1-P5.',
+              style: const pw.TextStyle(fontSize: 8, color: ink),
+            ),
+          ),
+        ],
+      ),
+    );
+    return document.save();
   }
 
   Future<Uint8List> _buildCodetDetailPng(
@@ -1103,8 +1335,9 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     int? selectedPass,
   }) async {
     const width = 1200.0;
-    const height = 1600.0;
     const margin = 44.0;
+    const tableTop = 606.0;
+    const rowHeight = 42.0;
     const deep = Color(0xFF003B24);
     const green = Color(0xFF006B3E);
     const softGreen = Color(0xFFEAF4EC);
@@ -1119,6 +1352,11 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     final reportArea =
         reportFields.fold(0.0, (sum, field) => sum + field.areaHa);
     final dateScopeLabel = _datePassFilterLabel(selectedDate, selectedPass);
+    final tableHeight =
+        112.0 + math.max(1, reportFields.length).toDouble() * rowHeight;
+    final noteTop = tableTop + tableHeight + 24.0;
+    final footerTop = noteTop + 150.0;
+    final height = footerTop + 82.0;
 
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
@@ -1270,7 +1508,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         DateFormat('d MMM yyyy | HH:mm', 'id_ID').format(DateTime.now());
 
     canvas.drawRect(
-      const Rect.fromLTWH(0, 0, width, height),
+      Rect.fromLTWH(0, 0, width, height),
       Paint()..color = Colors.white,
     );
 
@@ -1441,7 +1679,12 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       );
     }
 
-    final tableRect = Rect.fromLTWH(margin, 606, width - margin * 2, 700);
+    final tableRect = Rect.fromLTWH(
+      margin,
+      tableTop,
+      width - margin * 2,
+      tableHeight,
+    );
     drawRound(tableRect, Colors.white, radius: 12, border: line);
     drawPanelTitle(tableRect, 'FN LIST BY CODET');
     final headers = [
@@ -1451,9 +1694,19 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       'Plan Date',
       'DAP',
       'Pass',
+      'TKD/FN',
       'Status',
     ];
-    final widths = [160.0, 210.0, 104.0, 134.0, 110.0, 90.0, 130.0];
+    final widths = [
+      142.0,
+      190.0,
+      90.0,
+      120.0,
+      100.0,
+      78.0,
+      104.0,
+      114.0,
+    ];
     final tableLeft = tableRect.left + 24;
     final headerTop = tableRect.top + 58;
     var x = tableLeft;
@@ -1478,14 +1731,20 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       x += widths[i];
     }
 
-    final rows = reportFields.take(13).toList();
-    const rowHeight = 42.0;
+    final rows = reportFields;
     for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
       final field = rows[rowIndex];
-      final rowDate = selectedDate ?? field.plannedDate;
-      final passLabel = selectedDate == null
-          ? 'P${field.plannedPass}'
-          : detasselingPassLabelForFieldOnDate(field, rowDate);
+      final rowDate = _detasselingReportDate(
+        field,
+        selectedDate: selectedDate,
+        selectedPass: selectedPass,
+      );
+      final rowPass = _detasselingReportPass(
+        field,
+        rowDate,
+        selectedPass: selectedPass,
+      );
+      final passLabel = 'P$rowPass';
       final top = headerTop + 31 + rowHeight * rowIndex;
       canvas.drawLine(
         Offset(tableRect.left + 24, top - 8),
@@ -1501,9 +1760,10 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
         DateFormat('d MMM', 'id_ID').format(rowDate),
         field.dtDapRangeLabel.replaceFirst('DT ', ''),
         passLabel,
+        '${detasselingRecommendedTkdForPass(areaHa: field.areaHa, crop: field.crop, pass: rowPass)} TKD',
         _isDetasselingPhaseDone(
           field,
-          _detasselingPhaseForField(field, rowDate, selectedPass),
+          _detasselingPhaseForField(field, rowDate, rowPass),
         )
             ? 'Done'
             : 'Planned',
@@ -1521,7 +1781,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
                 ? const Color(0xFF175CFF)
                 : green,
           );
-        } else if (i == 6) {
+        } else if (i == 7) {
           canvas.drawCircle(
               Offset(x + 16, top + 10), 5, Paint()..color = green);
           drawText(
@@ -1546,18 +1806,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       }
     }
 
-    if (reportFields.length > rows.length) {
-      drawCenteredText(
-        '+${reportFields.length - rows.length} FN lainnya',
-        Rect.fromLTWH(tableRect.left + 24, tableRect.bottom - 38,
-            tableRect.width - 48, 24),
-        fontSize: 13,
-        color: const Color(0xFF5E6A62),
-        weight: FontWeight.w900,
-      );
-    }
-
-    final noteRect = Rect.fromLTWH(margin, 1330, width - margin * 2, 110);
+    final noteRect = Rect.fromLTWH(margin, noteTop, width - margin * 2, 110);
     drawRound(noteRect, const Color(0xFFF0F5F1), radius: 10, border: line);
     drawIcon(
       Icons.info_outline_rounded,
@@ -1583,7 +1832,7 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
       weight: FontWeight.w600,
     );
 
-    final footerRect = Rect.fromLTWH(0, 1518, width, 82);
+    final footerRect = Rect.fromLTWH(0, footerTop, width, 82);
     canvas.drawRect(footerRect, Paint()..color = deep);
     drawText(
       'Generated by KROSCEK',
@@ -2550,70 +2799,6 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     return status == DetasselingGroupStatus.done ? 'Done' : 'Planned';
   }
 
-  Future<_ExportSaveResult> _saveBytes({
-    required Uint8List bytes,
-    required String fileName,
-    required String mimeType,
-  }) async {
-    final tempDir = await getTemporaryDirectory();
-    final tempFile = io.File(p.join(tempDir.path, fileName));
-    await tempFile.writeAsBytes(bytes, flush: true);
-
-    if (io.Platform.isAndroid) {
-      try {
-        MediaStore.appFolder = 'Kroscek';
-        await MediaStore.ensureInitialized();
-        final saved = await MediaStore().saveFile(
-          tempFilePath: tempFile.path,
-          dirType: DirType.download,
-          dirName: DirName.download,
-        );
-        if (saved == null) {
-          throw Exception('MediaStore tidak mengembalikan lokasi file.');
-        }
-        return _ExportSaveResult(
-          displayPath: 'Download/Kroscek/$fileName',
-          openPath: tempFile.path,
-        );
-      } catch (_) {
-        final fallback = await _saveToAppDocuments(bytes, fileName);
-        return _ExportSaveResult(
-          displayPath:
-              'Documents/${fallback.uri.pathSegments.last} ($mimeType)',
-          openPath: fallback.path,
-        );
-      }
-    }
-
-    final downloadDir = await _downloadDirectory();
-    final outputFile = io.File(p.join(downloadDir.path, fileName));
-    await outputFile.writeAsBytes(bytes, flush: true);
-    return _ExportSaveResult(
-      displayPath: outputFile.path,
-      openPath: outputFile.path,
-    );
-  }
-
-  Future<io.File> _saveToAppDocuments(Uint8List bytes, String fileName) async {
-    final directory = await getApplicationDocumentsDirectory();
-    final outputDir = io.Directory(p.join(directory.path, 'exports'));
-    if (!await outputDir.exists()) {
-      await outputDir.create(recursive: true);
-    }
-    final outputFile = io.File(p.join(outputDir.path, fileName));
-    await outputFile.writeAsBytes(bytes, flush: true);
-    return outputFile;
-  }
-
-  Future<io.Directory> _downloadDirectory() async {
-    if (io.Platform.isIOS) {
-      return getApplicationDocumentsDirectory();
-    }
-    final downloads = await getDownloadsDirectory();
-    if (downloads != null) return downloads;
-    return getApplicationDocumentsDirectory();
-  }
-
   String _exportFileName(
     DetasselingPlanningData plan,
     String extension, {
@@ -2773,25 +2958,20 @@ class _DetasselingMapScreenState extends ConsumerState<DetasselingMapScreen> {
     setState(() {});
   }
 
-  void _snackExportSuccess(String title, _ExportSaveResult result) {
-    _snack(
-      '$title berhasil didownload: ${result.displayPath}',
-      action: SnackBarAction(
-        label: 'BUKA',
-        textColor: AdvantaColors.goldLight,
-        onPressed: () => _openExportResult(result),
+  Future<void> _showExportSuccess(
+    String title,
+    StoredExportFile result,
+  ) async {
+    if (!mounted) return;
+    await showExportCompletedDialog(
+      context,
+      title: '$title berhasil didownload',
+      displayPath: result.displayPath,
+      onOpen: () => ExportFileService.open(
+        path: result.openPath,
+        mimeType: result.mimeType,
       ),
     );
-  }
-
-  Future<void> _openExportResult(_ExportSaveResult result) async {
-    try {
-      await OpenFile.open(result.openPath);
-    } catch (e) {
-      if (mounted) {
-        _snack('Tidak dapat membuka file export: $e', isError: true);
-      }
-    }
   }
 
   void _snack(String message, {bool isError = false, SnackBarAction? action}) {
@@ -3882,19 +4062,33 @@ class _CodetDetailSheetState extends State<_CodetDetailSheet> {
                       for (final field in selectedFields)
                         _DetailFnRow(
                           field: field,
-                          displayDate: _selectedDate ?? field.plannedDate,
-                          passLabel: _selectedDate == null
-                              ? 'P${field.plannedPass}'
-                              : detasselingPassLabelForFieldOnDate(
-                                  field,
-                                  _selectedDate!,
-                                ),
-                          tkdLabel: _selectedDate == null
-                              ? '${field.recommendedTkd} TKD'
-                              : '${detasselingRecommendedTkdForFieldOnDate(
-                                  field,
-                                  _selectedDate!,
-                                )} TKD',
+                          displayDate: _detasselingReportDate(
+                            field,
+                            selectedDate: _selectedDate,
+                            selectedPass: selectedPass,
+                          ),
+                          passLabel: 'P${_detasselingReportPass(
+                            field,
+                            _detasselingReportDate(
+                              field,
+                              selectedDate: _selectedDate,
+                              selectedPass: selectedPass,
+                            ),
+                            selectedPass: selectedPass,
+                          )}',
+                          tkdLabel: '${detasselingRecommendedTkdForPass(
+                            areaHa: field.areaHa,
+                            crop: field.crop,
+                            pass: _detasselingReportPass(
+                              field,
+                              _detasselingReportDate(
+                                field,
+                                selectedDate: _selectedDate,
+                                selectedPass: selectedPass,
+                              ),
+                              selectedPass: selectedPass,
+                            ),
+                          )} TKD',
                           onTap: () => widget.onFieldTap(field),
                         ),
                     ],
@@ -5050,6 +5244,28 @@ String _detailStatusLabel(DetasselingGroupStatus status) {
 String _phaseForDetasselingPass(String passLabel) {
   final pass = int.tryParse(passLabel.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1;
   return 'generative_${pass.clamp(1, 5)}';
+}
+
+DateTime _detasselingReportDate(
+  DetasselingPlanField field, {
+  required DateTime? selectedDate,
+  required int? selectedPass,
+}) {
+  if (selectedDate != null) return selectedDate;
+  if (selectedPass != null) {
+    return detasselingPassDateForField(field, selectedPass);
+  }
+  return field.plannedDate;
+}
+
+int _detasselingReportPass(
+  DetasselingPlanField field,
+  DateTime reportDate, {
+  required int? selectedPass,
+}) {
+  return selectedPass ??
+      detasselingPassForFieldOnDate(field, reportDate) ??
+      field.plannedPass;
 }
 
 String _detasselingPhaseForField(

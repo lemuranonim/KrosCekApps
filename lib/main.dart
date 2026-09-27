@@ -93,10 +93,13 @@ void main() async {
     await Hive.openBox('harvestData');
     await Hive.openBox('pspVegetativeData');
     await Hive.openBox('pspGenerativeData');
+    await Hive.openBox('masterFieldReadCacheV2');
     await initializeDateFormatting('id_ID', null);
 
     if (!kIsWeb) {
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      FirebaseMessaging.onBackgroundMessage(
+        _firebaseMessagingBackgroundHandler,
+      );
       await NotificationService().init();
       await Permission.notification.request();
       await Permission.location.request();
@@ -104,7 +107,6 @@ void main() async {
     }
 
     runApp(const ProviderScope(child: MyApp()));
-
   } catch (e) {
     runApp(ProviderScope(child: ErrorApp(errorMessage: e.toString())));
   }

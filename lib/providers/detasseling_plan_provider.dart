@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../services/supabase_auth_service.dart';
 import '../utils/dap_helper.dart';
+import '../utils/pld_visibility_helper.dart';
 import '../utils/qa_name_helper.dart';
 import 'master_fields_provider.dart';
 
@@ -332,6 +333,8 @@ DetasselingPlanningData buildDetasselingPlanningData(
 
   for (final parsed in scopedFields) {
     final raw = parsed.raw;
+    if (!PldVisibilityHelper.resolveField(raw).isOperational) continue;
+
     final hybrid = _readText(raw['hybrid']).toUpperCase();
     if (hybrid.isEmpty || DapHelper.isPsp(hybrid)) continue;
 
@@ -380,6 +383,7 @@ DetasselingPlanningData buildDetasselingPlanningData(
     final codet = _readCodet(raw);
     final village = _readText(raw['village_desa'], fallback: 'Unknown Desa');
     final plannedPass = firstSchedule.pass;
+    final areaHa = _readArea(raw);
     fields.add(
       DetasselingPlanField(
         parsed: parsed,
@@ -389,19 +393,16 @@ DetasselingPlanningData buildDetasselingPlanningData(
         village: village,
         hybrid: hybrid,
         crop: crop,
-        areaHa: _readArea(raw),
+        areaHa: areaHa,
         currentDap: currentDap,
         plannedDap: plannedDap,
         dtEndDap: dtEndDap,
         detasselingStartDap: detasselingStartDap,
         passOneDate: passOneDate,
         plannedPass: plannedPass,
-        recommendedTkd: detasselingRecommendedTkdForArea(
-          _readArea(raw),
-          crop,
-        ),
+        recommendedTkd: detasselingRecommendedTkdForArea(areaHa, crop),
         passRecommendedTkd: detasselingRecommendedTkdForPass(
-          areaHa: _readArea(raw),
+          areaHa: areaHa,
           crop: crop,
           pass: plannedPass,
         ),
@@ -630,7 +631,8 @@ int detasselingRecommendedTkdForArea(
   double areaHa,
   DetasselingCropFilter crop,
 ) {
-  return _roundPositiveTkd(areaHa * detasselingTotalTkdPerHaFor(crop));
+  return detasselingAllocatedTkdByPass(areaHa, crop)
+      .fold(0, (total, value) => total + value);
 }
 
 int detasselingRecommendedTkdForPass({
@@ -651,9 +653,14 @@ List<int> detasselingAllocatedTkdByPass(
   if (areaHa <= 0) return List.filled(passTkdPerHa.length, 0);
 
   final exact = passTkdPerHa.map((value) => areaHa * value).toList();
-  final floors = exact.map((value) => value.floor()).toList();
-  final targetTotal =
+  final floors = exact.map((value) {
+    final floored = value.floor();
+    return floored < 1 ? 1 : floored;
+  }).toList();
+  final roundedTotal =
       exact.fold<double>(0, (total, value) => total + value).round();
+  final minimumTotal = passTkdPerHa.length;
+  final targetTotal = roundedTotal < minimumTotal ? minimumTotal : roundedTotal;
   var remainder = targetTotal - floors.fold<int>(0, (a, b) => a + b);
   if (remainder <= 0) return floors;
 
@@ -673,12 +680,6 @@ List<int> detasselingAllocatedTkdByPass(
     remainder--;
   }
   return floors;
-}
-
-int _roundPositiveTkd(double value) {
-  if (value <= 0) return 0;
-  final rounded = value.round();
-  return rounded < 1 ? 1 : rounded;
 }
 
 bool _isFieldAllowedForScope(

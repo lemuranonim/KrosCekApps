@@ -3,17 +3,25 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'master_field_read_cache.dart';
+
 class SupabaseService {
   final SupabaseClient _supabase;
   final Duration _auditPlanningTimeout;
+  final bool _mapCacheEnabled;
 
   SupabaseService({
     SupabaseClient? client,
     Duration auditPlanningTimeout = const Duration(seconds: 45),
+    bool mapCacheEnabled = true,
   }) : _supabase = client ?? Supabase.instance.client,
        // Keep the public parameter name used by callers and tests.
        // ignore: prefer_initializing_formals
-       _auditPlanningTimeout = auditPlanningTimeout;
+       _auditPlanningTimeout = auditPlanningTimeout,
+       // Keep mapCacheEnabled as the compatibility switch for both map and
+       // coverage Redis paths in tests and fail-open deployments.
+       // ignore: prefer_initializing_formals
+       _mapCacheEnabled = mapCacheEnabled;
 
   // Eligibility only: no geometry, crop monitoring or flagging payloads.
   // Keep revised planting dates and PSP passes so weekly targets stay exact.
@@ -434,8 +442,89 @@ class SupabaseService {
     String? season,
     String? region,
     String? district,
+    bool bypassCache = false,
   }) async {
     try {
+      // Redis lives behind an authenticated Edge Function, never in Flutter.
+      // If that optional cache is unavailable, keep the existing direct
+      // Supabase query as a fail-open path so the map remains usable.
+      final hasCacheScope = [
+        qaFi,
+        qaSpv,
+        season,
+        region,
+        district,
+      ].any((value) => value?.trim().isNotEmpty == true);
+      if (_mapCacheEnabled && hasCacheScope) {
+        final userId = _supabase.auth.currentUser?.id;
+        final localSnapshot = !bypassCache && userId != null
+            ? await MasterFieldReadCache.read(
+                userId: userId,
+                dataset: 'map',
+                season: season,
+                region: region,
+                district: district,
+              )
+            : null;
+        try {
+          final response = await _supabase.functions
+              .invoke(
+                'master-fields-map-cache',
+                body: {
+                  'season': season,
+                  'region': region,
+                  'district': district,
+                  'bypassCache': bypassCache,
+                  if (localSnapshot != null)
+                    'knownVersion': localSnapshot.version,
+                },
+              )
+              .timeout(const Duration(seconds: 60));
+          final body = response.data;
+          if (body is Map) {
+            if (body['notModified'] == true && localSnapshot != null) {
+              debugPrint(
+                'Map cache status: local_not_modified '
+                '(v${localSnapshot.version})',
+              );
+              return localSnapshot.rows;
+            }
+            final rows = body['data'];
+            if (rows is List) {
+              final cache = body['cache'];
+              int? cacheVersion;
+              if (cache is Map) {
+                debugPrint('Map cache status: ${cache['status']}');
+                final rawVersion = cache['version'];
+                if (rawVersion is num) cacheVersion = rawVersion.toInt();
+              }
+              final result = rows
+                  .whereType<Map>()
+                  .map((row) => Map<String, dynamic>.from(row))
+                  .toList(growable: false);
+              if (userId != null && cacheVersion != null) {
+                unawaited(
+                  MasterFieldReadCache.write(
+                    userId: userId,
+                    dataset: 'map',
+                    version: cacheVersion,
+                    rows: result,
+                    season: season,
+                    region: region,
+                    district: district,
+                  ),
+                );
+              }
+              debugPrint('Total map records fetched: ${result.length}');
+              return result;
+            }
+          }
+          throw const FormatException('Invalid map cache response');
+        } catch (cacheError) {
+          debugPrint('Map cache unavailable; using Supabase: $cacheError');
+        }
+      }
+
       final allData = await _fetchScopedMasterFieldPages(
         _masterFieldMapSelect,
         qaFi: qaFi,
@@ -560,26 +649,185 @@ class SupabaseService {
     String? qaFi,
     String? qaSpv,
   }) async {
+    final userId = _supabase.auth.currentUser?.id;
+    final localSnapshot = userId == null
+        ? null
+        : await MasterFieldReadCache.read(
+            userId: userId,
+            dataset: 'coverage-regions',
+            season: season,
+          );
+
     try {
-      final response = await _supabase.rpc(
-        'get_active_master_field_regions',
-        params: {
-          'p_season': season?.trim().isEmpty == true ? null : season,
-          'p_qa_fi': qaFi?.trim().isEmpty == true ? null : qaFi,
-          'p_qa_spv': qaSpv?.trim().isEmpty == true ? null : qaSpv,
-        },
-      );
-      return List<Map<String, dynamic>>.from(response)
+      final response = await _supabase
+          .rpc(
+            'get_active_master_field_regions',
+            params: {
+              'p_season': season?.trim().isEmpty == true ? null : season,
+              'p_qa_fi': qaFi?.trim().isEmpty == true ? null : qaFi,
+              'p_qa_spv': qaSpv?.trim().isEmpty == true ? null : qaSpv,
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+      final regions = List<Map<String, dynamic>>.from(response)
           .map((row) => row['region']?.toString().trim() ?? '')
           .where((region) => region.isNotEmpty)
           .toList(growable: false);
-    } catch (_) {
-      return _getActiveMasterFieldRegionsFallback(
+      _saveCoverageRegionsSnapshot(userId, season, regions);
+      return regions;
+    } catch (error) {
+      if (_isConnectivityFailure(error)) {
+        final cached = _coverageRegionsFromSnapshot(localSnapshot);
+        if (cached.isNotEmpty) return cached;
+        debugPrint('Daftar region tidak tersedia karena jaringan: $error');
+        return const [];
+      }
+
+      try {
+        final regions = await _getActiveMasterFieldRegionsFallback(
+          season: season,
+          qaFi: qaFi,
+          qaSpv: qaSpv,
+        );
+        _saveCoverageRegionsSnapshot(userId, season, regions);
+        return regions;
+      } catch (fallbackError) {
+        final cached = _coverageRegionsFromSnapshot(localSnapshot);
+        if (cached.isNotEmpty) return cached;
+        debugPrint('Gagal mengambil daftar region: $fallbackError');
+        return const [];
+      }
+    }
+  }
+
+  List<String> _coverageRegionsFromSnapshot(
+    MasterFieldReadCacheEntry? snapshot,
+  ) {
+    if (snapshot == null) return const [];
+    final regions = snapshot.rows
+        .map((row) => row['region']?.toString().trim() ?? '')
+        .where((region) => region.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return regions;
+  }
+
+  void _saveCoverageRegionsSnapshot(
+    String? userId,
+    String? season,
+    List<String> regions,
+  ) {
+    if (userId == null) return;
+    unawaited(
+      MasterFieldReadCache.write(
+        userId: userId,
+        dataset: 'coverage-regions',
+        version: DateTime.now().millisecondsSinceEpoch,
+        rows: regions
+            .map((region) => <String, dynamic>{'region': region})
+            .toList(growable: false),
         season: season,
+      ),
+    );
+  }
+
+  bool _isConnectivityFailure(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('failed host lookup') ||
+        message.contains('socketexception') ||
+        message.contains('no address associated with hostname') ||
+        message.contains('network is unreachable') ||
+        message.contains('connection timed out') ||
+        message.contains('connection reset') ||
+        message.contains('timeoutexception') ||
+        message.contains('timed out');
+  }
+
+  List<Map<String, dynamic>> _staleCoverageRows(
+    MasterFieldReadCacheEntry snapshot,
+  ) {
+    final savedAt = snapshot.savedAt.toIso8601String();
+    return snapshot.rows
+        .map(
+          (row) => <String, dynamic>{
+            ...row,
+            '_kc_cache_stale': true,
+            '_kc_cache_saved_at': savedAt,
+          },
+        )
+        .toList(growable: false);
+  }
+
+  void _saveCoverageSnapshot({
+    required String? userId,
+    required int version,
+    required List<Map<String, dynamic>> rows,
+    String? season,
+    String? region,
+    String? district,
+  }) {
+    if (userId == null) return;
+    unawaited(
+      MasterFieldReadCache.write(
+        userId: userId,
+        dataset: 'coverage',
+        version: version,
+        rows: rows,
+        season: season,
+        region: region,
+        district: district,
+      ),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getMasterFieldsForCoverageByRegions(
+    Iterable<String> regions, {
+    String? qaFi,
+    String? qaSpv,
+    String? season,
+    String? district,
+    bool bypassCache = false,
+  }) async {
+    const parallelRegions = 3;
+    final normalizedByKey = <String, String>{};
+    for (final rawRegion in regions) {
+      final region = rawRegion.trim();
+      if (region.isEmpty) continue;
+      normalizedByKey.putIfAbsent(region.toLowerCase(), () => region);
+    }
+    final normalized = normalizedByKey.values.toList()..sort();
+    if (normalized.isEmpty) {
+      return getMasterFieldsForCoverage(
         qaFi: qaFi,
         qaSpv: qaSpv,
+        season: season,
+        district: district,
+        bypassCache: bypassCache,
       );
     }
+
+    final merged = <Map<String, dynamic>>[];
+    for (var start = 0; start < normalized.length; start += parallelRegions) {
+      final nextEnd = start + parallelRegions;
+      final end = nextEnd < normalized.length ? nextEnd : normalized.length;
+      final batches = await Future.wait(
+        normalized.sublist(start, end).map(
+              (region) => getMasterFieldsForCoverage(
+                qaFi: qaFi,
+                qaSpv: qaSpv,
+                season: season,
+                region: region,
+                district: district,
+                bypassCache: bypassCache,
+              ),
+            ),
+      );
+      for (final rows in batches) {
+        merged.addAll(rows);
+      }
+    }
+    return merged;
   }
 
   Future<List<String>> _getActiveMasterFieldRegionsFallback({
@@ -587,48 +835,44 @@ class SupabaseService {
     String? qaFi,
     String? qaSpv,
   }) async {
-    try {
-      final regions = <String>{};
-      const int pageSize = 1000;
-      int from = 0;
+    final regions = <String>{};
+    const int pageSize = 1000;
+    int from = 0;
 
-      while (true) {
-        var query = _supabase
-            .from('master_fields')
-            .select('region')
-            .eq('is_active', true)
-            .not('region', 'is', null)
-            .neq('region', '');
+    while (true) {
+      var query = _supabase
+          .from('master_fields')
+          .select('region')
+          .eq('is_active', true)
+          .not('region', 'is', null)
+          .neq('region', '');
 
-        if (season != null && season.trim().isNotEmpty) {
-          query = query.eq('season', season.trim());
-        }
-        if (qaFi != null && qaFi.trim().isNotEmpty) {
-          query = query.ilike('qa_fi', '%${qaFi.trim()}%');
-        }
-        if (qaSpv != null && qaSpv.trim().isNotEmpty) {
-          query = query.ilike('qa_spv', '%${qaSpv.trim()}%');
-        }
-
-        final response = await query
-            .order('region', ascending: true)
-            .range(from, from + pageSize - 1);
-
-        for (final row in response) {
-          final region = row['region']?.toString().trim();
-          if (region != null && region.isNotEmpty) regions.add(region);
-        }
-
-        if (response.length < pageSize) break;
-        from += pageSize;
+      if (season != null && season.trim().isNotEmpty) {
+        query = query.eq('season', season.trim());
+      }
+      if (qaFi != null && qaFi.trim().isNotEmpty) {
+        query = query.ilike('qa_fi', '%${qaFi.trim()}%');
+      }
+      if (qaSpv != null && qaSpv.trim().isNotEmpty) {
+        query = query.ilike('qa_spv', '%${qaSpv.trim()}%');
       }
 
-      final result = regions.toList()..sort();
-      return result;
-    } catch (e) {
-      debugPrint('Gagal mengambil daftar region: $e');
-      return const [];
+      final response = await query
+          .order('region', ascending: true)
+          .range(from, from + pageSize - 1)
+          .timeout(const Duration(seconds: 15));
+
+      for (final row in response) {
+        final region = row['region']?.toString().trim();
+        if (region != null && region.isNotEmpty) regions.add(region);
+      }
+
+      if (response.length < pageSize) break;
+      from += pageSize;
     }
+
+    final result = regions.toList()..sort();
+    return result;
   }
 
   /// Mengambil data ringkas untuk coverage monitoring.
@@ -641,16 +885,125 @@ class SupabaseService {
     String? season,
     String? region,
     String? district,
+    bool bypassCache = false,
   }) async {
+    final userId = _supabase.auth.currentUser?.id;
+    final localSnapshot = !bypassCache && userId != null
+        ? await MasterFieldReadCache.read(
+            userId: userId,
+            dataset: 'coverage',
+            season: season,
+            region: region,
+            district: district,
+          )
+        : null;
     try {
-      final allData = await _fetchScopedMasterFieldPages(
-        _masterFieldCoverageSelect,
-        qaFi: qaFi,
-        qaSpv: qaSpv,
-        season: season,
-        region: region,
-        district: district,
-      );
+      final hasCacheScope = [
+        qaFi,
+        qaSpv,
+        season,
+        region,
+        district,
+      ].any((value) => value?.trim().isNotEmpty == true);
+      if (_mapCacheEnabled && hasCacheScope) {
+        try {
+          final response = await _supabase.functions
+              .invoke(
+                'master-fields-map-cache',
+                body: {
+                  'dataset': 'coverage',
+                  'season': season,
+                  'region': region,
+                  'district': district,
+                  'bypassCache': bypassCache,
+                  if (localSnapshot != null)
+                    'knownVersion': localSnapshot.version,
+                },
+              )
+              .timeout(const Duration(seconds: 35));
+          final body = response.data;
+          if (body is Map) {
+            if (body['notModified'] == true && localSnapshot != null) {
+              debugPrint(
+                'Coverage cache status: local_not_modified '
+                '(v${localSnapshot.version})',
+              );
+              return localSnapshot.rows;
+            }
+            final rows = body['data'];
+            if (rows is List) {
+              final cache = body['cache'];
+              int? cacheVersion;
+              if (cache is Map) {
+                debugPrint('Coverage cache status: ${cache['status']}');
+                final rawVersion = cache['version'];
+                if (rawVersion is num) cacheVersion = rawVersion.toInt();
+              }
+              final result = rows
+                  .whereType<Map>()
+                  .map((row) => Map<String, dynamic>.from(row))
+                  .toList(growable: false);
+              if (cacheVersion != null) {
+                _saveCoverageSnapshot(
+                  userId: userId,
+                  version: cacheVersion,
+                  rows: result,
+                  season: season,
+                  region: region,
+                  district: district,
+                );
+              }
+              debugPrint('Total coverage records fetched: ${result.length}');
+              return result;
+            }
+          }
+          throw const FormatException('Invalid coverage cache response');
+        } catch (cacheError) {
+          if (_isConnectivityFailure(cacheError)) {
+            if (localSnapshot != null) {
+              debugPrint(
+                'Coverage memakai snapshot lokal karena jaringan terputus.',
+              );
+              return _staleCoverageRows(localSnapshot);
+            }
+            rethrow;
+          }
+          debugPrint('Coverage cache unavailable; using Supabase: $cacheError');
+        }
+      }
+
+      late final List<Map<String, dynamic>> allData;
+      try {
+        allData = await _fetchScopedMasterFieldPages(
+          _masterFieldCoverageSelect,
+          qaFi: qaFi,
+          qaSpv: qaSpv,
+          season: season,
+          region: region,
+          district: district,
+        );
+      } catch (error) {
+        if (!bypassCache &&
+            localSnapshot != null &&
+            _isConnectivityFailure(error)) {
+          debugPrint(
+            'Coverage memakai snapshot lokal setelah fetch gagal: $error',
+          );
+          return _staleCoverageRows(localSnapshot);
+        }
+        rethrow;
+      }
+
+      if (hasCacheScope && !bypassCache) {
+        _saveCoverageSnapshot(
+          userId: userId,
+          version: DateTime.now().millisecondsSinceEpoch,
+          rows: allData,
+          season: season,
+          region: region,
+          district: district,
+        );
+      }
 
       debugPrint('Total coverage records fetched: ${allData.length}');
       return allData;
@@ -693,7 +1046,8 @@ class SupabaseService {
       final response = await query
           .order('field_number', ascending: true)
           .order('season', ascending: true)
-          .range(from, from + pageSize - 1);
+          .range(from, from + pageSize - 1)
+          .timeout(const Duration(seconds: 30));
       return List<Map<String, dynamic>>.from(response);
     }
 
@@ -726,7 +1080,85 @@ class SupabaseService {
     String? region,
     String? district,
     String? season,
+    bool bypassCache = false,
   }) async {
+    final userId = _supabase.auth.currentUser?.id;
+    final hasCacheScope = [
+      qaFi,
+      qaSpv,
+      season,
+      region,
+      district,
+    ].any((value) => value?.trim().isNotEmpty == true);
+    if (_mapCacheEnabled && userId != null && hasCacheScope) {
+      final localSnapshot = !bypassCache
+          ? await MasterFieldReadCache.read(
+              userId: userId,
+              dataset: 'planning_index',
+              season: season,
+              region: region,
+              district: district,
+            )
+          : null;
+      try {
+        final response = await _supabase.functions
+            .invoke(
+              'master-fields-map-cache',
+              body: {
+                'dataset': 'planning_index',
+                'season': season,
+                'region': region,
+                'district': district,
+                'bypassCache': bypassCache,
+                if (localSnapshot != null)
+                  'knownVersion': localSnapshot.version,
+              },
+            )
+            .timeout(_auditPlanningTimeout);
+        final body = response.data;
+        if (body is Map) {
+          if (body['notModified'] == true && localSnapshot != null) {
+            debugPrint(
+              'Planning cache status: local_not_modified '
+              '(v${localSnapshot.version})',
+            );
+            return localSnapshot.rows;
+          }
+          final data = body['data'];
+          if (data is List) {
+            final cache = body['cache'];
+            int? cacheVersion;
+            if (cache is Map) {
+              debugPrint('Planning cache status: ${cache['status']}');
+              final rawVersion = cache['version'];
+              if (rawVersion is num) cacheVersion = rawVersion.toInt();
+            }
+            final result = data
+                .whereType<Map>()
+                .map((row) => Map<String, dynamic>.from(row))
+                .toList(growable: false);
+            if (cacheVersion != null) {
+              unawaited(
+                MasterFieldReadCache.write(
+                  userId: userId,
+                  dataset: 'planning_index',
+                  version: cacheVersion,
+                  rows: result,
+                  season: season,
+                  region: region,
+                  district: district,
+                ),
+              );
+            }
+            return result;
+          }
+        }
+        throw const FormatException('Invalid planning cache response');
+      } catch (cacheError) {
+        debugPrint('Planning cache unavailable; using Supabase: $cacheError');
+      }
+    }
+
     final rows = <Map<String, dynamic>>[];
     const pageSize = 1000;
     const parallelPages = 3;
