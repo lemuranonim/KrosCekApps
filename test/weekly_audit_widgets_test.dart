@@ -80,10 +80,27 @@ void main() {
       await tester.ensureVisible(find.text('Lihat detail'));
       await tester.tap(find.text('Lihat detail'));
       await tester.pumpAndSettle();
-      expect(find.text('GF1 · Pak Tani · FC'), findsOneWidget);
-      expect(find.textContaining('PLD1'), findsOneWidget);
-      expect(find.textContaining('Other-team'),
-          role == 'MANAGER' ? findsOneWidget : findsNothing);
+      expect(find.text('On Going'), findsWidgets);
+      expect(find.text('Done'), findsWidgets);
+      expect(find.text('Overdue'), findsWidgets);
+      expect(find.text('GF1'), findsOneWidget);
+      expect(find.text('Pak Tani · FC'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('PLD1'),
+        260,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('PLD1'), findsOneWidget);
+      if (role == 'MANAGER') {
+        await tester.scrollUntilVisible(
+          find.text('Other-team'),
+          260,
+          scrollable: find.byType(Scrollable).last,
+        );
+        expect(find.text('Other-team'), findsOneWidget);
+      } else {
+        expect(find.text('Other-team'), findsNothing);
+      }
       expect(tester.takeException(), isNull);
     });
   }

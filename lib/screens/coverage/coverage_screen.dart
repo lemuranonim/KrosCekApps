@@ -2677,25 +2677,16 @@ class _FilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: AdvantaColors.deepForest,
-      child: Container(
-        decoration: const BoxDecoration(
-          color: AdvantaColors.softGrey,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-          child: Row(
-            children: [
-              ...filters,
-              _RefreshButton(onRefresh: onRefresh),
-            ],
-          ),
+    return ColoredBox(
+      color: AdvantaColors.softGrey,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+        child: Row(
+          children: [
+            ...filters,
+            _RefreshButton(onRefresh: onRefresh),
+          ],
         ),
       ),
     );
@@ -6573,6 +6564,8 @@ void _showWeeklyFields(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.48),
     builder: (_) => _WeeklyFieldSelectionSheet(
       title: title,
       fields: fields,
@@ -6580,6 +6573,34 @@ void _showWeeklyFields(
       targetStage: targetStage,
     ),
   );
+}
+
+enum _WeeklyFieldUiStatus { ongoing, done, overdue }
+
+extension _WeeklyFieldUiStatusX on _WeeklyFieldUiStatus {
+  String get label => switch (this) {
+        _WeeklyFieldUiStatus.ongoing => 'On Going',
+        _WeeklyFieldUiStatus.done => 'Done',
+        _WeeklyFieldUiStatus.overdue => 'Overdue',
+      };
+
+  IconData get icon => switch (this) {
+        _WeeklyFieldUiStatus.ongoing => Icons.timelapse_rounded,
+        _WeeklyFieldUiStatus.done => Icons.check_circle_rounded,
+        _WeeklyFieldUiStatus.overdue => Icons.warning_amber_rounded,
+      };
+
+  Color get color => switch (this) {
+        _WeeklyFieldUiStatus.ongoing => AdvantaColors.gold,
+        _WeeklyFieldUiStatus.done => AdvantaColors.success,
+        _WeeklyFieldUiStatus.overdue => AdvantaColors.error,
+      };
+
+  Color get background => switch (this) {
+        _WeeklyFieldUiStatus.ongoing => AdvantaColors.goldPale,
+        _WeeklyFieldUiStatus.done => AdvantaColors.successLight,
+        _WeeklyFieldUiStatus.overdue => AdvantaColors.errorLight,
+      };
 }
 
 class _WeeklyFieldSelectionSheet extends StatefulWidget {
@@ -6614,9 +6635,46 @@ class _WeeklyFieldSelectionSheetState
       ? field.overdue
       : field.isStageOverdue(widget.targetStage!);
 
-  bool _pending(WeeklyAuditField field) => !_done(field) && !_overdue(field);
+  bool _pending(WeeklyAuditField field) => widget.targetStage == null
+      ? !_done(field) && !_overdue(field)
+      : field.isStagePending(widget.targetStage!);
 
-  List<WeeklyAuditField> get _visible => widget.fields.where((field) {
+  _WeeklyFieldUiStatus _uiStatus(WeeklyAuditField field) {
+    if (_done(field)) return _WeeklyFieldUiStatus.done;
+    if (_overdue(field)) return _WeeklyFieldUiStatus.overdue;
+    return _WeeklyFieldUiStatus.ongoing;
+  }
+
+  List<WeeklyAuditTarget> _targets(WeeklyAuditField field) => widget
+              .targetStage ==
+          null
+      ? field.targets
+      : field.targets
+          .where(
+            (target) => auditStage(target.phase) == widget.targetStage,
+          )
+          .toList(growable: false);
+
+  double _completion(WeeklyAuditField field) {
+    final targets = _targets(field);
+    final weight = targets.fold(0.0, (sum, target) => sum + target.weight);
+    if (weight <= 0) return 0;
+    return (targets.fold(
+              0.0,
+              (sum, target) => sum + target.completion * target.weight,
+            ) /
+            weight)
+        .clamp(0.0, 1.0);
+  }
+
+  DateTime? _nextDeadline(WeeklyAuditField field) {
+    final targets = _targets(field).where((target) => !target.done).toList()
+      ..sort((a, b) => a.deadline.compareTo(b.deadline));
+    return targets.isEmpty ? null : targets.first.deadline;
+  }
+
+  List<WeeklyAuditField> get _visible {
+    final fields = widget.fields.where((field) {
         if (_status == 'Pending' && !_pending(field)) return false;
         if (_status == 'Completed' && !_done(field)) return false;
         if (_status == 'Overdue' && !_overdue(field)) return false;
@@ -6628,7 +6686,25 @@ class _WeeklyFieldSelectionSheetState
           field.raw['qa_fi'],
         ].join(' ').toLowerCase();
         return haystack.contains(_search);
-      }).toList(growable: false);
+      }).toList();
+    int rank(WeeklyAuditField field) => switch (_uiStatus(field)) {
+          _WeeklyFieldUiStatus.overdue => 0,
+          _WeeklyFieldUiStatus.ongoing => 1,
+          _WeeklyFieldUiStatus.done => 2,
+        };
+    fields.sort((a, b) {
+      final statusOrder = rank(a).compareTo(rank(b));
+      if (statusOrder != 0) return statusOrder;
+      final aDeadline = _nextDeadline(a);
+      final bDeadline = _nextDeadline(b);
+      if (aDeadline != null && bDeadline != null) {
+        final deadlineOrder = aDeadline.compareTo(bDeadline);
+        if (deadlineOrder != 0) return deadlineOrder;
+      }
+      return _number(a).compareTo(_number(b));
+    });
+    return fields;
+  }
 
   String _number(WeeklyAuditField field) =>
       field.raw['field_number']?.toString().trim() ?? '';
@@ -6636,146 +6712,283 @@ class _WeeklyFieldSelectionSheetState
   @override
   Widget build(BuildContext context) {
     final visible = _visible;
-    return SizedBox(
-      height: MediaQuery.sizeOf(context).height * .82,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${widget.title} · ${widget.fields.length} FN',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  onChanged: (value) =>
-                      setState(() => _search = value.trim().toLowerCase()),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search_rounded),
-                    hintText: 'Cari FN, petani, desa, atau FI',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: ['All', 'Pending', 'Completed', 'Overdue']
-                        .map(
-                          (status) => Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ChoiceChip(
-                              label: Text(status),
-                              selected: _status == status,
-                              onSelected: (_) =>
-                                  setState(() => _status = status),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    TextButton(
-                      onPressed: visible.isEmpty
-                          ? null
-                          : () => setState(
-                                () => _selected.addAll(
-                                  visible
-                                      .map(_number)
-                                      .where((value) => value.isNotEmpty),
-                                ),
-                              ),
-                      child: Text('Select visible (${visible.length})'),
-                    ),
-                    TextButton(
-                      onPressed: widget.fields.isEmpty
-                          ? null
-                          : () => setState(
-                                () => _selected.addAll(
-                                  widget.fields
-                                      .map(_number)
-                                      .where((value) => value.isNotEmpty),
-                                ),
-                              ),
-                      child: Text(
-                        'Select all target (${widget.fields.length})',
+    final ongoingCount = widget.fields.where(_pending).length;
+    final doneCount = widget.fields.where(_done).length;
+    final overdueCount = widget.fields.where(_overdue).length;
+    final filters = <({
+      String key,
+      String label,
+      int count,
+      Color color,
+    })>[
+      (
+        key: 'All',
+        label: 'Semua',
+        count: widget.fields.length,
+        color: AdvantaColors.deepForest,
+      ),
+      (
+        key: 'Pending',
+        label: 'On Going',
+        count: ongoingCount,
+        color: AdvantaColors.gold,
+      ),
+      (
+        key: 'Completed',
+        label: 'Done',
+        count: doneCount,
+        color: AdvantaColors.success,
+      ),
+      (
+        key: 'Overdue',
+        label: 'Overdue',
+        count: overdueCount,
+        color: AdvantaColors.error,
+      ),
+    ];
+    return Material(
+      color: AdvantaColors.softGrey,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * .9,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AdvantaColors.dividerGrey,
+                        borderRadius: BorderRadius.circular(99),
                       ),
                     ),
-                    if (_selected.isNotEmpty)
-                      TextButton(
-                        onPressed: () => setState(_selected.clear),
-                        child: const Text('Clear'),
-                      ),
-                  ],
-                ),
-                if (_selected.isNotEmpty)
+                  ),
+                  const SizedBox(height: 14),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: Text(
-                          '${_selected.length} FN selected',
-                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.title,
+                              style: const TextStyle(
+                                color: AdvantaColors.deepForest,
+                                fontSize: 19,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '${visible.length} ditampilkan dari ${widget.fields.length} FN',
+                              style: const TextStyle(
+                                color: AdvantaColors.mutedGrey,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      FilledButton.icon(
-                        onPressed: _startMassInspection,
-                        icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                        label: const Text('Mass Inspection'),
+                      IconButton(
+                        tooltip: 'Tutup',
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded),
                       ),
                     ],
                   ),
-              ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    onChanged: (value) =>
+                        setState(() => _search = value.trim().toLowerCase()),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      filled: true,
+                      fillColor: AdvantaColors.softGrey,
+                      prefixIcon: const Icon(Icons.search_rounded),
+                      hintText: 'Cari FN, petani, desa, atau QA FI',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(
+                          color: AdvantaColors.dividerGrey,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _WeeklyStatusOverview(
+                          status: _WeeklyFieldUiStatus.ongoing,
+                          count: ongoingCount,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _WeeklyStatusOverview(
+                          status: _WeeklyFieldUiStatus.done,
+                          count: doneCount,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _WeeklyStatusOverview(
+                          status: _WeeklyFieldUiStatus.overdue,
+                          count: overdueCount,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: filters.map((filter) {
+                        final selected = _status == filter.key;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 7),
+                          child: ChoiceChip(
+                            avatar: selected
+                                ? Icon(
+                                    Icons.check_rounded,
+                                    size: 16,
+                                    color: filter.color,
+                                  )
+                                : null,
+                            label: Text('${filter.label} ${filter.count}'),
+                            selected: selected,
+                            showCheckmark: false,
+                            selectedColor:
+                                filter.color.withValues(alpha: 0.12),
+                            side: BorderSide(
+                              color: selected
+                                  ? filter.color
+                                  : AdvantaColors.dividerGrey,
+                            ),
+                            labelStyle: TextStyle(
+                              color: selected
+                                  ? filter.color
+                                  : AdvantaColors.charcoal,
+                              fontWeight: FontWeight.w800,
+                            ),
+                            onSelected: (_) =>
+                                setState(() => _status = filter.key),
+                          ),
+                        );
+                      }).toList(growable: false),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 0,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      TextButton.icon(
+                        onPressed: visible.isEmpty
+                            ? null
+                            : () => setState(
+                                  () => _selected.addAll(
+                                    visible
+                                        .map(_number)
+                                        .where((value) => value.isNotEmpty),
+                                  ),
+                                ),
+                        icon: const Icon(Icons.select_all_rounded, size: 18),
+                        label: Text('Pilih tampil (${visible.length})'),
+                      ),
+                      TextButton(
+                        onPressed: widget.fields.isEmpty
+                            ? null
+                            : () => setState(
+                                  () => _selected.addAll(
+                                    widget.fields
+                                        .map(_number)
+                                        .where((value) => value.isNotEmpty),
+                                  ),
+                                ),
+                        child: Text('Pilih semua (${widget.fields.length})'),
+                      ),
+                      if (_selected.isNotEmpty)
+                        TextButton(
+                          onPressed: () => setState(_selected.clear),
+                          child: const Text('Hapus pilihan'),
+                        ),
+                    ],
+                  ),
+                  if (_selected.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(top: 4),
+                      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+                      decoration: BoxDecoration(
+                        color: AdvantaColors.paleGreen,
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${_selected.length} FN dipilih',
+                              style: const TextStyle(
+                                color: AdvantaColors.deepForest,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          FilledButton.icon(
+                            onPressed: _startMassInspection,
+                            icon: const Icon(
+                              Icons.fact_check_rounded,
+                              size: 18,
+                            ),
+                            label: const Text('Audit massal'),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1),
-          if (visible.isEmpty)
-            const Expanded(
-              child: Center(child: Text('Tidak ada FN untuk filter ini.')),
-            )
-          else
-            Expanded(
-              child: ListView.builder(
-                itemCount: visible.length,
-                itemBuilder: (_, index) {
-                  final field = visible[index];
-                  final number = _number(field);
-                  final fi = field.raw['qa_fi']?.toString().trim() ?? '';
-                  final farmer =
-                      field.raw['farmer_name']?.toString().trim() ?? '';
-                  final hybrid = field.raw['hybrid']?.toString().trim() ?? '';
-                  return CheckboxListTile(
-                    value: _selected.contains(number),
-                    onChanged: (checked) => setState(() {
-                      checked == true
-                          ? _selected.add(number)
-                          : _selected.remove(number);
-                    }),
-                    title: Text(
-                      [
-                        number,
-                        if (farmer.isNotEmpty) farmer,
-                        if (hybrid.isNotEmpty) hybrid,
-                      ].join(' · '),
-                    ),
-                    subtitle: Text(
-                      '${field.village} · ${fi.isEmpty ? 'Unmapped / Need Mapping' : fi}\n${auditWorkload(field.areaHa, 1)} · ${field.flag} · ${_done(field) ? 'Completed' : _overdue(field) ? 'Overdue' : 'Pending'}',
-                    ),
-                    isThreeLine: true,
-                    secondary: IconButton(
-                      tooltip: 'Detail dan single inspection',
-                      icon: const Icon(Icons.chevron_right),
-                      onPressed: () => FieldDetailBottomSheet.show(
+            if (visible.isEmpty)
+              const Expanded(
+                child: _WeeklyFieldsEmptyState(),
+              )
+            else
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+                  itemCount: visible.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (_, index) {
+                    final field = visible[index];
+                    final number = _number(field);
+                    return _WeeklyFieldCard(
+                      field: field,
+                      status: _uiStatus(field),
+                      targets: _targets(field),
+                      completion: _completion(field),
+                      nextDeadline: _nextDeadline(field),
+                      selected: _selected.contains(number),
+                      onSelectionChanged: (checked) => setState(() {
+                        checked
+                            ? _selected.add(number)
+                            : _selected.remove(number);
+                      }),
+                      onOpen: () => FieldDetailBottomSheet.show(
                         context,
                         field.raw,
                         dapReferenceDate: field.weekStart.add(
@@ -6783,12 +6996,12 @@ class _WeeklyFieldSelectionSheetState
                         ),
                         onInspectDone: (_) => widget.onChanged?.call(),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -6848,5 +7061,491 @@ class _WeeklyFieldSelectionSheetState
       },
     );
     widget.onChanged?.call();
+  }
+}
+
+class _WeeklyStatusOverview extends StatelessWidget {
+  final _WeeklyFieldUiStatus status;
+  final int count;
+
+  const _WeeklyStatusOverview({required this.status, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9),
+      decoration: BoxDecoration(
+        color: status.background,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: status.color.withValues(alpha: 0.24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(status.icon, color: status.color, size: 16),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  status.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: status.color,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            '$count FN',
+            style: TextStyle(
+              color: status.color,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeeklyFieldsEmptyState extends StatelessWidget {
+  const _WeeklyFieldsEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: const BoxDecoration(
+                color: AdvantaColors.paleGreen,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.search_off_rounded,
+                color: AdvantaColors.midGreen,
+                size: 30,
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Tidak ada FN untuk filter ini',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AdvantaColors.deepForest,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'Ubah status atau kata pencarian untuk menampilkan data lainnya.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AdvantaColors.mutedGrey,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _coverageTargetLabel(String phase) {
+  if (phase.startsWith('generative_')) {
+    return 'Gen CP${phase.split('_').last}';
+  }
+  return switch (phase) {
+    'vegetative' => 'Vegetative',
+    'pre_harvest' => 'Pre-Harvest',
+    'harvest' => 'Harvest',
+    _ => phase.replaceAll('_', ' '),
+  };
+}
+
+class _WeeklyFieldCard extends StatelessWidget {
+  final WeeklyAuditField field;
+  final _WeeklyFieldUiStatus status;
+  final List<WeeklyAuditTarget> targets;
+  final double completion;
+  final DateTime? nextDeadline;
+  final bool selected;
+  final ValueChanged<bool> onSelectionChanged;
+  final VoidCallback onOpen;
+
+  const _WeeklyFieldCard({
+    required this.field,
+    required this.status,
+    required this.targets,
+    required this.completion,
+    required this.nextDeadline,
+    required this.selected,
+    required this.onSelectionChanged,
+    required this.onOpen,
+  });
+
+  String _text(String key) => field.raw[key]?.toString().trim() ?? '';
+
+  @override
+  Widget build(BuildContext context) {
+    final number = _text('field_number');
+    final farmer = _text('farmer_name');
+    final hybrid = _text('hybrid');
+    final district = _text('district_kab');
+    final subDistrict = _text('sub_district_kec');
+    final fi = _text('qa_fi');
+    final location = [
+      field.village,
+      if (subDistrict.isNotEmpty) subDistrict,
+      if (district.isNotEmpty) district,
+    ].join(' · ');
+    final deadlineLabel = status == _WeeklyFieldUiStatus.done
+        ? 'Seluruh target fase selesai'
+        : nextDeadline == null
+            ? 'Target belum memiliki batas tanggal'
+            : '${status == _WeeklyFieldUiStatus.overdue ? 'Lewat batas' : 'Batas audit'} ${DateFormat('d MMM yyyy', 'id_ID').format(nextDeadline!)}';
+    final progress = (completion * 100).round();
+
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 12, 13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: status.color.withValues(alpha: 0.32),
+              width: status == _WeeklyFieldUiStatus.overdue ? 1.5 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.045),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _WeeklyStatusBadge(status: status),
+                  const SizedBox(width: 7),
+                  _FieldInfoPill(
+                    icon: Icons.flag_rounded,
+                    label: field.flag,
+                    color: AdvantaColors.deepForest,
+                  ),
+                  const Spacer(),
+                  SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: Checkbox(
+                      value: selected,
+                      activeColor: status.color,
+                      side: BorderSide(
+                        color: selected
+                            ? status.color
+                            : AdvantaColors.mutedGrey,
+                        width: 1.6,
+                      ),
+                      onChanged: number.isEmpty
+                          ? null
+                          : (checked) =>
+                              onSelectionChanged(checked == true),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                number.isEmpty ? 'FN belum diisi' : number,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AdvantaColors.deepForest,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.1,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                [
+                  if (farmer.isNotEmpty) farmer,
+                  if (hybrid.isNotEmpty) hybrid,
+                ].isEmpty
+                    ? 'Petani dan hybrid belum diisi'
+                    : [
+                        if (farmer.isNotEmpty) farmer,
+                        if (hybrid.isNotEmpty) hybrid,
+                      ].join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AdvantaColors.charcoal,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.location_on_outlined,
+                    size: 16,
+                    color: AdvantaColors.mutedGrey,
+                  ),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      location,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AdvantaColors.mutedGrey,
+                        fontSize: 11.5,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _FieldInfoPill(
+                    icon: Icons.landscape_outlined,
+                    label: _formatHa(field.areaHa),
+                  ),
+                  _FieldInfoPill(
+                    icon: Icons.spa_outlined,
+                    label: 'DAP ${field.dap}',
+                  ),
+                  _FieldInfoPill(
+                    icon: Icons.calendar_view_week_rounded,
+                    label: 'W${auditIsoWeekNumber(field.weekStart)}',
+                  ),
+                  _FieldInfoPill(
+                    icon: Icons.person_outline_rounded,
+                    label: fi.isEmpty ? 'QA FI belum dipetakan' : fi,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      deadlineLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: status.color,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '$progress%',
+                    style: TextStyle(
+                      color: status.color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: LinearProgressIndicator(
+                  value: completion,
+                  minHeight: 6,
+                  backgroundColor: AdvantaColors.dividerGrey,
+                  valueColor: AlwaysStoppedAnimation(status.color),
+                ),
+              ),
+              if (targets.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: targets
+                      .map(
+                        (target) => _TargetPhaseBadge(
+                          label: _coverageTargetLabel(target.phase),
+                          status: target.done
+                              ? _WeeklyFieldUiStatus.done
+                              : target.overdue
+                                  ? _WeeklyFieldUiStatus.overdue
+                                  : _WeeklyFieldUiStatus.ongoing,
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+              ],
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.touch_app_outlined,
+                    color: AdvantaColors.mutedGrey,
+                    size: 15,
+                  ),
+                  const SizedBox(width: 5),
+                  const Expanded(
+                    child: Text(
+                      'Ketuk kartu untuk detail dan audit',
+                      style: TextStyle(
+                        color: AdvantaColors.mutedGrey,
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'Buka',
+                    style: TextStyle(
+                      color: status.color,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: status.color,
+                    size: 19,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WeeklyStatusBadge extends StatelessWidget {
+  final _WeeklyFieldUiStatus status;
+
+  const _WeeklyStatusBadge({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: status.background,
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(status.icon, size: 15, color: status.color),
+          const SizedBox(width: 5),
+          Text(
+            status.label,
+            style: TextStyle(
+              color: status.color,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TargetPhaseBadge extends StatelessWidget {
+  final String label;
+  final _WeeklyFieldUiStatus status;
+
+  const _TargetPhaseBadge({required this.label, required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: status.background,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '$label · ${status.label}',
+        style: TextStyle(
+          color: status.color,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _FieldInfoPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _FieldInfoPill({
+    required this.icon,
+    required this.label,
+    this.color = AdvantaColors.mutedGrey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: AdvantaColors.softGrey,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
