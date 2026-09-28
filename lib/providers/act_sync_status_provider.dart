@@ -10,3 +10,13 @@ final actSyncStatusServiceProvider = Provider<ActSyncStatusService>((ref) {
 final actSyncStatusProvider = FutureProvider.autoDispose<ActSyncStatus>((ref) {
   return ref.watch(actSyncStatusServiceProvider).getStatus();
 });
+
+final actSyncHarvestReviewsProvider =
+    FutureProvider.autoDispose<List<ActHarvestReview>>((ref) {
+      return ref.watch(actSyncStatusServiceProvider).getHarvestReviews();
+    });
+
+final actSyncHistoryProvider =
+    FutureProvider.autoDispose<List<ActSyncHistoryItem>>((ref) {
+      return ref.watch(actSyncStatusServiceProvider).getHistory();
+    });

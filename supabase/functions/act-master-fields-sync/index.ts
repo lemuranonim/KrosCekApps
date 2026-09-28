@@ -3,8 +3,10 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 import {
   mapExportRow,
+  normalizeDate,
   normalizeFieldNumber,
   normalizeHeader,
+  parseNumber,
   reconcile,
   sha256,
   type ParsedSourceRow,
@@ -55,6 +57,7 @@ const PLANTING_TABLE_ROUTE: Record<SourceType, string> = {
 };
 
 const WKT_SHARD_STRATEGY_VERSION = 2;
+const HARVEST_REPORT_ROUTE = "harvest/get_report_mobile";
 
 function buildWktDateShards(
   sourceType: SourceType,
@@ -125,6 +128,8 @@ const MASTER_FIELDS_SELECT = [
   "total_area_planted_ha",
   "discard_area_ha",
   "effective_area_ha",
+  "harvested_area_ha",
+  "harvested_qty_kg",
   "planting_date_pdn",
   "hamlet_dusun",
   "village_desa",
@@ -162,6 +167,8 @@ interface SyncRequest {
   sources?: SourceType[];
   exportMode?: "table" | "background" | "sync";
   includeWkt?: boolean;
+  includeHarvest?: boolean;
+  harvestFrom?: string;
   minimumRows?: number;
   maxChangeRatio?: number;
 }
@@ -173,6 +180,8 @@ interface ValidatedSyncRequest {
   sources: SourceType[];
   exportMode: "table" | "background" | "sync";
   includeWkt: boolean;
+  includeHarvest: boolean;
+  harvestFrom: string;
   minimumRows: number;
   maxChangeRatio: number;
 }
@@ -497,6 +506,43 @@ class ActClient {
     };
   }
 
+  async exportHarvestSynchronously(
+    from: string,
+    to: string,
+  ): Promise<{ bytes: Uint8Array; fileUrl: string; fileHash: string }> {
+    const response = await this.postForm(
+      HARVEST_REPORT_ROUTE,
+      buildHarvestExportForm(from, to),
+      Number(Deno.env.get("ACT_SYNC_HARVEST_EXPORT_TIMEOUT_MS") ?? 300_000),
+    );
+    if (!response.ok) throw new Error(`ACT Harvest export returned HTTP ${response.status}`);
+
+    const responseBytes = new Uint8Array(await response.arrayBuffer());
+    const isWorkbook = responseBytes.length >= 4 &&
+      ((responseBytes[0] === 0x50 && responseBytes[1] === 0x4b) ||
+        (responseBytes.length >= 8 && responseBytes[0] === 0xd0 &&
+          responseBytes[1] === 0xcf && responseBytes[2] === 0x11 &&
+          responseBytes[3] === 0xe0));
+    if (isWorkbook) {
+      return {
+        bytes: responseBytes,
+        fileUrl: "",
+        fileHash: await sha256Bytes(responseBytes),
+      };
+    }
+
+    const text = new TextDecoder().decode(responseBytes);
+    const parsed = parsePossiblyEncodedJson(text);
+    const fileUrl = absoluteActFileUrl(String(parsed?.file ?? parsed?.data?.file ?? ""));
+    if (!fileUrl) throw new Error("ACT Harvest export did not return a file");
+    const bytes = await this.downloadFile(fileUrl);
+    return { bytes, fileUrl, fileHash: await sha256Bytes(bytes) };
+  }
+
+  async downloadExistingFile(url: string): Promise<Uint8Array> {
+    return await this.downloadFile(url);
+  }
+
   private async readExportFileUrl(id: string): Promise<string> {
     const form = new URLSearchParams({ id });
     const response = await this.postForm("laporan_export_planting/read", form, 30_000);
@@ -537,6 +583,14 @@ function buildExportForm(kind: string, from: string, to: string): URLSearchParam
   form.set("sampai", to);
   form.set("region", "");
   for (const column of EXPORT_COLUMNS) form.append("kolom[]", column);
+  return form;
+}
+
+function buildHarvestExportForm(from: string, to: string): URLSearchParams {
+  const form = new URLSearchParams();
+  form.set("mulai", from);
+  form.set("sampai", to);
+  form.set("region", "");
   return form;
 }
 
@@ -896,6 +950,105 @@ async function mergeGeometryArtifactChunk(
   };
 }
 
+async function mergeHarvestArtifactChunk(
+  supabase: SupabaseClient,
+  runId: string,
+  bytes: Uint8Array,
+  cursor: number,
+  maxRows: number,
+  from: string,
+  to: string,
+): Promise<{
+  processedRows: number;
+  nextCursor: number;
+  harvestRows: number;
+  matchedEvents: number;
+  needsReview: number;
+  complete: boolean;
+}> {
+  const fieldNumberHeaders = new Set(["field number", "field no", "fn"]);
+  const dateHeaders = new Set(["date", "harvest date", "tanggal"]);
+  const areaHeaders = new Set(["harvested area", "harvested area ha", "harvest area"]);
+  const weightHeaders = new Set(["weight", "harvested weight", "harvested qty"]);
+  const selectedHeaders = new Set([
+    ...fieldNumberHeaders,
+    ...dateHeaders,
+    ...areaHeaders,
+    ...weightHeaders,
+  ]);
+  const chunk = await readFirstSheetRowsChunk(
+    bytes,
+    cursor,
+    maxRows,
+    (values) => {
+      const normalized = new Set([...values.values()].map(normalizeHeader));
+      return [...fieldNumberHeaders].some((header) => normalized.has(header)) &&
+        [...areaHeaders].some((header) => normalized.has(header)) &&
+        [...weightHeaders].some((header) => normalized.has(header));
+    },
+    (value) => selectedHeaders.has(normalizeHeader(value)),
+  );
+
+  const headerByColumn = new Map(
+    [...chunk.headers.entries()].map(([column, header]) => [column, normalizeHeader(header)]),
+  );
+  const readValue = (
+    values: ReadonlyMap<number, unknown>,
+    aliases: ReadonlySet<string>,
+  ): unknown => {
+    for (const [column, header] of headerByColumn) {
+      if (aliases.has(header)) return values.get(column) ?? null;
+    }
+    return null;
+  };
+
+  const harvestRows = chunk.rows.map((row) => {
+    const harvestDate = normalizeDate(readValue(row.values, dateHeaders));
+    const fieldNumberNorm = normalizeFieldNumber(readValue(row.values, fieldNumberHeaders));
+    const harvestedAreaHa = parseNumber(readValue(row.values, areaHeaders));
+    const harvestedQtyKg = parseNumber(readValue(row.values, weightHeaders));
+    return {
+      source_row: row.rowNumber,
+      harvest_date: harvestDate,
+      field_number_norm: fieldNumberNorm,
+      harvested_area_ha: harvestedAreaHa,
+      harvested_qty_kg: harvestedQtyKg,
+    };
+  }).filter((row) =>
+    row.field_number_norm && row.harvest_date &&
+    row.harvest_date >= from && row.harvest_date <= to &&
+    (row.harvested_area_ha !== null || row.harvested_qty_kg !== null)
+  );
+
+  if (harvestRows.some((row) =>
+    (row.harvested_area_ha ?? 0) < 0 || (row.harvested_qty_kg ?? 0) < 0
+  )) {
+    throw new Error("ACT Harvest export contains a negative area or weight");
+  }
+
+  let matchedEvents = 0;
+  let needsReview = 0;
+  if (harvestRows.length > 0) {
+    const { data, error } = await supabase.rpc("merge_act_sync_harvest_page", {
+      p_run_id: runId,
+      p_rows: harvestRows,
+    });
+    if (error) throw new Error(`Cannot merge ACT Harvest page: ${error.message}`);
+    const mergeResult = recordValue(data);
+    matchedEvents = Number(mergeResult.matched_events ?? 0);
+    needsReview = Number(mergeResult.needs_review ?? 0);
+  }
+
+  return {
+    processedRows: chunk.processedRows,
+    nextCursor: chunk.nextCursor,
+    harvestRows: harvestRows.length,
+    matchedEvents,
+    needsReview,
+    complete: chunk.complete,
+  };
+}
+
 async function fetchAllStagedRows(
   supabase: SupabaseClient,
   runId: string,
@@ -1083,8 +1236,12 @@ function decodeJwtClaims(token: string): Record<string, unknown> | null {
 
 function validateRequest(input: SyncRequest): ValidatedSyncRequest {
   const today = new Date().toISOString().slice(0, 10);
-  const currentYear = today.slice(0, 4);
-  const from = input.from ?? `${currentYear}-01-01`;
+  const requestedTo = input.to ?? today;
+  const requestedYear = Number(requestedTo.slice(0, 4));
+  const seasonYear = requestedTo >= `${requestedYear}-03-01`
+    ? requestedYear
+    : requestedYear - 1;
+  const from = input.from ?? `${seasonYear}-03-01`;
   const to = input.to ?? today;
   if (!isIsoDate(from) || !isIsoDate(to) || from > to) {
     throw new HttpError("from/to must be valid YYYY-MM-DD dates", 400);
@@ -1104,6 +1261,10 @@ function validateRequest(input: SyncRequest): ValidatedSyncRequest {
   if (!Number.isFinite(maxChangeRatio) || maxChangeRatio <= 0 || maxChangeRatio > 1) {
     throw new HttpError("maxChangeRatio must be greater than 0 and at most 1", 400);
   }
+  const harvestFrom = input.harvestFrom ?? `${seasonYear}-05-01`;
+  if (!isIsoDate(harvestFrom) || harvestFrom > to) {
+    throw new HttpError("harvestFrom must be a valid YYYY-MM-DD date on or before to", 400);
+  }
   return {
     from,
     to,
@@ -1111,6 +1272,8 @@ function validateRequest(input: SyncRequest): ValidatedSyncRequest {
     sources: sources as SourceType[],
     exportMode: input.exportMode ?? "table",
     includeWkt: input.includeWkt !== false,
+    includeHarvest: input.includeHarvest !== false,
+    harvestFrom,
     minimumRows,
     maxChangeRatio,
   };
@@ -1392,6 +1555,8 @@ Deno.serve(async (req) => {
           | "background"
           | "sync",
         includeWkt: syncConfig.include_wkt !== false,
+        includeHarvest: syncConfig.include_harvest !== false,
+        harvestFrom: syncConfig.harvest_from ? String(syncConfig.harvest_from) : undefined,
         minimumRows: Number(syncConfig.minimum_rows ?? 1_000),
         maxChangeRatio: Number(syncConfig.max_change_ratio ?? 0.25),
       });
@@ -1694,6 +1859,103 @@ Deno.serve(async (req) => {
             };
           }
 
+          const harvestState = recordValue(sourceMeta.harvest_state);
+          if (input.includeHarvest && harvestState.complete !== true) {
+            const act = new ActClient();
+            await act.login(actUsername, actPassword);
+            const storedFileUrl = String(harvestState.file_url ?? "");
+            let harvestBytes: Uint8Array;
+            let fileUrl = storedFileUrl;
+            let fileHash = String(harvestState.file_hash ?? "");
+            if (storedFileUrl) {
+              harvestBytes = await act.downloadExistingFile(storedFileUrl);
+              const downloadedHash = await sha256Bytes(harvestBytes);
+              if (fileHash && downloadedHash !== fileHash) {
+                throw new Error("ACT Harvest export changed while the sync was being resumed");
+              }
+              fileHash = downloadedHash;
+            } else {
+              const artifact = await act.exportHarvestSynchronously(input.harvestFrom, input.to);
+              harvestBytes = artifact.bytes;
+              fileUrl = artifact.fileUrl;
+              if (fileHash && artifact.fileHash !== fileHash) {
+                throw new Error("ACT Harvest export changed while the sync was being resumed");
+              }
+              fileHash = artifact.fileHash;
+            }
+
+            const cursor = Number(harvestState.row_cursor ?? 0);
+            const chunkRows = Math.max(250, Number(syncConfig.harvest_chunk_rows ?? 2_000));
+            const merged = await mergeHarvestArtifactChunk(
+              service,
+              activeRunId,
+              harvestBytes,
+              cursor,
+              chunkRows,
+              input.harvestFrom,
+              input.to,
+            );
+            const totalHarvestRows = Number(harvestState.harvest_rows ?? 0) + merged.harvestRows;
+            const totalMatchedHarvestEvents = Number(harvestState.matched_events ?? 0) +
+              merged.matchedEvents;
+            const harvestNeedsReview = merged.harvestRows > 0
+              ? merged.needsReview
+              : Number(harvestState.needs_review ?? sourceMeta.harvest_needs_review ?? 0);
+            if (merged.complete && totalHarvestRows === 0) {
+              throw new Error(
+                `ACT Harvest export returned no rows for ${input.harvestFrom} through ${input.to}`,
+              );
+            }
+            sourceMeta.harvest_state = {
+              ...harvestState,
+              from: input.harvestFrom,
+              to: input.to,
+              file_url: fileUrl || null,
+              file_hash: fileHash,
+              row_cursor: merged.nextCursor,
+              processed_rows: Number(harvestState.processed_rows ?? 0) + merged.processedRows,
+              harvest_rows: totalHarvestRows,
+              matched_events: totalMatchedHarvestEvents,
+              needs_review: harvestNeedsReview,
+              complete: merged.complete,
+              updated_at: new Date().toISOString(),
+            };
+            sourceMeta.harvest_count = totalHarvestRows;
+            sourceMeta.harvest_needs_review = harvestNeedsReview;
+            sourceMeta.harvest_unmatched_events = Math.max(
+              totalHarvestRows - totalMatchedHarvestEvents,
+              0,
+            );
+            const { error: harvestUpdateError } = await service
+              .from("act_sync_runs")
+              .update({
+                status: "EXTRACTING",
+                source_meta: sourceMeta,
+                progress_at: new Date().toISOString(),
+              })
+              .eq("id", activeRunId);
+            if (harvestUpdateError) {
+              throw new Error(`Cannot update ACT Harvest cursor: ${harvestUpdateError.message}`);
+            }
+            return jsonResponse({
+              run_id: activeRunId,
+              status: "EXTRACTING",
+              staged_source: "HARVEST",
+              staged_rows: merged.harvestRows,
+              matched_events: merged.matchedEvents,
+              needs_review: harvestNeedsReview,
+              source_cursor: merged.nextCursor,
+              source_complete: merged.complete,
+            }, 202);
+          } else if (!input.includeHarvest && harvestState.complete !== true) {
+            sourceMeta.harvest_state = {
+              ...harvestState,
+              complete: true,
+              skipped: true,
+              completed_at: new Date().toISOString(),
+            };
+          }
+
           const pldState = recordValue(tableState.PLD);
           if (pldState.complete !== true) {
             const act = new ActClient();
@@ -1712,12 +1974,15 @@ Deno.serve(async (req) => {
             };
             const pldRows = page.rows.map((row, index) => ({
               field_number_norm: normalizeFieldNumber(row[3]),
-              approved_at: String(row[2] ?? ""),
+              approved_at: normalizeDate(row[2]),
               source_row: start + index + 1,
               planted_area_ha: numberOrNull(row[12]),
               effective_area_ha: numberOrNull(row[13]),
               discard_area_ha: numberOrNull(row[14]),
-            })).filter((row) => row.field_number_norm);
+            })).filter((row) =>
+              row.field_number_norm && row.approved_at &&
+              row.approved_at >= input.from && row.approved_at <= input.to
+            );
             const { data: merged, error: mergeError } = await service.rpc(
               "merge_act_sync_pld_page",
               { p_run_id: activeRunId, p_rows: pldRows },
@@ -1730,16 +1995,22 @@ Deno.serve(async (req) => {
             const matched = Number(pldState.matched_rows ?? 0) + Number(mergeResult.matched ?? 0);
             tableState.PLD = {
               next_start: nextStart,
+              scanned_rows: Number(pldState.scanned_rows ?? 0) + page.rows.length,
               processed_rows: Number(pldState.processed_rows ?? 0) + pldRows.length,
               matched_rows: matched,
               table_total: page.total,
               complete,
               status_filter: 3,
+              from: input.from,
+              to: input.to,
               updated_at: new Date().toISOString(),
             };
             sourceMeta.table_state = tableState;
             sourceMeta.pld_final_count = page.total;
             sourceMeta.pld_matched_count = matched;
+            sourceMeta.harvest_needs_review = Number(
+              mergeResult.harvest_needs_review ?? sourceMeta.harvest_needs_review ?? 0,
+            );
             const { error: pldUpdateError } = await service
               .from("act_sync_runs")
               .update({
@@ -2060,11 +2331,14 @@ Deno.serve(async (req) => {
       );
       tableState.PLD = {
         next_start: 0,
+        scanned_rows: 0,
         processed_rows: 0,
         matched_rows: 0,
         table_total: null,
         complete: false,
         status_filter: 3,
+        from: input.from,
+        to: input.to,
       };
       const sourceMeta = {
         data_source: "planting_datatable_json",
@@ -2072,15 +2346,31 @@ Deno.serve(async (req) => {
         sync_config: {
           export_mode: input.exportMode,
           include_wkt: input.includeWkt,
+          include_harvest: input.includeHarvest,
+          harvest_from: input.harvestFrom,
           minimum_rows: input.minimumRows,
           max_change_ratio: input.maxChangeRatio,
           requested_apply: input.apply,
           page_size: 5_000,
           pld_page_size: 1_000,
+          harvest_chunk_rows: 2_000,
           wkt_chunk_rows: 2_000,
           prepare_batch_rows: 2_000,
         },
         table_state: tableState,
+        harvest_state: {
+          from: input.harvestFrom,
+          to: input.to,
+          file_url: null,
+          file_hash: null,
+          row_cursor: 0,
+          processed_rows: 0,
+          harvest_rows: 0,
+          matched_events: 0,
+          needs_review: 0,
+          complete: !input.includeHarvest,
+          skipped: !input.includeHarvest,
+        },
       };
       const { error: tableInitError } = await service
         .from("act_sync_runs")
@@ -2114,6 +2404,8 @@ Deno.serve(async (req) => {
         sync_config: {
           export_mode: input.exportMode,
           include_wkt: input.includeWkt,
+          include_harvest: input.includeHarvest,
+          harvest_from: input.harvestFrom,
           minimum_rows: input.minimumRows,
           max_change_ratio: input.maxChangeRatio,
           requested_apply: input.apply,
@@ -2147,6 +2439,8 @@ Deno.serve(async (req) => {
       sync_config: {
         export_mode: input.exportMode,
         include_wkt: input.includeWkt,
+        include_harvest: input.includeHarvest,
+        harvest_from: input.harvestFrom,
         minimum_rows: input.minimumRows,
         max_change_ratio: input.maxChangeRatio,
         requested_apply: input.apply,

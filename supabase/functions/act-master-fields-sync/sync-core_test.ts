@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { mapExportRow, normalizeFieldNumber, reconcile } from "./sync-core.ts";
 
 function test(name: string, body: () => void) {
@@ -107,8 +108,65 @@ test("blocks inconsistent planted, discarded and effective areas", () => {
   assert.equal(result.changes[0].changeKind, "INVALID");
 });
 
+test("maps ACT Harvest values into the managed harvest fields", () => {
+  const row = mapExportRow(
+    {
+      "Field Number": "DC6HAR001",
+      "Planted Area(Ha)": 0.75,
+      "Harvested Area": "0,50",
+      Weight: "1.250,75",
+    },
+    "FC",
+    2,
+  );
+
+  assert.deepEqual(row.validationErrors, []);
+  assert.equal(row.sourcePayload.harvested_area_ha, 0.5);
+  assert.equal(row.sourcePayload.harvested_qty_kg, 1250.75);
+});
+
 test("missing ACT rows are informational and never actionable", () => {
   const result = reconcile([], [{ field_number: "KC_ONLY_001", hybrid: "AX01" }]);
   assert.equal(result.changes[0].changeKind, "MISSING_SOURCE");
   assert.equal(result.summary.actionable, 0);
+});
+
+test("sync migrations preserve PLD actual area and review unsafe Harvest area", () => {
+  const mergeSql = readFileSync(
+    new URL("../../migrations/20260928100000_fix_pld_and_add_harvest_sync.sql", import.meta.url),
+    "utf8",
+  );
+  const scheduleSql = readFileSync(
+    new URL("../../migrations/20260928102000_schedule_act_season_ranges.sql", import.meta.url),
+    "utf8",
+  );
+  const reviewFallbackSql = readFileSync(
+    new URL(
+      "../../migrations/20260928103000_fix_harvest_review_area_fallback.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const monitorSql = readFileSync(
+    new URL(
+      "../../migrations/20260929010000_add_act_data_monitor_rpc.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+
+  assert.match(mergeSql, /p\.actual_planted_area_ha - p\.final_nett_area_ha/);
+  assert.match(mergeSql, /coalesce\(max\(h\.harvested_area_ha\), 0\)/);
+  assert.match(mergeSql, /REPORTED_AREA_EXCEEDS_EFFECTIVE_AREA/);
+  assert.match(mergeSql, /NEEDS_CONFIRMATION/);
+  assert.match(reviewFallbackSql, /refresh_act_sync_harvest_reviews/);
+  assert.match(
+    reviewFallbackSql,
+    /source_payload ->> 'effective_area_ha'[\s\S]*source_payload ->> 'total_area_planted_ha'/,
+  );
+  assert.match(scheduleSql, /make_date\(v_season_year, 3, 1\)/);
+  assert.match(scheduleSql, /make_date\(v_season_year, 5, 1\)/);
+  assert.match(monitorSql, /get_act_sync_public_history/);
+  assert.match(monitorSql, /r\.status = 'COMPLETED'/);
+  assert.match(monitorSql, /mf\.qa_fi/);
 });

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kroscek/models/act_sync_status.dart';
+import 'package:kroscek/screens/act/act_data_monitor_screen.dart';
 
 void main() {
   test('parses the minimal public ACT sync response', () {
@@ -18,6 +19,7 @@ void main() {
         'missing_source': 68,
         'invalid': 0,
         'blockers': 0,
+        'harvest_needs_review': 0,
       },
     });
 
@@ -32,6 +34,7 @@ void main() {
     expect(status.totalRows, 34518);
     expect(status.insertedRows, 129);
     expect(status.updatedRows, 4934);
+    expect(status.harvestNeedsReview, 0);
   });
 
   test('recognizes running and blocked states', () {
@@ -51,5 +54,112 @@ void main() {
     expect(blocked.isSyncing, isFalse);
     expect(blocked.needsAttention, isTrue);
     expect(blocked.blockers, 1);
+  });
+
+  test('marks completed sync attention when Harvest needs confirmation', () {
+    final status = ActSyncStatus.fromJson({
+      'latest_status': 'COMPLETED',
+      'last_success_source_date': '2026-09-28',
+      'source_counts': const <String, int>{},
+      'summary': const <String, int>{'harvest_needs_review': 3},
+    });
+    final review = ActHarvestReview.fromJson({
+      'field_number': 'DC6TEST001',
+      'status': 'NEEDS_CONFIRMATION',
+      'reason': 'REPORTED_AREA_EXCEEDS_EFFECTIVE_AREA',
+      'effective_area_ha': 1,
+      'reported_harvest_area_ha': 1.5,
+      'safe_harvest_area_ha': 1,
+      'harvest_event_count': 2,
+      'last_harvest_date': '2026-09-27',
+      'hybrid': 'AX04',
+      'farmer_name': 'Pak Tani',
+      'region': 'Region 5',
+      'district_kab': 'KABUPATEN BLITAR',
+      'village_desa': 'BENCE',
+      'qa_fi': 'QA Satu',
+    });
+
+    expect(status.hasSyncError, isFalse);
+    expect(status.hasHarvestReview, isTrue);
+    expect(status.needsAttention, isTrue);
+    expect(review.fieldNumber, 'DC6TEST001');
+    expect(review.reportedHarvestAreaHa, 1.5);
+    expect(review.safeHarvestAreaHa, 1);
+    expect(review.harvestEventCount, 2);
+    expect(review.qaOwner, 'QA Satu');
+    expect(review.locationLabel, 'BENCE • KABUPATEN BLITAR');
+    expect(review.searchableText, contains('ax04'));
+  });
+
+  test('filters ACT Harvest review by text, scope, owner, and status', () {
+    final reviews = [
+      ActHarvestReview.fromJson({
+        'field_number': 'DC6TEST001',
+        'status': 'NEEDS_CONFIRMATION',
+        'reason': 'REPORTED_AREA_EXCEEDS_EFFECTIVE_AREA',
+        'effective_area_ha': 1,
+        'reported_harvest_area_ha': 1.5,
+        'safe_harvest_area_ha': 1,
+        'harvest_event_count': 2,
+        'hybrid': 'AX04',
+        'region': 'Region 5',
+        'district_kab': 'BLITAR',
+        'qa_fi': 'QA Satu',
+      }),
+      ActHarvestReview.fromJson({
+        'field_number': 'DC6TEST002',
+        'status': 'CONFIRMED',
+        'reason': 'REPORTED_AREA_EXCEEDS_EFFECTIVE_AREA',
+        'effective_area_ha': 0.5,
+        'reported_harvest_area_ha': 0.6,
+        'safe_harvest_area_ha': 0.5,
+        'harvest_event_count': 1,
+        'hybrid': 'AX09',
+        'region': 'Region 2',
+        'district_kab': 'MADIUN',
+        'qa_fi': 'QA Dua',
+      }),
+    ];
+
+    expect(
+      filterActHarvestReviews(
+        reviews,
+        query: 'AX04',
+        region: 'Region 5',
+        district: 'BLITAR',
+        owner: 'QA Satu',
+        status: ActReviewStatusFilter.needsConfirmation,
+      ).map((item) => item.fieldNumber),
+      ['DC6TEST001'],
+    );
+    expect(
+      filterActHarvestReviews(
+        reviews,
+        status: ActReviewStatusFilter.reviewed,
+      ).single.fieldNumber,
+      'DC6TEST002',
+    );
+  });
+
+  test('parses sanitized ACT sync history', () {
+    final history = ActSyncHistoryItem.fromJson({
+      'run_id': 'run-1',
+      'status': 'COMPLETED',
+      'source_from': '2026-03-01',
+      'source_to': '2026-09-28',
+      'source_rows': 34518,
+      'inserted_rows': 0,
+      'updated_rows': 14894,
+      'invalid_rows': 0,
+      'blockers': 0,
+      'harvest_needs_review': 44,
+      'started_at': '2026-09-28T23:57:23+07:00',
+      'completed_at': '2026-09-29T00:50:00+07:00',
+    });
+
+    expect(history.isSuccessful, isTrue);
+    expect(history.updatedRows, 14894);
+    expect(history.harvestNeedsReview, 44);
   });
 }

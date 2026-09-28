@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../models/act_sync_status.dart';
@@ -7,7 +8,14 @@ import '../providers/act_sync_status_provider.dart';
 import '../theme/app_theme.dart';
 
 class ActSyncStatusStrip extends ConsumerWidget {
-  const ActSyncStatusStrip({super.key});
+  const ActSyncStatusStrip({
+    super.key,
+    this.attentionOnly = false,
+    this.openMonitor = false,
+  });
+
+  final bool attentionOnly;
+  final bool openMonitor;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -27,12 +35,21 @@ class ActSyncStatusStrip extends ConsumerWidget {
         onTap: () => ref.invalidate(actSyncStatusProvider),
       ),
       data: (status) {
+        if (attentionOnly && !status.needsAttention && !status.isSyncing) {
+          return const SizedBox.shrink();
+        }
         final presentation = _presentation(status);
         return _StatusStripShell(
           icon: presentation.icon,
           color: presentation.color,
           label: presentation.label,
-          onTap: () => _showDetails(context, ref, status),
+          onTap: () {
+            if (openMonitor) {
+              context.push('/act-data-monitor');
+              return;
+            }
+            _showDetails(context, ref, status);
+          },
         );
       },
     );
@@ -50,7 +67,7 @@ class ActSyncStatusStrip extends ConsumerWidget {
       );
     }
 
-    if (status.needsAttention) {
+    if (status.hasSyncError) {
       final lastSuccess = _formatDate(status.lastSuccessSourceDate);
       return _StatusPresentation(
         icon: Icons.warning_amber_rounded,
@@ -58,6 +75,15 @@ class ActSyncStatusStrip extends ConsumerWidget {
         label: lastSuccess == null
             ? 'Sinkronisasi ACT perlu diperiksa'
             : 'Sync ACT perlu diperiksa • data terakhir $lastSuccess',
+      );
+    }
+
+    if (status.hasHarvestReview) {
+      final reviewCount = _formatNumber(status.harvestNeedsReview);
+      return _StatusPresentation(
+        icon: Icons.fact_check_outlined,
+        color: const Color(0xFFFFB74D),
+        label: 'ACT tersinkron • $reviewCount FN panen perlu konfirmasi',
       );
     }
 
@@ -177,14 +203,14 @@ class _StatusStripShell extends StatelessWidget {
   }
 }
 
-class _ActSyncStatusSheet extends StatelessWidget {
+class _ActSyncStatusSheet extends ConsumerWidget {
   const _ActSyncStatusSheet({required this.status, required this.onRefresh});
 
   final ActSyncStatus status;
   final VoidCallback onRefresh;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final attention = status.needsAttention;
     final syncing = status.isSyncing;
     final accent = attention
@@ -192,8 +218,10 @@ class _ActSyncStatusSheet extends StatelessWidget {
         : syncing
         ? AdvantaColors.goldLight
         : const Color(0xFF8BE0AC);
-    final title = attention
+    final title = status.hasSyncError
         ? 'Sinkronisasi perlu diperiksa'
+        : status.hasHarvestReview
+        ? 'Data panen perlu konfirmasi'
         : syncing
         ? 'Sinkronisasi sedang berjalan'
         : status.isCurrent
@@ -283,6 +311,11 @@ class _ActSyncStatusSheet extends StatelessWidget {
                   _Metric(label: 'SC', value: status.scCount),
                   _Metric(label: 'Ditambah', value: status.insertedRows),
                   _Metric(label: 'Diperbarui', value: status.updatedRows),
+                  if (status.hasHarvestReview)
+                    _Metric(
+                      label: 'Review panen',
+                      value: status.harvestNeedsReview,
+                    ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -295,14 +328,26 @@ class _ActSyncStatusSheet extends StatelessWidget {
                   border: Border.all(color: Colors.white.withAlpha(28)),
                 ),
                 child: Text(
-                  'Sinkronisasi hanya melakukan insert/update yang lolos '
-                  'validasi. Field KC yang tidak ditemukan di ACT tidak '
-                  'dihapus otomatis.',
+                  status.hasHarvestReview
+                      ? 'Quantity panen dijumlahkan per event. Luas panen '
+                            'memakai nilai kumulatif tertinggi dan dibatasi '
+                            'maksimal effective area. FN di bawah perlu '
+                            'dikonfirmasi ke FA karena laporan ACT melebihi '
+                            'effective area.'
+                      : 'Sinkronisasi hanya melakukan insert/update yang lolos '
+                            'validasi. Field KC yang tidak ditemukan di ACT '
+                            'tidak dihapus otomatis.',
                   style: AdvantaText.caption.copyWith(
                     color: Colors.white.withAlpha(190),
                   ),
                 ),
               ),
+              if (status.hasHarvestReview) ...[
+                const SizedBox(height: 16),
+                _HarvestReviewList(
+                  reviews: ref.watch(actSyncHarvestReviewsProvider),
+                ),
+              ],
             ],
           ),
         ),
@@ -318,6 +363,11 @@ class _ActSyncStatusSheet extends StatelessWidget {
           : 'Target data sampai ${_date(target)}.';
     }
 
+    if (status.hasHarvestReview && !status.hasSyncError) {
+      return '${NumberFormat.decimalPattern('id_ID').format(status.harvestNeedsReview)} '
+          'FN memakai luas aman sambil menunggu konfirmasi.';
+    }
+
     final sourceDate = status.lastSuccessSourceDate;
     final syncedAt = status.lastSuccessAt;
     if (sourceDate == null) return 'Belum ada sinkronisasi yang berhasil.';
@@ -330,6 +380,104 @@ class _ActSyncStatusSheet extends StatelessWidget {
 
   static String _date(DateTime value) {
     return DateFormat('d MMM yyyy', 'id_ID').format(value);
+  }
+}
+
+class _HarvestReviewList extends StatelessWidget {
+  const _HarvestReviewList({required this.reviews});
+
+  final AsyncValue<List<ActHarvestReview>> reviews;
+
+  @override
+  Widget build(BuildContext context) {
+    return reviews.when(
+      loading: () => const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+      error: (_, __) => Text(
+        'Daftar FN belum dapat dimuat. Ketuk perbarui untuk mencoba lagi.',
+        style: AdvantaText.caption.copyWith(color: Colors.white.withAlpha(185)),
+      ),
+      data: (items) {
+        final visible = items.take(20).toList(growable: false);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'FN yang perlu dikonfirmasi',
+              style: AdvantaText.bodyBold.copyWith(color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+            ...visible.map(_HarvestReviewTile.new),
+            if (items.length > visible.length)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '${NumberFormat.decimalPattern('id_ID').format(items.length - visible.length)} '
+                  'FN lain tersedia pada laporan review.',
+                  style: AdvantaText.caption.copyWith(
+                    color: Colors.white.withAlpha(175),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _HarvestReviewTile extends StatelessWidget {
+  const _HarvestReviewTile(this.review);
+
+  final ActHarvestReview review;
+
+  @override
+  Widget build(BuildContext context) {
+    final areaFormat = NumberFormat('0.##', 'id_ID');
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFB74D).withAlpha(18),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFFFB74D).withAlpha(70)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  review.fieldNumber,
+                  style: AdvantaText.bodyBold.copyWith(color: Colors.white),
+                ),
+              ),
+              Text(
+                '${review.harvestEventCount} event',
+                style: AdvantaText.caption.copyWith(
+                  color: const Color(0xFFFFCC80),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'Effective ${areaFormat.format(review.effectiveAreaHa)} ha • '
+            'ACT ${areaFormat.format(review.reportedHarvestAreaHa)} ha • '
+            'dipakai ${areaFormat.format(review.safeHarvestAreaHa)} ha',
+            style: AdvantaText.caption.copyWith(
+              color: Colors.white.withAlpha(190),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

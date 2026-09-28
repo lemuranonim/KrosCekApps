@@ -48,7 +48,14 @@ function Invoke-SyncFunction {
 
 $bangkokNow = Get-BangkokNow
 $sourceTo = $bangkokNow.ToString('yyyy-MM-dd')
-$sourceFrom = "{0}-01-01" -f $bangkokNow.Year
+$seasonYear = if ($bangkokNow.Date -ge (Get-Date -Year $bangkokNow.Year -Month 3 -Day 1)) {
+  $bangkokNow.Year
+}
+else {
+  $bangkokNow.Year - 1
+}
+$sourceFrom = "{0}-03-01" -f $seasonYear
+$harvestFrom = "{0}-05-01" -f $seasonYear
 $functionUrl = "https://$ProjectRef.supabase.co/functions/v1/act-master-fields-sync"
 $restUrl = "https://$ProjectRef.supabase.co/rest/v1"
 
@@ -110,6 +117,8 @@ else {
     sources        = @('FC', 'PS', 'SC')
     exportMode     = 'table'
     includeWkt     = $true
+    includeHarvest = $true
+    harvestFrom    = $harvestFrom
     minimumRows    = 30000
     maxChangeRatio = 0.25
   }

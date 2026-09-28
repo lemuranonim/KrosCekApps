@@ -5,27 +5,41 @@ Parent Seed, and Sweet Corn, then reconciles it against KC `master_fields` by
 normalized `field_number`.
 
 The default `table` mode reads the three paginated Planting JSON endpoints,
-merges `Geometry WKT` from authenticated background export workbooks, and then
-overlays final PLD/Area Adjustment rows (`status=3`). WKT and reconciliation
-are processed in resumable 2,000-row batches, so the large FC workbook is never
+merges `Geometry WKT` from authenticated background export workbooks, imports
+Harvest transactions, and then overlays final PLD/Area Adjustment rows
+(`status=3`). Harvest, WKT, and reconciliation are processed in resumable
+2,000-row batches, so the large FC workbook is never
 applied in one Edge invocation. FC WKT is exported in monthly shards while the
 smaller PS and SC exports remain full-range. Within each shard, the reader skips
 rows before the saved cursor without decoding them and resolves shared strings
 only for Field Number and Geometry WKT. Pending/process PLD recommendations are
-never applied. The approved PLD mapping is:
+never applied. A Field Number may have more than one approved partial-discard
+transaction. For each Field Number the sync preserves Planting's original
+actual planted area, takes the final/lowest PLD nett area, and derives:
 
-- planted area: column 12
-- effective area: column 13
-- discard area: column 14
+```text
+discard_area_ha = total_area_planted_ha - effective_area_ha
+```
+
+This avoids replacing the original planted area with the remaining area shown
+as `Planted Area` in a later partial-discard transaction. Harvest transactions
+are imported from 1 May through the sync date. Weight is summed per Field Number
+into `harvested_qty_kg`. Because partial-harvest events can repeat the cumulative
+area on different dates, `harvested_area_ha` uses the maximum reported area
+rather than summing every row. It is capped at the final effective area. A
+reported area above effective area is retained in the review log as
+`NEEDS_CONFIRMATION`; the safe capped value can still be applied without
+blocking valid FN in the same sync.
 
 The older mode that imports every workbook column remains a fallback. Production
 uses the workbook only for `Geometry WKT`; all other ACT-owned planting columns
 come from the paginated Planting endpoint and final PLD overlay.
 
 ACT manages `field_number`, farmer/grower/hybrid, planted/discard/effective
-areas, female planting date, address hierarchy, FA/supervisor/manager/region,
-crop type, province, planting ratio/space, and `geometry_wkt`. KC-owned harvest,
-QA, lot, audit, correction, and derived geometry columns are not overwritten.
+areas, harvested area/weight, female planting date, address hierarchy,
+FA/supervisor/manager/region, crop type, province, planting ratio/space, and
+`geometry_wkt`. KC-owned QA, lot, audit, correction, and derived geometry
+columns are not overwritten.
 `Previous Crop Corn` remains unmapped because legacy KC
 `previous_crop_data_a_b` contains mixed numeric codes and labels; it requires a
 separate approved normalization before ACT can own that column.
@@ -97,12 +111,14 @@ Invoke with an authenticated KC admin JWT:
 
 ```json
 {
-  "from": "2026-01-01",
+  "from": "2026-03-01",
   "to": "2026-09-24",
   "apply": false,
   "sources": ["FC", "PS", "SC"],
   "exportMode": "table",
   "includeWkt": true,
+  "includeHarvest": true,
+  "harvestFrom": "2026-05-01",
   "minimumRows": 30000,
   "maxChangeRatio": 0.25
 }
@@ -118,9 +134,9 @@ run until it reaches `READY`, `BLOCKED`, `FAILED`, or `COMPLETED`:
 ```
 
 Each resume request handles at most 5,000 Planting rows, 2,000 workbook rows for
-WKT, 1,000 final PLD rows, or 2,000 reconciliation rows. Reconciliation runs in
-resumable PostgreSQL batches, avoiding Edge memory/CPU and statement-timeout
-limits.
+WKT, 2,000 Harvest rows, 1,000 final PLD rows, or 2,000 reconciliation rows.
+Reconciliation runs in resumable PostgreSQL batches, avoiding Edge memory/CPU
+and statement-timeout limits.
 
 Inspect the run before applying:
 
@@ -165,8 +181,9 @@ Always use the full active-season range because ACT can edit an older field
 without changing its planting date.
 
 The manual fallback runner is `scripts/run_act_master_fields_sync.ps1`. It uses
-the current Bangkok calendar year, resumes an existing run for the same source
-date, and skips a duplicate when that date is already `COMPLETED`.
+1 March of the active Bangkok season for Planting/PLD and 1 May for Harvest,
+resumes an existing run for the same source date, and skips a duplicate when
+that date is already `COMPLETED`.
 
 Production scheduling runs entirely inside Supabase. Cron job
 `act-master-fields-sync-cloud` starts at 01:00 WIB and dispatches one resumable
@@ -178,6 +195,8 @@ same source date, and uses the encrypted Vault secret
 not required for production. Every successful batch advances `progress_at`; a
 server-side watchdog marks an active run `FAILED` after 60 minutes without a
 checkpoint, so a forced Edge shutdown cannot leave KC showing an endless sync.
+Every new production run requests Planting/PLD from 1 March and Harvest from
+1 May through that run's Bangkok source date.
 
 Cron job `act-master-fields-sync-cleanup` runs at 02:30 WIB. Raw staged rows are
 kept for three days and reconciliation rows for seven days; run summaries and
@@ -188,6 +207,8 @@ Operational reports are available in:
 
 - `act_sync_runs` for the run status and summary counts;
 - `act_sync_changes` for reconciliation decisions and old/new values;
+- `get_act_sync_harvest_reviews()` for FN whose reported Harvest area exceeds
+  effective area and needs confirmation;
 - `act_master_fields_change_log` for the immutable applied INSERT/UPDATE audit.
 
 Service-side health can be read through
