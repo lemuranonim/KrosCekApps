@@ -189,7 +189,15 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/act-data-monitor',
-      builder: (context, state) => const ActDataMonitorScreen(),
+      builder: (context, state) => const ActDataMonitorScreen(
+        mode: ActDataMonitorMode.syncStatus,
+      ),
+    ),
+    GoRoute(
+      path: '/planting-data-monitor',
+      builder: (context, state) => const ActDataMonitorScreen(
+        mode: ActDataMonitorMode.plantingData,
+      ),
     ),
     GoRoute(
       path: '/detasseling-map',

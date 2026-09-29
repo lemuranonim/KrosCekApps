@@ -154,6 +154,27 @@ test("sync migrations preserve PLD actual area and review unsafe Harvest area", 
     ),
     "utf8",
   );
+  const plantingMonitorSql = readFileSync(
+    new URL(
+      "../../migrations/20260929013000_split_act_and_planting_monitor.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const scopedPlantingMonitorSql = readFileSync(
+    new URL(
+      "../../migrations/20260929014500_scope_planting_monitor_by_role.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const scopedDailySyncSql = readFileSync(
+    new URL(
+      "../../migrations/20260929021500_add_scoped_daily_act_sync_results.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
 
   assert.match(mergeSql, /p\.actual_planted_area_ha - p\.final_nett_area_ha/);
   assert.match(mergeSql, /coalesce\(max\(h\.harvested_area_ha\), 0\)/);
@@ -169,4 +190,26 @@ test("sync migrations preserve PLD actual area and review unsafe Harvest area", 
   assert.match(monitorSql, /get_act_sync_public_history/);
   assert.match(monitorSql, /r\.status = 'COMPLETED'/);
   assert.match(monitorSql, /mf\.qa_fi/);
+  assert.match(plantingMonitorSql, /get_planting_data_monitor_summary/);
+  assert.match(
+    plantingMonitorSql,
+    /planted_area_ha - a\.effective_area_ha/,
+  );
+  assert.match(
+    plantingMonitorSql,
+    /effective_area_ha - a\.harvested_area_ha/,
+  );
+  assert.match(plantingMonitorSql, /least\(raw_harvested_area_ha, effective_area_ha\)/);
+  assert.match(scopedPlantingMonitorSql, /u\.id = auth\.uid\(\)/);
+  assert.match(scopedPlantingMonitorSql, /scope\.role = 'SPV'/);
+  assert.match(scopedPlantingMonitorSql, /scope\.role = 'FI'/);
+  assert.match(scopedPlantingMonitorSql, /act_monitor_name_matches\(mf\.qa_fi/);
+  assert.match(scopedPlantingMonitorSql, /auth\.role\(\) = 'service_role'/);
+  assert.match(scopedDailySyncSql, /get_act_sync_scoped_daily_summary/);
+  assert.match(scopedDailySyncSql, /get_act_sync_scoped_daily_changes/);
+  assert.match(scopedDailySyncSql, /u\.id = auth\.uid\(\)/);
+  assert.match(scopedDailySyncSql, /act_monitor_name_matches\(field_data\.qa_spv/);
+  assert.match(scopedDailySyncSql, /act_monitor_name_matches\(field_data\.qa_fi/);
+  assert.match(scopedDailySyncSql, /least\(greatest\(coalesce\(p_limit, 20\), 1\), 50\)/);
+  assert.match(scopedDailySyncSql, /latest\.status = 'COMPLETED'/);
 });

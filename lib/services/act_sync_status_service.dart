@@ -57,4 +57,67 @@ class ActSyncStatusService {
         })
         .toList(growable: false);
   }
+
+  Future<ActSyncDailySummary> getDailySummary({String? runId}) async {
+    final response = await _client.rpc(
+      'get_act_sync_scoped_daily_summary',
+      params: {'p_run_id': runId},
+    );
+    if (response is! Map) {
+      throw const FormatException(
+        'Format ringkasan hasil sync harian tidak valid.',
+      );
+    }
+
+    return ActSyncDailySummary.fromJson(
+      response.map((key, value) => MapEntry(key.toString(), value)),
+    );
+  }
+
+  Future<ActSyncDailyPage> getDailyChanges(ActSyncDailyQuery query) async {
+    final response = await _client.rpc(
+      'get_act_sync_scoped_daily_changes',
+      params: query.rpcParams,
+    );
+    if (response is! Map) {
+      throw const FormatException(
+        'Format daftar hasil sync harian tidak valid.',
+      );
+    }
+
+    return ActSyncDailyPage.fromJson(
+      response.map((key, value) => MapEntry(key.toString(), value)),
+    );
+  }
+
+  Future<PlantingDataMonitorSummary> getPlantingSummary(
+    PlantingDataMonitorFilter filter,
+  ) async {
+    final response = await _client.rpc(
+      'get_planting_data_monitor_summary',
+      params: filter.rpcParams,
+    );
+    if (response is! Map) {
+      throw const FormatException(
+        'Format ringkasan Data Tanam Monitor tidak valid.',
+      );
+    }
+
+    return PlantingDataMonitorSummary.fromJson(
+      response.map((key, value) => MapEntry(key.toString(), value)),
+    );
+  }
+
+  Future<PlantingDataMonitorOptions> getPlantingOptions() async {
+    final response = await _client.rpc('get_planting_data_monitor_options');
+    if (response is! Map) {
+      throw const FormatException(
+        'Format filter Data Tanam Monitor tidak valid.',
+      );
+    }
+
+    return PlantingDataMonitorOptions.fromJson(
+      response.map((key, value) => MapEntry(key.toString(), value)),
+    );
+  }
 }

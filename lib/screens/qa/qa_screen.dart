@@ -1320,11 +1320,8 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final bool canUseMassInspect =
         user != null && user.role.toLowerCase() != 'guest';
     final actReviewCount = ref
-        .watch(actSyncStatusProvider)
-        .maybeWhen(
-          data: (status) => status.harvestNeedsReview,
-          orElse: () => 0,
-        );
+        .watch(actSyncHarvestReviewsProvider)
+        .maybeWhen(data: (reviews) => reviews.length, orElse: () => 0);
 
     if (_selectedRegion != null &&
         (_isExcludedRegion(_selectedRegion) ||
@@ -1400,7 +1397,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
 
                       // Status ringkas sinkronisasi harian ACT → KC
                       const ActSyncStatusStrip(
-                        attentionOnly: true,
+                        attentionOnly: false,
                         openMonitor: true,
                       ),
 
@@ -1963,14 +1960,15 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 );
               },
             ),
-          _CompactSegmentButton(
-            icon: Icons.cloud_sync_outlined,
-            tooltip: 'ACT Data Monitor',
-            badgeCount: actReviewCount,
-            isActive: false,
-            isWarning: actReviewCount > 0,
-            onTap: () => context.push('/act-data-monitor'),
-          ),
+          if (canSeeCoverage)
+            _CompactSegmentButton(
+              icon: Icons.landscape_outlined,
+              tooltip: 'Data Tanam Monitor',
+              badgeCount: actReviewCount,
+              isActive: false,
+              isWarning: actReviewCount > 0,
+              onTap: () => context.push('/planting-data-monitor'),
+            ),
           _CompactSegmentButton(
             icon: Icons.touch_app_outlined,
             tooltip: 'Single Audit',

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class ActSyncStatus {
   const ActSyncStatus({
     required this.latestStatus,
@@ -77,7 +79,7 @@ class ActSyncStatus {
 
   bool get hasHarvestReview => harvestNeedsReview > 0;
 
-  bool get needsAttention => hasSyncError || hasHarvestReview;
+  bool get needsAttention => hasSyncError;
 
   bool get hasSuccessfulSync => lastSuccessSourceDate != null;
 
@@ -266,4 +268,375 @@ class ActSyncHistoryItem {
   final DateTime? completedAt;
 
   bool get isSuccessful => status == 'COMPLETED';
+}
+
+class ActSyncDailySummary {
+  const ActSyncDailySummary({
+    required this.status,
+    required this.scopeRole,
+    required this.totalRows,
+    required this.insertedRows,
+    required this.updatedRows,
+    required this.unchangedRows,
+    required this.missingSourceRows,
+    required this.invalidRows,
+    required this.conflictRows,
+    required this.changedRows,
+    required this.appliedRows,
+    this.runId,
+    this.sourceFrom,
+    this.sourceTo,
+    this.startedAt,
+    this.completedAt,
+  });
+
+  factory ActSyncDailySummary.fromJson(Map<String, dynamic> json) {
+    return ActSyncDailySummary(
+      runId: ActHarvestReview._optionalText(json['run_id']),
+      status: ActSyncStatus._text(json['status'], fallback: 'UNKNOWN'),
+      scopeRole: ActSyncStatus._text(json['scope_role'], fallback: 'NONE'),
+      sourceFrom: ActSyncStatus._date(json['source_from']),
+      sourceTo: ActSyncStatus._date(json['source_to']),
+      startedAt: ActSyncStatus._dateTime(json['started_at']),
+      completedAt: ActSyncStatus._dateTime(json['completed_at']),
+      totalRows: ActSyncStatus._integer(json['total_rows']),
+      insertedRows: ActSyncStatus._integer(json['inserted_rows']),
+      updatedRows: ActSyncStatus._integer(json['updated_rows']),
+      unchangedRows: ActSyncStatus._integer(json['unchanged_rows']),
+      missingSourceRows: ActSyncStatus._integer(json['missing_source_rows']),
+      invalidRows: ActSyncStatus._integer(json['invalid_rows']),
+      conflictRows: ActSyncStatus._integer(json['conflict_rows']),
+      changedRows: ActSyncStatus._integer(json['changed_rows']),
+      appliedRows: ActSyncStatus._integer(json['applied_rows']),
+    );
+  }
+
+  final String? runId;
+  final String status;
+  final String scopeRole;
+  final DateTime? sourceFrom;
+  final DateTime? sourceTo;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+  final int totalRows;
+  final int insertedRows;
+  final int updatedRows;
+  final int unchangedRows;
+  final int missingSourceRows;
+  final int invalidRows;
+  final int conflictRows;
+  final int changedRows;
+  final int appliedRows;
+
+  int get issueRows => missingSourceRows + invalidRows + conflictRows;
+}
+
+class ActSyncFieldChange {
+  const ActSyncFieldChange({
+    required this.fieldName,
+    required this.oldValue,
+    required this.newValue,
+  });
+
+  factory ActSyncFieldChange.fromJson(String fieldName, Object? value) {
+    final values = value is Map
+        ? value.map((key, item) => MapEntry(key.toString(), item))
+        : const <String, dynamic>{};
+    return ActSyncFieldChange(
+      fieldName: fieldName,
+      oldValue: values['old'],
+      newValue: values['new'],
+    );
+  }
+
+  final String fieldName;
+  final Object? oldValue;
+  final Object? newValue;
+
+  String get oldText => _valueText(oldValue);
+  String get newText => _valueText(newValue);
+
+  static String _valueText(Object? value) {
+    if (value == null) return 'Kosong';
+    if (value is String) {
+      final text = value.trim();
+      return text.isEmpty ? 'Kosong' : text;
+    }
+    if (value is num || value is bool) return value.toString();
+    return jsonEncode(value);
+  }
+}
+
+class ActSyncDailyChange {
+  const ActSyncDailyChange({
+    required this.fieldNumber,
+    required this.changeKind,
+    required this.applied,
+    required this.changedFieldCount,
+    required this.changedFields,
+    required this.validationErrors,
+    this.sourceType,
+    this.appliedAt,
+    this.farmerName,
+    this.hybrid,
+    this.region,
+    this.district,
+    this.village,
+    this.qaFi,
+    this.qaSpv,
+    this.applyError,
+  });
+
+  factory ActSyncDailyChange.fromJson(Map<String, dynamic> json) {
+    final rawChanges = json['changed_columns'];
+    final changes = rawChanges is Map
+        ? rawChanges.entries
+              .map(
+                (entry) => ActSyncFieldChange.fromJson(
+                  entry.key.toString(),
+                  entry.value,
+                ),
+              )
+              .toList(growable: false)
+        : const <ActSyncFieldChange>[];
+    final rawErrors = json['validation_errors'];
+    return ActSyncDailyChange(
+      fieldNumber: json['field_number']?.toString().trim() ?? '-',
+      changeKind: ActSyncStatus._text(json['change_kind'], fallback: 'UNKNOWN'),
+      sourceType: ActHarvestReview._optionalText(json['source_type']),
+      applied: json['applied'] == true,
+      appliedAt: ActSyncStatus._dateTime(json['applied_at']),
+      farmerName: ActHarvestReview._optionalText(json['farmer_name']),
+      hybrid: ActHarvestReview._optionalText(json['hybrid']),
+      region: ActHarvestReview._optionalText(json['region']),
+      district: ActHarvestReview._optionalText(json['district_kab']),
+      village: ActHarvestReview._optionalText(json['village_desa']),
+      qaFi: ActHarvestReview._optionalText(json['qa_fi']),
+      qaSpv: ActHarvestReview._optionalText(json['qa_spv']),
+      changedFieldCount: ActSyncStatus._integer(json['changed_field_count']),
+      changedFields: changes,
+      validationErrors: rawErrors is List
+          ? rawErrors.map((item) => item.toString()).toList(growable: false)
+          : const [],
+      applyError: ActHarvestReview._optionalText(json['apply_error']),
+    );
+  }
+
+  final String fieldNumber;
+  final String changeKind;
+  final String? sourceType;
+  final bool applied;
+  final DateTime? appliedAt;
+  final String? farmerName;
+  final String? hybrid;
+  final String? region;
+  final String? district;
+  final String? village;
+  final String? qaFi;
+  final String? qaSpv;
+  final int changedFieldCount;
+  final List<ActSyncFieldChange> changedFields;
+  final List<String> validationErrors;
+  final String? applyError;
+
+  bool get isIssue => const {
+    'INVALID',
+    'CONFLICT_SOURCE_DUPLICATE',
+    'CONFLICT_KC_DUPLICATE',
+    'MISSING_SOURCE',
+  }.contains(changeKind);
+
+  String get locationLabel => [
+    village,
+    district,
+    region,
+  ].whereType<String>().where((value) => value.isNotEmpty).join(' • ');
+}
+
+class ActSyncDailyPage {
+  const ActSyncDailyPage({
+    required this.totalCount,
+    required this.offset,
+    required this.limit,
+    required this.items,
+    this.runId,
+  });
+
+  factory ActSyncDailyPage.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'];
+    return ActSyncDailyPage(
+      runId: ActHarvestReview._optionalText(json['run_id']),
+      totalCount: ActSyncStatus._integer(json['total_count']),
+      offset: ActSyncStatus._integer(json['offset']),
+      limit: ActSyncStatus._integer(json['limit']),
+      items: rawItems is List
+          ? rawItems
+                .whereType<Map>()
+                .map(
+                  (row) => ActSyncDailyChange.fromJson(
+                    row.map((key, value) => MapEntry(key.toString(), value)),
+                  ),
+                )
+                .toList(growable: false)
+          : const [],
+    );
+  }
+
+  final String? runId;
+  final int totalCount;
+  final int offset;
+  final int limit;
+  final List<ActSyncDailyChange> items;
+
+  bool get hasPrevious => offset > 0;
+  bool get hasNext => offset + items.length < totalCount;
+}
+
+class ActSyncDailyQuery {
+  const ActSyncDailyQuery({
+    this.runId,
+    this.category = 'CHANGED',
+    this.query,
+    this.offset = 0,
+    this.limit = 20,
+  });
+
+  final String? runId;
+  final String category;
+  final String? query;
+  final int offset;
+  final int limit;
+
+  Map<String, dynamic> get rpcParams => {
+    'p_run_id': runId,
+    'p_category': category,
+    'p_query': query,
+    'p_offset': offset,
+    'p_limit': limit,
+  };
+
+  @override
+  bool operator ==(Object other) {
+    return other is ActSyncDailyQuery &&
+        other.runId == runId &&
+        other.category == category &&
+        other.query == query &&
+        other.offset == offset &&
+        other.limit == limit;
+  }
+
+  @override
+  int get hashCode => Object.hash(runId, category, query, offset, limit);
+}
+
+class PlantingDataMonitorFilter {
+  const PlantingDataMonitorFilter({
+    this.region,
+    this.district,
+    this.owner,
+    this.season,
+    this.seedType,
+  });
+
+  final String? region;
+  final String? district;
+  final String? owner;
+  final String? season;
+  final String? seedType;
+
+  Map<String, dynamic> get rpcParams => {
+    'p_region': region,
+    'p_district': district,
+    'p_owner': owner,
+    'p_season': season,
+    'p_seed_type': seedType,
+  };
+
+  bool get isEmpty =>
+      region == null &&
+      district == null &&
+      owner == null &&
+      season == null &&
+      seedType == null;
+
+  @override
+  bool operator ==(Object other) {
+    return other is PlantingDataMonitorFilter &&
+        other.region == region &&
+        other.district == district &&
+        other.owner == owner &&
+        other.season == season &&
+        other.seedType == seedType;
+  }
+
+  @override
+  int get hashCode => Object.hash(region, district, owner, season, seedType);
+}
+
+class PlantingDataMonitorSummary {
+  const PlantingDataMonitorSummary({
+    required this.fieldCount,
+    required this.plantedAreaHa,
+    required this.discardAreaHa,
+    required this.effectiveAreaHa,
+    required this.harvestedAreaHa,
+    required this.standingCropAreaHa,
+    required this.harvestNeedsReview,
+  });
+
+  factory PlantingDataMonitorSummary.fromJson(Map<String, dynamic> json) {
+    return PlantingDataMonitorSummary(
+      fieldCount: ActSyncStatus._integer(json['field_count']),
+      plantedAreaHa: ActHarvestReview._number(json['planted_area_ha']),
+      discardAreaHa: ActHarvestReview._number(json['discard_area_ha']),
+      effectiveAreaHa: ActHarvestReview._number(json['effective_area_ha']),
+      harvestedAreaHa: ActHarvestReview._number(json['harvested_area_ha']),
+      standingCropAreaHa: ActHarvestReview._number(
+        json['standing_crop_area_ha'],
+      ),
+      harvestNeedsReview: ActSyncStatus._integer(json['harvest_needs_review']),
+    );
+  }
+
+  final int fieldCount;
+  final double plantedAreaHa;
+  final double discardAreaHa;
+  final double effectiveAreaHa;
+  final double harvestedAreaHa;
+  final double standingCropAreaHa;
+  final int harvestNeedsReview;
+}
+
+class PlantingDataMonitorOptions {
+  const PlantingDataMonitorOptions({
+    this.regions = const [],
+    this.districts = const [],
+    this.owners = const [],
+    this.seasons = const [],
+    this.seedTypes = const [],
+  });
+
+  factory PlantingDataMonitorOptions.fromJson(Map<String, dynamic> json) {
+    List<String> strings(Object? value) {
+      if (value is! List) return const [];
+      return value
+          .map((item) => item?.toString().trim() ?? '')
+          .where((item) => item.isNotEmpty)
+          .toList(growable: false);
+    }
+
+    return PlantingDataMonitorOptions(
+      regions: strings(json['regions']),
+      districts: strings(json['districts']),
+      owners: strings(json['owners']),
+      seasons: strings(json['seasons']),
+      seedTypes: strings(json['seed_types']),
+    );
+  }
+
+  final List<String> regions;
+  final List<String> districts;
+  final List<String> owners;
+  final List<String> seasons;
+  final List<String> seedTypes;
 }
