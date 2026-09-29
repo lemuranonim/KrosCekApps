@@ -175,6 +175,13 @@ test("sync migrations preserve PLD actual area and review unsafe Harvest area", 
     ),
     "utf8",
   );
+  const pldLifecycleSql = readFileSync(
+    new URL(
+      "../../migrations/20260929033000_add_audit_pld_lifecycle_and_revision_history.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
 
   assert.match(mergeSql, /p\.actual_planted_area_ha - p\.final_nett_area_ha/);
   assert.match(mergeSql, /coalesce\(max\(h\.harvested_area_ha\), 0\)/);
@@ -212,4 +219,12 @@ test("sync migrations preserve PLD actual area and review unsafe Harvest area", 
   assert.match(scopedDailySyncSql, /act_monitor_name_matches\(field_data\.qa_fi/);
   assert.match(scopedDailySyncSql, /least\(greatest\(coalesce\(p_limit, 20\), 1\), 50\)/);
   assert.match(scopedDailySyncSql, /latest\.status = 'COMPLETED'/);
+  assert.match(pldLifecycleSql, /create table if not exists public\.audit_pld_lifecycle/);
+  assert.match(pldLifecycleSql, /create table if not exists public\.audit_revision_history/);
+  assert.match(pldLifecycleSql, /PLD_ACT_CONFIRMED_LOCKED/);
+  assert.match(pldLifecycleSql, /before update or delete/);
+  assert.match(pldLifecycleSql, /status in \('PENDING', 'CONFIRMED', 'UPDATED'\)/);
+  assert.match(pldLifecycleSql, /v_effective is not null and v_effective <= 0/);
+  assert.match(pldLifecycleSql, /run\.status in \('APPLYING', 'COMPLETED'\)/);
+  assert.match(pldLifecycleSql, /get_field_pld_audit_lifecycle/);
 });

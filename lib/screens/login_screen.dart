@@ -297,7 +297,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     width: 94, height: 94,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white,
+                      color: AdvantaColors.kcNavy,
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(10),
