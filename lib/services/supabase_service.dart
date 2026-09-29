@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'master_field_read_cache.dart';
+import '../utils/master_field_region_scope.dart';
 
 class SupabaseService {
   final SupabaseClient _supabase;
@@ -704,12 +705,13 @@ class SupabaseService {
     MasterFieldReadCacheEntry? snapshot,
   ) {
     if (snapshot == null) return const [];
-    final regions = snapshot.rows
-        .map((row) => row['region']?.toString().trim() ?? '')
-        .where((region) => region.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final regions =
+        snapshot.rows
+            .map((row) => row['region']?.toString().trim() ?? '')
+            .where((region) => region.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     return regions;
   }
 
@@ -812,11 +814,16 @@ class SupabaseService {
       final nextEnd = start + parallelRegions;
       final end = nextEnd < normalized.length ? nextEnd : normalized.length;
       final batches = await Future.wait(
-        normalized.sublist(start, end).map(
+        normalized
+            .sublist(start, end)
+            .map(
               (region) => getMasterFieldsForCoverage(
                 qaFi: qaFi,
                 qaSpv: qaSpv,
-                season: season,
+                season: masterFieldSeasonForRegion(
+                  season: season,
+                  region: region,
+                ),
                 region: region,
                 district: district,
                 bypassCache: bypassCache,
@@ -1082,11 +1089,15 @@ class SupabaseService {
     String? season,
     bool bypassCache = false,
   }) async {
+    final scopedSeason = masterFieldSeasonForRegion(
+      season: season,
+      region: region,
+    );
     final userId = _supabase.auth.currentUser?.id;
     final hasCacheScope = [
       qaFi,
       qaSpv,
-      season,
+      scopedSeason,
       region,
       district,
     ].any((value) => value?.trim().isNotEmpty == true);
@@ -1095,7 +1106,7 @@ class SupabaseService {
           ? await MasterFieldReadCache.read(
               userId: userId,
               dataset: 'planning_index',
-              season: season,
+              season: scopedSeason,
               region: region,
               district: district,
             )
@@ -1106,7 +1117,7 @@ class SupabaseService {
               'master-fields-map-cache',
               body: {
                 'dataset': 'planning_index',
-                'season': season,
+                'season': scopedSeason,
                 'region': region,
                 'district': district,
                 'bypassCache': bypassCache,
@@ -1144,7 +1155,7 @@ class SupabaseService {
                   dataset: 'planning_index',
                   version: cacheVersion,
                   rows: result,
-                  season: season,
+                  season: scopedSeason,
                   region: region,
                   district: district,
                 ),
@@ -1170,7 +1181,7 @@ class SupabaseService {
               qaSpv: qaSpv,
               region: region,
               district: district,
-              season: season,
+              season: scopedSeason,
             )
             .order('field_number', ascending: true)
             .range(from, from + pageSize - 1)
@@ -1276,8 +1287,12 @@ class SupabaseService {
     if (district != null && district.trim().isNotEmpty) {
       query = query.eq('district_kab', district.trim());
     }
-    if (season != null && season.trim().isNotEmpty) {
-      query = query.eq('season', season.trim());
+    final scopedSeason = masterFieldSeasonForRegion(
+      season: season,
+      region: region,
+    );
+    if (scopedSeason != null && scopedSeason.trim().isNotEmpty) {
+      query = query.eq('season', scopedSeason.trim());
     }
     return query;
   }

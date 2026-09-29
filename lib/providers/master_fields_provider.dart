@@ -7,6 +7,7 @@ import '../services/supabase_service.dart';
 import '../services/supabase_auth_service.dart';
 import '../services/session_manager.dart';
 import '../utils/dap_helper.dart';
+import '../utils/master_field_region_scope.dart';
 import '../utils/qa_name_helper.dart';
 
 // ============================================================
@@ -268,10 +269,31 @@ final activeMasterFieldRegionsProvider =
       final action = user.action.toLowerCase();
       final role = user.role.toUpperCase();
 
-      return supabaseService.getActiveMasterFieldRegions(
+      final qaFi = action == 'audit' && role == 'FI' ? user.name.trim() : null;
+      final qaSpv = action == 'audit' && role == 'SPV'
+          ? user.name.trim()
+          : null;
+      final scopedRegions = await supabaseService.getActiveMasterFieldRegions(
         season: resolvedSeason,
-        qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
-        qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
+        qaFi: qaFi,
+        qaSpv: qaSpv,
+      );
+      if (resolvedSeason == null) return scopedRegions;
+
+      List<String> allSeasonRegions;
+      try {
+        allSeasonRegions = await supabaseService.getActiveMasterFieldRegions(
+          qaFi: qaFi,
+          qaSpv: qaSpv,
+        );
+      } catch (_) {
+        // Region Trial is an additive exception. A failed supplemental lookup
+        // must not hide the normal season-scoped options.
+        return scopedRegions;
+      }
+      return includeSeasonIndependentMasterFieldRegions(
+        scopedRegions: scopedRegions,
+        allSeasonRegions: allSeasonRegions,
       );
     });
 
@@ -304,13 +326,52 @@ final masterFieldMapScopedProvider =
                     latestActiveMasterFieldSeasonProvider.future,
                   ));
 
-      final mapFields = (await supabaseService.getMasterFieldsForMap(
-        qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
-        qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
+      final qaFi = action == 'audit' && role == 'FI' ? user.name.trim() : null;
+      final qaSpv = action == 'audit' && role == 'SPV'
+          ? user.name.trim()
+          : null;
+      final scopedSeason = masterFieldSeasonForRegion(
         season: resolvedSeason,
         region: scope.region,
-        district: scope.district,
-      )).map(_withResolvedCorrectionTagging).toList();
+      );
+      Future<List<Map<String, dynamic>>> loadTrialFields() async {
+        try {
+          return await supabaseService.getMasterFieldsForMap(
+            qaFi: qaFi,
+            qaSpv: qaSpv,
+            region: seasonIndependentMasterFieldRegion,
+            district: scope.district,
+          );
+        } catch (_) {
+          // Keep the existing season-scoped map usable if only the optional
+          // Region Trial supplement is unavailable.
+          return const [];
+        }
+      }
+
+      final requests = <Future<List<Map<String, dynamic>>>>[
+        supabaseService.getMasterFieldsForMap(
+          qaFi: qaFi,
+          qaSpv: qaSpv,
+          season: scopedSeason,
+          region: scope.region,
+          district: scope.district,
+        ),
+        if (resolvedSeason != null && scope.region?.trim().isNotEmpty != true)
+          loadTrialFields(),
+      ];
+      final batches = await Future.wait(requests);
+      final mapFieldsByNumber = <String, Map<String, dynamic>>{};
+      for (final field in batches.expand((batch) => batch)) {
+        final fieldNumber = field['field_number']?.toString().trim() ?? '';
+        final key = fieldNumber.isEmpty
+            ? '${field['region']}|${field['season']}|${mapFieldsByNumber.length}'
+            : fieldNumber.toLowerCase();
+        mapFieldsByNumber.putIfAbsent(key, () => field);
+      }
+      final mapFields = mapFieldsByNumber.values
+          .map(_withResolvedCorrectionTagging)
+          .toList();
 
       if (action == 'all') return mapFields;
 
@@ -350,27 +411,30 @@ final masterFieldCoverageScopedProvider =
                     latestActiveMasterFieldSeasonProvider.future,
                   ));
 
-      final qaFi = action == 'audit' && role == 'FI'
-          ? user.name.trim()
-          : null;
+      final qaFi = action == 'audit' && role == 'FI' ? user.name.trim() : null;
       final qaSpv = action == 'audit' && role == 'SPV'
           ? user.name.trim()
           : null;
+      final scopedSeason = masterFieldSeasonForRegion(
+        season: resolvedSeason,
+        region: scope.region,
+      );
       late final List<Map<String, dynamic>> rawFields;
       if (action == 'all' && scope.region?.trim().isNotEmpty != true) {
         final regionScope = MasterFieldMapScope(
           season: scope.season,
           allSeasons: scope.allSeasons,
         );
-        final regions = (await ref.watch(
-          activeMasterFieldRegionsProvider(regionScope).future,
-        ))
-            .where(
-              (region) =>
-                  region.trim().isNotEmpty &&
-                  region.trim().toLowerCase() != 'region tester',
-            )
-            .toList(growable: false);
+        final regions =
+            (await ref.watch(
+                  activeMasterFieldRegionsProvider(regionScope).future,
+                ))
+                .where(
+                  (region) =>
+                      region.trim().isNotEmpty &&
+                      region.trim().toLowerCase() != 'region tester',
+                )
+                .toList(growable: false);
         rawFields = regions.isEmpty
             ? await supabaseService.getMasterFieldsForCoverage(
                 season: resolvedSeason,
@@ -385,7 +449,7 @@ final masterFieldCoverageScopedProvider =
         rawFields = await supabaseService.getMasterFieldsForCoverage(
           qaFi: qaFi,
           qaSpv: qaSpv,
-          season: resolvedSeason,
+          season: scopedSeason,
           region: scope.region,
           district: scope.district,
         );
