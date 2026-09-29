@@ -37,6 +37,7 @@ import 'screens/inspection/mass_inspect_screen.dart';
 import 'screens/attendance/check_in_screen.dart';
 import 'screens/attendance/check_out_screen.dart';
 import 'screens/coverage/coverage_screen.dart';
+import 'screens/act/act_data_monitor_screen.dart';
 import 'screens/qa/detasseling_map_screen.dart';
 import 'screens/qa/audit_planning_screen.dart';
 import 'models/audit_planning_filters.dart';
@@ -49,18 +50,9 @@ import 'providers/detasseling_plan_provider.dart'
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-const _adminOnlyRoutes = {
-  '/admin',
-};
+const _adminOnlyRoutes = {'/admin'};
 
-const _operationalWriteRoles = {
-  'admin',
-  'fi',
-  'spv',
-  'qa',
-  'manager',
-  'dev',
-};
+const _operationalWriteRoles = {'admin', 'fi', 'spv', 'qa', 'manager', 'dev'};
 
 bool _isAdminRole(String? role) => role?.toLowerCase() == 'admin';
 bool _isGuestRole(String? role) => role?.toLowerCase() == 'guest';
@@ -82,26 +74,11 @@ final router = GoRouter(
   navigatorKey: _rootNavigatorKey,
   initialLocation: '/splash',
   routes: [
-    GoRoute(
-      path: '/splash',
-      builder: (context, state) => const SplashScreen(),
-    ),
-    GoRoute(
-      path: '/login',
-      builder: (context, state) => const LoginScreen(),
-    ),
-    GoRoute(
-      path: '/module-select',
-      redirect: (context, state) => '/qa',
-    ),
-    GoRoute(
-      path: '/qa',
-      builder: (context, state) => const QAScreen(),
-    ),
-    GoRoute(
-      path: '/got-fet',
-      redirect: (context, state) => '/qa',
-    ),
+    GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
+    GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+    GoRoute(path: '/module-select', redirect: (context, state) => '/qa'),
+    GoRoute(path: '/qa', builder: (context, state) => const QAScreen()),
+    GoRoute(path: '/got-fet', redirect: (context, state) => '/qa'),
     GoRoute(
       path: '/got-fet/settings',
       redirect: (context, state) => '/qa/settings',
@@ -136,39 +113,33 @@ final router = GoRouter(
     // --- NEW INSPECTION ROUTES ---
     GoRoute(
       path: '/inspect/vegetative/:fieldNumber',
-      builder: (context, state) => FormVegetative(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormVegetative(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect/generative_1/:fieldNumber',
-      builder: (context, state) => FormGenerative1(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormGenerative1(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect/generative_2/:fieldNumber',
-      builder: (context, state) => FormGenerative2(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormGenerative2(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect/generative_3/:fieldNumber',
-      builder: (context, state) => FormGenerative3(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormGenerative3(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect/pre_harvest/:fieldNumber',
-      builder: (context, state) => FormPreHarvest(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormPreHarvest(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect/harvest/:fieldNumber',
-      builder: (context, state) => FormHarvest(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormHarvest(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect/mass',
@@ -182,21 +153,18 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/inspect_psp/vegetative/:fieldNumber',
-      builder: (context, state) => FormVegetativePSP(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormVegetativePSP(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect_psp/generative/:fieldNumber',
-      builder: (context, state) => FormGenerativePSP(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormGenerativePSP(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect_psp/harvest/:fieldNumber',
-      builder: (context, state) => FormHarvestPSP(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormHarvestPSP(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/edit-field',
@@ -220,13 +188,27 @@ final router = GoRouter(
       builder: (context, state) => const CoverageScreen(),
     ),
     GoRoute(
+      path: '/act-data-monitor',
+      builder: (context, state) => const ActDataMonitorScreen(
+        mode: ActDataMonitorMode.syncStatus,
+      ),
+    ),
+    GoRoute(
+      path: '/planting-data-monitor',
+      builder: (context, state) => const ActDataMonitorScreen(
+        mode: ActDataMonitorMode.plantingData,
+      ),
+    ),
+    GoRoute(
       path: '/detasseling-map',
       builder: (context, state) => const DetasselingMapScreen(),
     ),
     GoRoute(
       path: '/audit-planning',
       builder: (context, state) => AuditPlanningScreen(
-        initialWeek: DateTime.tryParse(state.uri.queryParameters['weekStart'] ?? ''),
+        initialWeek: DateTime.tryParse(
+          state.uri.queryParameters['weekStart'] ?? '',
+        ),
         initialFilters: state.extra is AuditPlanningInitialFilters
             ? state.extra as AuditPlanningInitialFilters
             : null,
@@ -236,51 +218,43 @@ final router = GoRouter(
     // --- SWEET CORN (SC) INSPECTION ROUTES ---
     GoRoute(
       path: '/inspect_sc/vegetative/:fieldNumber',
-      builder: (context, state) => FormVegetativeSC(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormVegetativeSC(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect_sc/generative_1/:fieldNumber',
-      builder: (context, state) => FormGenerative1SC(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormGenerative1SC(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect_sc/generative_2/:fieldNumber',
-      builder: (context, state) => FormGenerative2SC(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormGenerative2SC(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect_sc/generative_3/:fieldNumber',
-      builder: (context, state) => FormGenerative3SC(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormGenerative3SC(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect_sc/generative_4/:fieldNumber',
-      builder: (context, state) => FormGenerative4SC(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormGenerative4SC(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect_sc/generative_5/:fieldNumber',
-      builder: (context, state) => FormGenerative5SC(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormGenerative5SC(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect_sc/pre_harvest/:fieldNumber',
-      builder: (context, state) => FormPreHarvestSC(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormPreHarvestSC(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
     GoRoute(
       path: '/inspect_sc/harvest/:fieldNumber',
-      builder: (context, state) => FormHarvestSC(
-        fieldNumber: state.pathParameters['fieldNumber']!,
-      ),
+      builder: (context, state) =>
+          FormHarvestSC(fieldNumber: state.pathParameters['fieldNumber']!),
     ),
   ],
   redirect: (context, state) async {

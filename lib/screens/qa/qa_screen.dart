@@ -1319,6 +1319,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
     final bool canSeeDetasseling = _canSeeDetasselingMap(user);
     final bool canUseMassInspect =
         user != null && user.role.toLowerCase() != 'guest';
+    final actReviewCount = ref
+        .watch(actSyncHarvestReviewsProvider)
+        .maybeWhen(data: (reviews) => reviews.length, orElse: () => 0);
 
     if (_selectedRegion != null &&
         (_isExcludedRegion(_selectedRegion) ||
@@ -1393,7 +1396,10 @@ class _QAScreenState extends ConsumerState<QAScreen>
                       _buildUnifiedTopBar(attendance),
 
                       // Status ringkas sinkronisasi harian ACT → KC
-                      const ActSyncStatusStrip(),
+                      const ActSyncStatusStrip(
+                        attentionOnly: false,
+                        openMonitor: true,
+                      ),
 
                       // BARIS 2: Gabungan Semua Filter (Region, District, QA, Status, Fase)
                       if (parsedMapAsync is AsyncData)
@@ -1455,6 +1461,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 canSeeCoverage,
                 canUseMassInspect,
                 canSeeDetasseling,
+                actReviewCount,
                 _showAllSeasons
                     ? null
                     : (_selectedSeason ??
@@ -1869,6 +1876,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
     bool canSeeCoverage,
     bool canUseMassInspect,
     bool canSeeDetasseling,
+    int actReviewCount,
     String? planningSeason,
   ) {
     return Container(
@@ -1884,6 +1892,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
           if (canSeeCoverage)
             _CompactSegmentButton(
               icon: Icons.analytics_outlined,
+              tooltip: 'Coverage Monitoring',
               isActive: false,
               isWarning: true,
               onTap: () => context.push('/coverage'),
@@ -1891,6 +1900,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
           if (canSeeDetasseling)
             _CompactSegmentButton(
               icon: Icons.yard_rounded,
+              tooltip: 'Detasseling Map',
               isActive: false,
               isWarning: true,
               onTap: () {
@@ -1904,6 +1914,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
           if (canSeeDetasseling)
             _CompactSegmentButton(
               icon: Icons.event_note_rounded,
+              tooltip: 'Planning Audit',
               isActive: false,
               isWarning: true,
               onTap: () {
@@ -1949,8 +1960,18 @@ class _QAScreenState extends ConsumerState<QAScreen>
                 );
               },
             ),
+          if (canSeeCoverage)
+            _CompactSegmentButton(
+              icon: Icons.landscape_outlined,
+              tooltip: 'Data Tanam Monitor',
+              badgeCount: actReviewCount,
+              isActive: false,
+              isWarning: actReviewCount > 0,
+              onTap: () => context.push('/planting-data-monitor'),
+            ),
           _CompactSegmentButton(
             icon: Icons.touch_app_outlined,
+            tooltip: 'Single Audit',
             isActive: _workMode == _WorkMode.single,
             onTap: () => setState(() {
               _workMode = _WorkMode.single;
@@ -1960,6 +1981,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
           if (canUseMassInspect)
             _CompactSegmentButton(
               icon: Icons.checklist_rtl_outlined,
+              tooltip: 'Mass Audit',
               isActive: _workMode == _WorkMode.mass,
               onTap: () => setState(() => _workMode = _WorkMode.mass),
             ),
@@ -3481,15 +3503,20 @@ class _QAScreenState extends ConsumerState<QAScreen>
   }
 
   List<LatLng> _wktPolygonToLatLngs(String wkt) {
-    final match = RegExp(
-      r'POLYGON\s*\(\((.+?)\)\)',
-      caseSensitive: false,
-    ).firstMatch(wkt);
-    if (match == null) return const [];
+    final normalized = wkt.trim();
+    if (!normalized.toUpperCase().startsWith('POLYGON')) return const [];
+    final ringStart = normalized.indexOf('((');
+    final ringEnd = normalized.lastIndexOf('))');
+    if (ringStart < 0 || ringEnd <= ringStart + 2) return const [];
+    final ring = normalized.substring(ringStart + 2, ringEnd);
 
     final points = <LatLng>[];
-    for (final pair in match.group(1)!.split(',')) {
-      final parts = pair.trim().split(RegExp(r'\s+'));
+    for (final pair in ring.split(',')) {
+      final parts = pair
+          .trim()
+          .split(' ')
+          .where((part) => part.isNotEmpty)
+          .toList(growable: false);
       if (parts.length < 2) continue;
       final lng = double.tryParse(parts[0]);
       final lat = double.tryParse(parts[1]);
@@ -5397,6 +5424,8 @@ class _CompactAttendanceDot extends StatelessWidget {
 
 class _CompactSegmentButton extends StatelessWidget {
   final IconData icon;
+  final String? tooltip;
+  final int badgeCount;
   final bool isActive;
   final bool isWarning;
   final VoidCallback onTap;
@@ -5405,6 +5434,8 @@ class _CompactSegmentButton extends StatelessWidget {
     required this.icon,
     required this.isActive,
     required this.onTap,
+    this.tooltip,
+    this.badgeCount = 0,
     this.isWarning = false,
   });
 
@@ -5413,18 +5444,61 @@ class _CompactSegmentButton extends StatelessWidget {
     final color = isActive
         ? Colors.white
         : (isWarning ? AdvantaColors.goldLight : Colors.white54);
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isActive ? AdvantaColors.primaryGreen : Colors.transparent,
-          shape: BoxShape.circle,
+    final button = Semantics(
+      button: true,
+      label: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isActive
+                    ? AdvantaColors.primaryGreen
+                    : Colors.transparent,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            if (badgeCount > 0)
+              Positioned(
+                top: 1,
+                right: 0,
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minWidth: 17,
+                    minHeight: 17,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: AdvantaColors.error,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: AdvantaColors.deepForest,
+                      width: 1.5,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    badgeCount > 99 ? '99+' : '$badgeCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                      height: 1,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
-        child: Icon(icon, color: color, size: 20),
       ),
     );
+    if (tooltip == null || tooltip!.isEmpty) return button;
+    return Tooltip(message: tooltip!, child: button);
   }
 }
 
@@ -7059,8 +7133,9 @@ class _UserLocationMarkerState extends State<_UserLocationMarker>
               height: 20,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF2196F3)
-                    .withAlpha((_opacity.value * 255).round()),
+                color: const Color(
+                  0xFF2196F3,
+                ).withAlpha((_opacity.value * 255).round()),
               ),
             ),
           ),

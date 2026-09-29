@@ -8,6 +8,8 @@ export const MANAGED_FIELDS = [
   "total_area_planted_ha",
   "discard_area_ha",
   "effective_area_ha",
+  "harvested_area_ha",
+  "harvested_qty_kg",
   "planting_date_pdn",
   "hamlet_dusun",
   "village_desa",
@@ -109,6 +111,17 @@ const HEADER_ALIASES: Record<ManagedField, string[]> = {
     "planting effective area",
     "planting_efective_area",
   ],
+  harvested_area_ha: [
+    "harvested area",
+    "harvested area ha",
+    "harvest area",
+  ],
+  harvested_qty_kg: [
+    "weight",
+    "harvested weight",
+    "harvested qty",
+    "harvested quantity",
+  ],
   planting_date_pdn: [
     "female date",
     "planting date",
@@ -185,6 +198,8 @@ const NUMERIC_FIELDS = new Set<ManagedField>([
   "total_area_planted_ha",
   "discard_area_ha",
   "effective_area_ha",
+  "harvested_area_ha",
+  "harvested_qty_kg",
 ]);
 
 const SOURCE_DB_TYPE: Record<SourceType, string> = {
@@ -341,10 +356,14 @@ export function mapExportRow(
   const planted = payload.total_area_planted_ha as number | undefined;
   const discard = payload.discard_area_ha as number | undefined;
   const effective = payload.effective_area_ha as number | undefined;
+  const harvestedArea = payload.harvested_area_ha as number | undefined;
+  const harvestedQty = payload.harvested_qty_kg as number | undefined;
   for (const [name, value] of [
     ["total_area_planted_ha", planted],
     ["discard_area_ha", discard],
     ["effective_area_ha", effective],
+    ["harvested_area_ha", harvestedArea],
+    ["harvested_qty_kg", harvestedQty],
   ] as const) {
     if (value !== undefined && value < 0) validationErrors.push(`negative_area:${name}`);
   }

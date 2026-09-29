@@ -8,6 +8,7 @@
 .buildlog/
 .history
 .svn/
+.codex-remote-attachments
 migrate_working_dir/
 key.properties
 my-release-key.jks
@@ -57,6 +58,8 @@ assets/config.json
 !/supabase/migrations/20260925*.sql
 !/supabase/migrations/20260926*.sql
 !/supabase/migrations/20260927*.sql
+!/supabase/migrations/20260928*.sql
+!/supabase/migrations/20260929*.sql
 .vscode/
 /local commit/
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../models/act_sync_status.dart';
@@ -7,7 +8,14 @@ import '../providers/act_sync_status_provider.dart';
 import '../theme/app_theme.dart';
 
 class ActSyncStatusStrip extends ConsumerWidget {
-  const ActSyncStatusStrip({super.key});
+  const ActSyncStatusStrip({
+    super.key,
+    this.attentionOnly = false,
+    this.openMonitor = false,
+  });
+
+  final bool attentionOnly;
+  final bool openMonitor;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -27,12 +35,21 @@ class ActSyncStatusStrip extends ConsumerWidget {
         onTap: () => ref.invalidate(actSyncStatusProvider),
       ),
       data: (status) {
+        if (attentionOnly && !status.needsAttention && !status.isSyncing) {
+          return const SizedBox.shrink();
+        }
         final presentation = _presentation(status);
         return _StatusStripShell(
           icon: presentation.icon,
           color: presentation.color,
           label: presentation.label,
-          onTap: () => _showDetails(context, ref, status),
+          onTap: () {
+            if (openMonitor) {
+              context.push('/act-data-monitor');
+              return;
+            }
+            _showDetails(context, ref, status);
+          },
         );
       },
     );
@@ -50,7 +67,7 @@ class ActSyncStatusStrip extends ConsumerWidget {
       );
     }
 
-    if (status.needsAttention) {
+    if (status.hasSyncError) {
       final lastSuccess = _formatDate(status.lastSuccessSourceDate);
       return _StatusPresentation(
         icon: Icons.warning_amber_rounded,
@@ -185,14 +202,14 @@ class _ActSyncStatusSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final attention = status.needsAttention;
+    final attention = status.hasSyncError;
     final syncing = status.isSyncing;
     final accent = attention
         ? const Color(0xFFFFB74D)
         : syncing
         ? AdvantaColors.goldLight
         : const Color(0xFF8BE0AC);
-    final title = attention
+    final title = status.hasSyncError
         ? 'Sinkronisasi perlu diperiksa'
         : syncing
         ? 'Sinkronisasi sedang berjalan'
