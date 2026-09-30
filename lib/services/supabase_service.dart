@@ -24,6 +24,22 @@ class SupabaseService {
        // ignore: prefer_initializing_formals
        _mapCacheEnabled = mapCacheEnabled;
 
+  String _roleScopedCacheDataset(
+    String dataset, {
+    String? qaFi,
+    String? qaSpv,
+  }) {
+    String normalize(String value) =>
+        value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+    if (qaFi?.trim().isNotEmpty == true) {
+      return '$dataset:fi:${normalize(qaFi!)}';
+    }
+    if (qaSpv?.trim().isNotEmpty == true) {
+      return '$dataset:spv:${normalize(qaSpv!)}';
+    }
+    return '$dataset:all';
+  }
+
   // Eligibility only: no geometry, crop monitoring or flagging payloads.
   // Keep revised planting dates and PSP passes so weekly targets stay exact.
   static const String _auditPlanningIndexSelect = '''
@@ -446,6 +462,11 @@ class SupabaseService {
     bool bypassCache = false,
   }) async {
     try {
+      final cacheDataset = _roleScopedCacheDataset(
+        'map',
+        qaFi: qaFi,
+        qaSpv: qaSpv,
+      );
       // Redis lives behind an authenticated Edge Function, never in Flutter.
       // If that optional cache is unavailable, keep the existing direct
       // Supabase query as a fail-open path so the map remains usable.
@@ -461,7 +482,7 @@ class SupabaseService {
         final localSnapshot = !bypassCache && userId != null
             ? await MasterFieldReadCache.read(
                 userId: userId,
-                dataset: 'map',
+                dataset: cacheDataset,
                 season: season,
                 region: region,
                 district: district,
@@ -507,7 +528,7 @@ class SupabaseService {
                 unawaited(
                   MasterFieldReadCache.write(
                     userId: userId,
-                    dataset: 'map',
+                    dataset: cacheDataset,
                     version: cacheVersion,
                     rows: result,
                     season: season,
@@ -651,11 +672,16 @@ class SupabaseService {
     String? qaSpv,
   }) async {
     final userId = _supabase.auth.currentUser?.id;
+    final cacheDataset = _roleScopedCacheDataset(
+      'coverage-regions',
+      qaFi: qaFi,
+      qaSpv: qaSpv,
+    );
     final localSnapshot = userId == null
         ? null
         : await MasterFieldReadCache.read(
             userId: userId,
-            dataset: 'coverage-regions',
+            dataset: cacheDataset,
             season: season,
           );
 
@@ -674,7 +700,7 @@ class SupabaseService {
           .map((row) => row['region']?.toString().trim() ?? '')
           .where((region) => region.isNotEmpty)
           .toList(growable: false);
-      _saveCoverageRegionsSnapshot(userId, season, regions);
+      _saveCoverageRegionsSnapshot(userId, cacheDataset, season, regions);
       return regions;
     } catch (error) {
       if (_isConnectivityFailure(error)) {
@@ -690,7 +716,7 @@ class SupabaseService {
           qaFi: qaFi,
           qaSpv: qaSpv,
         );
-        _saveCoverageRegionsSnapshot(userId, season, regions);
+        _saveCoverageRegionsSnapshot(userId, cacheDataset, season, regions);
         return regions;
       } catch (fallbackError) {
         final cached = _coverageRegionsFromSnapshot(localSnapshot);
@@ -717,6 +743,7 @@ class SupabaseService {
 
   void _saveCoverageRegionsSnapshot(
     String? userId,
+    String cacheDataset,
     String? season,
     List<String> regions,
   ) {
@@ -724,7 +751,7 @@ class SupabaseService {
     unawaited(
       MasterFieldReadCache.write(
         userId: userId,
-        dataset: 'coverage-regions',
+        dataset: cacheDataset,
         version: DateTime.now().millisecondsSinceEpoch,
         rows: regions
             .map((region) => <String, dynamic>{'region': region})
@@ -763,6 +790,7 @@ class SupabaseService {
 
   void _saveCoverageSnapshot({
     required String? userId,
+    required String cacheDataset,
     required int version,
     required List<Map<String, dynamic>> rows,
     String? season,
@@ -773,7 +801,7 @@ class SupabaseService {
     unawaited(
       MasterFieldReadCache.write(
         userId: userId,
-        dataset: 'coverage',
+        dataset: cacheDataset,
         version: version,
         rows: rows,
         season: season,
@@ -895,10 +923,15 @@ class SupabaseService {
     bool bypassCache = false,
   }) async {
     final userId = _supabase.auth.currentUser?.id;
+    final cacheDataset = _roleScopedCacheDataset(
+      'coverage',
+      qaFi: qaFi,
+      qaSpv: qaSpv,
+    );
     final localSnapshot = !bypassCache && userId != null
         ? await MasterFieldReadCache.read(
             userId: userId,
-            dataset: 'coverage',
+            dataset: cacheDataset,
             season: season,
             region: region,
             district: district,
@@ -953,6 +986,7 @@ class SupabaseService {
               if (cacheVersion != null) {
                 _saveCoverageSnapshot(
                   userId: userId,
+                  cacheDataset: cacheDataset,
                   version: cacheVersion,
                   rows: result,
                   season: season,
@@ -1004,6 +1038,7 @@ class SupabaseService {
       if (hasCacheScope && !bypassCache) {
         _saveCoverageSnapshot(
           userId: userId,
+          cacheDataset: cacheDataset,
           version: DateTime.now().millisecondsSinceEpoch,
           rows: allData,
           season: season,
@@ -1094,6 +1129,11 @@ class SupabaseService {
       region: region,
     );
     final userId = _supabase.auth.currentUser?.id;
+    final cacheDataset = _roleScopedCacheDataset(
+      'planning_index',
+      qaFi: qaFi,
+      qaSpv: qaSpv,
+    );
     final hasCacheScope = [
       qaFi,
       qaSpv,
@@ -1105,7 +1145,7 @@ class SupabaseService {
       final localSnapshot = !bypassCache
           ? await MasterFieldReadCache.read(
               userId: userId,
-              dataset: 'planning_index',
+              dataset: cacheDataset,
               season: scopedSeason,
               region: region,
               district: district,
@@ -1152,7 +1192,7 @@ class SupabaseService {
               unawaited(
                 MasterFieldReadCache.write(
                   userId: userId,
-                  dataset: 'planning_index',
+                  dataset: cacheDataset,
                   version: cacheVersion,
                   rows: result,
                   season: scopedSeason,

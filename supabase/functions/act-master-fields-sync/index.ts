@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 import {
   mapExportRow,
+  mapFinalPldAreas,
   normalizeDate,
   normalizeFieldNumber,
   normalizeHeader,
@@ -1967,19 +1968,17 @@ Deno.serve(async (req) => {
               start,
               pageSize,
             );
-            const numberOrNull = (value: unknown): number | null => {
-              if (value === null || value === undefined || String(value).trim() === "") return null;
-              const parsed = Number(value);
-              return Number.isFinite(parsed) ? parsed : null;
-            };
-            const pldRows = page.rows.map((row, index) => ({
-              field_number_norm: normalizeFieldNumber(row[3]),
-              approved_at: normalizeDate(row[2]),
-              source_row: start + index + 1,
-              planted_area_ha: numberOrNull(row[12]),
-              effective_area_ha: numberOrNull(row[13]),
-              discard_area_ha: numberOrNull(row[14]),
-            })).filter((row) =>
+            const pldRows = page.rows.map((row, index) => {
+              const areas = mapFinalPldAreas(row);
+              return {
+                field_number_norm: normalizeFieldNumber(row[3]),
+                approved_at: normalizeDate(row[2]),
+                source_row: start + index + 1,
+                planted_area_ha: areas.plantedAreaHa,
+                discard_area_ha: areas.discardAreaHa,
+                effective_area_ha: areas.effectiveAreaHa,
+              };
+            }).filter((row) =>
               row.field_number_norm && row.approved_at &&
               row.approved_at >= input.from && row.approved_at <= input.to
             );
@@ -2479,7 +2478,10 @@ Deno.serve(async (req) => {
           progress_at: new Date().toISOString(),
           completed_at: new Date().toISOString(),
         })
-        .eq("id", activeRunId);
+        .eq("id", activeRunId)
+        // A large atomic apply can finish in PostgreSQL after the API gateway
+        // stops waiting for its response. Never downgrade that committed run.
+        .neq("status", "COMPLETED");
     }
     const status = error instanceof HttpError ? error.status : 500;
     return jsonResponse({ error: message, run_id: activeRunId }, status);

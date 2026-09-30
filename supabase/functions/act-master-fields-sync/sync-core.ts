@@ -255,6 +255,18 @@ export function parseNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export function mapFinalPldAreas(row: unknown[]): {
+  plantedAreaHa: number | null;
+  discardAreaHa: number | null;
+  effectiveAreaHa: number | null;
+} {
+  return {
+    plantedAreaHa: parseNumber(row[12]),
+    discardAreaHa: parseNumber(row[13]),
+    effectiveAreaHa: parseNumber(row[14]),
+  };
+}
+
 export function normalizeDate(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) {

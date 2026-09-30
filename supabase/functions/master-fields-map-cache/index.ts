@@ -646,8 +646,14 @@ Deno.serve(async (req) => {
   const action = String(profile.action ?? "").trim().toLowerCase();
   const role = String(profile.role ?? "").trim().toUpperCase();
   const name = String(profile.name ?? "").trim();
-  const qaFi = action === "audit" && role === "FI" ? name : null;
-  const qaSpv = action === "audit" && role === "SPV" ? name : null;
+  const isQaRestricted = role === "FI" || role === "SPV";
+  if (isQaRestricted && !name) {
+    return jsonResponse({ error: "QA ownership is not configured" }, 403);
+  }
+  // Role owns row visibility. `action` controls workflows only and must not
+  // turn an FI/SPV account into an all-region data reader.
+  const qaFi = role === "FI" ? name : null;
+  const qaSpv = role === "SPV" ? name : null;
   const hasCacheScope = Boolean(
     qaFi || qaSpv || scope.season || scope.region || scope.district,
   );
@@ -696,10 +702,10 @@ Deno.serve(async (req) => {
   }
 
   const accessIdentity = qaFi
-    ? { action: "audit", role: "FI", name: normalizedIdentity(qaFi) }
+    ? { role: "FI", name: normalizedIdentity(qaFi) }
     : qaSpv
-    ? { action: "audit", role: "SPV", name: normalizedIdentity(qaSpv) }
-    : { action: "all" };
+    ? { role: "SPV", name: normalizedIdentity(qaSpv) }
+    : { role: "ALL", action };
   const cacheIdentity = JSON.stringify({
     version,
     access: accessIdentity,

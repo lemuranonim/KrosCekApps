@@ -63,6 +63,43 @@ Map<String, dynamic> _withResolvedCorrectionTagging(
   return {...field, 'correction_tagging': correction};
 }
 
+typedef MasterFieldRoleScope = ({
+  String? qaFi,
+  String? qaSpv,
+  bool isRestricted,
+});
+
+/// QA ownership is role-based. `action` controls available workflows, but it
+/// must never widen the rows visible to an FI or QA SPV.
+MasterFieldRoleScope masterFieldRoleScopeFor(AppUser user) {
+  final role = user.role.trim().toUpperCase();
+  final name = user.name.trim();
+  return switch (role) {
+    'FI' => (qaFi: name.isEmpty ? null : name, qaSpv: null, isRestricted: true),
+    'SPV' => (
+      qaFi: null,
+      qaSpv: name.isEmpty ? null : name,
+      isRestricted: true,
+    ),
+    _ => (qaFi: null, qaSpv: null, isRestricted: false),
+  };
+}
+
+bool _fieldVisibleToUser(Map<String, dynamic> field, AppUser user) {
+  final role = user.role.trim().toUpperCase();
+  final userName = user.name.trim().toLowerCase();
+  if (role == 'FI') return QaNameHelper.fieldHasFi(field, userName);
+  if (role == 'SPV') return QaNameHelper.fieldHasSpv(field, userName);
+  return true;
+}
+
+List<Map<String, dynamic>> _fieldsVisibleToUser(
+  Iterable<Map<String, dynamic>> fields,
+  AppUser user,
+) {
+  return fields.where((field) => _fieldVisibleToUser(field, user)).toList();
+}
+
 // ============================================================
 // 3. MASTER FIELDS PROVIDER (Data Mentah)
 // ============================================================
@@ -82,30 +119,18 @@ final masterFieldsProvider = FutureProvider<List<Map<String, dynamic>>>((
 
   if (user == null) return [];
 
-  final action = user.action.toLowerCase();
-  final role = user.role.toUpperCase();
-  final userName = user.name.trim().toLowerCase();
-
-  final allFields = (await supabaseService.getMasterFieldsWithAllAudits(
-    qaFi: action == 'audit' && role == 'FI' ? user.name.trim() : null,
-    qaSpv: action == 'audit' && role == 'SPV' ? user.name.trim() : null,
-  )).map(_withResolvedCorrectionTagging).toList();
-
-  if (action == 'all') return allFields;
-
-  if (action == 'audit') {
-    if (role == 'FI') {
-      return allFields.where((field) {
-        return QaNameHelper.fieldHasFi(field, userName);
-      }).toList();
-    } else if (role == 'SPV') {
-      return allFields.where((field) {
-        return QaNameHelper.fieldHasSpv(field, userName);
-      }).toList();
-    }
+  final roleScope = masterFieldRoleScopeFor(user);
+  if (roleScope.isRestricted &&
+      roleScope.qaFi == null &&
+      roleScope.qaSpv == null) {
+    return [];
   }
 
-  return allFields;
+  final allFields = (await supabaseService.getMasterFieldsWithAllAudits(
+    qaFi: roleScope.qaFi,
+    qaSpv: roleScope.qaSpv,
+  )).map(_withResolvedCorrectionTagging).toList();
+  return _fieldsVisibleToUser(allFields, user);
 });
 
 final masterFieldDetailProvider =
@@ -125,21 +150,7 @@ final masterFieldDetailProvider =
       if (detail == null) return null;
 
       final resolved = _withResolvedCorrectionTagging(detail);
-      final action = user.action.toLowerCase();
-      final role = user.role.toUpperCase();
-      final userName = user.name.trim().toLowerCase();
-
-      if (action == 'all') return resolved;
-      if (action == 'audit') {
-        if (role == 'FI') {
-          return QaNameHelper.fieldHasFi(resolved, userName) ? resolved : null;
-        }
-        if (role == 'SPV') {
-          return QaNameHelper.fieldHasSpv(resolved, userName) ? resolved : null;
-        }
-      }
-
-      return resolved;
+      return _fieldVisibleToUser(resolved, user) ? resolved : null;
     });
 
 class MasterFieldNumbersScope {
@@ -182,29 +193,10 @@ final masterFieldsByFieldNumbersProvider =
 
       if (user == null || scope.fieldNumbers.isEmpty) return [];
 
-      final action = user.action.toLowerCase();
-      final role = user.role.toUpperCase();
-      final userName = user.name.trim().toLowerCase();
-
       final fields = (await supabaseService.getMasterFieldsByFieldNumbers(
         scope.fieldNumbers,
       )).map(_withResolvedCorrectionTagging).toList();
-
-      if (action == 'all') return fields;
-
-      if (action == 'audit') {
-        if (role == 'FI') {
-          return fields.where((field) {
-            return QaNameHelper.fieldHasFi(field, userName);
-          }).toList();
-        } else if (role == 'SPV') {
-          return fields.where((field) {
-            return QaNameHelper.fieldHasSpv(field, userName);
-          }).toList();
-        }
-      }
-
-      return fields;
+      return _fieldsVisibleToUser(fields, user);
     });
 
 // ============================================================
@@ -266,25 +258,24 @@ final activeMasterFieldRegionsProvider =
                 : await ref.watch(
                     latestActiveMasterFieldSeasonProvider.future,
                   ));
-      final action = user.action.toLowerCase();
-      final role = user.role.toUpperCase();
-
-      final qaFi = action == 'audit' && role == 'FI' ? user.name.trim() : null;
-      final qaSpv = action == 'audit' && role == 'SPV'
-          ? user.name.trim()
-          : null;
+      final roleScope = masterFieldRoleScopeFor(user);
+      if (roleScope.isRestricted &&
+          roleScope.qaFi == null &&
+          roleScope.qaSpv == null) {
+        return [];
+      }
       final scopedRegions = await supabaseService.getActiveMasterFieldRegions(
         season: resolvedSeason,
-        qaFi: qaFi,
-        qaSpv: qaSpv,
+        qaFi: roleScope.qaFi,
+        qaSpv: roleScope.qaSpv,
       );
       if (resolvedSeason == null) return scopedRegions;
 
       List<String> allSeasonRegions;
       try {
         allSeasonRegions = await supabaseService.getActiveMasterFieldRegions(
-          qaFi: qaFi,
-          qaSpv: qaSpv,
+          qaFi: roleScope.qaFi,
+          qaSpv: roleScope.qaSpv,
         );
       } catch (_) {
         // Region Trial is an additive exception. A failed supplemental lookup
@@ -315,9 +306,12 @@ final masterFieldMapScopedProvider =
 
       if (user == null) return [];
 
-      final action = user.action.toLowerCase();
-      final role = user.role.toUpperCase();
-      final userName = user.name.trim().toLowerCase();
+      final roleScope = masterFieldRoleScopeFor(user);
+      if (roleScope.isRestricted &&
+          roleScope.qaFi == null &&
+          roleScope.qaSpv == null) {
+        return [];
+      }
       final resolvedSeason = scope.allSeasons
           ? null
           : (scope.season?.trim().isNotEmpty == true
@@ -326,10 +320,6 @@ final masterFieldMapScopedProvider =
                     latestActiveMasterFieldSeasonProvider.future,
                   ));
 
-      final qaFi = action == 'audit' && role == 'FI' ? user.name.trim() : null;
-      final qaSpv = action == 'audit' && role == 'SPV'
-          ? user.name.trim()
-          : null;
       final scopedSeason = masterFieldSeasonForRegion(
         season: resolvedSeason,
         region: scope.region,
@@ -337,8 +327,8 @@ final masterFieldMapScopedProvider =
       Future<List<Map<String, dynamic>>> loadTrialFields() async {
         try {
           return await supabaseService.getMasterFieldsForMap(
-            qaFi: qaFi,
-            qaSpv: qaSpv,
+            qaFi: roleScope.qaFi,
+            qaSpv: roleScope.qaSpv,
             region: seasonIndependentMasterFieldRegion,
             district: scope.district,
           );
@@ -351,8 +341,8 @@ final masterFieldMapScopedProvider =
 
       final requests = <Future<List<Map<String, dynamic>>>>[
         supabaseService.getMasterFieldsForMap(
-          qaFi: qaFi,
-          qaSpv: qaSpv,
+          qaFi: roleScope.qaFi,
+          qaSpv: roleScope.qaSpv,
           season: scopedSeason,
           region: scope.region,
           district: scope.district,
@@ -373,21 +363,7 @@ final masterFieldMapScopedProvider =
           .map(_withResolvedCorrectionTagging)
           .toList();
 
-      if (action == 'all') return mapFields;
-
-      if (action == 'audit') {
-        if (role == 'FI') {
-          return mapFields.where((field) {
-            return QaNameHelper.fieldHasFi(field, userName);
-          }).toList();
-        } else if (role == 'SPV') {
-          return mapFields.where((field) {
-            return QaNameHelper.fieldHasSpv(field, userName);
-          }).toList();
-        }
-      }
-
-      return mapFields;
+      return _fieldsVisibleToUser(mapFields, user);
     });
 
 final masterFieldCoverageScopedProvider =
@@ -401,8 +377,12 @@ final masterFieldCoverageScopedProvider =
       if (user == null) return [];
 
       final action = user.action.toLowerCase();
-      final role = user.role.toUpperCase();
-      final userName = user.name.trim().toLowerCase();
+      final roleScope = masterFieldRoleScopeFor(user);
+      if (roleScope.isRestricted &&
+          roleScope.qaFi == null &&
+          roleScope.qaSpv == null) {
+        return [];
+      }
       final resolvedSeason = scope.allSeasons
           ? null
           : (scope.season?.trim().isNotEmpty == true
@@ -411,16 +391,14 @@ final masterFieldCoverageScopedProvider =
                     latestActiveMasterFieldSeasonProvider.future,
                   ));
 
-      final qaFi = action == 'audit' && role == 'FI' ? user.name.trim() : null;
-      final qaSpv = action == 'audit' && role == 'SPV'
-          ? user.name.trim()
-          : null;
       final scopedSeason = masterFieldSeasonForRegion(
         season: resolvedSeason,
         region: scope.region,
       );
       late final List<Map<String, dynamic>> rawFields;
-      if (action == 'all' && scope.region?.trim().isNotEmpty != true) {
+      if (!roleScope.isRestricted &&
+          action == 'all' &&
+          scope.region?.trim().isNotEmpty != true) {
         final regionScope = MasterFieldMapScope(
           season: scope.season,
           allSeasons: scope.allSeasons,
@@ -447,8 +425,8 @@ final masterFieldCoverageScopedProvider =
               );
       } else {
         rawFields = await supabaseService.getMasterFieldsForCoverage(
-          qaFi: qaFi,
-          qaSpv: qaSpv,
+          qaFi: roleScope.qaFi,
+          qaSpv: roleScope.qaSpv,
           season: scopedSeason,
           region: scope.region,
           district: scope.district,
@@ -457,21 +435,7 @@ final masterFieldCoverageScopedProvider =
 
       final fields = rawFields.map(_withResolvedCorrectionTagging).toList();
 
-      if (action == 'all') return fields;
-
-      if (action == 'audit') {
-        if (role == 'FI') {
-          return fields.where((field) {
-            return QaNameHelper.fieldHasFi(field, userName);
-          }).toList();
-        } else if (role == 'SPV') {
-          return fields.where((field) {
-            return QaNameHelper.fieldHasSpv(field, userName);
-          }).toList();
-        }
-      }
-
-      return fields;
+      return _fieldsVisibleToUser(fields, user);
     }, retry: (_, __) => null);
 
 // ============================================================

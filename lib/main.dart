@@ -13,6 +13,7 @@ import 'router.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
+import 'widgets/mandatory_patch_update_gate.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -71,6 +72,8 @@ class MyApp extends ConsumerWidget {
       themeMode: currentThemeMode,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
+      builder: (context, child) =>
+          MandatoryPatchUpdateGate(child: child ?? const SizedBox.shrink()),
     );
   }
 }

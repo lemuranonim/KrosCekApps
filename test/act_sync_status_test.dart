@@ -213,7 +213,7 @@ void main() {
     expect(summary.issueRows, 3);
     expect(page.totalCount, 14);
     expect(page.hasPrevious, isFalse);
-    expect(page.hasNext, isFalse);
+    expect(page.hasNext, isTrue);
     expect(page.items.single.fieldNumber, 'DC6FHK045');
     expect(page.items.single.changedFields.single.oldText, 'AX01');
     expect(page.items.single.changedFields.single.newText, 'AX04');
@@ -257,5 +257,85 @@ void main() {
       filter,
       const PlantingDataMonitorFilter(region: 'Region 1', season: '2026'),
     );
+  });
+
+  test('parses PLD lifecycle summary, page, and query parameters', () {
+    final summary = PlantingPldLifecycleSummary.fromJson({
+      'total_recommended_fn': 2981,
+      'active_recommended_fn': 2981,
+      'pending_fn': 1614,
+      'confirmed_fn': 1367,
+      'updated_fn': 0,
+      'phase_rows': 4903,
+      'historical_fn': 2965,
+      'confirmation_rate': 45.9,
+    });
+    final page = PlantingPldLifecyclePage.fromJson({
+      'total_count': 1,
+      'offset': 0,
+      'limit': 20,
+      'status': 'PENDING',
+      'items': [
+        {
+          'field_number': 'DC6FHK045',
+          'status': 'PENDING',
+          'phase_count': 2,
+          'farmer_name': 'Pak Tani',
+          'hybrid': 'AX04',
+          'total_area_planted_ha': 1.5,
+          'discard_area_ha': 0.5,
+          'effective_area_ha': 1.0,
+          'region': 'Zona 4',
+          'district_kab': 'BLITAR',
+          'qa_fi': 'QA FI Satu',
+          'qa_spv': 'Krisna Bagus Andrian',
+          'recommended_at': '2026-09-28T09:00:00+07:00',
+          'recommender_names': 'QA FI Satu',
+          'historical_only': false,
+          'phases': [
+            {
+              'phase_key': 'vegetative',
+              'status': 'PENDING',
+              'recommended_flagging': 'PLD',
+              'active_flagging': 'PLD',
+            },
+            {
+              'phase_key': 'generative_1',
+              'status': 'CONFIRMED',
+              'recommended_flagging': 'PLD',
+              'active_flagging': 'PLD',
+            },
+          ],
+        },
+      ],
+    });
+    const filter = PlantingDataMonitorFilter(
+      region: 'Zona 4',
+      owner: 'QA FI Satu',
+      seedType: 'SC',
+    );
+    const query = PlantingPldLifecycleQuery(
+      filter: filter,
+      status: 'PENDING',
+      query: 'DC6',
+      offset: 20,
+      limit: 25,
+    );
+
+    expect(summary.totalRecommendedFn, 2981);
+    expect(summary.pendingFn + summary.confirmedFn, 2981);
+    expect(summary.confirmationRate, 45.9);
+    expect(page.totalCount, 1);
+    expect(page.items.single.fieldNumber, 'DC6FHK045');
+    expect(page.items.single.phases, hasLength(2));
+    expect(page.items.single.phases.first.phaseKey, 'vegetative');
+    expect(page.items.single.historicalOnly, isFalse);
+    expect(query.rpcParams['p_region'], 'Zona 4');
+    expect(query.rpcParams['p_owner'], 'QA FI Satu');
+    expect(query.rpcParams['p_seed_type'], 'SC');
+    expect(query.rpcParams['p_status'], 'PENDING');
+    expect(query.rpcParams['p_query'], 'DC6');
+    expect(query.rpcParams['p_offset'], 20);
+    expect(query.rpcParams['p_limit'], 25);
   });
 }

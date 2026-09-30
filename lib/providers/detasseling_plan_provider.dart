@@ -110,13 +110,8 @@ class DetasselingPlanningParams {
   }
 
   @override
-  int get hashCode => Object.hash(
-        normalizedWeekStart,
-        region,
-        crop,
-        status,
-        searchQuery,
-      );
+  int get hashCode =>
+      Object.hash(normalizedWeekStart, region, crop, status, searchQuery);
 }
 
 class DetasselingPlanField {
@@ -261,24 +256,27 @@ class DetasselingPlanningData {
 }
 
 final detasselingPlanningProvider =
-    FutureProvider.family<DetasselingPlanningData, DetasselingPlanningParams>(
-        (ref, params) async {
-  final parsedFields = await ref.watch(
-    parsedMasterFieldMapScopedProvider(
-      MasterFieldMapScope(region: params.region),
-    ).future,
-  );
-  final user = await ref.watch(currentUserProvider.future);
-  return buildDetasselingPlanningData(parsedFields, params, user: user);
-});
+    FutureProvider.family<DetasselingPlanningData, DetasselingPlanningParams>((
+      ref,
+      params,
+    ) async {
+      final parsedFields = await ref.watch(
+        parsedMasterFieldMapScopedProvider(
+          MasterFieldMapScope(region: params.region),
+        ).future,
+      );
+      final user = await ref.watch(currentUserProvider.future);
+      return buildDetasselingPlanningData(parsedFields, params, user: user);
+    });
 
 DateTime normalizeDate(DateTime date) =>
     DateTime(date.year, date.month, date.day);
 
 DateTime startOfWorkWeek(DateTime date) {
   final normalized = normalizeDate(date);
-  return normalized
-      .subtract(Duration(days: normalized.weekday - DateTime.monday));
+  return normalized.subtract(
+    Duration(days: normalized.weekday - DateTime.monday),
+  );
 }
 
 DateTime defaultDetasselingWeekStart({DateTime? now}) {
@@ -301,11 +299,13 @@ List<DetasselingWeekOption> generateDetasselingWeeks({DateTime? now}) {
 
 int isoWeekNumber(DateTime date) {
   final normalized = normalizeDate(date);
-  final thursday =
-      normalized.add(Duration(days: DateTime.thursday - normalized.weekday));
+  final thursday = normalized.add(
+    Duration(days: DateTime.thursday - normalized.weekday),
+  );
   final firstThursday = DateTime(thursday.year, 1, 4);
-  final firstWeekStart = firstThursday
-      .subtract(Duration(days: firstThursday.weekday - DateTime.monday));
+  final firstWeekStart = firstThursday.subtract(
+    Duration(days: firstThursday.weekday - DateTime.monday),
+  );
   return thursday.difference(firstWeekStart).inDays ~/ 7 + 1;
 }
 
@@ -323,8 +323,8 @@ DetasselingPlanningData buildDetasselingPlanningData(
   final roleScope = detasselingRoleScopeFor(user);
   final scopedFields = roleScope.canView
       ? parsedFields
-          .where((parsed) => _isFieldAllowedForScope(parsed.raw, roleScope))
-          .toList(growable: false)
+            .where((parsed) => _isFieldAllowedForScope(parsed.raw, roleScope))
+            .toList(growable: false)
       : const <ParsedFieldData>[];
   final today = normalizeDate(DateTime.now());
   final selectedRegion = params.region?.trim().toLowerCase();
@@ -423,24 +423,24 @@ DetasselingPlanningData buildDetasselingPlanningData(
     grouped.putIfAbsent(key, () => <DetasselingPlanField>[]).add(field);
   }
 
-  var groups = grouped.entries.map((entry) {
-    final groupFields = entry.value
-      ..sort((a, b) => a.plannedDate.compareTo(b.plannedDate));
-    return DetasselingPlanGroup(
-      key: entry.key,
-      codet: groupFields.first.codet,
-      village: groupFields.first.village,
-      hybrid: groupFields.first.hybrid,
-      crop: groupFields.first.crop,
-      fields: List.unmodifiable(groupFields),
-      center: _calculateCenter(groupFields),
-    );
-  }).toList()
-    ..sort((a, b) {
-      final areaCompare = b.totalAreaHa.compareTo(a.totalAreaHa);
-      if (areaCompare != 0) return areaCompare;
-      return a.codet.compareTo(b.codet);
-    });
+  var groups =
+      grouped.entries.map((entry) {
+        final groupFields = entry.value
+          ..sort((a, b) => a.plannedDate.compareTo(b.plannedDate));
+        return DetasselingPlanGroup(
+          key: entry.key,
+          codet: groupFields.first.codet,
+          village: groupFields.first.village,
+          hybrid: groupFields.first.hybrid,
+          crop: groupFields.first.crop,
+          fields: List.unmodifiable(groupFields),
+          center: _calculateCenter(groupFields),
+        );
+      }).toList()..sort((a, b) {
+        final areaCompare = b.totalAreaHa.compareTo(a.totalAreaHa);
+        if (areaCompare != 0) return areaCompare;
+        return a.codet.compareTo(b.codet);
+      });
 
   if (params.status != DetasselingStatusFilter.all) {
     groups = groups.where((group) {
@@ -512,7 +512,7 @@ DetasselingRoleScope detasselingRoleScopeForValues({
     );
   }
 
-  if (normalizedAction == 'audit' && normalizedRole == 'FI') {
+  if (normalizedRole == 'FI') {
     return DetasselingRoleScope(
       type: DetasselingScopeType.fi,
       role: normalizedRole,
@@ -521,7 +521,7 @@ DetasselingRoleScope detasselingRoleScopeForValues({
     );
   }
 
-  if (normalizedAction == 'audit' && normalizedRole == 'SPV') {
+  if (normalizedRole == 'SPV') {
     return DetasselingRoleScope(
       type: DetasselingScopeType.spv,
       role: normalizedRole,
@@ -574,17 +574,11 @@ int detasselingPassCountFor(DetasselingCropFilter crop) {
   return detasselingPassTkdPerHaFor(crop).length;
 }
 
-DateTime detasselingPassDateForField(
-  DetasselingPlanField field,
-  int pass,
-) {
+DateTime detasselingPassDateForField(DetasselingPlanField field, int pass) {
   return normalizeDate(field.passOneDate).add(Duration(days: (pass - 1) * 2));
 }
 
-int? detasselingPassForFieldOnDate(
-  DetasselingPlanField field,
-  DateTime date,
-) {
+int? detasselingPassForFieldOnDate(DetasselingPlanField field, DateTime date) {
   final normalized = normalizeDate(date);
   for (var pass = 1; pass <= detasselingPassCountFor(field.crop); pass++) {
     if (detasselingPassDateForField(field, pass) == normalized) return pass;
@@ -631,8 +625,10 @@ int detasselingRecommendedTkdForArea(
   double areaHa,
   DetasselingCropFilter crop,
 ) {
-  return detasselingAllocatedTkdByPass(areaHa, crop)
-      .fold(0, (total, value) => total + value);
+  return detasselingAllocatedTkdByPass(
+    areaHa,
+    crop,
+  ).fold(0, (total, value) => total + value);
 }
 
 int detasselingRecommendedTkdForPass({
@@ -657,8 +653,9 @@ List<int> detasselingAllocatedTkdByPass(
     final floored = value.floor();
     return floored < 1 ? 1 : floored;
   }).toList();
-  final roundedTotal =
-      exact.fold<double>(0, (total, value) => total + value).round();
+  final roundedTotal = exact
+      .fold<double>(0, (total, value) => total + value)
+      .round();
   final minimumTotal = passTkdPerHa.length;
   final targetTotal = roundedTotal < minimumTotal ? minimumTotal : roundedTotal;
   var remainder = targetTotal - floors.fold<int>(0, (a, b) => a + b);
@@ -702,10 +699,7 @@ class _DetasselingPassSchedule {
   final int pass;
   final DateTime date;
 
-  const _DetasselingPassSchedule({
-    required this.pass,
-    required this.date,
-  });
+  const _DetasselingPassSchedule({required this.pass, required this.date});
 }
 
 DateTime _detasselingPassOneDate({

@@ -607,6 +607,260 @@ class PlantingDataMonitorSummary {
   final int harvestNeedsReview;
 }
 
+class PlantingPldLifecycleSummary {
+  const PlantingPldLifecycleSummary({
+    required this.totalRecommendedFn,
+    required this.activeRecommendedFn,
+    required this.pendingFn,
+    required this.confirmedFn,
+    required this.updatedFn,
+    required this.phaseRows,
+    required this.historicalFn,
+    required this.confirmationRate,
+  });
+
+  factory PlantingPldLifecycleSummary.fromJson(Map<String, dynamic> json) {
+    return PlantingPldLifecycleSummary(
+      totalRecommendedFn: ActSyncStatus._integer(json['total_recommended_fn']),
+      activeRecommendedFn: ActSyncStatus._integer(
+        json['active_recommended_fn'],
+      ),
+      pendingFn: ActSyncStatus._integer(json['pending_fn']),
+      confirmedFn: ActSyncStatus._integer(json['confirmed_fn']),
+      updatedFn: ActSyncStatus._integer(json['updated_fn']),
+      phaseRows: ActSyncStatus._integer(json['phase_rows']),
+      historicalFn: ActSyncStatus._integer(json['historical_fn']),
+      confirmationRate: ActHarvestReview._number(json['confirmation_rate']),
+    );
+  }
+
+  final int totalRecommendedFn;
+  final int activeRecommendedFn;
+  final int pendingFn;
+  final int confirmedFn;
+  final int updatedFn;
+  final int phaseRows;
+  final int historicalFn;
+  final double confirmationRate;
+}
+
+class PlantingPldLifecyclePhase {
+  const PlantingPldLifecyclePhase({
+    required this.phaseKey,
+    required this.status,
+    this.recommendedFlagging,
+    this.activeFlagging,
+    this.recommendedAt,
+    this.confirmedAt,
+    this.revisedAt,
+  });
+
+  factory PlantingPldLifecyclePhase.fromJson(Map<String, dynamic> json) {
+    return PlantingPldLifecyclePhase(
+      phaseKey: ActHarvestReview._optionalText(json['phase_key']) ?? '',
+      status: ActSyncStatus._text(json['status'], fallback: 'PENDING'),
+      recommendedFlagging: ActHarvestReview._optionalText(
+        json['recommended_flagging'],
+      ),
+      activeFlagging: ActHarvestReview._optionalText(json['active_flagging']),
+      recommendedAt: ActSyncStatus._dateTime(json['recommended_at']),
+      confirmedAt: ActSyncStatus._dateTime(json['confirmed_at']),
+      revisedAt: ActSyncStatus._dateTime(json['revised_at']),
+    );
+  }
+
+  final String phaseKey;
+  final String status;
+  final String? recommendedFlagging;
+  final String? activeFlagging;
+  final DateTime? recommendedAt;
+  final DateTime? confirmedAt;
+  final DateTime? revisedAt;
+}
+
+class PlantingPldLifecycleItem {
+  const PlantingPldLifecycleItem({
+    required this.fieldNumber,
+    required this.status,
+    required this.phaseCount,
+    required this.totalAreaPlantedHa,
+    required this.discardAreaHa,
+    required this.effectiveAreaHa,
+    required this.historicalOnly,
+    required this.phases,
+    this.farmerName,
+    this.grower,
+    this.hybrid,
+    this.region,
+    this.district,
+    this.subDistrict,
+    this.village,
+    this.qaFi,
+    this.qaSpv,
+    this.fieldAssistant,
+    this.season,
+    this.seedType,
+    this.recommendedAt,
+    this.confirmedAt,
+    this.revisedAt,
+    this.confirmedRunId,
+    this.recommenderNames,
+  });
+
+  factory PlantingPldLifecycleItem.fromJson(Map<String, dynamic> json) {
+    final rawPhases = json['phases'];
+    return PlantingPldLifecycleItem(
+      fieldNumber: json['field_number']?.toString().trim() ?? '-',
+      status: ActSyncStatus._text(json['status'], fallback: 'PENDING'),
+      phaseCount: ActSyncStatus._integer(json['phase_count']),
+      totalAreaPlantedHa: ActHarvestReview._number(
+        json['total_area_planted_ha'],
+      ),
+      discardAreaHa: ActHarvestReview._number(json['discard_area_ha']),
+      effectiveAreaHa: ActHarvestReview._number(json['effective_area_ha']),
+      historicalOnly: json['historical_only'] == true,
+      phases: rawPhases is List
+          ? rawPhases
+                .whereType<Map>()
+                .map(
+                  (row) => PlantingPldLifecyclePhase.fromJson(
+                    row.map((key, value) => MapEntry(key.toString(), value)),
+                  ),
+                )
+                .toList(growable: false)
+          : const [],
+      farmerName: ActHarvestReview._optionalText(json['farmer_name']),
+      grower: ActHarvestReview._optionalText(json['grower']),
+      hybrid: ActHarvestReview._optionalText(json['hybrid']),
+      region: ActHarvestReview._optionalText(json['region']),
+      district: ActHarvestReview._optionalText(json['district_kab']),
+      subDistrict: ActHarvestReview._optionalText(json['sub_district_kec']),
+      village: ActHarvestReview._optionalText(json['village_desa']),
+      qaFi: ActHarvestReview._optionalText(json['qa_fi']),
+      qaSpv: ActHarvestReview._optionalText(json['qa_spv']),
+      fieldAssistant: ActHarvestReview._optionalText(json['fa']),
+      season: ActHarvestReview._optionalText(json['season']),
+      seedType: ActHarvestReview._optionalText(json['type']),
+      recommendedAt: ActSyncStatus._dateTime(json['recommended_at']),
+      confirmedAt: ActSyncStatus._dateTime(json['confirmed_at']),
+      revisedAt: ActSyncStatus._dateTime(json['revised_at']),
+      confirmedRunId: ActHarvestReview._optionalText(json['confirmed_run_id']),
+      recommenderNames: ActHarvestReview._optionalText(
+        json['recommender_names'],
+      ),
+    );
+  }
+
+  final String fieldNumber;
+  final String status;
+  final int phaseCount;
+  final double totalAreaPlantedHa;
+  final double discardAreaHa;
+  final double effectiveAreaHa;
+  final bool historicalOnly;
+  final List<PlantingPldLifecyclePhase> phases;
+  final String? farmerName;
+  final String? grower;
+  final String? hybrid;
+  final String? region;
+  final String? district;
+  final String? subDistrict;
+  final String? village;
+  final String? qaFi;
+  final String? qaSpv;
+  final String? fieldAssistant;
+  final String? season;
+  final String? seedType;
+  final DateTime? recommendedAt;
+  final DateTime? confirmedAt;
+  final DateTime? revisedAt;
+  final String? confirmedRunId;
+  final String? recommenderNames;
+
+  String get locationLabel => [
+    village,
+    subDistrict,
+    district,
+    region,
+  ].whereType<String>().where((value) => value.isNotEmpty).join(' • ');
+}
+
+class PlantingPldLifecyclePage {
+  const PlantingPldLifecyclePage({
+    required this.totalCount,
+    required this.offset,
+    required this.limit,
+    required this.status,
+    required this.items,
+  });
+
+  factory PlantingPldLifecyclePage.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'];
+    return PlantingPldLifecyclePage(
+      totalCount: ActSyncStatus._integer(json['total_count']),
+      offset: ActSyncStatus._integer(json['offset']),
+      limit: ActSyncStatus._integer(json['limit']),
+      status: ActSyncStatus._text(json['status'], fallback: 'ALL'),
+      items: rawItems is List
+          ? rawItems
+                .whereType<Map>()
+                .map(
+                  (row) => PlantingPldLifecycleItem.fromJson(
+                    row.map((key, value) => MapEntry(key.toString(), value)),
+                  ),
+                )
+                .toList(growable: false)
+          : const [],
+    );
+  }
+
+  final int totalCount;
+  final int offset;
+  final int limit;
+  final String status;
+  final List<PlantingPldLifecycleItem> items;
+
+  bool get hasPrevious => offset > 0;
+  bool get hasNext => offset + items.length < totalCount;
+}
+
+class PlantingPldLifecycleQuery {
+  const PlantingPldLifecycleQuery({
+    required this.filter,
+    this.status = 'ALL',
+    this.query,
+    this.offset = 0,
+    this.limit = 20,
+  });
+
+  final PlantingDataMonitorFilter filter;
+  final String status;
+  final String? query;
+  final int offset;
+  final int limit;
+
+  Map<String, dynamic> get rpcParams => {
+    ...filter.rpcParams,
+    'p_status': status,
+    'p_query': query,
+    'p_offset': offset,
+    'p_limit': limit,
+  };
+
+  @override
+  bool operator ==(Object other) {
+    return other is PlantingPldLifecycleQuery &&
+        other.filter == filter &&
+        other.status == status &&
+        other.query == query &&
+        other.offset == offset &&
+        other.limit == limit;
+  }
+
+  @override
+  int get hashCode => Object.hash(filter, status, query, offset, limit);
+}
+
 class PlantingDataMonitorOptions {
   const PlantingDataMonitorOptions({
     this.regions = const [],

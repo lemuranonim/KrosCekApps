@@ -22,7 +22,9 @@ class _RegionScopeService extends SupabaseService {
       );
 
   final regionSeasons = <String?>[];
+  final regionQaSpvs = <String?>[];
   final mapScopes = <({String? season, String? region})>[];
+  final mapQaSpvs = <String?>[];
 
   @override
   Future<String?> getLatestActiveMasterFieldSeason() async => 'DS26';
@@ -34,6 +36,8 @@ class _RegionScopeService extends SupabaseService {
     String? qaSpv,
   }) async {
     regionSeasons.add(season);
+    regionQaSpvs.add(qaSpv);
+    if (qaSpv != null) return const ['Region Team'];
     return season == null
         ? const ['Region Trial', 'Region Lama']
         : const ['Region 1'];
@@ -49,6 +53,23 @@ class _RegionScopeService extends SupabaseService {
     bool bypassCache = false,
   }) async {
     mapScopes.add((season: season, region: region));
+    mapQaSpvs.add(qaSpv);
+    if (qaSpv != null) {
+      return [
+        {
+          'field_number': 'TEAM-1',
+          'region': 'Region Team',
+          'season': season,
+          'qa_spv': qaSpv,
+        },
+        {
+          'field_number': 'OTHER-1',
+          'region': 'Region Other',
+          'season': season,
+          'qa_spv': 'Other SPV',
+        },
+      ];
+    }
     return [
       {
         'field_number': region == seasonIndependentMasterFieldRegion
@@ -87,6 +108,49 @@ void main() {
     );
 
     expect(regions, ['Region 1', 'Region 5', 'region trial']);
+  });
+
+  test('QA SPV remains ownership-scoped even when action is all', () async {
+    final service = _RegionScopeService();
+    final container = ProviderContainer(
+      overrides: [
+        supabaseServiceProvider.overrideWithValue(service),
+        currentUserProvider.overrideWith(
+          (ref) async => const AppUser(
+            id: 'spv',
+            email: 'spv@example.test',
+            name: 'SPV Team',
+            role: 'SPV',
+            action: 'all',
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    const scope = MasterFieldMapScope.all();
+
+    final roleScope = masterFieldRoleScopeFor(
+      const AppUser(
+        id: 'spv',
+        email: 'spv@example.test',
+        name: 'SPV Team',
+        role: 'SPV',
+        action: 'all',
+      ),
+    );
+    final regions = await container.read(
+      activeMasterFieldRegionsProvider(scope).future,
+    );
+    final fields = await container.read(
+      masterFieldMapScopedProvider(scope).future,
+    );
+
+    expect(roleScope.isRestricted, isTrue);
+    expect(roleScope.qaSpv, 'SPV Team');
+    expect(regions, ['Region Team']);
+    expect(service.regionQaSpvs, everyElement('SPV Team'));
+    expect(service.mapQaSpvs, everyElement('SPV Team'));
+    expect(fields.map((field) => field['field_number']), ['TEAM-1']);
   });
 
   test(
