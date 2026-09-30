@@ -43,3 +43,20 @@ final plantingDataMonitorOptionsProvider =
     FutureProvider.autoDispose<PlantingDataMonitorOptions>((ref) {
       return ref.watch(actSyncStatusServiceProvider).getPlantingOptions();
     });
+
+final plantingPldLifecycleSummaryProvider = FutureProvider.autoDispose
+    .family<PlantingPldLifecycleSummary, PlantingDataMonitorFilter>((
+      ref,
+      filter,
+    ) {
+      return ref
+          .watch(actSyncStatusServiceProvider)
+          .getPlantingPldLifecycleSummary(filter);
+    });
+
+final plantingPldLifecycleItemsProvider = FutureProvider.autoDispose
+    .family<PlantingPldLifecyclePage, PlantingPldLifecycleQuery>((ref, query) {
+      return ref
+          .watch(actSyncStatusServiceProvider)
+          .getPlantingPldLifecycleItems(query);
+    });

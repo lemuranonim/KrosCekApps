@@ -40,6 +40,24 @@ void main() {
     if (topLevelCodet != null) 'co_detasseling': topLevelCodet,
   };
 
+  test('FI and QA SPV stay role-scoped when action is all', () {
+    final spv = detasselingRoleScopeForValues(
+      role: 'SPV',
+      action: 'all',
+      name: 'SPV Team',
+    );
+    final fi = detasselingRoleScopeForValues(
+      role: 'FI',
+      action: 'all',
+      name: 'FI Team',
+    );
+
+    expect(spv.type, DetasselingScopeType.spv);
+    expect(spv.isRestricted, isTrue);
+    expect(fi.type, DetasselingScopeType.fi);
+    expect(fi.isRestricted, isTrue);
+  });
+
   test('Planning DT keeps the CODET name from vegetative audit data', () {
     final plan = buildDetasselingPlanningData(
       [

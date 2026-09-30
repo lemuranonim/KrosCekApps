@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
+import '../models/pld_audit_lifecycle.dart';
 import '../providers/master_fields_provider.dart';
+import '../providers/pld_audit_lifecycle_provider.dart';
 import '../services/detasseling_iso_export_service.dart';
 import '../services/phase_iso_export_service.dart';
 import '../theme/app_theme.dart';
@@ -90,7 +92,7 @@ class _FieldDetailBottomSheetState
         'generative_4',
         'generative_5',
         'pre_harvest',
-        'harvest'
+        'harvest',
       ];
     }
     if (_isPSP) {
@@ -103,7 +105,7 @@ class _FieldDetailBottomSheetState
       'generative_2',
       'generative_3',
       'pre_harvest',
-      'harvest'
+      'harvest',
     ];
   }
 
@@ -117,7 +119,7 @@ class _FieldDetailBottomSheetState
         'Generatif CP4',
         'Generatif CP5',
         'Pre-Harvest',
-        'Harvest'
+        'Harvest',
       ];
     }
     if (_isPSP) {
@@ -129,7 +131,7 @@ class _FieldDetailBottomSheetState
       'Generatif CP2',
       'Generatif CP3',
       'Pre-Harvest',
-      'Harvest'
+      'Harvest',
     ];
   }
 
@@ -143,7 +145,7 @@ class _FieldDetailBottomSheetState
         Icons.spa_rounded,
         Icons.spa_rounded,
         Icons.content_cut_rounded,
-        Icons.agriculture_rounded
+        Icons.agriculture_rounded,
       ];
     }
     if (_isPSP) {
@@ -159,7 +161,7 @@ class _FieldDetailBottomSheetState
       Icons.spa_rounded,
       Icons.spa_rounded,
       Icons.content_cut_rounded,
-      Icons.agriculture_rounded
+      Icons.agriculture_rounded,
     ];
   }
 
@@ -173,7 +175,7 @@ class _FieldDetailBottomSheetState
         const Color(0xFF7B61FF),
         const Color(0xFF7B61FF),
         const Color(0xFFE65100),
-        const Color(0xFFD4A017)
+        const Color(0xFFD4A017),
       ];
     }
     if (_isPSP) {
@@ -189,7 +191,7 @@ class _FieldDetailBottomSheetState
       const Color(0xFF7B61FF),
       const Color(0xFF7B61FF),
       const Color(0xFFE65100),
-      const Color(0xFFD4A017)
+      const Color(0xFFD4A017),
     ];
   }
 
@@ -199,10 +201,7 @@ class _FieldDetailBottomSheetState
   }
 
   // ── Helpers ───────────────────────────────────────────────
-  Map<String, dynamic>? _auditMap(
-    String key, {
-    Map<String, dynamic>? source,
-  }) {
+  Map<String, dynamic>? _auditMap(String key, {Map<String, dynamic>? source}) {
     final v = (source ?? widget.field)[key];
     if (v == null) return null;
     if (v is List && v.isNotEmpty) return v[0] as Map<String, dynamic>;
@@ -306,8 +305,9 @@ class _FieldDetailBottomSheetState
       return;
     }
 
-    final url =
-        Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    final url = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
+    );
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } else {
@@ -477,11 +477,7 @@ class _FieldDetailBottomSheetState
 
   void _showSheetSnack(String msg, {bool err = false}) {
     if (!mounted) return;
-    showExportMessageDialog(
-      context,
-      message: msg,
-      isError: err,
-    );
+    showExportMessageDialog(context, message: msg, isError: err);
   }
 
   // ── Build ─────────────────────────────────────────────────
@@ -504,12 +500,22 @@ class _FieldDetailBottomSheetState
       asOf: requestedReference,
     );
     final isStoppedField = lifecycle.isStopped;
+    final pldLifecycle = fieldNumber.isEmpty
+        ? null
+        : ref.watch(pldAuditLifecycleProvider(fieldNumber)).value;
+    final pendingPldPhases = pldLifecycle?.pendingPhaseKeys ?? const <String>{};
+    final canRevisePld = isStoppedField &&
+        pldLifecycle != null &&
+        pldLifecycle.canRevise &&
+        pldLifecycle.hasPending;
+    final showInspectionTab = !isStoppedField || canRevisePld;
     final plantingDate = DapHelper.getEffectivePlantingDate(field);
-    final dapReferenceDate = lifecycle.stoppedAt ?? DateTime(
-      requestedReference.year,
-      requestedReference.month,
-      requestedReference.day,
-    );
+    final dapReferenceDate = lifecycle.stoppedAt ??
+        DateTime(
+          requestedReference.year,
+          requestedReference.month,
+          requestedReference.day,
+        );
     final dap = DapHelper.calculateDAP(
       plantingDate,
       referenceDate: dapReferenceDate,
@@ -569,8 +575,15 @@ class _FieldDetailBottomSheetState
                         lifecycle,
                         plantingDate,
                         dapReferenceDate,
+                        pldLifecycle,
                       ),
-                      _buildTabBar(theme, isDark, isStoppedField),
+                      _buildTabBar(
+                        theme,
+                        isDark,
+                        isStoppedField,
+                        showInspectionTab,
+                        canRevisePld,
+                      ),
                       _buildContent(
                         dap,
                         recommendedPhase,
@@ -579,7 +592,10 @@ class _FieldDetailBottomSheetState
                         theme,
                         isDark,
                         canEditMasterData,
-                        isStoppedField,
+                        showInspectionTab,
+                        canRevisePld,
+                        pendingPldPhases,
+                        pldLifecycle,
                       ),
                     ],
                   ),
@@ -604,6 +620,7 @@ class _FieldDetailBottomSheetState
     FieldLifecycleState lifecycle,
     String? plantingDate,
     DateTime dapReferenceDate,
+    PldAuditLifecycleBundle? pldLifecycle,
   ) {
     final hybrid = field['hybrid']?.toString();
     final isStoppedField = lifecycle.isStopped;
@@ -664,8 +681,9 @@ class _FieldDetailBottomSheetState
                         Expanded(
                           child: Text(
                             'Field #$fieldNumber',
-                            style: AdvantaText.heading2
-                                .copyWith(color: theme.colorScheme.onSurface),
+                            style: AdvantaText.heading2.copyWith(
+                              color: theme.colorScheme.onSurface,
+                            ),
                           ),
                         ),
                         _buildNavButton(targetLat, targetLng),
@@ -680,18 +698,24 @@ class _FieldDetailBottomSheetState
                       ],
                     ),
                     const SizedBox(height: 4.0),
-                    Text(farmName,
-                        style: AdvantaText.label.copyWith(color: textSubColor)),
+                    Text(
+                      farmName,
+                      style: AdvantaText.label.copyWith(color: textSubColor),
+                    ),
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        Icon(Icons.location_on_outlined,
-                            color: textSubColor, size: 11),
+                        Icon(
+                          Icons.location_on_outlined,
+                          color: textSubColor,
+                          size: 11,
+                        ),
                         const SizedBox(width: 3),
                         Text(
                           '$district · $region',
-                          style:
-                              AdvantaText.caption.copyWith(color: textSubColor),
+                          style: AdvantaText.caption.copyWith(
+                            color: textSubColor,
+                          ),
                         ),
                       ],
                     ),
@@ -706,10 +730,10 @@ class _FieldDetailBottomSheetState
               lifecycle: lifecycle,
               frozenDap: dap,
               isDark: isDark,
+              pldLifecycle: pldLifecycle,
             ),
             const SizedBox(height: 12.0),
           ],
-
           if (!isStoppedField) ...[
             _DapProgressBar(
               dap: dap,
@@ -717,22 +741,26 @@ class _FieldDetailBottomSheetState
               phaseColors: _phaseColors,
               hybrid: hybrid,
             ),
-            Builder(builder: (context) {
-              final auditStatus = AuditStatusHelper.fromRaw(field);
-              final isRecPhaseAudited =
-                  _isPhaseAudited(recommendedPhase, auditStatus);
+            Builder(
+              builder: (context) {
+                final auditStatus = AuditStatusHelper.fromRaw(field);
+                final isRecPhaseAudited = _isPhaseAudited(
+                  recommendedPhase,
+                  auditStatus,
+                );
 
-              return _DapCalculationBox(
-                plantingDate: plantingDate,
-                dap: dap,
-                phaseKey: recommendedPhase,
-                hybrid: hybrid,
-                isAudited: isRecPhaseAudited,
-                isDark: isDark,
-                referenceDate: dapReferenceDate,
-                isRevisied: DapHelper.getRevisedPlantingDate(field) != null,
-              );
-            }),
+                return _DapCalculationBox(
+                  plantingDate: plantingDate,
+                  dap: dap,
+                  phaseKey: recommendedPhase,
+                  hybrid: hybrid,
+                  isAudited: isRecPhaseAudited,
+                  isDark: isDark,
+                  referenceDate: dapReferenceDate,
+                  isRevisied: DapHelper.getRevisedPlantingDate(field) != null,
+                );
+              },
+            ),
           ],
         ],
       ),
@@ -753,13 +781,18 @@ class _FieldDetailBottomSheetState
         ),
         child: Row(
           children: [
-            const Icon(Icons.directions_outlined,
-                color: AdvantaColors.primaryGreen, size: 14),
+            const Icon(
+              Icons.directions_outlined,
+              color: AdvantaColors.primaryGreen,
+              size: 14,
+            ),
             const SizedBox(width: 4),
             Text(
               'RUTE',
-              style: AdvantaText.label
-                  .copyWith(color: AdvantaColors.primaryGreen, fontSize: 10),
+              style: AdvantaText.label.copyWith(
+                color: AdvantaColors.primaryGreen,
+                fontSize: 10,
+              ),
             ),
           ],
         ),
@@ -790,8 +823,18 @@ class _FieldDetailBottomSheetState
   }
 
   // ── TAB BAR ───────────────────────────────────────────────
-  Widget _buildTabBar(ThemeData theme, bool isDark, bool isStoppedField) {
-    const tabs = ['Info Lahan', 'Histori', 'Mulai Inspeksi'];
+  Widget _buildTabBar(
+    ThemeData theme,
+    bool isDark,
+    bool isStoppedField,
+    bool showInspectionTab,
+    bool isPldRevision,
+  ) {
+    final tabs = [
+      'Info Lahan',
+      'Histori',
+      isPldRevision ? 'Revisi PLD' : 'Mulai Inspeksi',
+    ];
     const tabIcons = [
       Icons.info_outline_rounded,
       Icons.history_rounded,
@@ -817,8 +860,8 @@ class _FieldDetailBottomSheetState
         ),
       ),
       child: Row(
-        children: List.generate(isStoppedField ? 2 : 3, (i) {
-          final effectiveTab = isStoppedField && _tab > 1 ? 0 : _tab;
+        children: List.generate(showInspectionTab ? 3 : 2, (i) {
+          final effectiveTab = !showInspectionTab && _tab > 1 ? 0 : _tab;
           final active = effectiveTab == i;
           final activeColor = isStoppedField
               ? AdvantaColors.error
@@ -878,20 +921,30 @@ class _FieldDetailBottomSheetState
     ThemeData theme,
     bool isDark,
     bool canEditMasterData,
-    bool isStoppedField,
+    bool showInspectionTab,
+    bool isPldRevision,
+    Set<String> pendingPldPhases,
+    PldAuditLifecycleBundle? pldLifecycle,
   ) {
     Widget activeTab;
-    final effectiveTab = isStoppedField && _tab > 1 ? 0 : _tab;
+    final effectiveTab = !showInspectionTab && _tab > 1 ? 0 : _tab;
     switch (effectiveTab) {
       case 0:
         activeTab = _buildInfoTab(field, theme, isDark, canEditMasterData);
         break;
       case 1:
-        activeTab = _buildHistoriTab(dap, field, theme, isDark);
+        activeTab = _buildHistoriTab(dap, field, theme, isDark, pldLifecycle);
         break;
       default:
-        activeTab =
-            _buildAksiTab(dap, recommendedPhase, fieldNumber, theme, isDark);
+        activeTab = _buildAksiTab(
+          dap,
+          recommendedPhase,
+          fieldNumber,
+          theme,
+          isDark,
+          isPldRevision: isPldRevision,
+          pendingPldPhases: pendingPldPhases,
+        );
     }
 
     return AnimatedSwitcher(
@@ -905,8 +958,12 @@ class _FieldDetailBottomSheetState
   // ──────────────────────────────────────────────────────────
   // TAB 0 — INFO LAHAN
   // ──────────────────────────────────────────────────────────
-  Widget _buildInfoTab(Map<String, dynamic> field, ThemeData theme, bool isDark,
-      bool canEditMasterData) {
+  Widget _buildInfoTab(
+    Map<String, dynamic> field,
+    ThemeData theme,
+    bool isDark,
+    bool canEditMasterData,
+  ) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 32.0),
       child: Column(
@@ -918,24 +975,46 @@ class _FieldDetailBottomSheetState
             isDark: isDark,
             children: [
               _Row2Col(
-                left: _InfoCell('Season', _fmt(field['season']),
-                    theme: theme, isDark: isDark),
-                right: _InfoCell('Tipe', _fmt(field['type']),
-                    theme: theme, isDark: isDark),
+                left: _InfoCell(
+                  'Season',
+                  _fmt(field['season']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                right: _InfoCell(
+                  'Tipe',
+                  _fmt(field['type']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
               ),
               _Row2Col(
-                left: _InfoCell('Hybrid', _fmt(field['hybrid']),
-                    theme: theme, isDark: isDark),
+                left: _InfoCell(
+                  'Hybrid',
+                  _fmt(field['hybrid']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
                 right: _InfoCell(
-                    'Planting Ratio', _fmt(field['planting_ratio']),
-                    theme: theme, isDark: isDark),
+                  'Planting Ratio',
+                  _fmt(field['planting_ratio']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
               ),
               _Row2Col(
-                left: _InfoCell('Jarak Tanam', _fmt(field['planting_space']),
-                    theme: theme, isDark: isDark),
+                left: _InfoCell(
+                  'Jarak Tanam',
+                  _fmt(field['planting_space']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
                 right: _InfoCell(
-                    'Standing Crops', _fmt(field['standing_crops']),
-                    theme: theme, isDark: isDark),
+                  'Standing Crops',
+                  _fmt(field['standing_crops']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
               ),
             ],
           ),
@@ -948,23 +1027,44 @@ class _FieldDetailBottomSheetState
             children: [
               _Row3Col(
                 a: _InfoCell(
-                    'Total Area', '${_fmt(field['total_area_planted_ha'])} Ha',
-                    theme: theme, isDark: isDark),
-                b: _InfoCell('Discard', '${_fmt(field['discard_area_ha'])} Ha',
-                    theme: theme, isDark: isDark),
+                  'Total Area',
+                  '${_fmt(field['total_area_planted_ha'])} Ha',
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                b: _InfoCell(
+                  'Discard',
+                  '${_fmt(field['discard_area_ha'])} Ha',
+                  theme: theme,
+                  isDark: isDark,
+                ),
                 c: _InfoCell(
-                    'Efektif', '${_fmt(field['effective_area_ha'])} Ha',
-                    highlight: true, theme: theme, isDark: isDark),
+                  'Efektif',
+                  '${_fmt(field['effective_area_ha'])} Ha',
+                  highlight: true,
+                  theme: theme,
+                  isDark: isDark,
+                ),
               ),
               _Row3Col(
                 a: _InfoCell(
-                    'Hasil Panen', '${_fmt(field['harvested_area_ha'])} Ha',
-                    theme: theme, isDark: isDark),
+                  'Hasil Panen',
+                  '${_fmt(field['harvested_area_ha'])} Ha',
+                  theme: theme,
+                  isDark: isDark,
+                ),
                 b: _InfoCell(
-                    'Qty Panen', '${_fmt(field['harvested_qty_kg'])} Kg',
-                    theme: theme, isDark: isDark),
-                c: _InfoCell('Prev Crop', _fmt(field['previous_crop_data_a_b']),
-                    theme: theme, isDark: isDark),
+                  'Qty Panen',
+                  '${_fmt(field['harvested_qty_kg'])} Kg',
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                c: _InfoCell(
+                  'Prev Crop',
+                  _fmt(field['previous_crop_data_a_b']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
               ),
             ],
           ),
@@ -976,28 +1076,60 @@ class _FieldDetailBottomSheetState
             isDark: isDark,
             children: [
               _Row2Col(
-                left: _InfoCell('Petani', _fmt(field['farmer_name']),
-                    theme: theme, isDark: isDark),
-                right: _InfoCell('Grower', _fmt(field['grower']),
-                    theme: theme, isDark: isDark),
+                left: _InfoCell(
+                  'Petani',
+                  _fmt(field['farmer_name']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                right: _InfoCell(
+                  'Grower',
+                  _fmt(field['grower']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
               ),
               _Row2Col(
-                left: _InfoCell('FA', _fmt(field['fa']),
-                    theme: theme, isDark: isDark),
-                right: _InfoCell('SPV', _fmt(field['field_spv']),
-                    theme: theme, isDark: isDark),
+                left: _InfoCell(
+                  'FA',
+                  _fmt(field['fa']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                right: _InfoCell(
+                  'SPV',
+                  _fmt(field['field_spv']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
               ),
               _Row2Col(
-                left: _InfoCell('QA FI', _fmt(field['qa_fi']),
-                    theme: theme, isDark: isDark),
-                right: _InfoCell('QA SPV', _fmt(field['qa_spv']),
-                    theme: theme, isDark: isDark),
+                left: _InfoCell(
+                  'QA FI',
+                  _fmt(field['qa_fi']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                right: _InfoCell(
+                  'QA SPV',
+                  _fmt(field['qa_spv']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
               ),
               _Row2Col(
-                left: _InfoCell('Area Manager', _fmt(field['area_manager']),
-                    theme: theme, isDark: isDark),
-                right: _InfoCell('Corr. Tag', _fmt(field['correction_tagging']),
-                    theme: theme, isDark: isDark),
+                left: _InfoCell(
+                  'Area Manager',
+                  _fmt(field['area_manager']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                right: _InfoCell(
+                  'Corr. Tag',
+                  _fmt(field['correction_tagging']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
               ),
             ],
           ),
@@ -1017,23 +1149,31 @@ class _FieldDetailBottomSheetState
                     borderRadius: BorderRadius.circular(6),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: AdvantaColors.gold.withAlpha(30),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                            color: AdvantaColors.gold.withAlpha(100)),
+                          color: AdvantaColors.gold.withAlpha(100),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.edit_rounded,
-                              color: AdvantaColors.gold, size: 12),
+                          const Icon(
+                            Icons.edit_rounded,
+                            color: AdvantaColors.gold,
+                            size: 12,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             'EDIT',
                             style: AdvantaText.label.copyWith(
-                                color: AdvantaColors.gold, fontSize: 10),
+                              color: AdvantaColors.gold,
+                              fontSize: 10,
+                            ),
                           ),
                         ],
                       ),
@@ -1042,22 +1182,46 @@ class _FieldDetailBottomSheetState
                 : null,
             children: [
               _Row2Col(
-                left: _InfoCell('Provinsi', _fmt(field['prov']),
-                    theme: theme, isDark: isDark),
-                right: _InfoCell('Kabupaten', _fmt(field['district_kab']),
-                    theme: theme, isDark: isDark),
+                left: _InfoCell(
+                  'Provinsi',
+                  _fmt(field['prov']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                right: _InfoCell(
+                  'Kabupaten',
+                  _fmt(field['district_kab']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
               ),
               _Row2Col(
-                left: _InfoCell('Kecamatan', _fmt(field['sub_district_kec']),
-                    theme: theme, isDark: isDark),
-                right: _InfoCell('Desa', _fmt(field['village_desa']),
-                    theme: theme, isDark: isDark),
+                left: _InfoCell(
+                  'Kecamatan',
+                  _fmt(field['sub_district_kec']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                right: _InfoCell(
+                  'Desa',
+                  _fmt(field['village_desa']),
+                  theme: theme,
+                  isDark: isDark,
+                ),
               ),
-              _InfoCell('Dusun', _fmt(field['hamlet_dusun']),
-                  theme: theme, isDark: isDark),
+              _InfoCell(
+                'Dusun',
+                _fmt(field['hamlet_dusun']),
+                theme: theme,
+                isDark: isDark,
+              ),
               const SizedBox(height: 4),
-              _InfoCell('Koordinat', _fmt(field['coordinate']),
-                  theme: theme, isDark: isDark),
+              _InfoCell(
+                'Koordinat',
+                _fmt(field['coordinate']),
+                theme: theme,
+                isDark: isDark,
+              ),
             ],
           ),
         ],
@@ -1069,14 +1233,29 @@ class _FieldDetailBottomSheetState
   // TAB 1 — HISTORI INSPEKSI
   // ──────────────────────────────────────────────────────────
   Widget _buildHistoriTab(
-      int dap, Map<String, dynamic> field, ThemeData theme, bool isDark) {
+    int dap,
+    Map<String, dynamic> field,
+    ThemeData theme,
+    bool isDark,
+    PldAuditLifecycleBundle? pldLifecycle,
+  ) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 32.0),
       child: Column(
         children: [
+          if (pldLifecycle != null &&
+              (pldLifecycle.statuses.isNotEmpty ||
+                  pldLifecycle.history.isNotEmpty)) ...[
+            _PldRevisionHistoryCard(
+              lifecycle: pldLifecycle,
+              theme: theme,
+              isDark: isDark,
+            ),
+            const SizedBox(height: 14.0),
+          ],
           _buildPhaseIsoExportCard(field, theme, isDark),
           const SizedBox(height: 14.0),
-          ..._buildPhaseTimeline(dap, field, theme, isDark),
+          ..._buildPhaseTimeline(dap, field, theme, isDark, pldLifecycle),
         ],
       ),
     );
@@ -1162,9 +1341,14 @@ class _FieldDetailBottomSheetState
     );
   }
 
-// 👇 SILAKAN PASTE FUNGSI INI DI BAWAH _buildHistoriTab 👇
+  // 👇 SILAKAN PASTE FUNGSI INI DI BAWAH _buildHistoriTab 👇
   List<Widget> _buildPhaseTimeline(
-      int dap, Map<String, dynamic> field, ThemeData theme, bool isDark) {
+    int dap,
+    Map<String, dynamic> field,
+    ThemeData theme,
+    bool isDark,
+    PldAuditLifecycleBundle? pldLifecycle,
+  ) {
     final phaseToAudit = {
       'vegetative': 'audit_vegetative',
       'generative_1': 'audit_generative',
@@ -1220,8 +1404,10 @@ class _FieldDetailBottomSheetState
         'vegetative' => _isVegetativePldAudit(auditData),
         'pre_harvest' => _isPreHarvestPldAudit(auditData),
         'harvest' => _isHarvestPldAudit(auditData),
-        _ when phaseKey.startsWith('generative_') =>
-          _isGenerativePldAudit(auditData, int.parse(phaseKey.split('_')[1])),
+        _ when phaseKey.startsWith('generative_') => _isGenerativePldAudit(
+            auditData,
+            int.parse(phaseKey.split('_')[1]),
+          ),
         _ => false,
       };
       final hasVegetativeProgress =
@@ -1282,6 +1468,7 @@ class _FieldDetailBottomSheetState
           progressLabel: progressLabel,
           progressDetail: progressDetail,
           progressFraction: progressFraction,
+          pldStatus: pldLifecycle?.byPhase[phaseKey],
           isLast: isLast,
           dap: dap,
           theme: theme,
@@ -1296,8 +1483,21 @@ class _FieldDetailBottomSheetState
   // ──────────────────────────────────────────────────────────
   // TAB 2 — AKSI / MULAI INSPEKSI
   // ──────────────────────────────────────────────────────────
-  Widget _buildAksiTab(int dap, String recommendedPhase, String fieldNumber,
-      ThemeData theme, bool isDark) {
+  Widget _buildAksiTab(
+    int dap,
+    String recommendedPhase,
+    String fieldNumber,
+    ThemeData theme,
+    bool isDark, {
+    required bool isPldRevision,
+    required Set<String> pendingPldPhases,
+  }) {
+    final visiblePhaseKeys = isPldRevision
+        ? _phaseKeys
+            .where((phaseKey) => pendingPldPhases.contains(phaseKey))
+            .toList(growable: false)
+        : _phaseKeys;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 32.0),
       child: Column(
@@ -1320,17 +1520,23 @@ class _FieldDetailBottomSheetState
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.info_outline_rounded,
-                    color: isDark
-                        ? AdvantaColors.goldLight
-                        : AdvantaColors.primaryGreen,
-                    size: 16),
+                Icon(
+                  Icons.info_outline_rounded,
+                  color: isDark
+                      ? AdvantaColors.goldLight
+                      : AdvantaColors.primaryGreen,
+                  size: 16,
+                ),
                 const SizedBox(width: 10.0),
                 Expanded(
                   child: Text(
-                    'DAP saat ini: $dap hari. Fase rekomendasi: '
-                    '${_getPhaseLabel(recommendedPhase)}. '
-                    'Anda tetap bebas memilih fase lain.',
+                    isPldRevision
+                        ? 'Rekomendasi PLD KC masih Pending karena effective '
+                            'area ACT belum 0 Ha. FI dapat merevisi fase asal '
+                            'menjadi flag aktif GF, RFI, atau RFD.'
+                        : 'DAP saat ini: $dap hari. Fase rekomendasi: '
+                            '${_getPhaseLabel(recommendedPhase)}. '
+                            'Anda tetap bebas memilih fase lain.',
                     style: AdvantaText.caption.copyWith(
                       color: isDark
                           ? AdvantaColors.goldLight
@@ -1346,17 +1552,18 @@ class _FieldDetailBottomSheetState
 
           // Section label
           Text(
-            'PILIH FASE INSPEKSI',
+            isPldRevision ? 'PILIH FASE YANG DIREVISI' : 'PILIH FASE INSPEKSI',
             style: AdvantaText.label.copyWith(
-                letterSpacing: 1.5,
-                color:
-                    isDark ? AdvantaColors.goldLight : AdvantaColors.mutedGrey),
+              letterSpacing: 1.5,
+              color: isDark ? AdvantaColors.goldLight : AdvantaColors.mutedGrey,
+            ),
           ),
           const SizedBox(height: 10.0),
 
           // Phase buttons
-          ...List.generate(_phaseKeys.length, (i) {
-            final phaseKey = _phaseKeys[i];
+          ...List.generate(visiblePhaseKeys.length, (visibleIndex) {
+            final phaseKey = visiblePhaseKeys[visibleIndex];
+            final i = _phaseKeys.indexOf(phaseKey);
             final color = _phaseColors[i];
             final label = _phaseLabels[i];
             final icon = _phaseIcons[i];
@@ -1372,8 +1579,11 @@ class _FieldDetailBottomSheetState
               translatedBadge = 'Selesai';
               badgeColor = AdvantaColors.success;
             } else {
-              final rawBadge = DapHelper.getDapBadgeLabel(dap, phaseKey,
-                  hybrid: widget.field['hybrid']?.toString());
+              final rawBadge = DapHelper.getDapBadgeLabel(
+                dap,
+                phaseKey,
+                hybrid: widget.field['hybrid']?.toString(),
+              );
               badgeColor = DapHelper.getDapBadgeColor(rawBadge);
 
               switch (rawBadge.toLowerCase()) {
@@ -1411,41 +1621,58 @@ class _FieldDetailBottomSheetState
                   // LOGIKA ROUTING:
                   if (_isPSP) {
                     if (phaseKey == 'vegetative') {
-                      final saved = await context
-                          .push('/inspect_psp/vegetative/$fieldNumber');
-                      if (saved == true) widget.onInspectDone?.call(fieldData);
+                      final saved = await context.push(
+                        '/inspect_psp/vegetative/$fieldNumber',
+                      );
+                      if (saved == true) {
+                        _handleAuditSaved(fieldNumber, fieldData);
+                      }
                       return;
                     }
                     if (phaseKey == 'generative_5') {
-                      final saved = await context
-                          .push('/inspect_psp/generative/$fieldNumber');
-                      if (saved == true) widget.onInspectDone?.call(fieldData);
+                      final saved = await context.push(
+                        '/inspect_psp/generative/$fieldNumber',
+                      );
+                      if (saved == true) {
+                        _handleAuditSaved(fieldNumber, fieldData);
+                      }
                       return;
                     }
                     if (phaseKey == 'harvest') {
-                      final saved = await context
-                          .push('/inspect_psp/harvest/$fieldNumber');
-                      if (saved == true) widget.onInspectDone?.call(fieldData);
+                      final saved = await context.push(
+                        '/inspect_psp/harvest/$fieldNumber',
+                      );
+                      if (saved == true) {
+                        _handleAuditSaved(fieldNumber, fieldData);
+                      }
                       return;
                     }
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                          content: Text(
-                              'Modul PSP (ASF) selain vegetative akan segera hadir.')),
+                        content: Text(
+                          'Modul PSP (ASF) selain vegetative akan segera hadir.',
+                        ),
+                      ),
                     );
                     return;
                   }
 
                   if (_isSweetCorn) {
                     // Arahkan ke form khusus Sweet Corn (AX01-04)
-                    final saved = await context
-                        .push('/inspect_sc/$phaseKey/$fieldNumber');
-                    if (saved == true) widget.onInspectDone?.call(fieldData);
+                    final saved = await context.push(
+                      '/inspect_sc/$phaseKey/$fieldNumber',
+                    );
+                    if (saved == true) {
+                      _handleAuditSaved(fieldNumber, fieldData);
+                    }
                   } else {
                     // Arahkan ke form reguler/lama (AX non 01-04 atau lainnya)
-                    final saved =
-                        await context.push('/inspect/$phaseKey/$fieldNumber');
-                    if (saved == true) widget.onInspectDone?.call(fieldData);
+                    final saved = await context.push(
+                      '/inspect/$phaseKey/$fieldNumber',
+                    );
+                    if (saved == true) {
+                      _handleAuditSaved(fieldNumber, fieldData);
+                    }
                   }
                 },
               ),
@@ -1454,6 +1681,12 @@ class _FieldDetailBottomSheetState
         ],
       ),
     );
+  }
+
+  void _handleAuditSaved(String fieldNumber, Map<String, dynamic> fieldData) {
+    ref.invalidate(masterFieldDetailProvider(fieldNumber));
+    ref.invalidate(pldAuditLifecycleProvider(fieldNumber));
+    widget.onInspectDone?.call(fieldData);
   }
 }
 
@@ -1516,15 +1749,220 @@ class _FlagBadge extends StatelessWidget {
   }
 }
 
+class _PldRevisionHistoryCard extends StatelessWidget {
+  const _PldRevisionHistoryCard({
+    required this.lifecycle,
+    required this.theme,
+    required this.isDark,
+  });
+
+  final PldAuditLifecycleBundle lifecycle;
+  final ThemeData theme;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final history = lifecycle.history.take(12).toList(growable: false);
+    return _SectionCard(
+      title: 'Status PLD & Riwayat Revisi',
+      icon: Icons.history_toggle_off_rounded,
+      theme: theme,
+      isDark: isDark,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: lifecycle.statuses
+              .map(
+                (status) =>
+                    _PldPhaseStatusChip(status: status, includePhase: true),
+              )
+              .toList(growable: false),
+        ),
+        if (history.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Divider(color: isDark ? Colors.white12 : Colors.black12),
+          const SizedBox(height: 4),
+          ...history.map(
+            (revision) => _PldRevisionRow(
+              revision: revision,
+              isDark: isDark,
+              theme: theme,
+            ),
+          ),
+          if (lifecycle.history.length > history.length)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '${history.length} perubahan terbaru ditampilkan dari '
+                '${lifecycle.history.length} riwayat.',
+                style: AdvantaText.caption.copyWith(
+                  color: AdvantaColors.mutedGrey,
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PldPhaseStatusChip extends StatelessWidget {
+  const _PldPhaseStatusChip({required this.status, this.includePhase = false});
+
+  final PldAuditPhaseStatus status;
+  final bool includePhase;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (status.status) {
+      'CONFIRMED' => AdvantaColors.success,
+      'UPDATED' => const Color(0xFF1976D2),
+      _ => const Color(0xFFF9A825),
+    };
+    final icon = switch (status.status) {
+      'CONFIRMED' => Icons.verified_rounded,
+      'UPDATED' => Icons.edit_note_rounded,
+      _ => Icons.schedule_rounded,
+    };
+    final label = switch (status.status) {
+      'CONFIRMED' => 'Confirmed',
+      'UPDATED' => 'Updated',
+      _ => 'Pending',
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withAlpha(24),
+        borderRadius: AdvantaRadius.chipRadius,
+        border: Border.all(color: color.withAlpha(100)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            includePhase
+                ? '${pldAuditPhaseLabel(status.phaseKey)} · $label'
+                : label,
+            style: AdvantaText.caption.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PldRevisionRow extends StatelessWidget {
+  const _PldRevisionRow({
+    required this.revision,
+    required this.isDark,
+    required this.theme,
+  });
+
+  final PldAuditRevision revision;
+  final bool isDark;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final isAct = revision.isActEvent;
+    final title = switch (revision.eventType) {
+      'ACT_CONFIRMED' => 'Dikonfirmasi oleh sync ACT',
+      'ACT_REOPENED' => 'Dibuka kembali oleh sync ACT',
+      'BACKFILLED' => 'Riwayat awal dimigrasikan',
+      'CREATED' => 'Audit dibuat',
+      _ => revision.lifecycleStatus == 'UPDATED'
+          ? 'Rekomendasi PLD direvisi'
+          : 'Audit diperbarui',
+    };
+    final actor = isAct
+        ? 'Sistem ACT Sync'
+        : [revision.actorName, revision.actorRole]
+            .whereType<String>()
+            .where((value) => value.trim().isNotEmpty)
+            .join(' · ');
+    final oldValue = revision.oldFlagging?.trim();
+    final newValue = revision.newFlagging?.trim();
+    final change = oldValue != null &&
+            oldValue.isNotEmpty &&
+            newValue != null &&
+            newValue.isNotEmpty &&
+            oldValue != newValue
+        ? '$oldValue → $newValue'
+        : newValue;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: (isAct ? AdvantaColors.primaryGreen : AdvantaColors.gold)
+                  .withAlpha(24),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isAct ? Icons.sync_rounded : Icons.edit_note_rounded,
+              size: 15,
+              color: isAct ? AdvantaColors.primaryGreen : AdvantaColors.gold,
+            ),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$title · ${pldAuditPhaseLabel(revision.phaseKey)}',
+                  style: AdvantaText.label.copyWith(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    DateFormat(
+                      'dd MMM yyyy, HH:mm',
+                      'id_ID',
+                    ).format(revision.createdAt),
+                    if (actor.isNotEmpty) actor,
+                    if (change != null && change.isNotEmpty) change,
+                  ].join(' · '),
+                  style: AdvantaText.caption.copyWith(
+                    color: isDark ? Colors.white60 : AdvantaColors.mutedGrey,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PldAlertBanner extends StatelessWidget {
   final FieldLifecycleState lifecycle;
   final int frozenDap;
   final bool isDark;
+  final PldAuditLifecycleBundle? pldLifecycle;
 
   const _PldAlertBanner({
     required this.lifecycle,
     required this.frozenDap,
     required this.isDark,
+    required this.pldLifecycle,
   });
 
   @override
@@ -1535,6 +1973,21 @@ class _PldAlertBanner extends StatelessWidget {
     final phase = lifecycle.stoppedPhase == null
         ? ''
         : ' pada fase ${lifecycle.stoppedPhase}';
+    final lifecycleStatus = pldLifecycle?.hasConfirmed == true
+        ? 'Confirmed ACT'
+        : pldLifecycle?.hasPending == true
+            ? 'Pending ACT'
+            : lifecycle.statusLabel;
+    final detail = pldLifecycle?.hasConfirmed == true
+        ? 'Effective area ACT sudah 0 Ha. Audit fase PLD dikunci dan lahan '
+            'dikecualikan dari planning, overdue, serta kebutuhan TKD.'
+        : pldLifecycle?.hasPending == true
+            ? 'Effective area ACT masih di atas 0 Ha. Rekomendasi KC tetap '
+                'tercatat, namun FI masih dapat merevisi fase asal jika '
+                'status lapangan berubah.'
+            : 'Siklus lahan berhenti$phase pada $stoppedDate. DAP dibekukan '
+                'di $frozenDap hari dan lahan tidak masuk planning, overdue, '
+                'atau kebutuhan TKD.';
 
     return Container(
       width: double.infinity,
@@ -1564,9 +2017,7 @@ class _PldAlertBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '${lifecycle.statusLabel} · siklus lahan berhenti$phase pada '
-              '$stoppedDate. DAP dibekukan di $frozenDap hari dan lahan tidak '
-              'masuk planning, overdue, atau kebutuhan TKD.',
+              '$lifecycleStatus · $detail',
               style: AdvantaText.caption.copyWith(
                 color: isDark ? const Color(0xFFFFCDD2) : AdvantaColors.error,
                 fontWeight: FontWeight.w700,
@@ -1694,8 +2145,9 @@ class _DapProgressBar extends StatelessWidget {
             ),
             Text(
               'Rekomendasi: $recommendedPhase',
-              style:
-                  AdvantaText.caption.copyWith(color: AdvantaColors.mutedGrey),
+              style: AdvantaText.caption.copyWith(
+                color: AdvantaColors.mutedGrey,
+              ),
             ),
           ],
         ),
@@ -1727,16 +2179,18 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     // Menentukan warna background berdasarkan mode (Edit vs Normal)
     final bgColor = isEditable
-        ? AdvantaColors.gold
-            .withAlpha(isDark ? 25 : 40) // Highlight emas transparan
+        ? AdvantaColors.gold.withAlpha(
+            isDark ? 25 : 40,
+          ) // Highlight emas transparan
         : (isDark
             ? AdvantaColors.deepForest.withAlpha(100)
             : AdvantaColors.softGrey);
 
     // Menentukan warna garis tepi (border)
     final borderColor = isEditable
-        ? AdvantaColors.gold
-            .withAlpha(isDark ? 80 : 120) // Border emas yang lebih tegas
+        ? AdvantaColors.gold.withAlpha(
+            isDark ? 80 : 120,
+          ) // Border emas yang lebih tegas
         : (isDark ? Colors.white12 : Colors.black12);
 
     return Container(
@@ -1744,10 +2198,9 @@ class _SectionCard extends StatelessWidget {
         color: bgColor,
         borderRadius: AdvantaRadius.cardRadius,
         border: Border.all(
-            color: borderColor,
-            width: isEditable
-                ? 1.5
-                : 1.0), // Border sedikit lebih tebal jika bisa diedit
+          color: borderColor,
+          width: isEditable ? 1.5 : 1.0,
+        ), // Border sedikit lebih tebal jika bisa diedit
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1756,13 +2209,15 @@ class _SectionCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
             child: Row(
               children: [
-                Icon(icon,
-                    color: isEditable
-                        ? AdvantaColors.gold
-                        : (isDark
-                            ? AdvantaColors.goldLight
-                            : theme.colorScheme.primary),
-                    size: 14),
+                Icon(
+                  icon,
+                  color: isEditable
+                      ? AdvantaColors.gold
+                      : (isDark
+                          ? AdvantaColors.goldLight
+                          : theme.colorScheme.primary),
+                  size: 14,
+                ),
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
@@ -1804,8 +2259,13 @@ class _InfoCell extends StatelessWidget {
   final ThemeData theme;
   final bool isDark;
 
-  const _InfoCell(this.label, this.value,
-      {this.highlight = false, required this.theme, required this.isDark});
+  const _InfoCell(
+    this.label,
+    this.value, {
+    this.highlight = false,
+    required this.theme,
+    required this.isDark,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1817,7 +2277,8 @@ class _InfoCell extends StatelessWidget {
           Text(
             label,
             style: AdvantaText.caption.copyWith(
-                color: isDark ? Colors.white54 : AdvantaColors.mutedGrey),
+              color: isDark ? Colors.white54 : AdvantaColors.mutedGrey,
+            ),
           ),
           const SizedBox(height: 2),
           Text(
@@ -1889,6 +2350,7 @@ class _PhaseTimelineItem extends StatelessWidget {
   final String? progressLabel;
   final String? progressDetail;
   final double progressFraction;
+  final PldAuditPhaseStatus? pldStatus;
   final bool isLast;
   final int dap;
   final ThemeData theme;
@@ -1907,6 +2369,7 @@ class _PhaseTimelineItem extends StatelessWidget {
     required this.progressLabel,
     required this.progressDetail,
     required this.progressFraction,
+    required this.pldStatus,
     required this.isLast,
     required this.dap,
     required this.theme,
@@ -2008,7 +2471,9 @@ class _PhaseTimelineItem extends StatelessWidget {
                       if (hasData)
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: color.withAlpha(38),
                             borderRadius: AdvantaRadius.chipRadius,
@@ -2025,7 +2490,9 @@ class _PhaseTimelineItem extends StatelessWidget {
                       else if (hasProgress)
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: color.withAlpha(38),
                             borderRadius: AdvantaRadius.chipRadius,
@@ -2042,7 +2509,9 @@ class _PhaseTimelineItem extends StatelessWidget {
                       else
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: isDark ? Colors.white10 : Colors.black12,
                             borderRadius: AdvantaRadius.chipRadius,
@@ -2060,21 +2529,37 @@ class _PhaseTimelineItem extends StatelessWidget {
                         ),
                     ],
                   ),
+                  if (pldStatus != null) ...[
+                    const SizedBox(height: 7),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: _PldPhaseStatusChip(status: pldStatus!),
+                    ),
+                  ],
                   if (auditDate != null) ...[
                     const SizedBox(height: 8.0),
                     Row(
                       children: [
-                        Icon(Icons.calendar_today_outlined,
-                            size: 10, color: AdvantaColors.mutedGrey),
+                        Icon(
+                          Icons.calendar_today_outlined,
+                          size: 10,
+                          color: AdvantaColors.mutedGrey,
+                        ),
                         const SizedBox(width: 4),
-                        Text(auditDate!,
-                            style: AdvantaText.caption
-                                .copyWith(color: theme.colorScheme.onSurface)),
+                        Text(
+                          auditDate!,
+                          style: AdvantaText.caption.copyWith(
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
                         if (auditWeek != null) ...[
                           const SizedBox(width: 8),
-                          Text('Week $auditWeek',
-                              style: AdvantaText.caption
-                                  .copyWith(color: AdvantaColors.mutedGrey)),
+                          Text(
+                            'Week $auditWeek',
+                            style: AdvantaText.caption.copyWith(
+                              color: AdvantaColors.mutedGrey,
+                            ),
+                          ),
                         ],
                       ],
                     ),
@@ -2123,8 +2608,9 @@ class _PhaseTimelineItem extends StatelessWidget {
                       hasProgress
                           ? 'Audit PSP vegetative masih berjalan'
                           : 'Belum ada data inspeksi',
-                      style: AdvantaText.caption
-                          .copyWith(color: AdvantaColors.mutedGrey),
+                      style: AdvantaText.caption.copyWith(
+                        color: AdvantaColors.mutedGrey,
+                      ),
                     ),
                   ],
                 ],
@@ -2182,11 +2668,7 @@ class _PhaseIsoExportRow extends StatelessWidget {
             color: enabled ? color.withAlpha(36) : Colors.black.withAlpha(8),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(
-            icon,
-            size: 20,
-            color: enabled ? color : subColor,
-          ),
+          child: Icon(icon, size: 20, color: enabled ? color : subColor),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -2313,21 +2795,25 @@ class _PhaseActionButton extends StatelessWidget {
                     children: [
                       Text(
                         label,
-                        style: AdvantaText.bodyBold
-                            .copyWith(color: theme.colorScheme.onSurface),
+                        style: AdvantaText.bodyBold.copyWith(
+                          color: theme.colorScheme.onSurface,
+                        ),
                       ),
                       if (isRecommended) ...[
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 2),
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: isDark
                                 ? AdvantaColors.successLight.withAlpha(40)
                                 : AdvantaColors.paleGreen,
                             borderRadius: AdvantaRadius.chipRadius,
                             border: Border.all(
-                                color: AdvantaColors.lightGreen.withAlpha(100)),
+                              color: AdvantaColors.lightGreen.withAlpha(100),
+                            ),
                           ),
                           child: Text(
                             '★ Rekomendasi',
@@ -2344,13 +2830,18 @@ class _PhaseActionButton extends StatelessWidget {
                   Text(
                     badge,
                     style: AdvantaText.caption.copyWith(
-                        color: badgeColor, fontWeight: FontWeight.w600),
+                      color: badgeColor,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded,
-                color: isDark ? Colors.white54 : Colors.black38, size: 20),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: isDark ? Colors.white54 : Colors.black38,
+              size: 20,
+            ),
           ],
         ),
       ),
@@ -2414,10 +2905,15 @@ class _DapCalculationBox extends StatelessWidget {
     final dateStr = _formatDate(plantingDate);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final referenceOnly =
-        DateTime(referenceDate.year, referenceDate.month, referenceDate.day);
-    final referenceStr =
-        DateFormat('dd MMM yyyy', 'id_ID').format(referenceOnly);
+    final referenceOnly = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+    );
+    final referenceStr = DateFormat(
+      'dd MMM yyyy',
+      'id_ID',
+    ).format(referenceOnly);
     final referenceLabel =
         referenceOnly == today ? 'Hari Ini' : 'Tanggal Acuan';
 
@@ -2428,8 +2924,11 @@ class _DapCalculationBox extends StatelessWidget {
       translatedBadge = 'Selesai';
       badgeColor = AdvantaColors.success;
     } else {
-      final rawBadge =
-          DapHelper.getDapBadgeLabel(dap, phaseKey, hybrid: hybrid);
+      final rawBadge = DapHelper.getDapBadgeLabel(
+        dap,
+        phaseKey,
+        hybrid: hybrid,
+      );
       badgeColor = DapHelper.getDapBadgeColor(rawBadge);
       translatedBadge = _translateBadge(rawBadge);
     }
@@ -2450,11 +2949,12 @@ class _DapCalculationBox extends StatelessWidget {
           Row(
             children: [
               Icon(
-                  isAudited
-                      ? Icons.check_circle_outline
-                      : Icons.calculate_outlined,
-                  size: 14,
-                  color: badgeColor),
+                isAudited
+                    ? Icons.check_circle_outline
+                    : Icons.calculate_outlined,
+                size: 14,
+                color: badgeColor,
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -2488,11 +2988,14 @@ class _DapCalculationBox extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _buildNode(Icons.eco_rounded,
-                    isRevisied ? 'Tgl Tanam (Rev)' : 'Tgl Tanam', dateStr,
-                    themeColor: isRevisied
-                        ? AdvantaColors.gold
-                        : (isDark ? Colors.white : Colors.black87)),
+                child: _buildNode(
+                  Icons.eco_rounded,
+                  isRevisied ? 'Tgl Tanam (Rev)' : 'Tgl Tanam',
+                  dateStr,
+                  themeColor: isRevisied
+                      ? AdvantaColors.gold
+                      : (isDark ? Colors.white : Colors.black87),
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -2500,8 +3003,11 @@ class _DapCalculationBox extends StatelessWidget {
               ),
               Expanded(
                 child: _buildNode(
-                    Icons.event_available_rounded, referenceLabel, referenceStr,
-                    themeColor: isDark ? Colors.white : Colors.black87),
+                  Icons.event_available_rounded,
+                  referenceLabel,
+                  referenceStr,
+                  themeColor: isDark ? Colors.white : Colors.black87,
+                ),
               ),
             ],
           ),
@@ -2511,8 +3017,11 @@ class _DapCalculationBox extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.info_outline_rounded,
-                  size: 12, color: AdvantaColors.mutedGrey),
+              Icon(
+                Icons.info_outline_rounded,
+                size: 12,
+                color: AdvantaColors.mutedGrey,
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -2520,35 +3029,47 @@ class _DapCalculationBox extends StatelessWidget {
                       ? 'Inspeksi untuk fase rekomendasi ini sudah diselesaikan. Status aman.'
                       : 'Lahan dihitung Terlewat (Overdue) jika umur melampaui batas maksimal tanpa ada riwayat audit.',
                   style: AdvantaText.caption.copyWith(
-                      color: AdvantaColors.mutedGrey, fontSize: 9, height: 1.3),
+                    color: AdvantaColors.mutedGrey,
+                    fontSize: 9,
+                    height: 1.3,
+                  ),
                 ),
               ),
             ],
-          )
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildNode(IconData icon, String title, String value,
-      {required Color themeColor}) {
+  Widget _buildNode(
+    IconData icon,
+    String title,
+    String value, {
+    required Color themeColor,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Icon(icon, size: 18, color: AdvantaColors.mutedGrey),
         const SizedBox(height: 4),
-        Text(title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: AdvantaText.caption
-                .copyWith(color: AdvantaColors.mutedGrey, fontSize: 10)),
-        Text(value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style:
-                AdvantaText.bodyBold.copyWith(fontSize: 12, color: themeColor)),
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: AdvantaText.caption.copyWith(
+            color: AdvantaColors.mutedGrey,
+            fontSize: 10,
+          ),
+        ),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: AdvantaText.bodyBold.copyWith(fontSize: 12, color: themeColor),
+        ),
       ],
     );
   }

@@ -120,4 +120,38 @@ class ActSyncStatusService {
       response.map((key, value) => MapEntry(key.toString(), value)),
     );
   }
+
+  Future<PlantingPldLifecycleSummary> getPlantingPldLifecycleSummary(
+    PlantingDataMonitorFilter filter,
+  ) async {
+    final response = await _client.rpc(
+      'get_planting_pld_lifecycle_summary',
+      params: filter.rpcParams,
+    );
+    if (response is! Map) {
+      throw const FormatException(
+        'Format ringkasan lifecycle PLD tidak valid.',
+      );
+    }
+
+    return PlantingPldLifecycleSummary.fromJson(
+      response.map((key, value) => MapEntry(key.toString(), value)),
+    );
+  }
+
+  Future<PlantingPldLifecyclePage> getPlantingPldLifecycleItems(
+    PlantingPldLifecycleQuery query,
+  ) async {
+    final response = await _client.rpc(
+      'get_planting_pld_lifecycle_items',
+      params: query.rpcParams,
+    );
+    if (response is! Map) {
+      throw const FormatException('Format daftar lifecycle PLD tidak valid.');
+    }
+
+    return PlantingPldLifecyclePage.fromJson(
+      response.map((key, value) => MapEntry(key.toString(), value)),
+    );
+  }
 }

@@ -113,8 +113,9 @@ void main() {
     );
     addTearDown(client.dispose);
 
-    await SupabaseService(client: client)
-        .updateFieldCorrectionGeometryWkt(fieldNumber: 'F1', geometryWkt: wkt);
+    await SupabaseService(
+      client: client,
+    ).updateFieldCorrectionGeometryWkt(fieldNumber: 'F1', geometryWkt: wkt);
   });
 
   test('coverage pages load concurrently and remain in field order', () async {
@@ -205,8 +206,9 @@ void main() {
     );
     addTearDown(client.dispose);
 
-    final rows = await SupabaseService(client: client)
-        .getMasterFieldsForCoverage(region: 'Region 5');
+    final rows = await SupabaseService(
+      client: client,
+    ).getMasterFieldsForCoverage(region: 'Region 5');
 
     expect(rows.single['field_number'], 'CACHE-1');
     expect(requests, hasLength(1));
@@ -271,6 +273,47 @@ void main() {
   );
 
   test(
+    'Region Trial coverage bypasses season without changing other regions',
+    () async {
+      final requestedSeasons = <String, Object?>{};
+      final client = SupabaseClient(
+        'https://fields.invalid',
+        'test-key',
+        httpClient: MockClient((request) async {
+          expect(request.url.path, '/functions/v1/master-fields-map-cache');
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          final region = body['region'] as String;
+          requestedSeasons[region] = body['season'];
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode({
+                'data': [
+                  {'field_number': 'FIELD-$region', 'region': region},
+                ],
+                'cache': {'status': 'hit'},
+              }),
+            ),
+            200,
+            headers: {'content-type': 'application/json'},
+            request: request,
+          );
+        }),
+      );
+      addTearDown(client.dispose);
+
+      final rows = await SupabaseService(client: client)
+          .getMasterFieldsForCoverageByRegions(const [
+            'Region 5',
+            'Region Trial',
+          ], season: 'DS26');
+
+      expect(rows, hasLength(2));
+      expect(requestedSeasons['Region 5'], 'DS26');
+      expect(requestedSeasons['Region Trial'], isNull);
+    },
+  );
+
+  test(
     'large coverage status lists can be parsed off the UI isolate',
     () async {
       final rawFields = List.generate(
@@ -293,8 +336,9 @@ void main() {
       addTearDown(container.dispose);
 
       final statuses = await container.read(
-        coverageStatusListScopedProvider(const MasterFieldMapScope.all())
-            .future,
+        coverageStatusListScopedProvider(
+          const MasterFieldMapScope.all(),
+        ).future,
       );
       expect(statuses, hasLength(200));
       expect(statuses.first.fieldNumber, 'F0');

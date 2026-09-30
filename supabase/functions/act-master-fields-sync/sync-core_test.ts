@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { mapExportRow, normalizeFieldNumber, reconcile } from "./sync-core.ts";
+import {
+  mapExportRow,
+  mapFinalPldAreas,
+  normalizeFieldNumber,
+  reconcile,
+} from "./sync-core.ts";
 
 function test(name: string, body: () => void) {
   try {
@@ -125,6 +130,28 @@ test("maps ACT Harvest values into the managed harvest fields", () => {
   assert.equal(row.sourcePayload.harvested_qty_kg, 1250.75);
 });
 
+test("maps final ACT PLD columns as planted, discarded, then nett area", () => {
+  const fullDiscard = Array<unknown>(15).fill(null);
+  fullDiscard[12] = 0.04;
+  fullDiscard[13] = 0.04;
+  fullDiscard[14] = 0;
+  assert.deepEqual(mapFinalPldAreas(fullDiscard), {
+    plantedAreaHa: 0.04,
+    discardAreaHa: 0.04,
+    effectiveAreaHa: 0,
+  });
+
+  const partialDiscard = Array<unknown>(15).fill(null);
+  partialDiscard[12] = "0,10";
+  partialDiscard[13] = "0,04";
+  partialDiscard[14] = "0,06";
+  assert.deepEqual(mapFinalPldAreas(partialDiscard), {
+    plantedAreaHa: 0.1,
+    discardAreaHa: 0.04,
+    effectiveAreaHa: 0.06,
+  });
+});
+
 test("missing ACT rows are informational and never actionable", () => {
   const result = reconcile([], [{ field_number: "KC_ONLY_001", hybrid: "AX01" }]);
   assert.equal(result.changes[0].changeKind, "MISSING_SOURCE");
@@ -175,6 +202,41 @@ test("sync migrations preserve PLD actual area and review unsafe Harvest area", 
     ),
     "utf8",
   );
+  const pldLifecycleSql = readFileSync(
+    new URL(
+      "../../migrations/20260929033000_add_audit_pld_lifecycle_and_revision_history.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const optimizedPldMergeSql = readFileSync(
+    new URL(
+      "../../migrations/20260930060000_optimize_act_pld_merge_reviews.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const sweetCornAssignmentSql = readFileSync(
+    new URL(
+      "../../migrations/20260930080000_enforce_sweet_corn_area_assignments.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const pldLifecycleMonitorSql = readFileSync(
+    new URL(
+      "../../migrations/20260930113000_add_pld_lifecycle_monitor.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const pldColumnAndTypeFixSql = readFileSync(
+    new URL(
+      "../../migrations/20260930150000_fix_pld_columns_and_backfill_field_corn_type.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
 
   assert.match(mergeSql, /p\.actual_planted_area_ha - p\.final_nett_area_ha/);
   assert.match(mergeSql, /coalesce\(max\(h\.harvested_area_ha\), 0\)/);
@@ -212,4 +274,61 @@ test("sync migrations preserve PLD actual area and review unsafe Harvest area", 
   assert.match(scopedDailySyncSql, /act_monitor_name_matches\(field_data\.qa_fi/);
   assert.match(scopedDailySyncSql, /least\(greatest\(coalesce\(p_limit, 20\), 1\), 50\)/);
   assert.match(scopedDailySyncSql, /latest\.status = 'COMPLETED'/);
+  assert.match(pldLifecycleSql, /create table if not exists public\.audit_pld_lifecycle/);
+  assert.match(pldLifecycleSql, /create table if not exists public\.audit_revision_history/);
+  assert.match(pldLifecycleSql, /PLD_ACT_CONFIRMED_LOCKED/);
+  assert.match(pldLifecycleSql, /before update or delete/);
+  assert.match(pldLifecycleSql, /status in \('PENDING', 'CONFIRMED', 'UPDATED'\)/);
+  assert.match(pldLifecycleSql, /v_effective is not null and v_effective <= 0/);
+  assert.match(pldLifecycleSql, /run\.status in \('APPLYING', 'COMPLETED'\)/);
+  assert.match(pldLifecycleSql, /get_field_pld_audit_lifecycle/);
+  assert.match(
+    optimizedPldMergeSql,
+    /refresh_act_sync_harvest_reviews_for_fields/,
+  );
+  assert.match(optimizedPldMergeSql, /r\.field_number_norm = any\(p_field_numbers\)/);
+  assert.match(optimizedPldMergeSql, /set statement_timeout = '60s'/);
+  assert.doesNotMatch(
+    optimizedPldMergeSql,
+    /select public\.refresh_act_sync_harvest_reviews\(p_run_id\)/,
+  );
+  assert.match(sweetCornAssignmentSql, /AX01', 'AX02', 'AX03', 'AX04/);
+  assert.match(sweetCornAssignmentSql, /JOMBANG\|NGANJUK\|KEDIRI/);
+  assert.match(sweetCornAssignmentSql, /MALANG\|PASURUAN/);
+  assert.match(sweetCornAssignmentSql, /'region', 'Zona 4'/);
+  assert.match(sweetCornAssignmentSql, /'qa_spv', 'Krisna Bagus Andrian'/);
+  assert.match(
+    sweetCornAssignmentSql,
+    /before insert or update of source_payload on public\.act_sync_rows/i,
+  );
+  assert.match(
+    sweetCornAssignmentSql,
+    /before insert or update on public\.master_fields/i,
+  );
+  assert.match(
+    pldLifecycleMonitorSql,
+    /get_planting_pld_lifecycle_summary/,
+  );
+  assert.match(
+    pldLifecycleMonitorSql,
+    /get_planting_pld_lifecycle_items/,
+  );
+  assert.match(
+    pldLifecycleMonitorSql,
+    /count\(\*\) filter \(where lifecycle_status = 'PENDING'\)/,
+  );
+  assert.match(pldLifecycleMonitorSql, /scope\.role = 'SPV'/);
+  assert.match(pldLifecycleMonitorSql, /scope\.role = 'FI'/);
+  assert.match(
+    pldLifecycleMonitorSql,
+    /least\(greatest\(coalesce\(p_limit, 20\), 1\), 50\)/,
+  );
+  assert.match(
+    pldColumnAndTypeFixSql,
+    /when p_field in \('hybrid', 'type'\)/,
+  );
+  assert.doesNotMatch(
+    pldColumnAndTypeFixSql,
+    /p_current is null[\s\S]*FIELD CORN[\s\S]*then false/,
+  );
 });

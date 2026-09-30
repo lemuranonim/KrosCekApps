@@ -110,11 +110,13 @@ class _ActDataMonitorScreenState extends ConsumerState<ActDataMonitorScreen> {
     ref.invalidate(actSyncHarvestReviewsProvider);
     ref.invalidate(plantingDataMonitorOptionsProvider);
     ref.invalidate(plantingDataMonitorSummaryProvider);
+    ref.invalidate(plantingPldLifecycleSummaryProvider);
     await Future.wait([
       ref.read(actSyncStatusProvider.future),
       ref.read(actSyncHarvestReviewsProvider.future),
       ref.read(plantingDataMonitorOptionsProvider.future),
       ref.read(plantingDataMonitorSummaryProvider(_plantingFilter).future),
+      ref.read(plantingPldLifecycleSummaryProvider(_plantingFilter).future),
     ]);
   }
 
@@ -128,6 +130,22 @@ class _ActDataMonitorScreenState extends ConsumerState<ActDataMonitorScreen> {
       _seedType = null;
       _statusFilter = ActReviewStatusFilter.all;
     });
+  }
+
+  Future<void> _openPldLifecycle(String status) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FractionallySizedBox(
+        heightFactor: 0.94,
+        child: _PldLifecycleSheet(
+          filter: _plantingFilter,
+          initialStatus: status,
+        ),
+      ),
+    );
   }
 
   @override
@@ -389,6 +407,9 @@ class _ActDataMonitorScreenState extends ConsumerState<ActDataMonitorScreen> {
     final summaryAsync = ref.watch(
       plantingDataMonitorSummaryProvider(_plantingFilter),
     );
+    final pldSummaryAsync = ref.watch(
+      plantingPldLifecycleSummaryProvider(_plantingFilter),
+    );
 
     return RefreshIndicator(
       color: AdvantaColors.primaryGreen,
@@ -419,6 +440,22 @@ class _ActDataMonitorScreenState extends ConsumerState<ActDataMonitorScreen> {
               ),
             ),
             data: (summary) => _PlantingAreaSummary(summary: summary),
+          ),
+          const SizedBox(height: 12),
+          pldSummaryAsync.when(
+            loading: () => const _LoadingPanel(
+              message: 'Menghitung progres rekomendasi PLD…',
+            ),
+            error: (error, _) => _InlineError(
+              message: 'Progres rekomendasi PLD belum dapat dimuat.',
+              onRetry: () => ref.invalidate(
+                plantingPldLifecycleSummaryProvider(_plantingFilter),
+              ),
+            ),
+            data: (summary) => _PldLifecycleSummaryCard(
+              summary: summary,
+              onOpen: _openPldLifecycle,
+            ),
           ),
           const SizedBox(height: 20),
           summaryAsync.maybeWhen(
@@ -1375,6 +1412,690 @@ class _AreaSummaryCard extends StatelessWidget {
     );
   }
 }
+
+class _PldLifecycleSummaryCard extends StatelessWidget {
+  const _PldLifecycleSummaryCard({required this.summary, required this.onOpen});
+
+  final PlantingPldLifecycleSummary summary;
+  final ValueChanged<String> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final metrics = [
+      (
+        'ALL',
+        'Total rekomendasi',
+        summary.totalRecommendedFn,
+        AdvantaColors.primaryGreen,
+        Icons.assignment_outlined,
+      ),
+      (
+        'PENDING',
+        'Menunggu ACT',
+        summary.pendingFn,
+        const Color(0xFFE58A00),
+        Icons.hourglass_top_rounded,
+      ),
+      (
+        'CONFIRMED',
+        'Confirmed ACT',
+        summary.confirmedFn,
+        AdvantaColors.success,
+        Icons.verified_outlined,
+      ),
+      (
+        'UPDATED',
+        'Direvisi',
+        summary.updatedFn,
+        const Color(0xFF2476B8),
+        Icons.edit_note_rounded,
+      ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: AdvantaRadius.cardRadius,
+        border: Border.all(color: AdvantaColors.dividerGrey),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: const BoxDecoration(
+                  color: AdvantaColors.paleGreen,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.flag_circle_outlined,
+                  color: AdvantaColors.primaryGreen,
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Progress rekomendasi PLD',
+                      style: AdvantaText.heading3.copyWith(
+                        color: AdvantaColors.deepForest,
+                      ),
+                    ),
+                    Text(
+                      'Audit FI → pengajuan FA → konfirmasi ACT',
+                      style: AdvantaText.caption.copyWith(
+                        color: AdvantaColors.mutedGrey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '${_area(summary.confirmationRate)}%',
+                style: AdvantaText.heading2.copyWith(
+                  color: AdvantaColors.success,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 11),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              minHeight: 7,
+              value: (summary.confirmationRate / 100)
+                  .clamp(0.0, 1.0)
+                  .toDouble(),
+              backgroundColor: const Color(0xFFFFE8C2),
+              valueColor: const AlwaysStoppedAnimation(AdvantaColors.success),
+            ),
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = (constraints.maxWidth - 8) / 2;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final metric in metrics)
+                    SizedBox(
+                      width: width,
+                      child: _PldLifecycleMetric(
+                        label: metric.$2,
+                        value: metric.$3,
+                        color: metric.$4,
+                        icon: metric.$5,
+                        onTap: () => onOpen(metric.$1),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${_integer(summary.phaseRows)} catatan fase pada ${_integer(summary.totalRecommendedFn)} FN unik. Ketuk kartu untuk melihat daftarnya.',
+            style: AdvantaText.caption.copyWith(color: AdvantaColors.mutedGrey),
+          ),
+          if (summary.historicalFn > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              '${_integer(summary.historicalFn)} FN berasal dari audit historis; nama pengguna penyimpan lama mungkin belum terekam.',
+              style: AdvantaText.caption.copyWith(
+                color: const Color(0xFF8D6E20),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PldLifecycleMetric extends StatelessWidget {
+  const _PldLifecycleMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final int value;
+  final Color color;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color.withAlpha(13),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(11),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withAlpha(50)),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 19, color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _integer(value),
+                      style: AdvantaText.heading3.copyWith(color: color),
+                    ),
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AdvantaText.caption.copyWith(
+                        color: AdvantaColors.charcoal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, size: 18, color: color),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PldLifecycleSheet extends ConsumerStatefulWidget {
+  const _PldLifecycleSheet({required this.filter, required this.initialStatus});
+
+  final PlantingDataMonitorFilter filter;
+  final String initialStatus;
+
+  @override
+  ConsumerState<_PldLifecycleSheet> createState() => _PldLifecycleSheetState();
+}
+
+class _PldLifecycleSheetState extends ConsumerState<_PldLifecycleSheet> {
+  final _searchController = TextEditingController();
+  late String _status;
+  String? _searchQuery;
+  int _offset = 0;
+
+  static const _pageSize = 20;
+
+  PlantingPldLifecycleQuery get _query => PlantingPldLifecycleQuery(
+    filter: widget.filter,
+    status: _status,
+    query: _searchQuery,
+    offset: _offset,
+    limit: _pageSize,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _status =
+        const {
+          'ALL',
+          'PENDING',
+          'CONFIRMED',
+          'UPDATED',
+        }.contains(widget.initialStatus)
+        ? widget.initialStatus
+        : 'ALL';
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _applySearch() {
+    final value = _searchController.text.trim();
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _searchQuery = value.isEmpty ? null : value;
+      _offset = 0;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pageAsync = ref.watch(plantingPldLifecycleItemsProvider(_query));
+    return Material(
+      color: AdvantaColors.softGrey,
+      borderRadius: AdvantaRadius.sheetRadius,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          const SizedBox(height: 9),
+          Container(
+            width: 42,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AdvantaColors.mutedGrey.withAlpha(90),
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 11, 8, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Lifecycle rekomendasi PLD',
+                        style: AdvantaText.heading2.copyWith(
+                          color: AdvantaColors.deepForest,
+                        ),
+                      ),
+                      Text(
+                        'FN unik • mengikuti filter Data Tanam Monitor',
+                        style: AdvantaText.caption.copyWith(
+                          color: AdvantaColors.mutedGrey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Perbarui',
+                  onPressed: () =>
+                      ref.invalidate(plantingPldLifecycleItemsProvider(_query)),
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+                IconButton(
+                  tooltip: 'Tutup',
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              controller: _searchController,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _applySearch(),
+              decoration: InputDecoration(
+                hintText: 'Cari FN, petani, lokasi, hybrid, atau QA FI',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: IconButton(
+                  tooltip: 'Cari',
+                  onPressed: _applySearch,
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                for (final option in const [
+                  ('ALL', 'Semua'),
+                  ('PENDING', 'Menunggu ACT'),
+                  ('CONFIRMED', 'Confirmed ACT'),
+                  ('UPDATED', 'Direvisi'),
+                ]) ...[
+                  _StatusChoice(
+                    label: option.$2,
+                    selected: _status == option.$1,
+                    onTap: () => setState(() {
+                      _status = option.$1;
+                      _offset = 0;
+                    }),
+                  ),
+                  const SizedBox(width: 7),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: pageAsync.when(
+              loading: () => const Center(
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+              error: (error, _) => Padding(
+                padding: const EdgeInsets.all(16),
+                child: _InlineError(
+                  message: 'Daftar lifecycle PLD belum dapat dimuat.',
+                  onRetry: () =>
+                      ref.invalidate(plantingPldLifecycleItemsProvider(_query)),
+                ),
+              ),
+              data: _buildPage,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPage(PlantingPldLifecyclePage page) {
+    if (page.items.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: _EmptyPanel(
+          icon: Icons.flag_outlined,
+          title: 'Tidak ada FN pada filter ini',
+          message: 'Ganti status, pencarian, atau filter Data Tanam Monitor.',
+        ),
+      );
+    }
+    final first = page.offset + 1;
+    final last = page.offset + page.items.length;
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            itemCount: page.items.length,
+            itemBuilder: (context, index) =>
+                _PldLifecycleItemCard(item: page.items[index]),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 9),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: AdvantaColors.dividerGrey)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '$first–$last dari ${_integer(page.totalCount)} FN',
+                  style: AdvantaText.label.copyWith(
+                    color: AdvantaColors.deepForest,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Halaman sebelumnya',
+                onPressed: page.hasPrevious
+                    ? () => setState(() {
+                        final previousOffset = _offset - _pageSize;
+                        _offset = previousOffset < 0 ? 0 : previousOffset;
+                      })
+                    : null,
+                icon: const Icon(Icons.chevron_left_rounded),
+              ),
+              IconButton(
+                tooltip: 'Halaman berikutnya',
+                onPressed: page.hasNext
+                    ? () => setState(() => _offset += _pageSize)
+                    : null,
+                icon: const Icon(Icons.chevron_right_rounded),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PldLifecycleItemCard extends StatelessWidget {
+  const _PldLifecycleItemCard({required this.item});
+
+  final PlantingPldLifecycleItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final presentation = switch (item.status) {
+      'CONFIRMED' => (
+        'Confirmed ACT',
+        AdvantaColors.success,
+        Icons.verified_outlined,
+      ),
+      'UPDATED' => (
+        'Direvisi',
+        const Color(0xFF2476B8),
+        Icons.edit_note_rounded,
+      ),
+      _ => (
+        'Menunggu ACT',
+        const Color(0xFFE58A00),
+        Icons.hourglass_top_rounded,
+      ),
+    };
+    final eventDate = item.status == 'CONFIRMED'
+        ? item.confirmedAt
+        : item.status == 'UPDATED'
+        ? item.revisedAt
+        : item.recommendedAt;
+    final eventLabel = item.status == 'CONFIRMED'
+        ? 'Dikonfirmasi'
+        : item.status == 'UPDATED'
+        ? 'Direvisi'
+        : 'Direkomendasikan';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: presentation.$2.withAlpha(75)),
+        boxShadow: AdvantaShadows.card(false),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: presentation.$2.withAlpha(18),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(presentation.$3, size: 20, color: presentation.$2),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.fieldNumber,
+                      style: AdvantaText.heading3.copyWith(
+                        color: AdvantaColors.deepForest,
+                      ),
+                    ),
+                    Text(
+                      [
+                        item.farmerName,
+                        item.hybrid,
+                      ].whereType<String>().join(' • '),
+                      style: AdvantaText.body2.copyWith(
+                        color: AdvantaColors.charcoal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _PldStatusBadge(label: presentation.$1, color: presentation.$2),
+            ],
+          ),
+          if (item.locationLabel.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            _InfoLine(
+              icon: Icons.location_on_outlined,
+              text: item.locationLabel,
+            ),
+          ],
+          const SizedBox(height: 5),
+          _InfoLine(
+            icon: Icons.person_outline_rounded,
+            text: [
+              if (item.qaFi != null) 'QA FI ${item.qaFi}',
+              if (item.qaSpv != null) 'QA SPV ${item.qaSpv}',
+            ].join(' • '),
+          ),
+          const SizedBox(height: 11),
+          Row(
+            children: [
+              Expanded(
+                child: _AreaMetric(
+                  label: 'Tanam',
+                  value: item.totalAreaPlantedHa,
+                  color: AdvantaColors.primaryGreen,
+                ),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: _AreaMetric(
+                  label: 'PLD',
+                  value: item.discardAreaHa,
+                  color: const Color(0xFFE58A00),
+                ),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: _AreaMetric(
+                  label: 'Effective',
+                  value: item.effectiveAreaHa,
+                  color: AdvantaColors.success,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final phase in item.phases) _PldPhaseChip(phase: phase),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _InfoLine(
+            icon: item.historicalOnly
+                ? Icons.history_rounded
+                : Icons.person_pin_outlined,
+            text: item.recommenderNames != null
+                ? 'Direkomendasikan oleh ${item.recommenderNames}'
+                : 'Audit historis • penanggung jawab area ${item.qaFi ?? '-'}',
+          ),
+          if (eventDate != null) ...[
+            const SizedBox(height: 5),
+            _InfoLine(
+              icon: Icons.event_outlined,
+              text:
+                  '$eventLabel ${DateFormat('d MMM yyyy, HH:mm', 'id_ID').format(eventDate)}',
+            ),
+          ],
+          if (item.status == 'PENDING') ...[
+            const SizedBox(height: 10),
+            const _SyncNotice(
+              text:
+                  'Menunggu pengajuan/approval PLD di ACT sampai effective area menjadi 0.',
+              color: Color(0xFFE58A00),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PldStatusBadge extends StatelessWidget {
+  const _PldStatusBadge({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withAlpha(16),
+        borderRadius: AdvantaRadius.chipRadius,
+      ),
+      child: Text(
+        label,
+        style: AdvantaText.caption.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _PldPhaseChip extends StatelessWidget {
+  const _PldPhaseChip({required this.phase});
+
+  final PlantingPldLifecyclePhase phase;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (phase.status) {
+      'CONFIRMED' => AdvantaColors.success,
+      'UPDATED' => const Color(0xFF2476B8),
+      _ => const Color(0xFFE58A00),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withAlpha(12),
+        borderRadius: AdvantaRadius.chipRadius,
+        border: Border.all(color: color.withAlpha(45)),
+      ),
+      child: Text(
+        '${_pldPhaseLabel(phase.phaseKey)} • ${_pldShortStatus(phase.status)}',
+        style: AdvantaText.caption.copyWith(color: color),
+      ),
+    );
+  }
+}
+
+String _pldPhaseLabel(String phaseKey) => switch (phaseKey) {
+  'vegetative' => 'Vegetative',
+  'generative_1' => 'Gen CP1',
+  'generative_2' => 'Gen CP2',
+  'generative_3' => 'Gen CP3',
+  'generative_4' => 'Gen CP4',
+  'generative_5' => 'Gen CP5',
+  'pre_harvest' => 'Pre-Harvest',
+  'harvest' => 'Harvest',
+  _ => phaseKey.replaceAll('_', ' '),
+};
+
+String _pldShortStatus(String status) => switch (status) {
+  'CONFIRMED' => 'Confirmed',
+  'UPDATED' => 'Revisi',
+  _ => 'Pending',
+};
 
 class _SyncHero extends StatelessWidget {
   const _SyncHero({required this.status});
