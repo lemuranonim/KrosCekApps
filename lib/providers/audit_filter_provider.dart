@@ -9,6 +9,7 @@ class AuditDashboardFilters {
   final Set<DateTime> weeks;
   final bool allWeeks;
   final Set<String> flags;
+  final String? phase;
   final String? region;
   final String? district;
   final String? village;
@@ -20,6 +21,7 @@ class AuditDashboardFilters {
     required this.weeks,
     required this.allWeeks,
     required this.flags,
+    required this.phase,
     required this.region,
     required this.district,
     required this.village,
@@ -32,6 +34,7 @@ class AuditDashboardFilters {
         weeks: {auditWeekStart(DateTime.now())},
         allWeeks: false,
         flags: {...defaultAuditFlags},
+        phase: null,
         region: null,
         district: null,
         village: null,
@@ -51,6 +54,8 @@ class AuditDashboardFilters {
     Set<DateTime>? weeks,
     bool? allWeeks,
     Set<String>? flags,
+    String? phase,
+    bool clearPhase = false,
     String? region,
     bool clearRegion = false,
     String? district,
@@ -65,6 +70,7 @@ class AuditDashboardFilters {
         weeks: weeks ?? this.weeks,
         allWeeks: allWeeks ?? this.allWeeks,
         flags: flags ?? this.flags,
+        phase: clearPhase ? null : phase ?? this.phase,
         region: clearRegion ? null : region ?? this.region,
         district: clearDistrict ? null : district ?? this.district,
         village: clearVillage ? null : village ?? this.village,
@@ -92,6 +98,14 @@ class AuditDashboardFilterNotifier extends Notifier<AuditDashboardFilters> {
 
   void setFlags(Set<String> flags) =>
       state = state.copyWith(flags: Set.unmodifiable(flags));
+
+  void setPhase(String? phase) {
+    final normalized = phase?.trim();
+    if (normalized != null && !auditStageLabels.containsKey(normalized)) {
+      return;
+    }
+    state = state.copyWith(phase: normalized, clearPhase: normalized == null);
+  }
 
   void setRegion(String? value) => state = state.copyWith(
         region: value,

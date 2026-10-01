@@ -590,6 +590,73 @@ void main() {
     expect(aggregateCoverageScore([lifecycle]), 50);
   });
 
+  test('phase filter isolates targets, score, flagging, and actions', () {
+    final raw = fieldAt(
+      60,
+      veg: {'date_of_audit': '2026-08-01', 'flagging': 'GF'},
+      gen: {'date_of_audit_3': '2026-08-24', 'flagging': 'RFI'},
+    );
+    final lifecycle = FieldCoverageStatus.fromRaw(
+      raw,
+      weekStart: week,
+      now: end,
+      includeHistoricalTargets: true,
+      lifecycleProjection: true,
+    );
+
+    final vegetative = filterCoverageFieldsByStage([lifecycle], 'vegetative');
+    final generative = filterCoverageFieldsByStage([lifecycle], 'generative');
+
+    expect(vegetative, hasLength(1));
+    expect(vegetative.single.weekly.targets.map((target) => target.phase), [
+      'vegetative',
+    ]);
+    expect(vegetative.single.weekly.flag, 'GF');
+    expect(vegetative.single.hasActionRequired, false);
+    expect(vegetative.single.coverageScore, 100);
+    expect(
+      filterCoverageFieldsByStage(
+        [lifecycle],
+        'vegetative',
+        flags: {'RFI'},
+      ),
+      isEmpty,
+    );
+
+    expect(generative, hasLength(1));
+    expect(
+      generative.single.weekly.targets.every(
+        (target) => target.phase.startsWith('generative_'),
+      ),
+      true,
+    );
+    expect(generative.single.weekly.flag, 'RFI');
+    expect(generative.single.hasActionRequired, true);
+    expect(generative.single.coverageScore, lessThan(100));
+    expect(
+      filterCoverageFieldsByStage(
+        [lifecycle],
+        'generative',
+        flags: {'RFI'},
+      ),
+      hasLength(1),
+    );
+
+    final summary = calculateFilteredPhases(vegetative, stage: 'vegetative');
+    expect(summary.phases.map((phase) => phase.label), ['Vegetative']);
+    expect(summary.targetCompletionPct, 100);
+    expect(buildFiCoverageList(vegetative).single.coverageScore, 100);
+  });
+
+  test('phase filter fails closed for an unknown phase', () {
+    final field = FieldCoverageStatus.fromRaw(
+      fieldAt(20),
+      weekStart: week,
+      now: end,
+    );
+    expect(filterCoverageFieldsByStage([field], 'unknown'), isEmpty);
+  });
+
   test('SC highland rules use location, PSP has no PreHarvest', () {
     final lowland = project(fieldAt(40, hybrid: 'AX01'));
     final highland = project({
