@@ -305,6 +305,41 @@ class WeeklyAuditField {
       isAuditEligible && targetsForStage(stage).any((target) => target.overdue);
   bool isStagePending(String stage) =>
       hasTargetForStage(stage) && !isStageDone(stage) && !isStageOverdue(stage);
+
+  /// Builds a phase-only view without reparsing raw data. Keeping the original
+  /// target instances preserves their evaluated deadlines and late-audit
+  /// completion state, while observations and flagging from other phases are
+  /// deliberately excluded from phase analytics.
+  WeeklyAuditField scopedToStage(String stage) {
+    final normalizedStage = auditStage(stage);
+    final scopedTargets = targets
+        .where((target) => auditStage(target.phase) == normalizedStage)
+        .toList(growable: false);
+    final scopedObservations = observations
+        .where(
+          (observation) => auditStage(observation.phase) == normalizedStage,
+        )
+        .toList(growable: false);
+    var scopedFlag = auditNotYetFlagging;
+    for (final observation in scopedObservations) {
+      if (observation.flag != null) scopedFlag = observation.flag!;
+    }
+
+    return WeeklyAuditField._(
+      raw: raw,
+      weekStart: weekStart,
+      asOf: asOf,
+      dap: dap,
+      stage: normalizedStage,
+      targets: scopedTargets,
+      observations: scopedObservations,
+      phaseCompletions: phaseCompletions,
+      // PLD is terminal and must never become eligible again when an earlier
+      // phase is selected.
+      flag: flag == 'PLD' ? 'PLD' : scopedFlag,
+    );
+  }
+
   double get targetWeight =>
       targets.fold(0.0, (sum, target) => sum + target.weight);
   double get completion => !isTarget || targetWeight <= 0

@@ -202,6 +202,13 @@ test("sync migrations preserve PLD actual area and review unsafe Harvest area", 
     ),
     "utf8",
   );
+  const optimizedScopedDailySyncSql = readFileSync(
+    new URL(
+      "../../migrations/20261001013000_optimize_scoped_daily_sync_results.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
   const pldLifecycleSql = readFileSync(
     new URL(
       "../../migrations/20260929033000_add_audit_pld_lifecycle_and_revision_history.sql",
@@ -274,6 +281,15 @@ test("sync migrations preserve PLD actual area and review unsafe Harvest area", 
   assert.match(scopedDailySyncSql, /act_monitor_name_matches\(field_data\.qa_fi/);
   assert.match(scopedDailySyncSql, /least\(greatest\(coalesce\(p_limit, 20\), 1\), 50\)/);
   assert.match(scopedDailySyncSql, /latest\.status = 'COMPLETED'/);
+  assert.match(optimizedScopedDailySyncSql, /act_sync_runs_completed_latest_idx/);
+  assert.match(optimizedScopedDailySyncSql, /field_owners as materialized/);
+  assert.match(optimizedScopedDailySyncSql, /visible_field_numbers as materialized/);
+  assert.match(optimizedScopedDailySyncSql, /page_ids as materialized/);
+  assert.match(optimizedScopedDailySyncSql, /page_with_safe_changes as/);
+  assert.match(
+    optimizedScopedDailySyncSql,
+    /from page_ids[\s\S]*?left join lateral \([\s\S]*?from public\.master_fields/,
+  );
   assert.match(pldLifecycleSql, /create table if not exists public\.audit_pld_lifecycle/);
   assert.match(pldLifecycleSql, /create table if not exists public\.audit_revision_history/);
   assert.match(pldLifecycleSql, /PLD_ACT_CONFIRMED_LOCKED/);
