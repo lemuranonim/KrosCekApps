@@ -1246,7 +1246,11 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
     final filters = ref.read(auditDashboardFilterProvider);
     _selectedRegion = filters.region;
     _selectedDistrict = filters.district;
-    _showAllRegions = filters.region == null;
+    // Manager/DEV must not start by downloading the complete all-region
+    // coverage payload. When no region has been selected yet, wait for the
+    // lightweight region list and use its first entry, matching Home Map.
+    // All Region remains available as an explicit choice in the filter.
+    _showAllRegions = false;
   }
 
   @override

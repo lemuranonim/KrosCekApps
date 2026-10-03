@@ -57,7 +57,10 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
     if (_weeks.isEmpty) _weeks = {_week};
     _region = shared.region;
     _district = shared.district;
-    _showAllRegions = shared.region == null;
+    // Direct entry must follow the same safe default as Home Map: resolve one
+    // region first instead of immediately fetching every region. An explicit
+    // All Region selection passed from Home Map is still honoured below.
+    _showAllRegions = false;
     _status = shared.status;
     _flags = {...shared.flags};
     final initial = widget.initialFilters;

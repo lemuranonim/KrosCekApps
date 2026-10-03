@@ -166,6 +166,9 @@ void main() {
       overrides: [
         coverageStatusListProvider.overrideWith((ref) async => fields),
         coverageStatusListScopedProvider(
+          const MasterFieldMapScope(region: 'East'),
+        ).overrideWith((ref) async => fields),
+        coverageStatusListScopedProvider(
           const MasterFieldMapScope.all(),
         ).overrideWith((ref) async => fields),
         activeMasterFieldRegionsProvider(
@@ -515,7 +518,9 @@ void main() {
     },
   );
 
-  testWidgets('planning defaults to the complete user scope', (tester) async {
+  testWidgets('planning defaults to the first available region', (
+    tester,
+  ) async {
     final ready = Completer<List<String>>();
     final requestedRegions = <String?>[];
     await tester.pumpWidget(
@@ -533,15 +538,16 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(requestedRegions, [null]);
+    expect(requestedRegions, isEmpty);
     ready.complete(['East', 'West']);
     await tester.pumpAndSettle();
-    expect(requestedRegions, [null]);
-    await tester.tap(find.widgetWithText(Chip, 'All Region'));
+    expect(requestedRegions, ['East']);
+    expect(find.widgetWithText(Chip, 'East'), findsOneWidget);
+    await tester.tap(find.widgetWithText(Chip, 'East'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('East').last);
+    await tester.tap(find.text('All Region').last);
     await tester.pumpAndSettle();
-    expect(requestedRegions, [null, 'East']);
+    expect(requestedRegions, ['East', null]);
     expect(tester.takeException(), isNull);
   });
 
@@ -558,6 +564,9 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
+    // First frame resolves the lightweight default-region lookup; the next
+    // frame starts the scoped planning request and renders its loading shell.
     await tester.pump();
 
     expect(find.text('Memuat planning audit'), findsOneWidget);
