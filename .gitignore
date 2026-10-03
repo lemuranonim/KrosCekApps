@@ -8,17 +8,24 @@
 .buildlog/
 .history
 .svn/
+.codex/
+.agents/
 .codex-remote-attachments
 migrate_working_dir/
 key.properties
 my-release-key.jks
+*.keystore
+*.jks
+*.p12
+*.pem
 secrets.properties
 android/my-release-key.jks
 android/key.properties
 assets/credentials.json
 assets/config.json
 
-# SQL files
+# Local SQL scratch files and database dumps. Supabase migrations are
+# explicitly versioned below.
 *.sql
 
 # IntelliJ related
@@ -27,10 +34,7 @@ assets/config.json
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+.vscode/
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -41,6 +45,8 @@ assets/config.json
 .pub-cache/
 .pub/
 /build/
+**/build/
+**/.cxx/
 /docs/
 # Supabase local runtime is ignored, while the ACT sync implementation is
 # versioned explicitly.
@@ -54,15 +60,8 @@ assets/config.json
 !/supabase/functions/master-fields-map-cache/**
 !/supabase/migrations/
 /supabase/migrations/*
-!/supabase/migrations/20260924*.sql
-!/supabase/migrations/20260925*.sql
-!/supabase/migrations/20260926*.sql
-!/supabase/migrations/20260927*.sql
-!/supabase/migrations/20260928*.sql
-!/supabase/migrations/20260929*.sql
-!/supabase/migrations/20260930*.sql
-!/supabase/migrations/202610*.sql
-.vscode/
+!/supabase/migrations/*.sql
+!/supabase/migrations/**/*.sql
 /local commit/
 
 # Symbolication related
@@ -76,16 +75,16 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Contoh tambahan pada .gitignore
-android/app/google-services.json
-android/app/google-services (1).json
-android/app/src/debug/google-services.json
-android/app/src/debug/google-services1.json
+# Client configuration generated locally by Firebase tooling.
+**/google-services*.json
+**/GoogleService-Info.plist
 
 # FVM Version Cache
 .fvm/
-/lib/screens/pi/.claude/settings.local.json
+**/.claude/settings.local.json
 
 # Environment
 .env
 *.env
+.env.*
+!.env.example

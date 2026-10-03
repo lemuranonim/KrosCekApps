@@ -15,6 +15,7 @@ if (localPropertiesFile.exists()) {
 
 def flutterVersionCode = localProperties.getProperty("flutter.versionCode", "1").toInteger()
 def flutterVersionName = localProperties.getProperty("flutter.versionName", "Release")
+def mapsApiKey = localProperties.getProperty("MAPS_API_KEY") ?: System.getenv("MAPS_API_KEY") ?: ""
 
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file("key.properties")
@@ -35,6 +36,9 @@ android {
         targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
+        // Preserve placeholders injected by Flutter (for example
+        // applicationName) and add only the Maps key owned by this app.
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
 
         multiDexEnabled true
     }

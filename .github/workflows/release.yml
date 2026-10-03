@@ -69,6 +69,7 @@ jobs:
         run: shorebird release android --artifact apk --flutter-version="$FLUTTER_VERSION"
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
 
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2

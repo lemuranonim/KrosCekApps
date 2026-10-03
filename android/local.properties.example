@@ -1,0 +1,3 @@
+# Copy this value into android/local.properties or provide it as an
+# environment variable. Never commit the real key.
+MAPS_API_KEY=replace-with-restricted-google-maps-key
