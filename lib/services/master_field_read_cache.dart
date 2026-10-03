@@ -1,34 +1,40 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 
-class MasterFieldReadCacheEntry {
-  final int version;
-  final DateTime savedAt;
-  final List<Map<String, dynamic>> rows;
+import 'hive_master_field_read_cache_store.dart';
+import 'master_field_read_cache_contract.dart';
 
-  const MasterFieldReadCacheEntry({
-    required this.version,
-    required this.savedAt,
-    required this.rows,
-  });
-}
+export 'master_field_read_cache_contract.dart';
 
-/// Persistent, per-account read-through snapshot for expensive field payloads.
+/// Stable facade for the expensive Map/Coverage/Planning local read cache.
 ///
-/// Redis remains the shared server cache. This snapshot only prevents an
-/// unchanged Map/Coverage/Planning payload from being downloaded again on
-/// every app start. The Edge Function validates [version] before this data is
-/// returned.
+/// Stage 2 keeps Hive as the default store while routing all calls through a
+/// backend-neutral contract. Redis remains the shared server cache, and a
+/// local miss or failure still falls through to the existing network path.
 class MasterFieldReadCache {
   MasterFieldReadCache._();
 
-  static const boxName = 'masterFieldReadCacheV2';
-  static const _keyPrefix = 'mf-read-v2';
-  static const _maxEntriesPerUser = 12;
+  static const boxName = HiveMasterFieldReadCacheStore.boxName;
 
-  static bool get isAvailable => Hive.isBoxOpen(boxName);
+  static final HiveMasterFieldReadCacheStore _hiveStore =
+      HiveMasterFieldReadCacheStore();
+
+  static MasterFieldReadCacheRouter _router = _buildRouter();
+
+  static bool get isAvailable => _hiveStore.isAvailable;
+
+  static MasterFieldCacheFeatureFlags get featureFlags => _router.flags;
+
+  /// Registers the future Drift store and/or an explicit rollout policy.
+  ///
+  /// Calling this is optional. Without it, compile-time flags are read and
+  /// Hive remains the default backend. Until a Drift store is registered, a
+  /// requested Drift route safely falls back to Hive.
+  static void configure({
+    MasterFieldCacheFeatureFlags? flags,
+    MasterFieldReadCacheStore? driftStore,
+  }) {
+    _router = _buildRouter(flags: flags, driftStore: driftStore);
+  }
 
   static String key({
     required String userId,
@@ -36,16 +42,13 @@ class MasterFieldReadCache {
     String? season,
     String? region,
     String? district,
-  }) {
-    final identity = jsonEncode({
-      'dataset': dataset,
-      'season': _normalize(season),
-      'region': _normalize(region),
-      'district': _normalize(district),
-    });
-    final encodedScope = base64Url.encode(utf8.encode(identity));
-    return '$_keyPrefix:$userId:$encodedScope';
-  }
+  }) => MasterFieldCacheScope(
+    userId: userId,
+    dataset: dataset,
+    season: season,
+    region: region,
+    district: district,
+  ).storageKey;
 
   static Future<MasterFieldReadCacheEntry?> read({
     required String userId,
@@ -53,40 +56,15 @@ class MasterFieldReadCache {
     String? season,
     String? region,
     String? district,
-  }) async {
-    if (!isAvailable || userId.trim().isEmpty) return null;
-    try {
-      final cacheKey = key(
-        userId: userId,
-        dataset: dataset,
-        season: season,
-        region: region,
-        district: district,
-      );
-      final raw = Hive.box<dynamic>(boxName).get(cacheKey);
-      if (raw is! Map) return null;
-
-      final version = raw['version'];
-      final savedAtMillis = raw['savedAt'];
-      final payload = raw['payload'];
-      if (version is! int ||
-          savedAtMillis is! int ||
-          payload is! String ||
-          payload.isEmpty) {
-        return null;
-      }
-
-      final rows = await compute(_decodeRows, payload);
-      return MasterFieldReadCacheEntry(
-        version: version,
-        savedAt: DateTime.fromMillisecondsSinceEpoch(savedAtMillis),
-        rows: rows,
-      );
-    } catch (error) {
-      debugPrint('Local $dataset cache read skipped: $error');
-      return null;
-    }
-  }
+  }) => _router.read(
+    MasterFieldCacheScope(
+      userId: userId,
+      dataset: dataset,
+      season: season,
+      region: region,
+      district: district,
+    ),
+  );
 
   static Future<void> write({
     required String userId,
@@ -96,72 +74,35 @@ class MasterFieldReadCache {
     String? season,
     String? region,
     String? district,
-  }) async {
-    if (!isAvailable || userId.trim().isEmpty || version < 0) return;
-    try {
-      final box = Hive.box<dynamic>(boxName);
-      final cacheKey = key(
-        userId: userId,
-        dataset: dataset,
-        season: season,
-        region: region,
-        district: district,
-      );
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final payload = await compute(_encodeRows, rows);
-      await box.put(cacheKey, {
-        'version': version,
-        'savedAt': now,
-        'payload': payload,
-      });
-      await _pruneUserEntries(box, userId);
-    } catch (error) {
-      debugPrint('Local $dataset cache write skipped: $error');
-    }
+  }) => _router.write(
+    MasterFieldCacheScope(
+      userId: userId,
+      dataset: dataset,
+      season: season,
+      region: region,
+      district: district,
+    ),
+    MasterFieldReadCacheEntry(
+      version: version,
+      savedAt: DateTime.now(),
+      rows: rows,
+    ),
+  );
+
+  static Future<void> clearUser(String userId) => _router.clearUser(userId);
+
+  @visibleForTesting
+  static void resetConfiguration() {
+    _router = _buildRouter();
   }
 
-  static Future<void> clearUser(String userId) async {
-    if (!isAvailable || userId.trim().isEmpty) return;
-    final box = Hive.box<dynamic>(boxName);
-    final prefix = '$_keyPrefix:$userId:';
-    final keys = box.keys
-        .where((key) => key is String && key.startsWith(prefix))
-        .toList(growable: false);
-    if (keys.isNotEmpty) await box.deleteAll(keys);
-  }
-
-  static Future<void> _pruneUserEntries(Box<dynamic> box, String userId) async {
-    final prefix = '$_keyPrefix:$userId:';
-    final entries = <({dynamic key, int savedAt})>[];
-    for (final cacheKey in box.keys) {
-      if (cacheKey is! String || !cacheKey.startsWith(prefix)) continue;
-      final value = box.get(cacheKey);
-      final savedAt = value is Map && value['savedAt'] is int
-          ? value['savedAt'] as int
-          : 0;
-      entries.add((key: cacheKey, savedAt: savedAt));
-    }
-    if (entries.length <= _maxEntriesPerUser) return;
-    entries.sort((a, b) => a.savedAt.compareTo(b.savedAt));
-    final deleteCount = entries.length - _maxEntriesPerUser;
-    await box.deleteAll(
-      entries.take(deleteCount).map((entry) => entry.key).toList(),
-    );
-  }
-
-  static String? _normalize(String? value) {
-    final normalized = value?.trim();
-    return normalized == null || normalized.isEmpty ? null : normalized;
-  }
-}
-
-String _encodeRows(List<Map<String, dynamic>> rows) => jsonEncode(rows);
-
-List<Map<String, dynamic>> _decodeRows(String payload) {
-  final decoded = jsonDecode(payload);
-  if (decoded is! List) throw const FormatException('Invalid cached rows');
-  return decoded
-      .whereType<Map>()
-      .map((row) => Map<String, dynamic>.from(row))
-      .toList(growable: false);
+  static MasterFieldReadCacheRouter _buildRouter({
+    MasterFieldCacheFeatureFlags? flags,
+    MasterFieldReadCacheStore? driftStore,
+  }) => MasterFieldReadCacheRouter(
+    flags: flags ?? MasterFieldCacheFeatureFlags.fromEnvironment(),
+    hiveStore: _hiveStore,
+    driftStore: driftStore,
+    log: (message, error, _) => debugPrint('$message: $error'),
+  );
 }
