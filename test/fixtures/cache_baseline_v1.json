@@ -1,0 +1,207 @@
+{
+  "contractVersion": 1,
+  "productionScaleReference": {
+    "rowCount": 34600,
+    "activeRowCount": 34600,
+    "uniqueFieldNumberCount": 34600,
+    "capturedAt": "2026-10-04T01:14:14+07:00",
+    "source": "Supabase public.master_fields"
+  },
+  "scope": {
+    "userId": "baseline-user",
+    "season": "DS26",
+    "region": "Region 5",
+    "district": "Blitar"
+  },
+  "datasets": {
+    "map": {
+      "serverVersion": 101,
+      "requiredKeys": [
+        "field_number",
+        "season",
+        "region",
+        "district_kab",
+        "qa_fi",
+        "qa_spv"
+      ],
+      "forbiddenKeys": [],
+      "rows": [
+        {
+          "field_number": "MAP-001",
+          "season": "DS26",
+          "farmer_name": "Synthetic Farmer",
+          "hybrid": "SYNTH-A",
+          "effective_area_ha": 1.5,
+          "planting_date_pdn": "2026-08-01",
+          "village_desa": "Synthetic Village",
+          "sub_district_kec": "Synthetic Subdistrict",
+          "district_kab": "Blitar",
+          "coordinate": "-7.5000,112.5000",
+          "region": "Region 5",
+          "is_active": true,
+          "qa_fi": "FI Baseline",
+          "qa_spv": "SPV Baseline",
+          "geometry_wkt": "POLYGON((112 -7,113 -7,113 -8,112 -8,112 -7))",
+          "correction_geometry_wkt": "POLYGON((114 -8,115 -8,115 -9,114 -9,114 -8))",
+          "geometry_area_ha": 1.45,
+          "audit_vegetative": {
+            "date_of_audit": "2026-08-20",
+            "decision": "Continue",
+            "action_needed": "None"
+          },
+          "audit_generative": {
+            "date_of_audit_1": null,
+            "final_decision_3": null
+          },
+          "audit_pre_harvest": null,
+          "audit_harvest": null
+        },
+        {
+          "field_number": "MAP-002",
+          "season": "DS26",
+          "farmer_name": "Synthetic Farmer 2",
+          "hybrid": "SYNTH-B",
+          "effective_area_ha": 2.25,
+          "planting_date_pdn": "2026-08-03",
+          "village_desa": "Synthetic Village 2",
+          "sub_district_kec": "Synthetic Subdistrict",
+          "district_kab": "Blitar",
+          "coordinate": "-7.6000,112.6000",
+          "region": "Region 5",
+          "is_active": true,
+          "qa_fi": "FI Baseline",
+          "qa_spv": "SPV Baseline",
+          "geometry_wkt": null,
+          "correction_geometry_wkt": null,
+          "geometry_area_ha": null,
+          "audit_vegetative": null,
+          "audit_generative": null,
+          "audit_pre_harvest": null,
+          "audit_harvest": null
+        }
+      ]
+    },
+    "coverage": {
+      "serverVersion": 202,
+      "requiredKeys": [
+        "field_number",
+        "season",
+        "region",
+        "district_kab",
+        "qa_fi",
+        "qa_spv",
+        "audit_vegetative",
+        "audit_generative",
+        "audit_pre_harvest",
+        "audit_harvest"
+      ],
+      "forbiddenKeys": [
+        "geometry_wkt",
+        "correction_geometry_wkt"
+      ],
+      "rows": [
+        {
+          "field_number": "COVERAGE-001",
+          "season": "DS26",
+          "farmer_name": "Synthetic Coverage Farmer",
+          "hybrid": "SYNTH-A",
+          "effective_area_ha": 1.5,
+          "planting_date_pdn": "2026-08-01",
+          "village_desa": "Synthetic Village",
+          "sub_district_kec": "Synthetic Subdistrict",
+          "district_kab": "Blitar",
+          "coordinate": "-7.5000,112.5000",
+          "region": "Region 5",
+          "is_active": true,
+          "qa_fi": "FI Baseline",
+          "qa_spv": "SPV Baseline",
+          "flagging_final": "GREEN",
+          "audit_vegetative": {
+            "date_of_audit": "2026-08-20",
+            "audit_week": 34,
+            "decision": "Continue",
+            "flagging": "GREEN",
+            "roguing_status": "DONE",
+            "crop_uniformity": "GOOD",
+            "crop_health": "GOOD"
+          },
+          "audit_generative": {
+            "date_of_audit_1": "2026-09-10",
+            "date_of_audit_2": null,
+            "flagging_1": "GREEN",
+            "crop_uniformity_1": "GOOD",
+            "crop_health_1": "GOOD"
+          },
+          "audit_pre_harvest": {
+            "audit_date": null,
+            "final_decision": null,
+            "final_flagging": null
+          },
+          "audit_harvest": {
+            "date_of_audit": null,
+            "final_flagging": null,
+            "status_downgrade": null
+          }
+        }
+      ]
+    },
+    "planning_index": {
+      "serverVersion": 303,
+      "requiredKeys": [
+        "field_number",
+        "hybrid",
+        "planting_date_pdn",
+        "region",
+        "district_kab",
+        "qa_fi",
+        "qa_spv",
+        "audit_vegetative",
+        "audit_generative",
+        "audit_pre_harvest",
+        "audit_harvest"
+      ],
+      "forbiddenKeys": [
+        "geometry_wkt",
+        "correction_geometry_wkt",
+        "crop_uniformity",
+        "crop_health"
+      ],
+      "rows": [
+        {
+          "field_number": "PLANNING-001",
+          "hybrid": "SYNTH-A",
+          "planting_date_pdn": "2026-08-01",
+          "region": "Region 5",
+          "district_kab": "Blitar",
+          "sub_district_kec": "Synthetic Subdistrict",
+          "qa_fi": "FI Baseline",
+          "qa_spv": "SPV Baseline",
+          "audit_vegetative": {
+            "rev_planting_date": null,
+            "date_of_audit": null,
+            "audit_date_user": null,
+            "date_of_inspeksi_roguing_1": null,
+            "date_of_inspeksi_roguing_2": null,
+            "date_of_inspeksi_roguing_3": null,
+            "date_of_inspeksi_roguing_4": null
+          },
+          "audit_generative": {
+            "date_of_audit_1": null,
+            "date_of_audit_2": null,
+            "date_of_audit_3": null,
+            "date_of_audit_4": null,
+            "date_of_audit_5": null,
+            "date_of_inspeksi_roguing_5": null,
+            "date_of_inspeksi_roguing_6": null
+          },
+          "audit_pre_harvest": {
+            "audit_date": null
+          },
+          "audit_harvest": {
+            "date_of_audit": null
+          }
+        }
+      ]
+    }
+  }
+}
