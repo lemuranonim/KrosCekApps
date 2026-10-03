@@ -140,6 +140,92 @@ void main() {
     );
   }
 
+  testWidgets(
+    'Developer QA SPV and FI previews default to one region and one identity',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      SharedPreferences.setMockInitialValues({
+        SessionKeys.activeUserId: 'developer-user',
+        SessionKeys.activeUserRole: 'DEV',
+        SessionKeys.activeUserName: 'Developer KC',
+      });
+      final fields = [
+        fixtures.fieldAt(20, id: 'DEV-A'),
+        {
+          ...fixtures.fieldAt(20, id: 'DEV-B'),
+          'qa_fi': 'FI 2',
+          'qa_spv': 'SPV 2',
+        },
+      ].map((raw) => FieldCoverageStatus.fromRaw(raw)).toList();
+      var allRegionLoads = 0;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            coverageStatusListScopedProvider(
+              const MasterFieldMapScope(region: 'East'),
+            ).overrideWith((ref) async => fields),
+            coverageStatusListScopedProvider(
+              const MasterFieldMapScope.all(),
+            ).overrideWith((ref) async {
+              allRegionLoads++;
+              return fields;
+            }),
+            activeMasterFieldRegionsProvider(
+              const MasterFieldMapScope.all(),
+            ).overrideWith((ref) async => ['East', 'West']),
+          ],
+          child: const MaterialApp(home: CoverageScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(allRegionLoads, 0);
+
+      await tester.tap(find.widgetWithText(InkWell, 'QA SPV'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('coverage-account-name')))
+            .data,
+        'SPV 1',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('coverage-account-role')),
+          matching: find.text('QA SPV'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('East'), findsWidgets);
+      expect(allRegionLoads, 0);
+
+      final qaFiPreview = find.widgetWithText(InkWell, 'QA FI');
+      await tester.ensureVisible(qaFiPreview);
+      await tester.pumpAndSettle();
+      await tester.tap(qaFiPreview);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('coverage-account-name')))
+            .data,
+        'FI 1',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('coverage-account-role')),
+          matching: find.text('QA FI'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('East'), findsWidgets);
+      expect(allRegionLoads, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('coverage mode keeps the same week filter', (tester) async {
     tester.view.physicalSize = const Size(360, 844);
     tester.view.devicePixelRatio = 1;

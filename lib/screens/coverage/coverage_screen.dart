@@ -1658,6 +1658,8 @@ class _SPVView extends ConsumerStatefulWidget {
 }
 
 class _SPVViewState extends ConsumerState<_SPVView> {
+  String? _selectedRegion;
+  bool _showAllRegions = false;
   String? _selectedSpv;
   String? _selectedDistrict;
   String? _selectedFi;
@@ -1666,19 +1668,75 @@ class _SPVViewState extends ConsumerState<_SPVView> {
   @override
   void initState() {
     super.initState();
-    _selectedDistrict = ref.read(auditDashboardFilterProvider).district;
+    final filters = ref.read(auditDashboardFilterProvider);
+    if (widget.isDevPreview) {
+      _selectedRegion = filters.region;
+    }
+    _selectedDistrict = filters.district;
   }
 
   @override
   Widget build(BuildContext context) {
     final sharedFilters = ref.watch(auditDashboardFilterProvider);
     final String myName = widget.session.name.trim().toLowerCase();
+    final regionOptionsAsync = widget.isDevPreview
+        ? ref.watch(
+            activeMasterFieldRegionsProvider(const MasterFieldMapScope.all()),
+          )
+        : const AsyncValue<List<String>>.data(<String>[]);
+    final regionOptions = (regionOptionsAsync.value ?? const <String>[])
+        .where((region) => !_isExcludedCoverageRegion(region))
+        .toList(growable: false);
+    final needsRegionScope =
+        widget.isDevPreview &&
+        !_showAllRegions &&
+        _selectedRegion == null &&
+        regionOptions.isNotEmpty;
+
+    if (widget.isDevPreview &&
+        !_showAllRegions &&
+        (_isExcludedCoverageRegion(_selectedRegion) ||
+            (_selectedRegion != null &&
+                regionOptions.isNotEmpty &&
+                !regionOptions.contains(_selectedRegion)))) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _showAllRegions) return;
+        setState(() {
+          _selectedRegion = null;
+          _selectedSpv = null;
+          _selectedDistrict = null;
+          _selectedFi = null;
+        });
+      });
+    }
+    if (needsRegionScope) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _showAllRegions || _selectedRegion != null) return;
+        setState(() {
+          _selectedRegion = regionOptions.first;
+          _selectedSpv = null;
+          _selectedDistrict = null;
+          _selectedFi = null;
+        });
+      });
+    }
+
+    final coverageScope = widget.isDevPreview
+        ? MasterFieldMapScope(region: _showAllRegions ? null : _selectedRegion)
+        : const MasterFieldMapScope.all();
+    final waitingForRegionScope =
+        widget.isDevPreview &&
+        !_showAllRegions &&
+        _selectedRegion == null &&
+        (regionOptionsAsync is AsyncLoading || needsRegionScope);
     final request = _CoverageProjectionRequest(
-      const MasterFieldMapScope.all(),
+      coverageScope,
       sharedFilters,
       qaSpv: widget.isDevPreview ? null : myName,
     );
-    final fieldsAsync = ref.watch(_coverageProjectionProvider(request));
+    final AsyncValue<_CoverageProjectionSet> fieldsAsync = waitingForRegionScope
+        ? const AsyncValue.loading()
+        : ref.watch(_coverageProjectionProvider(request));
 
     return fieldsAsync.when(
       loading: () => const _SkeletonLoader(),
@@ -1699,12 +1757,43 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                 .toSet()
                 .toList()
               ..sort();
+        if (widget.isDevPreview &&
+            _selectedSpv != null &&
+            !spvOptions.contains(_selectedSpv)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted ||
+                _selectedSpv == null ||
+                spvOptions.contains(_selectedSpv)) {
+              return;
+            }
+            setState(() {
+              _selectedSpv = null;
+              _selectedDistrict = null;
+              _selectedFi = null;
+            });
+          });
+        }
+        final effectiveSpv = widget.isDevPreview && _selectedSpv == null
+            ? (spvOptions.isEmpty ? null : spvOptions.first)
+            : _selectedSpv;
+        if (widget.isDevPreview &&
+            effectiveSpv != null &&
+            effectiveSpv != _selectedSpv) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || _selectedSpv != null) return;
+            setState(() {
+              _selectedSpv = effectiveSpv;
+              _selectedDistrict = null;
+              _selectedFi = null;
+            });
+          });
+        }
         final spvScopedFields = allCoverageFields
-            .where((f) => _selectedSpv == null || f.qaSpv == _selectedSpv)
+            .where((f) => effectiveSpv == null || f.qaSpv == effectiveSpv)
             .toList();
         final districts =
             allCoverageFields
-                .where((f) => _selectedSpv == null || f.qaSpv == _selectedSpv)
+                .where((f) => effectiveSpv == null || f.qaSpv == effectiveSpv)
                 .map((f) => f.district)
                 .where((d) => d.isNotEmpty)
                 .toSet()
@@ -1725,7 +1814,7 @@ class _SPVViewState extends ConsumerState<_SPVView> {
 
         // 3. APPLY FILTER DROPDOWN USER
         bool matchesScope(FieldCoverageStatus f) {
-          if (_selectedSpv != null && f.qaSpv != _selectedSpv) return false;
+          if (effectiveSpv != null && f.qaSpv != effectiveSpv) return false;
           if (_selectedDistrict != null && f.district != _selectedDistrict) {
             return false;
           }
@@ -1777,6 +1866,10 @@ class _SPVViewState extends ConsumerState<_SPVView> {
               child: _CoverageHeader(
                 title: 'Coverage Monitoring',
                 session: widget.session,
+                displayNameOverride: widget.isDevPreview
+                    ? effectiveSpv ?? 'Preview QA SPV'
+                    : null,
+                roleLabelOverride: widget.isDevPreview ? 'QA SPV' : null,
               ),
             ),
             if (widget.isDevPreview)
@@ -1796,10 +1889,35 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             SliverToBoxAdapter(
               child: _FilterBar(
                 filters: [
+                  if (widget.isDevPreview)
+                    PremiumFilterChip(
+                      label: _showAllRegions
+                          ? 'All Region'
+                          : _selectedRegion ?? 'Region',
+                      options: ['All Region', ...regionOptions],
+                      selected: _showAllRegions
+                          ? 'All Region'
+                          : _selectedRegion,
+                      icon: Icons.map_rounded,
+                      onSelected: (v) => setState(() {
+                        _showAllRegions = v == 'All Region';
+                        _selectedRegion = v == 'All Region' ? null : v;
+                        _selectedSpv = null;
+                        _selectedDistrict = null;
+                        _selectedFi = null;
+                        ref
+                            .read(auditDashboardFilterProvider.notifier)
+                            .setRegion(_selectedRegion);
+                      }),
+                    ),
                   PremiumFilterChip(
-                    label: _selectedSpv ?? 'All QA SPV',
-                    options: ['All QA SPV', ...spvOptions],
-                    selected: _selectedSpv,
+                    label: widget.isDevPreview
+                        ? effectiveSpv ?? 'Pilih QA SPV'
+                        : _selectedSpv ?? 'All QA SPV',
+                    options: widget.isDevPreview
+                        ? spvOptions
+                        : ['All QA SPV', ...spvOptions],
+                    selected: widget.isDevPreview ? effectiveSpv : _selectedSpv,
                     icon: Icons.supervisor_account_rounded,
                     onSelected: (v) => setState(() {
                       _selectedSpv = v == 'All QA SPV' ? null : v;
@@ -1830,7 +1948,7 @@ class _SPVViewState extends ConsumerState<_SPVView> {
                     ),
                   ),
                 ],
-                onRefresh: () => _refreshCoverage(ref),
+                onRefresh: () => _refreshCoverage(ref, coverageScope),
               ),
             ),
             SliverToBoxAdapter(
@@ -1978,6 +2096,8 @@ class _FIView extends ConsumerStatefulWidget {
 }
 
 class _FIViewState extends ConsumerState<_FIView> {
+  String? _selectedRegion;
+  bool _showAllRegions = false;
   String? _selectedFi;
   String? _selectedDistrict;
   String? _selectedVillage;
@@ -1987,6 +2107,9 @@ class _FIViewState extends ConsumerState<_FIView> {
   void initState() {
     super.initState();
     final filters = ref.read(auditDashboardFilterProvider);
+    if (widget.isDevPreview) {
+      _selectedRegion = filters.region;
+    }
     _selectedDistrict = filters.district;
     _selectedVillage = filters.village;
   }
@@ -1995,12 +2118,64 @@ class _FIViewState extends ConsumerState<_FIView> {
   Widget build(BuildContext context) {
     final sharedFilters = ref.watch(auditDashboardFilterProvider);
     final String myName = widget.session.name.trim().toLowerCase();
+    final regionOptionsAsync = widget.isDevPreview
+        ? ref.watch(
+            activeMasterFieldRegionsProvider(const MasterFieldMapScope.all()),
+          )
+        : const AsyncValue<List<String>>.data(<String>[]);
+    final regionOptions = (regionOptionsAsync.value ?? const <String>[])
+        .where((region) => !_isExcludedCoverageRegion(region))
+        .toList(growable: false);
+    final needsRegionScope =
+        widget.isDevPreview &&
+        !_showAllRegions &&
+        _selectedRegion == null &&
+        regionOptions.isNotEmpty;
+
+    if (widget.isDevPreview &&
+        !_showAllRegions &&
+        (_isExcludedCoverageRegion(_selectedRegion) ||
+            (_selectedRegion != null &&
+                regionOptions.isNotEmpty &&
+                !regionOptions.contains(_selectedRegion)))) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _showAllRegions) return;
+        setState(() {
+          _selectedRegion = null;
+          _selectedFi = null;
+          _selectedDistrict = null;
+          _selectedVillage = null;
+        });
+      });
+    }
+    if (needsRegionScope) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _showAllRegions || _selectedRegion != null) return;
+        setState(() {
+          _selectedRegion = regionOptions.first;
+          _selectedFi = null;
+          _selectedDistrict = null;
+          _selectedVillage = null;
+        });
+      });
+    }
+
+    final coverageScope = widget.isDevPreview
+        ? MasterFieldMapScope(region: _showAllRegions ? null : _selectedRegion)
+        : const MasterFieldMapScope.all();
+    final waitingForRegionScope =
+        widget.isDevPreview &&
+        !_showAllRegions &&
+        _selectedRegion == null &&
+        (regionOptionsAsync is AsyncLoading || needsRegionScope);
     final request = _CoverageProjectionRequest(
-      const MasterFieldMapScope.all(),
+      coverageScope,
       sharedFilters,
       qaFi: widget.isDevPreview ? null : myName,
     );
-    final fieldsAsync = ref.watch(_coverageProjectionProvider(request));
+    final AsyncValue<_CoverageProjectionSet> fieldsAsync = waitingForRegionScope
+        ? const AsyncValue.loading()
+        : ref.watch(_coverageProjectionProvider(request));
 
     return fieldsAsync.when(
       loading: () => const _SkeletonLoader(),
@@ -2021,8 +2196,39 @@ class _FIViewState extends ConsumerState<_FIView> {
                 .toSet()
                 .toList()
               ..sort();
+        if (widget.isDevPreview &&
+            _selectedFi != null &&
+            !fiOptions.contains(_selectedFi)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted ||
+                _selectedFi == null ||
+                fiOptions.contains(_selectedFi)) {
+              return;
+            }
+            setState(() {
+              _selectedFi = null;
+              _selectedDistrict = null;
+              _selectedVillage = null;
+            });
+          });
+        }
+        final effectiveFi = widget.isDevPreview && _selectedFi == null
+            ? (fiOptions.isEmpty ? null : fiOptions.first)
+            : _selectedFi;
+        if (widget.isDevPreview &&
+            effectiveFi != null &&
+            effectiveFi != _selectedFi) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || _selectedFi != null) return;
+            setState(() {
+              _selectedFi = effectiveFi;
+              _selectedDistrict = null;
+              _selectedVillage = null;
+            });
+          });
+        }
         final fiScopedFields = allCoverageFields
-            .where((f) => _selectedFi == null || f.qaFi == _selectedFi)
+            .where((f) => effectiveFi == null || f.qaFi == effectiveFi)
             .toList();
         final districts =
             fiScopedFields
@@ -2048,7 +2254,7 @@ class _FIViewState extends ConsumerState<_FIView> {
         final selectedStage = sharedFilters.phase;
 
         bool matchesScope(FieldCoverageStatus f) {
-          if (_selectedFi != null && f.qaFi != _selectedFi) return false;
+          if (effectiveFi != null && f.qaFi != effectiveFi) return false;
           if (_selectedDistrict != null && f.district != _selectedDistrict) {
             return false;
           }
@@ -2107,6 +2313,10 @@ class _FIViewState extends ConsumerState<_FIView> {
               child: _CoverageHeader(
                 title: 'Coverage Monitoring',
                 session: widget.session,
+                displayNameOverride: widget.isDevPreview
+                    ? effectiveFi ?? 'Preview QA FI'
+                    : null,
+                roleLabelOverride: widget.isDevPreview ? 'QA FI' : null,
               ),
             ),
             if (widget.isDevPreview)
@@ -2128,9 +2338,30 @@ class _FIViewState extends ConsumerState<_FIView> {
                 filters: [
                   if (widget.isDevPreview)
                     PremiumFilterChip(
-                      label: _selectedFi ?? 'All QA FI',
-                      options: ['All QA FI', ...fiOptions],
-                      selected: _selectedFi,
+                      label: _showAllRegions
+                          ? 'All Region'
+                          : _selectedRegion ?? 'Region',
+                      options: ['All Region', ...regionOptions],
+                      selected: _showAllRegions
+                          ? 'All Region'
+                          : _selectedRegion,
+                      icon: Icons.map_rounded,
+                      onSelected: (v) => setState(() {
+                        _showAllRegions = v == 'All Region';
+                        _selectedRegion = v == 'All Region' ? null : v;
+                        _selectedFi = null;
+                        _selectedDistrict = null;
+                        _selectedVillage = null;
+                        ref
+                            .read(auditDashboardFilterProvider.notifier)
+                            .setRegion(_selectedRegion);
+                      }),
+                    ),
+                  if (widget.isDevPreview)
+                    PremiumFilterChip(
+                      label: effectiveFi ?? 'Pilih QA FI',
+                      options: fiOptions,
+                      selected: effectiveFi,
                       icon: Icons.person_search_rounded,
                       onSelected: (v) => setState(() {
                         _selectedFi = v == 'All QA FI' ? null : v;
@@ -2164,7 +2395,7 @@ class _FIViewState extends ConsumerState<_FIView> {
                     }),
                   ),
                 ],
-                onRefresh: () => _refreshCoverage(ref),
+                onRefresh: () => _refreshCoverage(ref, coverageScope),
               ),
             ),
             SliverToBoxAdapter(
@@ -2572,10 +2803,19 @@ class _PremiumFilterModalState extends State<_PremiumFilterModal> {
 class _CoverageHeader extends StatelessWidget {
   final String title;
   final ActiveSession session;
+  final String? displayNameOverride;
+  final String? roleLabelOverride;
 
-  const _CoverageHeader({required this.title, required this.session});
+  const _CoverageHeader({
+    required this.title,
+    required this.session,
+    this.displayNameOverride,
+    this.roleLabelOverride,
+  });
 
   String get _displayName {
+    final override = displayNameOverride?.trim();
+    if (override != null && override.isNotEmpty) return override;
     final name = session.name.trim();
     if (name.isNotEmpty) return name;
     final emailName = session.email.trim().split('@').first;
@@ -2583,6 +2823,8 @@ class _CoverageHeader extends StatelessWidget {
   }
 
   String get _roleLabel {
+    final override = roleLabelOverride?.trim();
+    if (override != null && override.isNotEmpty) return override;
     switch (session.role.trim().toUpperCase()) {
       case 'DEV':
         return 'Developer';
