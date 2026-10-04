@@ -8,12 +8,17 @@ import 'master_field_read_cache_contract.dart';
 
 class DriftMasterFieldReadCacheStore implements MasterFieldReadCacheStore {
   static const maxEntriesPerUser = 12;
+  static const defaultMaxPayloadBytesPerUser = 128 * 1024 * 1024;
   static const _insertChunkSize = 500;
 
   final MasterFieldCacheDatabase database;
+  final int maxPayloadBytesPerUser;
   bool _closed = false;
 
-  DriftMasterFieldReadCacheStore(this.database);
+  DriftMasterFieldReadCacheStore(
+    this.database, {
+    this.maxPayloadBytesPerUser = defaultMaxPayloadBytesPerUser,
+  }) : assert(maxPayloadBytesPerUser > 0);
 
   @override
   MasterFieldCacheBackend get backend => MasterFieldCacheBackend.drift;
@@ -36,16 +41,18 @@ class DriftMasterFieldReadCacheStore implements MasterFieldReadCacheStore {
               ..orderBy([(table) => OrderingTerm.asc(table.rowIndex)]))
             .get();
     if (storedRows.length != snapshot.rowCount) {
-      throw FormatException(
-        'Incomplete Drift cache snapshot: expected ${snapshot.rowCount} rows, '
-        'found ${storedRows.length}',
-      );
+      await _discardCorruptSnapshot(cacheKey);
+      return null;
     }
 
     final rows = await compute(
-      _decodeCacheRows,
+      _decodeCacheRowsOrNull,
       storedRows.map((row) => row.payload).toList(growable: false),
     );
+    if (rows == null) {
+      await _discardCorruptSnapshot(cacheKey);
+      return null;
+    }
     return MasterFieldReadCacheEntry(
       version: snapshot.version,
       savedAt: DateTime.fromMillisecondsSinceEpoch(snapshot.savedAtMillis),
@@ -115,7 +122,7 @@ class DriftMasterFieldReadCacheStore implements MasterFieldReadCacheStore {
         });
       }
 
-      await _pruneUserEntries(scope.userId);
+      await _pruneUserEntries(scope.userId, protectedCacheKey: cacheKey);
     });
   }
 
@@ -134,7 +141,20 @@ class DriftMasterFieldReadCacheStore implements MasterFieldReadCacheStore {
     await database.close();
   }
 
-  Future<void> _pruneUserEntries(String userId) async {
+  Future<void> _discardCorruptSnapshot(String cacheKey) async {
+    await (database.delete(
+      database.masterFieldCacheSnapshots,
+    )..where((table) => table.cacheKey.equals(cacheKey))).go();
+    debugPrint(
+      'Discarded a corrupt Drift master-field cache snapshot; '
+      'the remote path will repopulate it.',
+    );
+  }
+
+  Future<void> _pruneUserEntries(
+    String userId, {
+    required String protectedCacheKey,
+  }) async {
     final snapshots =
         await (database.select(database.masterFieldCacheSnapshots)
               ..where((table) => table.userId.equals(userId))
@@ -143,12 +163,22 @@ class DriftMasterFieldReadCacheStore implements MasterFieldReadCacheStore {
                 (table) => OrderingTerm.asc(table.cacheKey),
               ]))
             .get();
-    final deleteCount = snapshots.length - maxEntriesPerUser;
-    if (deleteCount <= 0) return;
-    final expiredKeys = snapshots
-        .take(deleteCount)
-        .map((snapshot) => snapshot.cacheKey)
-        .toList(growable: false);
+    var retainedCount = snapshots.length;
+    var retainedPayloadBytes = snapshots.fold<int>(
+      0,
+      (total, snapshot) => total + _nonNegative(snapshot.payloadBytes),
+    );
+    final expiredKeys = <String>[];
+    for (final snapshot in snapshots) {
+      final withinEntryLimit = retainedCount <= maxEntriesPerUser;
+      final withinPayloadLimit = retainedPayloadBytes <= maxPayloadBytesPerUser;
+      if (withinEntryLimit && withinPayloadLimit) break;
+      if (snapshot.cacheKey == protectedCacheKey) continue;
+      expiredKeys.add(snapshot.cacheKey);
+      retainedCount--;
+      retainedPayloadBytes -= _nonNegative(snapshot.payloadBytes);
+    }
+    if (expiredKeys.isEmpty) return;
     await (database.delete(
       database.masterFieldCacheSnapshots,
     )..where((table) => table.cacheKey.isIn(expiredKeys))).go();
@@ -177,17 +207,27 @@ List<Map<String, Object?>> _encodeCacheRows(List<Map<String, dynamic>> rows) {
       .toList(growable: false);
 }
 
-List<Map<String, dynamic>> _decodeCacheRows(List<String> payloads) {
-  return payloads
-      .map((payload) {
-        final decoded = jsonDecode(payload);
-        if (decoded is! Map) throw const FormatException('Invalid cached row');
-        return Map<String, dynamic>.from(decoded);
-      })
-      .toList(growable: false);
+List<Map<String, dynamic>>? _decodeCacheRowsOrNull(List<String> payloads) {
+  try {
+    return payloads
+        .map((payload) {
+          final decoded = jsonDecode(payload);
+          if (decoded is! Map) {
+            throw const FormatException('Invalid cached row');
+          }
+          return Map<String, dynamic>.from(decoded);
+        })
+        .toList(growable: false);
+  } on FormatException {
+    return null;
+  } on TypeError {
+    return null;
+  }
 }
 
 String? _indexValue(Object? value) => _normalized(value?.toString());
+
+int _nonNegative(int value) => value < 0 ? 0 : value;
 
 String? _normalized(String? value) {
   final normalized = value?.trim();

@@ -175,7 +175,7 @@ void main() {
   });
 
   test(
-    'rejects a partially stored snapshot instead of returning partial data',
+    'discards a partially stored snapshot instead of returning partial data',
     () async {
       const scope = MasterFieldCacheScope(userId: 'user-a', dataset: 'map');
       await database
@@ -192,7 +192,11 @@ void main() {
             ),
           );
 
-      expect(() => store.read(scope), throwsA(isA<FormatException>()));
+      expect(await store.read(scope), isNull);
+      expect(
+        await database.select(database.masterFieldCacheSnapshots).get(),
+        isEmpty,
+      );
     },
   );
 
@@ -204,6 +208,14 @@ void main() {
 
     expect(database.schemaVersion, 1);
     expect(pragma.read<int>('foreign_keys'), 1);
+    await expectLater(database.verifyIntegrity(), completes);
+    final journalLimit = await database
+        .customSelect('PRAGMA journal_size_limit')
+        .getSingle();
+    expect(
+      journalLimit.read<int>('journal_size_limit'),
+      MasterFieldCacheDatabase.journalSizeLimitBytes,
+    );
   });
 
   test(
