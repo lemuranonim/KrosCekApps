@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import 'hive_master_field_read_cache_store.dart';
+import 'master_field_cache_canary.dart';
 import 'master_field_read_cache_contract.dart';
 
 export 'master_field_read_cache_contract.dart';
@@ -17,12 +20,17 @@ class MasterFieldReadCache {
 
   static final HiveMasterFieldReadCacheStore _hiveStore =
       HiveMasterFieldReadCacheStore();
+  static final MasterFieldCacheCanaryMonitor _canaryMonitor =
+      MasterFieldCacheCanaryMonitor();
 
   static MasterFieldReadCacheRouter _router = _buildRouter();
 
   static bool get isAvailable => _hiveStore.isAvailable;
 
   static MasterFieldCacheFeatureFlags get featureFlags => _router.flags;
+
+  static MasterFieldCacheCanarySnapshot get canarySnapshot =>
+      _canaryMonitor.snapshot;
 
   /// Registers the future Drift store and/or an explicit rollout policy.
   ///
@@ -93,6 +101,7 @@ class MasterFieldReadCache {
 
   @visibleForTesting
   static void resetConfiguration() {
+    _canaryMonitor.reset();
     _router = _buildRouter();
   }
 
@@ -104,5 +113,12 @@ class MasterFieldReadCache {
     hiveStore: _hiveStore,
     driftStore: driftStore,
     log: (message, error, _) => debugPrint('$message: $error'),
+    canaryRowsEqual: compareMasterFieldCacheRows,
+    canaryReporter: (event) {
+      _canaryMonitor.record(event);
+      if (!event.outcome.isHealthy) {
+        debugPrint('Master-field cache canary: ${jsonEncode(event.toJson())}');
+      }
+    },
   );
 }
