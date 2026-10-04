@@ -10,9 +10,10 @@ export 'master_field_read_cache_contract.dart';
 
 /// Stable facade for the expensive Map/Coverage/Planning local read cache.
 ///
-/// Stage 2 keeps Hive as the default store while routing all calls through a
-/// backend-neutral contract. Redis remains the shared server cache, and a
-/// local miss or failure still falls through to the existing network path.
+/// Hive remains the default store while the Stage 5 Map rollout can promote a
+/// deterministic account cohort to Drift. Redis remains the shared server
+/// cache, and a local miss or failure still falls through to the existing
+/// network path.
 class MasterFieldReadCache {
   MasterFieldReadCache._();
 
@@ -22,6 +23,8 @@ class MasterFieldReadCache {
       HiveMasterFieldReadCacheStore();
   static final MasterFieldCacheCanaryMonitor _canaryMonitor =
       MasterFieldCacheCanaryMonitor();
+  static final MasterFieldCacheRolloutMonitor _rolloutMonitor =
+      MasterFieldCacheRolloutMonitor();
 
   static MasterFieldReadCacheRouter _router = _buildRouter();
 
@@ -31,6 +34,9 @@ class MasterFieldReadCache {
 
   static MasterFieldCacheCanarySnapshot get canarySnapshot =>
       _canaryMonitor.snapshot;
+
+  static MasterFieldCacheRolloutSnapshot get rolloutSnapshot =>
+      _rolloutMonitor.snapshot;
 
   /// Registers the future Drift store and/or an explicit rollout policy.
   ///
@@ -102,6 +108,7 @@ class MasterFieldReadCache {
   @visibleForTesting
   static void resetConfiguration() {
     _canaryMonitor.reset();
+    _rolloutMonitor.reset();
     _router = _buildRouter();
   }
 
@@ -118,6 +125,13 @@ class MasterFieldReadCache {
       _canaryMonitor.record(event);
       if (!event.outcome.isHealthy) {
         debugPrint('Master-field cache canary: ${jsonEncode(event.toJson())}');
+      }
+    },
+    rolloutReporter: (event) {
+      _rolloutMonitor.record(event);
+      if (event.outcome.isDriftFailure ||
+          event.outcome == MasterFieldCacheRolloutOutcome.circuitOpened) {
+        debugPrint('Master-field cache rollout: ${jsonEncode(event.toJson())}');
       }
     },
   );
