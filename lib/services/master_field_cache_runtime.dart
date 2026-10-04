@@ -25,7 +25,7 @@ class MasterFieldCacheRuntime {
 
     if (kIsWeb) {
       debugPrint(
-        'Drift master-field cache is not enabled for web in Stage 3; '
+        'Drift master-field cache is not enabled for web; '
         'falling back to Hive.',
       );
       MasterFieldReadCache.configure(flags: flags);
