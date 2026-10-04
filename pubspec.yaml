@@ -52,6 +52,8 @@ dependencies:
   shared_preferences: ^2.3.2
   hive: ^2.2.3
   hive_flutter: ^1.1.0
+  drift: ^2.35.1
+  drift_flutter: ^0.3.1
 
   # Location and Maps
   geolocator: ^14.0.1
@@ -145,6 +147,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
   build_runner: ^2.4.13
+  drift_dev: ^2.35.1
   flutter_launcher_icons: ^0.14.1
 
 flutter:

@@ -78,6 +78,16 @@ class MasterFieldCacheFeatureFlags {
     );
   }
 
+  /// Whether the process needs to open the optional Drift database.
+  ///
+  /// Keeping this false for the default Hive configuration prevents SQLite
+  /// initialization and file creation until a dataset is explicitly opted in.
+  bool get requestsDrift =>
+      enabled &&
+      (mapBackend == MasterFieldCacheBackend.drift ||
+          coverageBackend == MasterFieldCacheBackend.drift ||
+          planningBackend == MasterFieldCacheBackend.drift);
+
   MasterFieldCacheBackend backendForDataset(String dataset) {
     if (!enabled) return MasterFieldCacheBackend.disabled;
     return switch (MasterFieldCacheDatasetFamily.fromDataset(dataset)) {

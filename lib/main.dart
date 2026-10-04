@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'router.dart';
+import 'services/master_field_cache_runtime.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
@@ -97,6 +98,7 @@ void main() async {
     await Hive.openBox('pspVegetativeData');
     await Hive.openBox('pspGenerativeData');
     await Hive.openBox('masterFieldReadCacheV2');
+    await MasterFieldCacheRuntime.initialize();
     await initializeDateFormatting('id_ID', null);
 
     if (!kIsWeb) {
