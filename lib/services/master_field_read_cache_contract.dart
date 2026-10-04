@@ -34,6 +34,12 @@ enum MasterFieldCacheDatasetFamily {
 }
 
 class MasterFieldCacheFeatureFlags {
+  static const managedFamilies = {
+    MasterFieldCacheDatasetFamily.map,
+    MasterFieldCacheDatasetFamily.coverage,
+    MasterFieldCacheDatasetFamily.planning,
+  };
+
   final bool enabled;
   final MasterFieldCacheBackend mapBackend;
   final MasterFieldCacheBackend coverageBackend;
@@ -44,6 +50,7 @@ class MasterFieldCacheFeatureFlags {
   final int mapDriftRolloutPercent;
   final int coverageDriftRolloutPercent;
   final int planningDriftRolloutPercent;
+  final Set<MasterFieldCacheDatasetFamily> hiveRetiredFamilies;
 
   const MasterFieldCacheFeatureFlags({
     this.enabled = true,
@@ -56,6 +63,7 @@ class MasterFieldCacheFeatureFlags {
     this.mapDriftRolloutPercent = 0,
     this.coverageDriftRolloutPercent = 0,
     this.planningDriftRolloutPercent = 0,
+    this.hiveRetiredFamilies = const {},
   });
 
   factory MasterFieldCacheFeatureFlags.fromEnvironment() {
@@ -99,6 +107,10 @@ class MasterFieldCacheFeatureFlags {
       'KC_MASTER_FIELD_PLANNING_DRIFT_ROLLOUT_PERCENT',
       defaultValue: 0,
     );
+    const hiveRetiredDatasets = String.fromEnvironment(
+      'KC_MASTER_FIELD_HIVE_RETIRED_FAMILIES',
+      defaultValue: '',
+    );
 
     return MasterFieldCacheFeatureFlags(
       enabled: enabled,
@@ -111,6 +123,7 @@ class MasterFieldCacheFeatureFlags {
       mapDriftRolloutPercent: mapDriftRolloutPercent,
       coverageDriftRolloutPercent: coverageDriftRolloutPercent,
       planningDriftRolloutPercent: planningDriftRolloutPercent,
+      hiveRetiredFamilies: _parseFamilies(hiveRetiredDatasets),
     );
   }
 
@@ -163,6 +176,56 @@ class MasterFieldCacheFeatureFlags {
     };
   }
 
+  MasterFieldCacheBackend backendForFamily(
+    MasterFieldCacheDatasetFamily family,
+  ) {
+    if (!enabled) return MasterFieldCacheBackend.disabled;
+    return switch (family) {
+      MasterFieldCacheDatasetFamily.map => mapBackend,
+      MasterFieldCacheDatasetFamily.coverage => coverageBackend,
+      MasterFieldCacheDatasetFamily.planning => planningBackend,
+      MasterFieldCacheDatasetFamily.other => MasterFieldCacheBackend.hive,
+    };
+  }
+
+  /// A family can leave Hive only after it uses the explicit full-Drift route.
+  /// Percentage rollout cohorts deliberately remain ineligible for retirement.
+  bool isHiveRetiredForFamily(MasterFieldCacheDatasetFamily family) {
+    return managedFamilies.contains(family) &&
+        hiveRetiredFamilies.contains(family) &&
+        backendForFamily(family) == MasterFieldCacheBackend.drift;
+  }
+
+  bool isHiveRetiredForScope(MasterFieldCacheScope scope) =>
+      isHiveRetiredForFamily(
+        MasterFieldCacheDatasetFamily.fromDataset(scope.dataset),
+      );
+
+  Set<MasterFieldCacheDatasetFamily> get ignoredHiveRetirementFamilies =>
+      Set.unmodifiable(
+        hiveRetiredFamilies.where((family) => !isHiveRetiredForFamily(family)),
+      );
+
+  /// True only after all managed families explicitly select Drift and opt out
+  /// of Hive. The runtime uses this as the destructive legacy-box cleanup gate.
+  bool get finalizesHiveRetirement =>
+      enabled && managedFamilies.every(isHiveRetiredForFamily);
+
+  MasterFieldCacheFeatureFlags withoutHiveRetirement() {
+    return MasterFieldCacheFeatureFlags(
+      enabled: enabled,
+      mapBackend: mapBackend,
+      coverageBackend: coverageBackend,
+      planningBackend: planningBackend,
+      dualWriteHiveWhenDrift: dualWriteHiveWhenDrift,
+      driftShadowFamilies: driftShadowFamilies,
+      driftShadowSamplePercent: driftShadowSamplePercent,
+      mapDriftRolloutPercent: mapDriftRolloutPercent,
+      coverageDriftRolloutPercent: coverageDriftRolloutPercent,
+      planningDriftRolloutPercent: planningDriftRolloutPercent,
+    );
+  }
+
   bool isDriftShadowEnabledForDataset(String dataset) {
     if (!enabled ||
         backendForDataset(dataset) != MasterFieldCacheBackend.hive) {
@@ -187,13 +250,7 @@ class MasterFieldCacheFeatureFlags {
   }
 
   MasterFieldCacheBackend backendForDataset(String dataset) {
-    if (!enabled) return MasterFieldCacheBackend.disabled;
-    return switch (MasterFieldCacheDatasetFamily.fromDataset(dataset)) {
-      MasterFieldCacheDatasetFamily.map => mapBackend,
-      MasterFieldCacheDatasetFamily.coverage => coverageBackend,
-      MasterFieldCacheDatasetFamily.planning => planningBackend,
-      MasterFieldCacheDatasetFamily.other => MasterFieldCacheBackend.hive,
-    };
+    return backendForFamily(MasterFieldCacheDatasetFamily.fromDataset(dataset));
   }
 
   /// Resolves the effective backend for one exact account scope.
@@ -233,6 +290,7 @@ class MasterFieldCacheFeatureFlags {
 
   bool shouldDualWriteHive(MasterFieldCacheScope scope) {
     return backendForScope(scope) == MasterFieldCacheBackend.drift &&
+        !isHiveRetiredForScope(scope) &&
         (dualWriteHiveWhenDrift || isDriftRolloutScope(scope));
   }
 
@@ -245,6 +303,10 @@ class MasterFieldCacheFeatureFlags {
   }
 
   static Set<MasterFieldCacheDatasetFamily> _parseShadowFamilies(String value) {
+    return _parseFamilies(value);
+  }
+
+  static Set<MasterFieldCacheDatasetFamily> _parseFamilies(String value) {
     final families = <MasterFieldCacheDatasetFamily>{};
     for (final token in value.split(',')) {
       switch (token.trim().toLowerCase()) {
@@ -529,6 +591,7 @@ enum MasterFieldCacheRolloutOutcome {
   driftReadHit,
   driftReadMiss,
   hiveFallbackHit,
+  hiveRetirementBypass,
   fullCacheMiss,
   driftUnavailable,
   driftReadFailed,
@@ -869,6 +932,23 @@ class MasterFieldReadCacheRouter {
     Stopwatch stopwatch, {
     required bool allowRepair,
   }) async {
+    if (flags.isHiveRetiredForScope(scope)) {
+      _emitRollout(
+        _rolloutEvent(
+          scope: scope,
+          outcome: MasterFieldCacheRolloutOutcome.hiveRetirementBypass,
+          elapsed: stopwatch.elapsed,
+        ),
+      );
+      _emitRollout(
+        _rolloutEvent(
+          scope: scope,
+          outcome: MasterFieldCacheRolloutOutcome.fullCacheMiss,
+          elapsed: stopwatch.elapsed,
+        ),
+      );
+      return null;
+    }
     final hiveEntry = await _readFrom(hiveStore, scope);
     if (hiveEntry == null) {
       _emitRollout(
@@ -909,6 +989,10 @@ class MasterFieldReadCacheRouter {
             consecutiveFailureCount: _driftFailureCounts[family],
           ),
         );
+        if (flags.isHiveRetiredForScope(scope)) {
+          _emitHiveRetirementBypass(scope, stopwatch.elapsed, entry: entry);
+          return;
+        }
         final hiveWritten = await _writeTo(hiveStore, scope, entry);
         if (!hiveWritten) {
           _emitRollout(
@@ -954,7 +1038,8 @@ class MasterFieldReadCacheRouter {
         }
       }
 
-      if (!driftWritten || flags.shouldDualWriteHive(scope)) {
+      final hiveRetired = flags.isHiveRetiredForScope(scope);
+      if (!hiveRetired && (!driftWritten || flags.shouldDualWriteHive(scope))) {
         final hiveWritten = await _writeTo(hiveStore, scope, entry);
         if (!hiveWritten) {
           _emitRollout(
@@ -966,8 +1051,25 @@ class MasterFieldReadCacheRouter {
             ),
           );
         }
+      } else if (hiveRetired && !driftWritten) {
+        _emitHiveRetirementBypass(scope, stopwatch.elapsed, entry: entry);
       }
     });
+  }
+
+  void _emitHiveRetirementBypass(
+    MasterFieldCacheScope scope,
+    Duration elapsed, {
+    MasterFieldReadCacheEntry? entry,
+  }) {
+    _emitRollout(
+      _rolloutEvent(
+        scope: scope,
+        outcome: MasterFieldCacheRolloutOutcome.hiveRetirementBypass,
+        elapsed: elapsed,
+        entry: entry,
+      ),
+    );
   }
 
   void _scheduleDriftReadRepair(

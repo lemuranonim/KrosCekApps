@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'router.dart';
 import 'services/master_field_cache_runtime.dart';
+import 'services/master_field_read_cache_contract.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
@@ -97,8 +98,13 @@ void main() async {
     await Hive.openBox('harvestData');
     await Hive.openBox('pspVegetativeData');
     await Hive.openBox('pspGenerativeData');
-    await Hive.openBox('masterFieldReadCacheV2');
-    await MasterFieldCacheRuntime.initialize();
+    final masterFieldCacheFlags =
+        MasterFieldCacheFeatureFlags.fromEnvironment();
+    await MasterFieldCacheRuntime.prepareLegacyHiveStore(masterFieldCacheFlags);
+    await MasterFieldCacheRuntime.initialize(flags: masterFieldCacheFlags);
+    await MasterFieldCacheRuntime.finalizeLegacyHiveStore(
+      masterFieldCacheFlags,
+    );
     await initializeDateFormatting('id_ID', null);
 
     if (!kIsWeb) {
