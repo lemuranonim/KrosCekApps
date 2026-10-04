@@ -66,7 +66,7 @@ class MasterFieldCacheRuntime {
     MasterFieldCacheDatabase? database;
     try {
       database = MasterFieldCacheDatabase.defaults();
-      await database.customSelect('SELECT 1').getSingle();
+      await database.verifyIntegrity();
       final store = DriftMasterFieldReadCacheStore(database);
       _driftStore = store;
       MasterFieldReadCache.configure(flags: effectiveFlags, driftStore: store);

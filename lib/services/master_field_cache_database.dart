@@ -57,6 +57,7 @@ class MasterFieldCacheRows extends Table {
 @DriftDatabase(tables: [MasterFieldCacheSnapshots, MasterFieldCacheRows])
 class MasterFieldCacheDatabase extends _$MasterFieldCacheDatabase {
   static const databaseName = 'kroscek_master_field_cache';
+  static const journalSizeLimitBytes = 8 * 1024 * 1024;
 
   MasterFieldCacheDatabase(super.executor);
 
@@ -71,6 +72,20 @@ class MasterFieldCacheDatabase extends _$MasterFieldCacheDatabase {
     onCreate: (migrator) => migrator.createAll(),
     beforeOpen: (_) async {
       await customStatement('PRAGMA foreign_keys = ON');
+      await customStatement(
+        'PRAGMA journal_size_limit = $journalSizeLimitBytes',
+      );
     },
   );
+
+  /// Fails closed for Drift routing when SQLite reports structural damage.
+  /// The runtime catches this and restores the existing Hive/network path.
+  Future<void> verifyIntegrity() async {
+    final result = await customSelect('PRAGMA quick_check(1)').getSingle();
+    if (result.read<String>('quick_check').toLowerCase() != 'ok') {
+      throw const FormatException(
+        'Drift cache database integrity check failed',
+      );
+    }
+  }
 }
