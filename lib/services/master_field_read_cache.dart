@@ -10,10 +10,10 @@ export 'master_field_read_cache_contract.dart';
 
 /// Stable facade for the expensive Map/Coverage/Planning local read cache.
 ///
-/// Hive remains the default store while the Stage 5 Map rollout can promote a
-/// deterministic account cohort to Drift. Redis remains the shared server
-/// cache, and a local miss or failure still falls through to the existing
-/// network path.
+/// Hive remains the default store while independent Map, Coverage, and
+/// Planning rollout flags can promote deterministic account cohorts to Drift.
+/// Redis remains the shared server cache, and a local miss or failure still
+/// falls through to the existing network path.
 class MasterFieldReadCache {
   MasterFieldReadCache._();
 

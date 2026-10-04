@@ -42,6 +42,8 @@ class MasterFieldCacheFeatureFlags {
   final Set<MasterFieldCacheDatasetFamily> driftShadowFamilies;
   final int driftShadowSamplePercent;
   final int mapDriftRolloutPercent;
+  final int coverageDriftRolloutPercent;
+  final int planningDriftRolloutPercent;
 
   const MasterFieldCacheFeatureFlags({
     this.enabled = true,
@@ -52,6 +54,8 @@ class MasterFieldCacheFeatureFlags {
     this.driftShadowFamilies = const {},
     this.driftShadowSamplePercent = 10,
     this.mapDriftRolloutPercent = 0,
+    this.coverageDriftRolloutPercent = 0,
+    this.planningDriftRolloutPercent = 0,
   });
 
   factory MasterFieldCacheFeatureFlags.fromEnvironment() {
@@ -87,6 +91,14 @@ class MasterFieldCacheFeatureFlags {
       'KC_MASTER_FIELD_MAP_DRIFT_ROLLOUT_PERCENT',
       defaultValue: 0,
     );
+    const coverageDriftRolloutPercent = int.fromEnvironment(
+      'KC_MASTER_FIELD_COVERAGE_DRIFT_ROLLOUT_PERCENT',
+      defaultValue: 0,
+    );
+    const planningDriftRolloutPercent = int.fromEnvironment(
+      'KC_MASTER_FIELD_PLANNING_DRIFT_ROLLOUT_PERCENT',
+      defaultValue: 0,
+    );
 
     return MasterFieldCacheFeatureFlags(
       enabled: enabled,
@@ -97,6 +109,8 @@ class MasterFieldCacheFeatureFlags {
       driftShadowFamilies: _parseShadowFamilies(driftShadowDatasets),
       driftShadowSamplePercent: driftShadowSamplePercent,
       mapDriftRolloutPercent: mapDriftRolloutPercent,
+      coverageDriftRolloutPercent: coverageDriftRolloutPercent,
+      planningDriftRolloutPercent: planningDriftRolloutPercent,
     );
   }
 
@@ -120,13 +134,34 @@ class MasterFieldCacheFeatureFlags {
               ) &&
               planningBackend == MasterFieldCacheBackend.hive) ||
           (mapBackend == MasterFieldCacheBackend.hive &&
-              effectiveMapDriftRolloutPercent > 0));
+              effectiveMapDriftRolloutPercent > 0) ||
+          (coverageBackend == MasterFieldCacheBackend.hive &&
+              effectiveCoverageDriftRolloutPercent > 0) ||
+          (planningBackend == MasterFieldCacheBackend.hive &&
+              effectivePlanningDriftRolloutPercent > 0));
 
   int get effectiveDriftShadowSamplePercent =>
       driftShadowSamplePercent.clamp(0, 100);
 
   int get effectiveMapDriftRolloutPercent =>
       mapDriftRolloutPercent.clamp(0, 100);
+
+  int get effectiveCoverageDriftRolloutPercent =>
+      coverageDriftRolloutPercent.clamp(0, 100);
+
+  int get effectivePlanningDriftRolloutPercent =>
+      planningDriftRolloutPercent.clamp(0, 100);
+
+  int driftRolloutPercentForFamily(MasterFieldCacheDatasetFamily family) {
+    return switch (family) {
+      MasterFieldCacheDatasetFamily.map => effectiveMapDriftRolloutPercent,
+      MasterFieldCacheDatasetFamily.coverage =>
+        effectiveCoverageDriftRolloutPercent,
+      MasterFieldCacheDatasetFamily.planning =>
+        effectivePlanningDriftRolloutPercent,
+      MasterFieldCacheDatasetFamily.other => 0,
+    };
+  }
 
   bool isDriftShadowEnabledForDataset(String dataset) {
     if (!enabled ||
@@ -163,33 +198,42 @@ class MasterFieldCacheFeatureFlags {
 
   /// Resolves the effective backend for one exact account scope.
   ///
-  /// Stage 5 keeps the existing dataset backend flags authoritative, then
-  /// promotes only the configured percentage of Map accounts from Hive to
-  /// Drift. Hashing the family and account ID keeps every Map scope for one
-  /// account in the same cohort without persisting or reporting identity.
+  /// Stage 6 keeps the existing dataset backend flags authoritative, then
+  /// promotes independent percentages of Map, Coverage, and Planning accounts
+  /// from Hive to Drift. Hashing the family and account ID keeps every scope
+  /// in one family account-sticky without persisting or reporting identity.
   MasterFieldCacheBackend backendForScope(MasterFieldCacheScope scope) {
     final configured = backendForDataset(scope.dataset);
     if (configured != MasterFieldCacheBackend.hive) return configured;
-    return isMapDriftRolloutScope(scope)
+    return isDriftRolloutScope(scope)
         ? MasterFieldCacheBackend.drift
         : MasterFieldCacheBackend.hive;
   }
 
-  bool isMapDriftRolloutScope(MasterFieldCacheScope scope) {
-    if (!enabled || mapBackend != MasterFieldCacheBackend.hive) return false;
-    if (MasterFieldCacheDatasetFamily.fromDataset(scope.dataset) !=
-        MasterFieldCacheDatasetFamily.map) {
+  bool isDriftRolloutScope(MasterFieldCacheScope scope) {
+    if (!enabled) return false;
+    final family = MasterFieldCacheDatasetFamily.fromDataset(scope.dataset);
+    if (family == MasterFieldCacheDatasetFamily.other ||
+        backendForDataset(scope.dataset) != MasterFieldCacheBackend.hive) {
       return false;
     }
-    final percent = effectiveMapDriftRolloutPercent;
-    if (percent <= 0 || scope.userId.trim().isEmpty) return false;
+    final percent = driftRolloutPercentForFamily(family);
+    final userId = scope.userId.trim();
+    if (percent <= 0 || userId.isEmpty) return false;
     if (percent >= 100) return true;
-    return _stableBucket('map:${scope.userId.trim()}') < percent;
+    return _stableBucket('${family.name}:$userId') < percent;
+  }
+
+  /// Compatibility helper for callers that only need the Stage 5 Map cohort.
+  bool isMapDriftRolloutScope(MasterFieldCacheScope scope) {
+    return MasterFieldCacheDatasetFamily.fromDataset(scope.dataset) ==
+            MasterFieldCacheDatasetFamily.map &&
+        isDriftRolloutScope(scope);
   }
 
   bool shouldDualWriteHive(MasterFieldCacheScope scope) {
     return backendForScope(scope) == MasterFieldCacheBackend.drift &&
-        (dualWriteHiveWhenDrift || isMapDriftRolloutScope(scope));
+        (dualWriteHiveWhenDrift || isDriftRolloutScope(scope));
   }
 
   static int _stableBucket(String value) {
@@ -279,11 +323,8 @@ abstract interface class MasterFieldReadCacheStore {
   Future<void> clearUser(String userId);
 }
 
-typedef MasterFieldCacheLog = void Function(
-  String message,
-  Object error,
-  StackTrace stackTrace,
-);
+typedef MasterFieldCacheLog =
+    void Function(String message, Object error, StackTrace stackTrace);
 
 enum MasterFieldCacheCanaryOutcome {
   mirroredWrite,
@@ -476,13 +517,13 @@ class MasterFieldCacheCanaryMonitor {
   }
 }
 
-typedef MasterFieldCacheCanaryReporter = void Function(
-  MasterFieldCacheCanaryEvent event,
-);
-typedef MasterFieldCacheRowsEqual = Future<bool> Function(
-  List<Map<String, dynamic>> hiveRows,
-  List<Map<String, dynamic>> driftRows,
-);
+typedef MasterFieldCacheCanaryReporter =
+    void Function(MasterFieldCacheCanaryEvent event);
+typedef MasterFieldCacheRowsEqual =
+    Future<bool> Function(
+      List<Map<String, dynamic>> hiveRows,
+      List<Map<String, dynamic>> driftRows,
+    );
 
 enum MasterFieldCacheRolloutOutcome {
   driftReadHit,
@@ -651,9 +692,8 @@ class MasterFieldCacheRolloutMonitor {
   }
 }
 
-typedef MasterFieldCacheRolloutReporter = void Function(
-  MasterFieldCacheRolloutEvent event,
-);
+typedef MasterFieldCacheRolloutReporter =
+    void Function(MasterFieldCacheRolloutEvent event);
 
 class MasterFieldReadCacheRouter {
   static const maxConcurrentShadowReads = 2;
