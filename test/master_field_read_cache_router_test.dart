@@ -60,6 +60,15 @@ void main() {
       flags.backendForDataset('future-dataset'),
       MasterFieldCacheBackend.hive,
     );
+    expect(flags.requestsDrift, isTrue);
+    expect(const MasterFieldCacheFeatureFlags().requestsDrift, isFalse);
+    expect(
+      const MasterFieldCacheFeatureFlags(
+        enabled: false,
+        mapBackend: MasterFieldCacheBackend.drift,
+      ).requestsDrift,
+      isFalse,
+    );
   });
 
   test('global kill switch disables reads and writes', () async {
