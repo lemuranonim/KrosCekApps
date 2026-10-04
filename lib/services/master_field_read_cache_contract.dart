@@ -41,6 +41,7 @@ class MasterFieldCacheFeatureFlags {
   final bool dualWriteHiveWhenDrift;
   final Set<MasterFieldCacheDatasetFamily> driftShadowFamilies;
   final int driftShadowSamplePercent;
+  final int mapDriftRolloutPercent;
 
   const MasterFieldCacheFeatureFlags({
     this.enabled = true,
@@ -50,6 +51,7 @@ class MasterFieldCacheFeatureFlags {
     this.dualWriteHiveWhenDrift = false,
     this.driftShadowFamilies = const {},
     this.driftShadowSamplePercent = 10,
+    this.mapDriftRolloutPercent = 0,
   });
 
   factory MasterFieldCacheFeatureFlags.fromEnvironment() {
@@ -81,6 +83,10 @@ class MasterFieldCacheFeatureFlags {
       'KC_MASTER_FIELD_DRIFT_SHADOW_SAMPLE_PERCENT',
       defaultValue: 10,
     );
+    const mapDriftRolloutPercent = int.fromEnvironment(
+      'KC_MASTER_FIELD_MAP_DRIFT_ROLLOUT_PERCENT',
+      defaultValue: 0,
+    );
 
     return MasterFieldCacheFeatureFlags(
       enabled: enabled,
@@ -90,6 +96,7 @@ class MasterFieldCacheFeatureFlags {
       dualWriteHiveWhenDrift: dualWriteHiveWhenDrift,
       driftShadowFamilies: _parseShadowFamilies(driftShadowDatasets),
       driftShadowSamplePercent: driftShadowSamplePercent,
+      mapDriftRolloutPercent: mapDriftRolloutPercent,
     );
   }
 
@@ -111,10 +118,15 @@ class MasterFieldCacheFeatureFlags {
           (driftShadowFamilies.contains(
                 MasterFieldCacheDatasetFamily.planning,
               ) &&
-              planningBackend == MasterFieldCacheBackend.hive));
+              planningBackend == MasterFieldCacheBackend.hive) ||
+          (mapBackend == MasterFieldCacheBackend.hive &&
+              effectiveMapDriftRolloutPercent > 0));
 
   int get effectiveDriftShadowSamplePercent =>
       driftShadowSamplePercent.clamp(0, 100);
+
+  int get effectiveMapDriftRolloutPercent =>
+      mapDriftRolloutPercent.clamp(0, 100);
 
   bool isDriftShadowEnabledForDataset(String dataset) {
     if (!enabled ||
@@ -127,6 +139,7 @@ class MasterFieldCacheFeatureFlags {
   }
 
   bool shouldSampleDriftShadow(MasterFieldCacheScope scope) {
+    if (backendForScope(scope) != MasterFieldCacheBackend.hive) return false;
     if (!isDriftShadowEnabledForDataset(scope.dataset)) return false;
     final percent = effectiveDriftShadowSamplePercent;
     if (percent <= 0) return false;
@@ -146,6 +159,45 @@ class MasterFieldCacheFeatureFlags {
       MasterFieldCacheDatasetFamily.planning => planningBackend,
       MasterFieldCacheDatasetFamily.other => MasterFieldCacheBackend.hive,
     };
+  }
+
+  /// Resolves the effective backend for one exact account scope.
+  ///
+  /// Stage 5 keeps the existing dataset backend flags authoritative, then
+  /// promotes only the configured percentage of Map accounts from Hive to
+  /// Drift. Hashing the family and account ID keeps every Map scope for one
+  /// account in the same cohort without persisting or reporting identity.
+  MasterFieldCacheBackend backendForScope(MasterFieldCacheScope scope) {
+    final configured = backendForDataset(scope.dataset);
+    if (configured != MasterFieldCacheBackend.hive) return configured;
+    return isMapDriftRolloutScope(scope)
+        ? MasterFieldCacheBackend.drift
+        : MasterFieldCacheBackend.hive;
+  }
+
+  bool isMapDriftRolloutScope(MasterFieldCacheScope scope) {
+    if (!enabled || mapBackend != MasterFieldCacheBackend.hive) return false;
+    if (MasterFieldCacheDatasetFamily.fromDataset(scope.dataset) !=
+        MasterFieldCacheDatasetFamily.map) {
+      return false;
+    }
+    final percent = effectiveMapDriftRolloutPercent;
+    if (percent <= 0 || scope.userId.trim().isEmpty) return false;
+    if (percent >= 100) return true;
+    return _stableBucket('map:${scope.userId.trim()}') < percent;
+  }
+
+  bool shouldDualWriteHive(MasterFieldCacheScope scope) {
+    return backendForScope(scope) == MasterFieldCacheBackend.drift &&
+        (dualWriteHiveWhenDrift || isMapDriftRolloutScope(scope));
+  }
+
+  static int _stableBucket(String value) {
+    var hash = 0;
+    for (final codeUnit in value.codeUnits) {
+      hash = ((hash * 31) + codeUnit) % 10000;
+    }
+    return hash % 100;
   }
 
   static Set<MasterFieldCacheDatasetFamily> _parseShadowFamilies(String value) {
@@ -432,8 +484,180 @@ typedef MasterFieldCacheRowsEqual = Future<bool> Function(
   List<Map<String, dynamic>> driftRows,
 );
 
+enum MasterFieldCacheRolloutOutcome {
+  driftReadHit,
+  driftReadMiss,
+  hiveFallbackHit,
+  fullCacheMiss,
+  driftUnavailable,
+  driftReadFailed,
+  driftWriteSucceeded,
+  driftWriteFailed,
+  hiveRollbackWriteFailed,
+  readRepairSucceeded,
+  readRepairSkippedNewer,
+  readRepairFailed,
+  circuitOpened,
+  circuitBypass;
+
+  bool get isDriftFailure =>
+      this == MasterFieldCacheRolloutOutcome.driftUnavailable ||
+      this == MasterFieldCacheRolloutOutcome.driftReadFailed ||
+      this == MasterFieldCacheRolloutOutcome.driftWriteFailed ||
+      this == MasterFieldCacheRolloutOutcome.readRepairFailed;
+
+  bool get isDriftReadAttempt =>
+      this == MasterFieldCacheRolloutOutcome.driftReadHit ||
+      this == MasterFieldCacheRolloutOutcome.driftReadMiss ||
+      this == MasterFieldCacheRolloutOutcome.driftUnavailable ||
+      this == MasterFieldCacheRolloutOutcome.driftReadFailed;
+}
+
+class MasterFieldCacheRolloutEvent {
+  final DateTime recordedAt;
+  final MasterFieldCacheDatasetFamily family;
+  final String dataset;
+  final MasterFieldCacheRolloutOutcome outcome;
+  final Duration elapsed;
+  final int? version;
+  final int? rowCount;
+  final int? consecutiveFailureCount;
+
+  const MasterFieldCacheRolloutEvent({
+    required this.recordedAt,
+    required this.family,
+    required this.dataset,
+    required this.outcome,
+    required this.elapsed,
+    this.version,
+    this.rowCount,
+    this.consecutiveFailureCount,
+  });
+
+  Map<String, Object?> toJson() => {
+    'recordedAt': recordedAt.toUtc().toIso8601String(),
+    'family': family.name,
+    'dataset': dataset,
+    'outcome': outcome.name,
+    'elapsedMicros': elapsed.inMicroseconds,
+    if (version != null) 'version': version,
+    if (rowCount != null) 'rowCount': rowCount,
+    if (consecutiveFailureCount != null)
+      'consecutiveFailureCount': consecutiveFailureCount,
+  };
+}
+
+class MasterFieldCacheRolloutSnapshot {
+  final int totalEvents;
+  final Map<MasterFieldCacheRolloutOutcome, int> outcomes;
+  final Map<MasterFieldCacheDatasetFamily, int> families;
+  final Map<
+    MasterFieldCacheDatasetFamily,
+    Map<MasterFieldCacheRolloutOutcome, int>
+  >
+  outcomesByFamily;
+  final Set<MasterFieldCacheDatasetFamily> circuitOpenFamilies;
+
+  const MasterFieldCacheRolloutSnapshot({
+    required this.totalEvents,
+    required this.outcomes,
+    required this.families,
+    required this.outcomesByFamily,
+    required this.circuitOpenFamilies,
+  });
+
+  int count(MasterFieldCacheRolloutOutcome outcome) => outcomes[outcome] ?? 0;
+
+  int countForFamily(
+    MasterFieldCacheDatasetFamily family,
+    MasterFieldCacheRolloutOutcome outcome,
+  ) => outcomesByFamily[family]?[outcome] ?? 0;
+
+  int driftFailureCountForFamily(MasterFieldCacheDatasetFamily family) =>
+      MasterFieldCacheRolloutOutcome.values
+          .where((outcome) => outcome.isDriftFailure)
+          .fold(0, (total, outcome) => total + countForFamily(family, outcome));
+
+  int driftReadAttemptCountForFamily(MasterFieldCacheDatasetFamily family) =>
+      MasterFieldCacheRolloutOutcome.values
+          .where((outcome) => outcome.isDriftReadAttempt)
+          .fold(0, (total, outcome) => total + countForFamily(family, outcome));
+
+  double? driftReadHitRateForFamily(MasterFieldCacheDatasetFamily family) {
+    final attempts = driftReadAttemptCountForFamily(family);
+    if (attempts == 0) return null;
+    return countForFamily(family, MasterFieldCacheRolloutOutcome.driftReadHit) /
+        attempts;
+  }
+
+  bool isCircuitOpen(MasterFieldCacheDatasetFamily family) =>
+      circuitOpenFamilies.contains(family);
+}
+
+class MasterFieldCacheRolloutMonitor {
+  final Map<MasterFieldCacheRolloutOutcome, int> _outcomes = {};
+  final Map<MasterFieldCacheDatasetFamily, int> _families = {};
+  final Map<
+    MasterFieldCacheDatasetFamily,
+    Map<MasterFieldCacheRolloutOutcome, int>
+  >
+  _outcomesByFamily = {};
+  final Set<MasterFieldCacheDatasetFamily> _circuitOpenFamilies = {};
+  int _totalEvents = 0;
+
+  void record(MasterFieldCacheRolloutEvent event) {
+    _totalEvents++;
+    _outcomes.update(event.outcome, (count) => count + 1, ifAbsent: () => 1);
+    _families.update(event.family, (count) => count + 1, ifAbsent: () => 1);
+    final familyOutcomes = _outcomesByFamily.putIfAbsent(
+      event.family,
+      () => {},
+    );
+    familyOutcomes.update(
+      event.outcome,
+      (count) => count + 1,
+      ifAbsent: () => 1,
+    );
+    if (event.outcome == MasterFieldCacheRolloutOutcome.circuitOpened) {
+      _circuitOpenFamilies.add(event.family);
+    }
+  }
+
+  MasterFieldCacheRolloutSnapshot get snapshot =>
+      MasterFieldCacheRolloutSnapshot(
+        totalEvents: _totalEvents,
+        outcomes: Map.unmodifiable(_outcomes),
+        families: Map.unmodifiable(_families),
+        outcomesByFamily:
+            Map<
+              MasterFieldCacheDatasetFamily,
+              Map<MasterFieldCacheRolloutOutcome, int>
+            >.unmodifiable({
+              for (final entry in _outcomesByFamily.entries)
+                entry.key:
+                    Map<MasterFieldCacheRolloutOutcome, int>.unmodifiable(
+                      entry.value,
+                    ),
+            }),
+        circuitOpenFamilies: Set.unmodifiable(_circuitOpenFamilies),
+      );
+
+  void reset() {
+    _totalEvents = 0;
+    _outcomes.clear();
+    _families.clear();
+    _outcomesByFamily.clear();
+    _circuitOpenFamilies.clear();
+  }
+}
+
+typedef MasterFieldCacheRolloutReporter = void Function(
+  MasterFieldCacheRolloutEvent event,
+);
+
 class MasterFieldReadCacheRouter {
   static const maxConcurrentShadowReads = 2;
+  static const maxConsecutiveDriftFailures = 3;
 
   final MasterFieldCacheFeatureFlags flags;
   final MasterFieldReadCacheStore hiveStore;
@@ -441,8 +665,12 @@ class MasterFieldReadCacheRouter {
   final MasterFieldCacheLog? log;
   final MasterFieldCacheCanaryReporter? canaryReporter;
   final MasterFieldCacheRowsEqual? canaryRowsEqual;
+  final MasterFieldCacheRolloutReporter? rolloutReporter;
   final Set<String> _shadowReadsInFlight = {};
   final Map<String, Future<void>> _shadowWriteTails = {};
+  final Map<String, Future<void>> _primaryWriteTails = {};
+  final Map<MasterFieldCacheDatasetFamily, int> _driftFailureCounts = {};
+  final Set<MasterFieldCacheDatasetFamily> _openCircuitFamilies = {};
 
   MasterFieldReadCacheRouter({
     required this.flags,
@@ -451,11 +679,12 @@ class MasterFieldReadCacheRouter {
     this.log,
     this.canaryReporter,
     this.canaryRowsEqual,
+    this.rolloutReporter,
   });
 
   Future<MasterFieldReadCacheEntry?> read(MasterFieldCacheScope scope) async {
     if (!scope.isValid) return null;
-    final backend = flags.backendForDataset(scope.dataset);
+    final backend = flags.backendForScope(scope);
     switch (backend) {
       case MasterFieldCacheBackend.disabled:
         return null;
@@ -464,12 +693,7 @@ class MasterFieldReadCacheRouter {
         _scheduleDriftShadowRead(scope, hiveEntry);
         return hiveEntry;
       case MasterFieldCacheBackend.drift:
-        final drift = driftStore;
-        if (drift != null) {
-          final driftEntry = await _readFrom(drift, scope);
-          if (driftEntry != null) return driftEntry;
-        }
-        return _readFrom(hiveStore, scope);
+        return _readDriftPrimary(scope);
     }
   }
 
@@ -478,7 +702,7 @@ class MasterFieldReadCacheRouter {
     MasterFieldReadCacheEntry entry,
   ) async {
     if (!scope.isValid || entry.version < 0) return;
-    final backend = flags.backendForDataset(scope.dataset);
+    final backend = flags.backendForScope(scope);
     switch (backend) {
       case MasterFieldCacheBackend.disabled:
         return;
@@ -490,11 +714,7 @@ class MasterFieldReadCacheRouter {
         }
         return;
       case MasterFieldCacheBackend.drift:
-        final driftWritten =
-            driftStore != null && await _writeTo(driftStore!, scope, entry);
-        if (!driftWritten || flags.dualWriteHiveWhenDrift) {
-          await _writeTo(hiveStore, scope, entry);
-        }
+        await _writeDriftPrimary(scope, entry);
     }
   }
 
@@ -541,6 +761,290 @@ class MasterFieldReadCacheRouter {
     } catch (error, stackTrace) {
       _report('read', scope, store, error, stackTrace);
       return null;
+    }
+  }
+
+  Future<MasterFieldReadCacheEntry?> _readDriftPrimary(
+    MasterFieldCacheScope scope,
+  ) async {
+    final stopwatch = Stopwatch()..start();
+    final family = MasterFieldCacheDatasetFamily.fromDataset(scope.dataset);
+    if (_openCircuitFamilies.contains(family)) {
+      _emitRollout(
+        _rolloutEvent(
+          scope: scope,
+          outcome: MasterFieldCacheRolloutOutcome.circuitBypass,
+          elapsed: stopwatch.elapsed,
+          consecutiveFailureCount: _driftFailureCounts[family],
+        ),
+      );
+      return _readHiveFallback(scope, stopwatch, allowRepair: false);
+    }
+
+    final drift = driftStore;
+    if (drift == null || !drift.isAvailable) {
+      _recordDriftFailure(
+        scope,
+        MasterFieldCacheRolloutOutcome.driftUnavailable,
+        stopwatch.elapsed,
+      );
+      return _readHiveFallback(scope, stopwatch, allowRepair: false);
+    }
+
+    try {
+      final driftEntry = await drift.read(scope);
+      _recordDriftSuccess(family);
+      if (driftEntry != null) {
+        _emitRollout(
+          _rolloutEvent(
+            scope: scope,
+            outcome: MasterFieldCacheRolloutOutcome.driftReadHit,
+            elapsed: stopwatch.elapsed,
+            entry: driftEntry,
+          ),
+        );
+        return driftEntry;
+      }
+      _emitRollout(
+        _rolloutEvent(
+          scope: scope,
+          outcome: MasterFieldCacheRolloutOutcome.driftReadMiss,
+          elapsed: stopwatch.elapsed,
+        ),
+      );
+      return await _readHiveFallback(scope, stopwatch, allowRepair: true);
+    } catch (error, stackTrace) {
+      _report('read', scope, drift, error, stackTrace);
+      _recordDriftFailure(
+        scope,
+        MasterFieldCacheRolloutOutcome.driftReadFailed,
+        stopwatch.elapsed,
+      );
+      return _readHiveFallback(scope, stopwatch, allowRepair: false);
+    }
+  }
+
+  Future<MasterFieldReadCacheEntry?> _readHiveFallback(
+    MasterFieldCacheScope scope,
+    Stopwatch stopwatch, {
+    required bool allowRepair,
+  }) async {
+    final hiveEntry = await _readFrom(hiveStore, scope);
+    if (hiveEntry == null) {
+      _emitRollout(
+        _rolloutEvent(
+          scope: scope,
+          outcome: MasterFieldCacheRolloutOutcome.fullCacheMiss,
+          elapsed: stopwatch.elapsed,
+        ),
+      );
+      return null;
+    }
+    _emitRollout(
+      _rolloutEvent(
+        scope: scope,
+        outcome: MasterFieldCacheRolloutOutcome.hiveFallbackHit,
+        elapsed: stopwatch.elapsed,
+        entry: hiveEntry,
+      ),
+    );
+    if (allowRepair) _scheduleDriftReadRepair(scope, hiveEntry);
+    return hiveEntry;
+  }
+
+  Future<void> _writeDriftPrimary(
+    MasterFieldCacheScope scope,
+    MasterFieldReadCacheEntry entry,
+  ) {
+    return _queuePrimaryWrite(scope.storageKey, () async {
+      final stopwatch = Stopwatch()..start();
+      final family = MasterFieldCacheDatasetFamily.fromDataset(scope.dataset);
+      if (_openCircuitFamilies.contains(family)) {
+        _emitRollout(
+          _rolloutEvent(
+            scope: scope,
+            outcome: MasterFieldCacheRolloutOutcome.circuitBypass,
+            elapsed: stopwatch.elapsed,
+            entry: entry,
+            consecutiveFailureCount: _driftFailureCounts[family],
+          ),
+        );
+        final hiveWritten = await _writeTo(hiveStore, scope, entry);
+        if (!hiveWritten) {
+          _emitRollout(
+            _rolloutEvent(
+              scope: scope,
+              outcome: MasterFieldCacheRolloutOutcome.hiveRollbackWriteFailed,
+              elapsed: stopwatch.elapsed,
+              entry: entry,
+            ),
+          );
+        }
+        return;
+      }
+
+      final drift = driftStore;
+      var driftWritten = false;
+      if (drift == null || !drift.isAvailable) {
+        _recordDriftFailure(
+          scope,
+          MasterFieldCacheRolloutOutcome.driftUnavailable,
+          stopwatch.elapsed,
+          entry: entry,
+        );
+      } else {
+        driftWritten = await _writeTo(drift, scope, entry);
+        if (driftWritten) {
+          _recordDriftSuccess(family);
+          _emitRollout(
+            _rolloutEvent(
+              scope: scope,
+              outcome: MasterFieldCacheRolloutOutcome.driftWriteSucceeded,
+              elapsed: stopwatch.elapsed,
+              entry: entry,
+            ),
+          );
+        } else {
+          _recordDriftFailure(
+            scope,
+            MasterFieldCacheRolloutOutcome.driftWriteFailed,
+            stopwatch.elapsed,
+            entry: entry,
+          );
+        }
+      }
+
+      if (!driftWritten || flags.shouldDualWriteHive(scope)) {
+        final hiveWritten = await _writeTo(hiveStore, scope, entry);
+        if (!hiveWritten) {
+          _emitRollout(
+            _rolloutEvent(
+              scope: scope,
+              outcome: MasterFieldCacheRolloutOutcome.hiveRollbackWriteFailed,
+              elapsed: stopwatch.elapsed,
+              entry: entry,
+            ),
+          );
+        }
+      }
+    });
+  }
+
+  void _scheduleDriftReadRepair(
+    MasterFieldCacheScope scope,
+    MasterFieldReadCacheEntry entry,
+  ) {
+    if (_primaryWriteTails.containsKey(scope.storageKey)) {
+      _emitRollout(
+        _rolloutEvent(
+          scope: scope,
+          outcome: MasterFieldCacheRolloutOutcome.readRepairSkippedNewer,
+          elapsed: Duration.zero,
+          entry: entry,
+        ),
+      );
+      return;
+    }
+    unawaited(
+      _queuePrimaryWrite(scope.storageKey, () async {
+        final stopwatch = Stopwatch()..start();
+        final family = MasterFieldCacheDatasetFamily.fromDataset(scope.dataset);
+        if (_openCircuitFamilies.contains(family)) return;
+        final drift = driftStore;
+        if (drift == null || !drift.isAvailable) {
+          _recordDriftFailure(
+            scope,
+            MasterFieldCacheRolloutOutcome.driftUnavailable,
+            stopwatch.elapsed,
+            entry: entry,
+          );
+          return;
+        }
+        try {
+          await drift.write(scope, entry);
+          _recordDriftSuccess(family);
+          _emitRollout(
+            _rolloutEvent(
+              scope: scope,
+              outcome: MasterFieldCacheRolloutOutcome.readRepairSucceeded,
+              elapsed: stopwatch.elapsed,
+              entry: entry,
+            ),
+          );
+        } catch (error, stackTrace) {
+          _report('read repair', scope, drift, error, stackTrace);
+          _recordDriftFailure(
+            scope,
+            MasterFieldCacheRolloutOutcome.readRepairFailed,
+            stopwatch.elapsed,
+            entry: entry,
+          );
+        }
+      }),
+    );
+  }
+
+  Future<void> _queuePrimaryWrite(
+    String cacheKey,
+    Future<void> Function() operation,
+  ) {
+    final previous = _primaryWriteTails[cacheKey];
+    final queued = _performQueuedPrimaryWrite(previous, operation);
+    _primaryWriteTails[cacheKey] = queued;
+    return queued.whenComplete(() {
+      if (identical(_primaryWriteTails[cacheKey], queued)) {
+        _primaryWriteTails.remove(cacheKey);
+      }
+    });
+  }
+
+  Future<void> _performQueuedPrimaryWrite(
+    Future<void>? previous,
+    Future<void> Function() operation,
+  ) async {
+    if (previous != null) {
+      try {
+        await previous;
+      } catch (_) {
+        // Local cache operations are fail-open. Keep the per-key queue moving.
+      }
+    }
+    await operation();
+  }
+
+  void _recordDriftSuccess(MasterFieldCacheDatasetFamily family) {
+    _driftFailureCounts.remove(family);
+  }
+
+  void _recordDriftFailure(
+    MasterFieldCacheScope scope,
+    MasterFieldCacheRolloutOutcome outcome,
+    Duration elapsed, {
+    MasterFieldReadCacheEntry? entry,
+  }) {
+    final family = MasterFieldCacheDatasetFamily.fromDataset(scope.dataset);
+    final failures = (_driftFailureCounts[family] ?? 0) + 1;
+    _driftFailureCounts[family] = failures;
+    _emitRollout(
+      _rolloutEvent(
+        scope: scope,
+        outcome: outcome,
+        elapsed: elapsed,
+        entry: entry,
+        consecutiveFailureCount: failures,
+      ),
+    );
+    if (failures >= maxConsecutiveDriftFailures &&
+        _openCircuitFamilies.add(family)) {
+      _emitRollout(
+        _rolloutEvent(
+          scope: scope,
+          outcome: MasterFieldCacheRolloutOutcome.circuitOpened,
+          elapsed: elapsed,
+          entry: entry,
+          consecutiveFailureCount: failures,
+        ),
+      );
     }
   }
 
@@ -749,11 +1253,36 @@ class MasterFieldReadCacheRouter {
     driftWriteSucceeded: driftWriteSucceeded,
   );
 
+  MasterFieldCacheRolloutEvent _rolloutEvent({
+    required MasterFieldCacheScope scope,
+    required MasterFieldCacheRolloutOutcome outcome,
+    required Duration elapsed,
+    MasterFieldReadCacheEntry? entry,
+    int? consecutiveFailureCount,
+  }) => MasterFieldCacheRolloutEvent(
+    recordedAt: DateTime.now(),
+    family: MasterFieldCacheDatasetFamily.fromDataset(scope.dataset),
+    dataset: scope.dataset.trim().toLowerCase().split(':').first,
+    outcome: outcome,
+    elapsed: elapsed,
+    version: entry?.version,
+    rowCount: entry?.rows.length,
+    consecutiveFailureCount: consecutiveFailureCount,
+  );
+
   void _emitCanary(MasterFieldCacheCanaryEvent event) {
     try {
       canaryReporter?.call(event);
     } catch (error, stackTrace) {
       log?.call('Local cache canary telemetry skipped', error, stackTrace);
+    }
+  }
+
+  void _emitRollout(MasterFieldCacheRolloutEvent event) {
+    try {
+      rolloutReporter?.call(event);
+    } catch (error, stackTrace) {
+      log?.call('Local cache rollout telemetry skipped', error, stackTrace);
     }
   }
 
@@ -764,8 +1293,9 @@ class MasterFieldReadCacheRouter {
     Object error,
     StackTrace stackTrace,
   ) {
+    final dataset = scope.dataset.trim().toLowerCase().split(':').first;
     log?.call(
-      'Local ${scope.dataset} ${store.backend.name} cache $operation skipped',
+      'Local $dataset ${store.backend.name} cache $operation skipped',
       error,
       stackTrace,
     );
