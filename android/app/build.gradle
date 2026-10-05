@@ -29,6 +29,7 @@ android {
     namespace 'com.example.kroscek'
 
     compileSdkVersion 36
+    ndkVersion "28.2.13676358"
 
     defaultConfig {
         applicationId "com.example.kroscek"
