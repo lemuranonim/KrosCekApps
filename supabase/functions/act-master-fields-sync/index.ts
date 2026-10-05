@@ -14,6 +14,11 @@ import {
   type SourceType,
 } from "./sync-core.ts";
 import { iterateFirstSheetRows, readFirstSheetRowsChunk } from "./xlsx-stream.ts";
+import {
+  buildDailyPlantingDateShards,
+  PLANTING_EXPORT_SHARD_DAYS,
+  PLANTING_HISTORY_SHARDS_PER_RUN,
+} from "./date-shards.ts";
 
 const ACT_ORIGIN = (Deno.env.get("ACT_SYNC_ORIGIN") ?? "https://act.advantaseeds.com")
   .replace(/\/$/, "");
@@ -57,51 +62,17 @@ const PLANTING_TABLE_ROUTE: Record<SourceType, string> = {
   SC: "planting/Planting_sc/table",
 };
 
-const WKT_SHARD_STRATEGY_VERSION = 2;
+const WKT_SHARD_STRATEGY_VERSION = 4;
+const WKT_SHARD_QUEUE_BATCH_SIZE = 8;
+const WKT_SHARDS_PER_CHECKPOINT = 3;
 const HARVEST_REPORT_ROUTE = "harvest/get_report_mobile";
 
 function buildWktDateShards(
-  sourceType: SourceType,
+  _sourceType: SourceType,
   from: string,
   to: string,
 ): Array<Record<string, unknown>> {
-  if (sourceType !== "FC") {
-    return [{
-      from,
-      to,
-      job_id: null,
-      row_cursor: 0,
-      processed_rows: 0,
-      geometry_rows: 0,
-      matched_rows: 0,
-      complete: false,
-    }];
-  }
-
-  const rangeEnd = new Date(`${to}T00:00:00Z`);
-  let cursor = new Date(`${from}T00:00:00Z`);
-  const shards: Array<Record<string, unknown>> = [];
-  while (cursor <= rangeEnd) {
-    const monthEnd = new Date(Date.UTC(
-      cursor.getUTCFullYear(),
-      cursor.getUTCMonth() + 1,
-      0,
-    ));
-    const shardEnd = monthEnd < rangeEnd ? monthEnd : rangeEnd;
-    shards.push({
-      from: cursor.toISOString().slice(0, 10),
-      to: shardEnd.toISOString().slice(0, 10),
-      job_id: null,
-      row_cursor: 0,
-      processed_rows: 0,
-      geometry_rows: 0,
-      matched_rows: 0,
-      complete: false,
-    });
-    cursor = new Date(shardEnd);
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return shards;
+  return buildDailyPlantingDateShards(from, to);
 }
 
 function createWktSourceState(
@@ -110,7 +81,9 @@ function createWktSourceState(
   to: string,
 ): Record<string, unknown> {
   return {
-    strategy: sourceType === "FC" ? "monthly" : "full_range",
+    strategy: "rolling_recent_with_historical_refresh",
+    shard_days: PLANTING_EXPORT_SHARD_DAYS,
+    history_shards_per_run: PLANTING_HISTORY_SHARDS_PER_RUN,
     shards: buildWktDateShards(sourceType, from, to),
     shard_index: 0,
     row_cursor: 0,
@@ -1577,16 +1550,36 @@ Deno.serve(async (req) => {
           const wktState = recordValue(sourceMeta.wkt_state);
           if (input.includeWkt && wktState.complete !== true) {
             if (Number(wktState.strategy_version ?? 0) !== WKT_SHARD_STRATEGY_VERSION) {
+              const previousStrategyVersion = Number(wktState.strategy_version ?? 0);
+              const previousSources = recordValue(wktState.sources);
               const wktSources = Object.fromEntries(
-                input.sources.map((candidate) => [
-                  candidate,
-                  createWktSourceState(candidate, input.from, input.to),
-                ]),
+                input.sources.map((candidate) => {
+                  const previousSource = recordValue(previousSources[candidate]);
+                  if (previousStrategyVersion === 3 && previousSource.complete === true) {
+                    return [
+                      candidate,
+                      {
+                        ...previousSource,
+                        preserved_from_strategy_version: previousStrategyVersion,
+                      },
+                    ] as const;
+                  }
+
+                  return [
+                    candidate,
+                    {
+                      ...createWktSourceState(candidate, input.from, input.to),
+                      migrated_from_strategy_version: previousStrategyVersion || null,
+                      carried_geometry_rows: Number(previousSource.geometry_rows ?? 0),
+                      carried_matched_rows: Number(previousSource.matched_rows ?? 0),
+                    },
+                  ] as const;
+                }),
               );
               sourceMeta.wkt_state = {
                 strategy_version: WKT_SHARD_STRATEGY_VERSION,
                 initialized_at: new Date().toISOString(),
-                migrated_from_unsharded: Object.keys(wktState).length > 0,
+                migrated_from_strategy_version: previousStrategyVersion || null,
                 sources: wktSources,
                 complete: false,
               };
@@ -1614,240 +1607,264 @@ Deno.serve(async (req) => {
               recordValue(wktSources[candidate]).complete !== true
             );
             if (wktSource) {
-              const sourceState = recordValue(wktSources[wktSource]);
+              let sourceState = recordValue(wktSources[wktSource]);
               const shards = Array.isArray(sourceState.shards)
                 ? sourceState.shards.map(recordValue)
                 : buildWktDateShards(wktSource, input.from, input.to);
-              const shardIndex = shards.findIndex((candidate) => candidate.complete !== true);
-              if (shardIndex < 0) {
-                wktSources[wktSource] = { ...sourceState, complete: true };
-                wktState.sources = wktSources;
-                sourceMeta.wkt_state = wktState;
-                const { error: sourceCompleteError } = await service
-                  .from("act_sync_runs")
-                  .update({
-                    status: "EXTRACTING",
-                    source_meta: sourceMeta,
-                    progress_at: new Date().toISOString(),
-                  })
-                  .eq("id", activeRunId);
-                if (sourceCompleteError) {
-                  throw new Error(`Cannot complete ACT WKT source: ${sourceCompleteError.message}`);
-                }
-                return jsonResponse({
-                  run_id: activeRunId,
-                  status: "EXTRACTING",
-                  staged_source: `${wktSource}_WKT`,
-                  source_complete: true,
-                }, 202);
-              }
-
-              const shard = shards[shardIndex];
               const act = new ActClient();
               await act.login(actUsername, actPassword);
-              const unqueuedShardIndexes = wktSource === "FC"
-                ? shards
-                  .map((candidate, index) => candidate.queued_at ? -1 : index)
-                  .filter((index) => index >= 0)
-                : [];
-              if (unqueuedShardIndexes.length > 1) {
-                const existingJobs = await act.listExportJobs();
-                const queuedAt = new Date().toISOString();
-                const existingJobIds = existingJobs.map((job) => job.id);
-                for (const index of unqueuedShardIndexes) {
-                  const pendingShard = shards[index];
-                  await act.startBackgroundExport(
-                    wktSource,
-                    String(pendingShard.from),
-                    String(pendingShard.to),
-                  );
-                  shards[index] = {
-                    ...pendingShard,
-                    queued_at: queuedAt,
-                    existing_job_ids: existingJobIds,
-                  };
-                }
-                wktSources[wktSource] = {
-                  ...sourceState,
-                  shards,
-                  shard_index: shardIndex,
-                  updated_at: queuedAt,
-                };
-                wktState.sources = wktSources;
-                sourceMeta.wkt_state = wktState;
-                const { error: shardBatchQueueError } = await service
-                  .from("act_sync_runs")
-                  .update({
-                    status: "EXTRACTING",
-                    source_meta: sourceMeta,
-                    progress_at: queuedAt,
-                  })
-                  .eq("id", activeRunId);
-                if (shardBatchQueueError) {
-                  throw new Error(
-                    `Cannot queue ACT WKT shard batch: ${shardBatchQueueError.message}`,
-                  );
-                }
-                return jsonResponse({
-                  run_id: activeRunId,
-                  status: "EXTRACTING",
-                  staged_source: `${wktSource}_WKT_EXPORTS`,
-                  queued_shards: unqueuedShardIndexes.length,
-                }, 202);
-              }
-
-              let jobId = String(shard.job_id ?? "");
-              if (!shard.queued_at) {
-                const existingJobs = await act.listExportJobs();
-                await act.startBackgroundExport(
-                  wktSource,
-                  String(shard.from),
-                  String(shard.to),
-                );
-                shards[shardIndex] = {
-                  ...shard,
-                  queued_at: new Date().toISOString(),
-                  existing_job_ids: existingJobs.map((job) => job.id),
-                };
-                wktSources[wktSource] = {
-                  ...sourceState,
-                  shards,
-                  shard_index: shardIndex,
-                  updated_at: new Date().toISOString(),
-                };
-                wktState.sources = wktSources;
-                sourceMeta.wkt_state = wktState;
-                const { error: shardQueueError } = await service
-                  .from("act_sync_runs")
-                  .update({
-                    status: "EXTRACTING",
-                    source_meta: sourceMeta,
-                    progress_at: new Date().toISOString(),
-                  })
-                  .eq("id", activeRunId);
-                if (shardQueueError) {
-                  throw new Error(`Cannot queue ACT WKT shard: ${shardQueueError.message}`);
-                }
-                return jsonResponse({
-                  run_id: activeRunId,
-                  status: "EXTRACTING",
-                  staged_source: `${wktSource}_WKT_EXPORT`,
-                  shard: { index: shardIndex, from: shard.from, to: shard.to },
-                }, 202);
-              }
-
-              if (!jobId) {
-                const existingIds = new Set(
-                  Array.isArray(shard.existing_job_ids)
-                    ? shard.existing_job_ids.map(String)
-                    : [],
-                );
-                const lookup = await act.findBackgroundJobs(
-                  [wktSource],
-                  String(shard.from),
-                  String(shard.to),
-                  existingIds,
-                );
-                const readyJob = lookup.ready[wktSource];
-                if (!readyJob) {
+              let processedShardsThisCall = 0;
+              while (processedShardsThisCall < WKT_SHARDS_PER_CHECKPOINT) {
+                const shardIndex = shards.findIndex((candidate) => candidate.complete !== true);
+                if (shardIndex < 0) {
+                  wktSources[wktSource] = { ...sourceState, complete: true };
+                  wktState.sources = wktSources;
+                  sourceMeta.wkt_state = wktState;
+                  const { error: sourceCompleteError } = await service
+                    .from("act_sync_runs")
+                    .update({
+                      status: "EXTRACTING",
+                      source_meta: sourceMeta,
+                      progress_at: new Date().toISOString(),
+                    })
+                    .eq("id", activeRunId);
+                  if (sourceCompleteError) {
+                    throw new Error(
+                      `Cannot complete ACT WKT source: ${sourceCompleteError.message}`,
+                    );
+                  }
                   return jsonResponse({
                     run_id: activeRunId,
                     status: "EXTRACTING",
-                    staged_source: "WKT_EXPORTS",
-                    pending_sources: [wktSource],
-                    shard: { index: shardIndex, from: shard.from, to: shard.to },
-                    observed_jobs: lookup.observed,
+                    staged_source: `${wktSource}_WKT`,
+                    source_complete: true,
                   }, 202);
                 }
-                jobId = readyJob.id;
-              }
 
-              const artifact = await act.downloadBackgroundExport(wktSource, {
-                id: jobId,
-                kind: EXPORT_KIND[wktSource],
-                from: String(shard.from),
-                to: String(shard.to),
-                status: "success",
-                createdAt: "",
-              }, String(shard.file_hash ?? "") || undefined);
-              const cursor = Number(shard.row_cursor ?? 0);
-              const chunkRows = Math.max(250, Number(syncConfig.wkt_chunk_rows ?? 2_000));
-              const merged = await mergeGeometryArtifactChunk(
-                service,
-                activeRunId,
-                artifact,
-                cursor,
-                chunkRows,
-              );
-              shards[shardIndex] = {
-                ...shard,
-                job_id: jobId,
-                file_hash: artifact.fileHash,
-                row_cursor: merged.nextCursor,
-                processed_rows: Number(shard.processed_rows ?? 0) + merged.processedRows,
-                geometry_rows: Number(shard.geometry_rows ?? 0) + merged.geometryRows,
-                matched_rows: Number(shard.matched_rows ?? 0) + merged.matchedRows,
-                complete: merged.complete,
-                updated_at: new Date().toISOString(),
-              };
-              const processedRows = shards.reduce(
-                (total, candidate) => total + Number(candidate.processed_rows ?? 0),
-                0,
-              );
-              const geometryRows = shards.reduce(
-                (total, candidate) => total + Number(candidate.geometry_rows ?? 0),
-                0,
-              );
-              const matchedRows = shards.reduce(
-                (total, candidate) => total + Number(candidate.matched_rows ?? 0),
-                0,
-              );
-              const sourceComplete = shards.every((candidate) => candidate.complete === true);
-              const nextShardIndex = shards.findIndex((candidate) => candidate.complete !== true);
-              wktSources[wktSource] = {
-                ...sourceState,
-                shards,
-                shard_index: nextShardIndex < 0 ? shards.length : nextShardIndex,
-                job_id: jobId,
-                row_cursor: processedRows,
-                processed_rows: processedRows,
-                geometry_rows: geometryRows,
-                matched_rows: matchedRows,
-                complete: sourceComplete,
-                updated_at: new Date().toISOString(),
-              };
-              wktState.sources = wktSources;
-              wktState.complete = input.sources.every((candidate) =>
-                recordValue(wktSources[candidate]).complete === true
-              );
-              sourceMeta.wkt_state = wktState;
-              const { error: wktUpdateError } = await service
-                .from("act_sync_runs")
-                .update({
-                  status: "EXTRACTING",
-                  source_meta: sourceMeta,
-                  progress_at: new Date().toISOString(),
-                })
-                .eq("id", activeRunId);
-              if (wktUpdateError) {
-                throw new Error(`Cannot update ACT WKT cursor: ${wktUpdateError.message}`);
-              }
-              return jsonResponse({
-                run_id: activeRunId,
-                status: "EXTRACTING",
-                staged_source: `${wktSource}_WKT`,
-                staged_rows: merged.processedRows,
-                geometry_rows: merged.geometryRows,
-                matched_rows: merged.matchedRows,
-                source_cursor: merged.nextCursor,
-                source_complete: sourceComplete,
-                shard: {
-                  index: shardIndex,
-                  from: shard.from,
-                  to: shard.to,
+                const shard = shards[shardIndex];
+                const unqueuedShardIndexes = shards
+                  .map((candidate, index) => candidate.queued_at ? -1 : index)
+                  .filter((index) => index >= 0);
+                if (!shard.queued_at && unqueuedShardIndexes.length > 1) {
+                  const queueBatch = unqueuedShardIndexes.slice(
+                    0,
+                    WKT_SHARD_QUEUE_BATCH_SIZE,
+                  );
+                  const existingJobs = await act.listExportJobs();
+                  const queuedAt = new Date().toISOString();
+                  const existingJobIds = existingJobs.map((job) => job.id);
+                  for (const index of queueBatch) {
+                    const pendingShard = shards[index];
+                    await act.startBackgroundExport(
+                      wktSource,
+                      String(pendingShard.from),
+                      String(pendingShard.to),
+                    );
+                    shards[index] = {
+                      ...pendingShard,
+                      queued_at: queuedAt,
+                      existing_job_ids: existingJobIds,
+                    };
+                  }
+                  wktSources[wktSource] = {
+                    ...sourceState,
+                    shards,
+                    shard_index: shardIndex,
+                    updated_at: queuedAt,
+                  };
+                  wktState.sources = wktSources;
+                  sourceMeta.wkt_state = wktState;
+                  const { error: shardBatchQueueError } = await service
+                    .from("act_sync_runs")
+                    .update({
+                      status: "EXTRACTING",
+                      source_meta: sourceMeta,
+                      progress_at: queuedAt,
+                    })
+                    .eq("id", activeRunId);
+                  if (shardBatchQueueError) {
+                    throw new Error(
+                      `Cannot queue ACT WKT shard batch: ${shardBatchQueueError.message}`,
+                    );
+                  }
+                  return jsonResponse({
+                    run_id: activeRunId,
+                    status: "EXTRACTING",
+                    staged_source: `${wktSource}_WKT_EXPORTS`,
+                    queued_shards: queueBatch.length,
+                    remaining_unqueued_shards:
+                      unqueuedShardIndexes.length - queueBatch.length,
+                  }, 202);
+                }
+
+                let jobId = String(shard.job_id ?? "");
+                if (!shard.queued_at) {
+                  const existingJobs = await act.listExportJobs();
+                  await act.startBackgroundExport(
+                    wktSource,
+                    String(shard.from),
+                    String(shard.to),
+                  );
+                  shards[shardIndex] = {
+                    ...shard,
+                    queued_at: new Date().toISOString(),
+                    existing_job_ids: existingJobs.map((job) => job.id),
+                  };
+                  wktSources[wktSource] = {
+                    ...sourceState,
+                    shards,
+                    shard_index: shardIndex,
+                    updated_at: new Date().toISOString(),
+                  };
+                  wktState.sources = wktSources;
+                  sourceMeta.wkt_state = wktState;
+                  const { error: shardQueueError } = await service
+                    .from("act_sync_runs")
+                    .update({
+                      status: "EXTRACTING",
+                      source_meta: sourceMeta,
+                      progress_at: new Date().toISOString(),
+                    })
+                    .eq("id", activeRunId);
+                  if (shardQueueError) {
+                    throw new Error(`Cannot queue ACT WKT shard: ${shardQueueError.message}`);
+                  }
+                  return jsonResponse({
+                    run_id: activeRunId,
+                    status: "EXTRACTING",
+                    staged_source: `${wktSource}_WKT_EXPORT`,
+                    shard: { index: shardIndex, from: shard.from, to: shard.to },
+                  }, 202);
+                }
+
+                if (!jobId) {
+                  const existingIds = new Set(
+                    Array.isArray(shard.existing_job_ids)
+                      ? shard.existing_job_ids.map(String)
+                      : [],
+                  );
+                  const lookup = await act.findBackgroundJobs(
+                    [wktSource],
+                    String(shard.from),
+                    String(shard.to),
+                    existingIds,
+                  );
+                  const readyJob = lookup.ready[wktSource];
+                  if (!readyJob) {
+                    return jsonResponse({
+                      run_id: activeRunId,
+                      status: "EXTRACTING",
+                      staged_source: "WKT_EXPORTS",
+                      pending_sources: [wktSource],
+                      shard: { index: shardIndex, from: shard.from, to: shard.to },
+                      observed_jobs: lookup.observed,
+                      shards_processed_this_call: processedShardsThisCall,
+                    }, 202);
+                  }
+                  jobId = readyJob.id;
+                }
+
+                const artifact = await act.downloadBackgroundExport(wktSource, {
+                  id: jobId,
+                  kind: EXPORT_KIND[wktSource],
+                  from: String(shard.from),
+                  to: String(shard.to),
+                  status: "success",
+                  createdAt: "",
+                }, String(shard.file_hash ?? "") || undefined);
+                const cursor = Number(shard.row_cursor ?? 0);
+                const chunkRows = Math.max(250, Number(syncConfig.wkt_chunk_rows ?? 2_000));
+                const merged = await mergeGeometryArtifactChunk(
+                  service,
+                  activeRunId,
+                  artifact,
+                  cursor,
+                  chunkRows,
+                );
+                shards[shardIndex] = {
+                  ...shard,
+                  job_id: jobId,
+                  file_hash: artifact.fileHash,
+                  row_cursor: merged.nextCursor,
+                  processed_rows: Number(shard.processed_rows ?? 0) + merged.processedRows,
+                  geometry_rows: Number(shard.geometry_rows ?? 0) + merged.geometryRows,
+                  matched_rows: Number(shard.matched_rows ?? 0) + merged.matchedRows,
                   complete: merged.complete,
-                },
-              }, 202);
+                  updated_at: new Date().toISOString(),
+                };
+                const processedRows = shards.reduce(
+                  (total, candidate) => total + Number(candidate.processed_rows ?? 0),
+                  0,
+                );
+                const geometryRows = shards.reduce(
+                  (total, candidate) => total + Number(candidate.geometry_rows ?? 0),
+                  0,
+                );
+                const matchedRows = shards.reduce(
+                  (total, candidate) => total + Number(candidate.matched_rows ?? 0),
+                  0,
+                );
+                const sourceComplete = shards.every((candidate) => candidate.complete === true);
+                const nextShardIndex = shards.findIndex((candidate) => candidate.complete !== true);
+                wktSources[wktSource] = {
+                  ...sourceState,
+                  shards,
+                  shard_index: nextShardIndex < 0 ? shards.length : nextShardIndex,
+                  job_id: jobId,
+                  row_cursor: processedRows,
+                  processed_rows: processedRows,
+                  geometry_rows: geometryRows,
+                  matched_rows: matchedRows,
+                  complete: sourceComplete,
+                  updated_at: new Date().toISOString(),
+                };
+                wktState.sources = wktSources;
+                wktState.complete = input.sources.every((candidate) =>
+                  recordValue(wktSources[candidate]).complete === true
+                );
+                sourceMeta.wkt_state = wktState;
+                const { error: wktUpdateError } = await service
+                  .from("act_sync_runs")
+                  .update({
+                    status: "EXTRACTING",
+                    source_meta: sourceMeta,
+                    progress_at: new Date().toISOString(),
+                  })
+                  .eq("id", activeRunId);
+                if (wktUpdateError) {
+                  throw new Error(`Cannot update ACT WKT cursor: ${wktUpdateError.message}`);
+                }
+
+                if (merged.complete) {
+                  processedShardsThisCall += 1;
+                }
+                const checkpoint = {
+                  run_id: activeRunId,
+                  status: "EXTRACTING",
+                  staged_source: `${wktSource}_WKT`,
+                  staged_rows: merged.processedRows,
+                  geometry_rows: merged.geometryRows,
+                  matched_rows: merged.matchedRows,
+                  source_cursor: merged.nextCursor,
+                  source_complete: sourceComplete,
+                  shards_processed_this_call: processedShardsThisCall,
+                  shard: {
+                    index: shardIndex,
+                    from: shard.from,
+                    to: shard.to,
+                    complete: merged.complete,
+                  },
+                };
+                if (
+                  !merged.complete ||
+                  sourceComplete ||
+                  processedShardsThisCall >= WKT_SHARDS_PER_CHECKPOINT
+                ) {
+                  return jsonResponse(checkpoint, 202);
+                }
+
+                sourceState = recordValue(wktSources[wktSource]);
+              }
             }
             wktState.complete = true;
             wktState.completed_at = new Date().toISOString();

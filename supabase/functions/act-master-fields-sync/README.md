@@ -8,14 +8,21 @@ The default `table` mode reads the three paginated Planting JSON endpoints,
 merges `Geometry WKT` from authenticated background export workbooks, imports
 Harvest transactions, and then overlays final PLD/Area Adjustment rows
 (`status=3`). Harvest, WKT, and reconciliation are processed in resumable
-2,000-row batches, so the large FC workbook is never
-applied in one Edge invocation. FC WKT is exported in monthly shards while the
-smaller PS and SC exports remain full-range. Within each shard, the reader skips
-rows before the saved cursor without decoding them and resolves shared strings
-only for Field Number and Geometry WKT. Pending/process PLD recommendations are
-never applied. A Field Number may have more than one approved partial-discard
-transaction. For each Field Number the sync preserves Planting's original
-actual planted area, takes the final/lowest PLD nett area, and derives:
+2,000-row batches, so a Planting workbook is never applied in one Edge
+invocation. ACT Geometry WKT exports for FC, PS, and SC use a rolling seven-day
+window because ACT can fail to create long-range Planting workbooks. Each daily
+run also refreshes one older seven-day window selected by a deterministic
+rotation. This keeps the nightly workload small while eventually detecting
+historical geometry corrections. Full-season Planting JSON remains the source
+for all non-WKT fields, so edits to older hybrid, area, address, or ownership
+data are still detected every day. At most eight export jobs are queued
+together, and one checkpoint can merge up to three ready shards. Within each
+shard, the reader skips rows before the saved cursor without decoding them and
+resolves shared strings only for Field Number and Geometry WKT.
+Pending/process PLD recommendations are never applied. A Field Number may have
+more than one approved partial-discard transaction. For each Field Number the
+sync preserves Planting's original actual planted area, takes the final/lowest
+PLD nett area, and derives:
 
 ```text
 discard_area_ha = total_area_planted_ha - effective_area_ha
@@ -187,8 +194,11 @@ that date is already `COMPLETED`.
 
 Production scheduling runs entirely inside Supabase. Cron job
 `act-master-fields-sync-cloud` starts at 01:00 WIB and dispatches one resumable
-batch every three minutes through 05:59 WIB. The extended window accommodates
-ACT background-export queue time and the large FC WKT workbook. It stops
+batch every three minutes through 05:57 WIB. Each checkpoint can consume up to
+three ready seven-day Planting/WKT shards. A normal daily run creates at most
+two WKT exports per crop source (latest plus rotating history), so the existing
+safe dispatch cadence is retained without lengthening any PLD or Harvest export
+range. It stops
 dispatching as soon as the run is terminal, prevents duplicate runs for the
 same source date, and uses the encrypted Vault secret
 `act_sync_service_role_key`. The former local Codex automation is paused and is
