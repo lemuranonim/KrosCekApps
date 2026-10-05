@@ -2,13 +2,28 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/act_sync_status.dart';
 
+class ActSyncAuthenticationRequired implements Exception {
+  const ActSyncAuthenticationRequired();
+
+  @override
+  String toString() =>
+      'Sesi pengguna belum siap. Status ACT tidak diminta ke server.';
+}
+
 class ActSyncStatusService {
   ActSyncStatusService({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
 
+  void _ensureAuthenticated() {
+    if (_client.auth.currentSession == null) {
+      throw const ActSyncAuthenticationRequired();
+    }
+  }
+
   Future<ActSyncStatus> getStatus() async {
+    _ensureAuthenticated();
     final response = await _client.rpc('get_act_sync_public_status');
     if (response is! Map) {
       throw const FormatException(
@@ -22,6 +37,7 @@ class ActSyncStatusService {
   }
 
   Future<List<ActHarvestReview>> getHarvestReviews() async {
+    _ensureAuthenticated();
     final response = await _client.rpc('get_act_sync_harvest_reviews');
     if (response is! List) {
       throw const FormatException('Format review panen ACT tidak valid.');
@@ -38,6 +54,7 @@ class ActSyncStatusService {
   }
 
   Future<List<ActSyncHistoryItem>> getHistory({int limit = 8}) async {
+    _ensureAuthenticated();
     final response = await _client.rpc(
       'get_act_sync_public_history',
       params: {'p_limit': limit},
@@ -59,6 +76,7 @@ class ActSyncStatusService {
   }
 
   Future<ActSyncDailySummary> getDailySummary({String? runId}) async {
+    _ensureAuthenticated();
     final response = await _client.rpc(
       'get_act_sync_scoped_daily_summary',
       params: {'p_run_id': runId},
@@ -75,6 +93,7 @@ class ActSyncStatusService {
   }
 
   Future<ActSyncDailyPage> getDailyChanges(ActSyncDailyQuery query) async {
+    _ensureAuthenticated();
     final response = await _client.rpc(
       'get_act_sync_scoped_daily_changes',
       params: query.rpcParams,
@@ -93,6 +112,7 @@ class ActSyncStatusService {
   Future<PlantingDataMonitorSummary> getPlantingSummary(
     PlantingDataMonitorFilter filter,
   ) async {
+    _ensureAuthenticated();
     final response = await _client.rpc(
       'get_planting_data_monitor_summary',
       params: filter.rpcParams,
@@ -109,6 +129,7 @@ class ActSyncStatusService {
   }
 
   Future<PlantingDataMonitorOptions> getPlantingOptions() async {
+    _ensureAuthenticated();
     final response = await _client.rpc('get_planting_data_monitor_options');
     if (response is! Map) {
       throw const FormatException(
@@ -124,6 +145,7 @@ class ActSyncStatusService {
   Future<PlantingPldLifecycleSummary> getPlantingPldLifecycleSummary(
     PlantingDataMonitorFilter filter,
   ) async {
+    _ensureAuthenticated();
     final response = await _client.rpc(
       'get_planting_pld_lifecycle_summary',
       params: filter.rpcParams,
@@ -142,6 +164,7 @@ class ActSyncStatusService {
   Future<PlantingPldLifecyclePage> getPlantingPldLifecycleItems(
     PlantingPldLifecycleQuery query,
   ) async {
+    _ensureAuthenticated();
     final response = await _client.rpc(
       'get_planting_pld_lifecycle_items',
       params: query.rpcParams,

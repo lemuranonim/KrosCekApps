@@ -286,6 +286,76 @@ class _QAScreenState extends ConsumerState<QAScreen>
     ref.invalidate(parsedMasterFieldMapScopedProvider(scope));
   }
 
+  Widget _buildMapCacheStatusStrip(List<ParsedFieldData> fields) {
+    DateTime? oldestSavedAt;
+    var staleRows = 0;
+    for (final field in fields) {
+      if (field.raw['_kc_cache_stale'] != true) continue;
+      staleRows++;
+      final savedAt = DateTime.tryParse(
+        field.raw['_kc_cache_saved_at']?.toString() ?? '',
+      );
+      if (savedAt != null &&
+          (oldestSavedAt == null || savedAt.isBefore(oldestSavedAt))) {
+        oldestSavedAt = savedAt;
+      }
+    }
+    if (staleRows == 0) return const SizedBox.shrink();
+
+    final timeLabel = oldestSavedAt == null
+        ? 'snapshot terakhir'
+        : DateFormat('dd MMM, HH:mm', 'id_ID').format(oldestSavedAt);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 2, 12, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4D6),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE8C76A)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.cloud_off_rounded,
+            size: 16,
+            color: Color(0xFF8A6812),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              'Koneksi server melambat · menampilkan $staleRows FN dari '
+              '$timeLabel',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF6E5310),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          InkWell(
+            onTap: _isRefreshing ? null : _refreshMapProviders,
+            borderRadius: BorderRadius.circular(8),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+              child: Text(
+                'Coba lagi',
+                style: TextStyle(
+                  color: Color(0xFF176B45),
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _handleInspectDone(Map<String, dynamic> fieldData) {
     unawaited(_refreshAndOpenFreshField(fieldData));
   }
@@ -1400,6 +1470,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
                         attentionOnly: false,
                         openMonitor: true,
                       ),
+
+                      if (parsedMapAsync is AsyncData)
+                        _buildMapCacheStatusStrip(mapFieldsForFilters),
 
                       // BARIS 2: Gabungan Semua Filter (Region, District, QA, Status, Fase)
                       if (parsedMapAsync is AsyncData)
@@ -7133,9 +7206,8 @@ class _UserLocationMarkerState extends State<_UserLocationMarker>
               height: 20,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(
-                  0xFF2196F3,
-                ).withAlpha((_opacity.value * 255).round()),
+                color: const Color(0xFF2196F3)
+                    .withAlpha((_opacity.value * 255).round()),
               ),
             ),
           ),

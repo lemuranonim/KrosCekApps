@@ -97,15 +97,18 @@ class MasterFieldCacheFeatureFlags {
     );
     const mapDriftRolloutPercent = int.fromEnvironment(
       'KC_MASTER_FIELD_MAP_DRIFT_ROLLOUT_PERCENT',
-      defaultValue: 0,
+      // Drift is now the guarded primary local cache. The router still
+      // dual-writes Hive for rollout scopes and automatically falls back when
+      // SQLite is unavailable, so this does not remove the rollback path.
+      defaultValue: 100,
     );
     const coverageDriftRolloutPercent = int.fromEnvironment(
       'KC_MASTER_FIELD_COVERAGE_DRIFT_ROLLOUT_PERCENT',
-      defaultValue: 0,
+      defaultValue: 100,
     );
     const planningDriftRolloutPercent = int.fromEnvironment(
       'KC_MASTER_FIELD_PLANNING_DRIFT_ROLLOUT_PERCENT',
-      defaultValue: 0,
+      defaultValue: 100,
     );
     const hiveRetiredDatasets = String.fromEnvironment(
       'KC_MASTER_FIELD_HIVE_RETIRED_FAMILIES',
@@ -385,8 +388,11 @@ abstract interface class MasterFieldReadCacheStore {
   Future<void> clearUser(String userId);
 }
 
-typedef MasterFieldCacheLog =
-    void Function(String message, Object error, StackTrace stackTrace);
+typedef MasterFieldCacheLog = void Function(
+  String message,
+  Object error,
+  StackTrace stackTrace,
+);
 
 enum MasterFieldCacheCanaryOutcome {
   mirroredWrite,
@@ -579,13 +585,13 @@ class MasterFieldCacheCanaryMonitor {
   }
 }
 
-typedef MasterFieldCacheCanaryReporter =
-    void Function(MasterFieldCacheCanaryEvent event);
-typedef MasterFieldCacheRowsEqual =
-    Future<bool> Function(
-      List<Map<String, dynamic>> hiveRows,
-      List<Map<String, dynamic>> driftRows,
-    );
+typedef MasterFieldCacheCanaryReporter = void Function(
+  MasterFieldCacheCanaryEvent event,
+);
+typedef MasterFieldCacheRowsEqual = Future<bool> Function(
+  List<Map<String, dynamic>> hiveRows,
+  List<Map<String, dynamic>> driftRows,
+);
 
 enum MasterFieldCacheRolloutOutcome {
   driftReadHit,
@@ -755,8 +761,9 @@ class MasterFieldCacheRolloutMonitor {
   }
 }
 
-typedef MasterFieldCacheRolloutReporter =
-    void Function(MasterFieldCacheRolloutEvent event);
+typedef MasterFieldCacheRolloutReporter = void Function(
+  MasterFieldCacheRolloutEvent event,
+);
 
 class MasterFieldReadCacheRouter {
   static const maxConcurrentShadowReads = 2;

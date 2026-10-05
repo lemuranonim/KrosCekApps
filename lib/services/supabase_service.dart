@@ -7,6 +7,8 @@ import 'master_field_read_cache.dart';
 import '../utils/master_field_region_scope.dart';
 
 class SupabaseService {
+  static const Duration _localSnapshotFastPathAge = Duration(minutes: 2);
+
   final SupabaseClient _supabase;
   final Duration _auditPlanningTimeout;
   final bool _mapCacheEnabled;
@@ -38,6 +40,18 @@ class SupabaseService {
       return '$dataset:spv:${normalize(qaSpv!)}';
     }
     return '$dataset:all';
+  }
+
+  bool _isRecentLocalSnapshot(MasterFieldReadCacheEntry? snapshot) {
+    if (snapshot == null) return false;
+    final age = DateTime.now().difference(snapshot.savedAt);
+    return !age.isNegative && age <= _localSnapshotFastPathAge;
+  }
+
+  Future<void> _invalidateAuthenticatedMasterFieldCache() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) return;
+    await MasterFieldReadCache.clearUser(userId);
   }
 
   // Eligibility only: no geometry, crop monitoring or flagging payloads.
@@ -461,33 +475,42 @@ class SupabaseService {
     String? district,
     bool bypassCache = false,
   }) async {
+    final cacheDataset = _roleScopedCacheDataset(
+      'map',
+      qaFi: qaFi,
+      qaSpv: qaSpv,
+    );
+    final hasCacheScope = [
+      qaFi,
+      qaSpv,
+      season,
+      region,
+      district,
+    ].any((value) => value?.trim().isNotEmpty == true);
+    final userId = _supabase.auth.currentUser?.id;
+    final localSnapshot =
+        !bypassCache && _mapCacheEnabled && hasCacheScope && userId != null
+        ? await MasterFieldReadCache.read(
+            userId: userId,
+            dataset: cacheDataset,
+            season: season,
+            region: region,
+            district: district,
+          )
+        : null;
+
+    // Avoid a new remote round-trip when users reopen Map/List within a short
+    // window. Older snapshots are validated remotely and remain the fallback
+    // if Redis/Postgres is temporarily unavailable.
+    if (_isRecentLocalSnapshot(localSnapshot)) {
+      return _localSnapshotRows(localSnapshot!, stale: false);
+    }
+
     try {
-      final cacheDataset = _roleScopedCacheDataset(
-        'map',
-        qaFi: qaFi,
-        qaSpv: qaSpv,
-      );
       // Redis lives behind an authenticated Edge Function, never in Flutter.
       // If that optional cache is unavailable, keep the existing direct
       // Supabase query as a fail-open path so the map remains usable.
-      final hasCacheScope = [
-        qaFi,
-        qaSpv,
-        season,
-        region,
-        district,
-      ].any((value) => value?.trim().isNotEmpty == true);
       if (_mapCacheEnabled && hasCacheScope) {
-        final userId = _supabase.auth.currentUser?.id;
-        final localSnapshot = !bypassCache && userId != null
-            ? await MasterFieldReadCache.read(
-                userId: userId,
-                dataset: cacheDataset,
-                season: season,
-                region: region,
-                district: district,
-              )
-            : null;
         try {
           final response = await _supabase.functions
               .invoke(
@@ -509,7 +532,7 @@ class SupabaseService {
                 'Map cache status: local_not_modified '
                 '(v${localSnapshot.version})',
               );
-              return localSnapshot.rows;
+              return _localSnapshotRows(localSnapshot, stale: false);
             }
             final rows = body['data'];
             if (rows is List) {
@@ -543,18 +566,48 @@ class SupabaseService {
           }
           throw const FormatException('Invalid map cache response');
         } catch (cacheError) {
+          if (_isConnectivityFailure(cacheError) && localSnapshot != null) {
+            debugPrint(
+              'Map memakai snapshot lokal karena cache server gagal: '
+              '$cacheError',
+            );
+            return _localSnapshotRows(localSnapshot, stale: true);
+          }
           debugPrint('Map cache unavailable; using Supabase: $cacheError');
         }
       }
 
-      final allData = await _fetchScopedMasterFieldPages(
-        _masterFieldMapSelect,
-        qaFi: qaFi,
-        qaSpv: qaSpv,
-        season: season,
-        region: region,
-        district: district,
-      );
+      late final List<Map<String, dynamic>> allData;
+      try {
+        allData = await _fetchScopedMasterFieldPages(
+          _masterFieldMapSelect,
+          qaFi: qaFi,
+          qaSpv: qaSpv,
+          season: season,
+          region: region,
+          district: district,
+        );
+      } catch (error) {
+        if (localSnapshot != null && _isConnectivityFailure(error)) {
+          debugPrint('Map memakai snapshot lokal setelah fetch gagal: $error');
+          return _localSnapshotRows(localSnapshot, stale: true);
+        }
+        rethrow;
+      }
+
+      if (_mapCacheEnabled && hasCacheScope && userId != null) {
+        unawaited(
+          MasterFieldReadCache.write(
+            userId: userId,
+            dataset: cacheDataset,
+            version: DateTime.now().millisecondsSinceEpoch,
+            rows: allData,
+            season: season,
+            region: region,
+            district: district,
+          ),
+        );
+      }
 
       debugPrint('Total map records fetched: ${allData.length}');
       return allData;
@@ -762,6 +815,17 @@ class SupabaseService {
   }
 
   bool _isConnectivityFailure(Object error) {
+    if (error is TimeoutException) return true;
+    if (error is PostgrestException) {
+      final code = error.code?.toString().toLowerCase() ?? '';
+      if (code == '57014' || code == 'pgrst003') return true;
+    }
+    if (error is FunctionException) {
+      final status = error.status;
+      if (status == 500 || status == 502 || status == 503 || status == 504) {
+        return true;
+      }
+    }
     final message = error.toString().toLowerCase();
     return message.contains('failed host lookup') ||
         message.contains('socketexception') ||
@@ -769,19 +833,31 @@ class SupabaseService {
         message.contains('network is unreachable') ||
         message.contains('connection timed out') ||
         message.contains('connection reset') ||
+        message.contains('context deadline exceeded') ||
+        message.contains('context canceled') ||
+        message.contains('statement timeout') ||
+        message.contains('canceling statement') ||
+        message.contains('gateway timeout') ||
+        message.contains('service unavailable') ||
+        message.contains('statuscode: 500') ||
+        message.contains('statuscode: 502') ||
+        message.contains('statuscode: 503') ||
+        message.contains('statuscode: 504') ||
         message.contains('timeoutexception') ||
         message.contains('timed out');
   }
 
-  List<Map<String, dynamic>> _staleCoverageRows(
-    MasterFieldReadCacheEntry snapshot,
-  ) {
+  List<Map<String, dynamic>> _localSnapshotRows(
+    MasterFieldReadCacheEntry snapshot, {
+    required bool stale,
+  }) {
     final savedAt = snapshot.savedAt.toIso8601String();
     return snapshot.rows
         .map(
           (row) => <String, dynamic>{
             ...row,
-            '_kc_cache_stale': true,
+            '_kc_cache_local': true,
+            '_kc_cache_stale': stale,
             '_kc_cache_saved_at': savedAt,
           },
         )
@@ -819,7 +895,7 @@ class SupabaseService {
     String? district,
     bool bypassCache = false,
   }) async {
-    const parallelRegions = 3;
+    const parallelRegions = 2;
     final normalizedByKey = <String, String>{};
     for (final rawRegion in regions) {
       final region = rawRegion.trim();
@@ -928,7 +1004,7 @@ class SupabaseService {
       qaFi: qaFi,
       qaSpv: qaSpv,
     );
-    final localSnapshot = !bypassCache && userId != null
+    final localSnapshot = !bypassCache && _mapCacheEnabled && userId != null
         ? await MasterFieldReadCache.read(
             userId: userId,
             dataset: cacheDataset,
@@ -937,6 +1013,9 @@ class SupabaseService {
             district: district,
           )
         : null;
+    if (_isRecentLocalSnapshot(localSnapshot)) {
+      return _localSnapshotRows(localSnapshot!, stale: false);
+    }
     try {
       final hasCacheScope = [
         qaFi,
@@ -968,7 +1047,7 @@ class SupabaseService {
                 'Coverage cache status: local_not_modified '
                 '(v${localSnapshot.version})',
               );
-              return localSnapshot.rows;
+              return _localSnapshotRows(localSnapshot, stale: false);
             }
             final rows = body['data'];
             if (rows is List) {
@@ -1005,7 +1084,7 @@ class SupabaseService {
               debugPrint(
                 'Coverage memakai snapshot lokal karena jaringan terputus.',
               );
-              return _staleCoverageRows(localSnapshot);
+              return _localSnapshotRows(localSnapshot, stale: true);
             }
             rethrow;
           }
@@ -1030,7 +1109,7 @@ class SupabaseService {
           debugPrint(
             'Coverage memakai snapshot lokal setelah fetch gagal: $error',
           );
-          return _staleCoverageRows(localSnapshot);
+          return _localSnapshotRows(localSnapshot, stale: true);
         }
         rethrow;
       }
@@ -1063,7 +1142,7 @@ class SupabaseService {
     String? district,
   }) async {
     const pageSize = 1000;
-    const parallelPages = 3;
+    const parallelPages = 2;
 
     Future<List<Map<String, dynamic>>> fetchPage(int from) async {
       var query = _supabase
@@ -1141,16 +1220,20 @@ class SupabaseService {
       region,
       district,
     ].any((value) => value?.trim().isNotEmpty == true);
+    final localSnapshot =
+        !bypassCache && _mapCacheEnabled && userId != null && hasCacheScope
+        ? await MasterFieldReadCache.read(
+            userId: userId,
+            dataset: cacheDataset,
+            season: scopedSeason,
+            region: region,
+            district: district,
+          )
+        : null;
+    if (_isRecentLocalSnapshot(localSnapshot)) {
+      return _localSnapshotRows(localSnapshot!, stale: false);
+    }
     if (_mapCacheEnabled && userId != null && hasCacheScope) {
-      final localSnapshot = !bypassCache
-          ? await MasterFieldReadCache.read(
-              userId: userId,
-              dataset: cacheDataset,
-              season: scopedSeason,
-              region: region,
-              district: district,
-            )
-          : null;
       try {
         final response = await _supabase.functions
             .invoke(
@@ -1173,7 +1256,7 @@ class SupabaseService {
               'Planning cache status: local_not_modified '
               '(v${localSnapshot.version})',
             );
-            return localSnapshot.rows;
+            return _localSnapshotRows(localSnapshot, stale: false);
           }
           final data = body['data'];
           if (data is List) {
@@ -1206,13 +1289,20 @@ class SupabaseService {
         }
         throw const FormatException('Invalid planning cache response');
       } catch (cacheError) {
+        if (_isConnectivityFailure(cacheError) && localSnapshot != null) {
+          debugPrint(
+            'Planning memakai snapshot lokal karena cache server gagal: '
+            '$cacheError',
+          );
+          return _localSnapshotRows(localSnapshot, stale: true);
+        }
         debugPrint('Planning cache unavailable; using Supabase: $cacheError');
       }
     }
 
     final rows = <Map<String, dynamic>>[];
     const pageSize = 1000;
-    const parallelPages = 3;
+    const parallelPages = 2;
 
     Future<List<Map<String, dynamic>>> fetchPage(int from) =>
         _auditPlanningQuery(
@@ -1232,26 +1322,50 @@ class SupabaseService {
     // timeout applies to each request, not to the accumulated duration of all
     // pages, so a healthy large region is not rejected merely for having more
     // records.
-    final firstPage = await fetchPage(0);
-    rows.addAll(firstPage);
-    if (firstPage.length < pageSize) return rows;
-
-    for (var from = pageSize; ; from += parallelPages * pageSize) {
-      final pages = await Future.wait(
-        List.generate(
-          parallelPages,
-          (index) => fetchPage(from + index * pageSize),
-        ),
-      );
-      var reachedLastPage = false;
-      for (final page in pages) {
-        rows.addAll(page);
-        if (page.length < pageSize) {
-          reachedLastPage = true;
-          break;
+    try {
+      final firstPage = await fetchPage(0);
+      rows.addAll(firstPage);
+      if (firstPage.length == pageSize) {
+        for (var from = pageSize; ; from += parallelPages * pageSize) {
+          final pages = await Future.wait(
+            List.generate(
+              parallelPages,
+              (index) => fetchPage(from + index * pageSize),
+            ),
+          );
+          var reachedLastPage = false;
+          for (final page in pages) {
+            rows.addAll(page);
+            if (page.length < pageSize) {
+              reachedLastPage = true;
+              break;
+            }
+          }
+          if (reachedLastPage) break;
         }
       }
-      if (reachedLastPage) break;
+    } catch (error) {
+      if (localSnapshot != null && _isConnectivityFailure(error)) {
+        debugPrint(
+          'Planning memakai snapshot lokal setelah fetch gagal: $error',
+        );
+        return _localSnapshotRows(localSnapshot, stale: true);
+      }
+      rethrow;
+    }
+
+    if (_mapCacheEnabled && userId != null && hasCacheScope) {
+      unawaited(
+        MasterFieldReadCache.write(
+          userId: userId,
+          dataset: cacheDataset,
+          version: DateTime.now().millisecondsSinceEpoch,
+          rows: rows,
+          season: scopedSeason,
+          region: region,
+          district: district,
+        ),
+      );
     }
     return rows;
   }
@@ -1496,6 +1610,7 @@ class SupabaseService {
           if (updatedRows.isEmpty) {
             throw Exception('field_number tidak ditemukan: $fieldNumber');
           }
+          await _invalidateAuthenticatedMasterFieldCache();
           return;
         } catch (_) {
           // Keep the original metadata update error below for clearer diagnostics.
@@ -1503,6 +1618,7 @@ class SupabaseService {
       }
       throw Exception('Gagal menyimpan polygon lahan: $e');
     }
+    await _invalidateAuthenticatedMasterFieldCache();
   }
 
   Future<void> updateFieldCorrectionTagging({
@@ -1518,7 +1634,10 @@ class SupabaseService {
           .eq('field_number', fieldNumber)
           .select('field_number');
 
-      if (updatedAuditRows.isNotEmpty) return;
+      if (updatedAuditRows.isNotEmpty) {
+        await _invalidateAuthenticatedMasterFieldCache();
+        return;
+      }
 
       try {
         final updatedMasterRows = await _supabase
@@ -1527,7 +1646,10 @@ class SupabaseService {
             .eq('field_number', fieldNumber)
             .select('field_number');
 
-        if (updatedMasterRows.isNotEmpty) return;
+        if (updatedMasterRows.isNotEmpty) {
+          await _invalidateAuthenticatedMasterFieldCache();
+          return;
+        }
       } catch (_) {
         // Some deployments keep correction_tagging only in audit_vegetative.
       }
@@ -1537,6 +1659,7 @@ class SupabaseService {
         'correction_tagging': correctionTagging,
         'updated_at': now,
       }, onConflict: 'field_number');
+      await _invalidateAuthenticatedMasterFieldCache();
     } catch (e) {
       throw Exception('Gagal menyimpan correction tagging: $e');
     }
@@ -1565,6 +1688,7 @@ class SupabaseService {
         data: data,
         errorContext: 'Gagal menyimpan audit vegetative',
       );
+      await _invalidateAuthenticatedMasterFieldCache();
     } catch (e) {
       throw Exception('Gagal menyimpan audit vegetative: $e');
     }
@@ -1591,6 +1715,7 @@ class SupabaseService {
     required String fieldNumber,
     required int checkpoint,
     required Map<String, dynamic> data,
+    bool invalidateLocalCache = true,
   }) async {
     try {
       // Pastikan field_number ada di data
@@ -1604,6 +1729,9 @@ class SupabaseService {
         data: data,
         errorContext: 'Gagal menyimpan audit generative-$checkpoint',
       );
+      if (invalidateLocalCache) {
+        await _invalidateAuthenticatedMasterFieldCache();
+      }
     } catch (e) {
       throw Exception('Gagal menyimpan audit generative-$checkpoint: $e');
     }
@@ -1669,6 +1797,7 @@ class SupabaseService {
             fieldNumber: record['field_number'],
             checkpoint: checkpoint,
             data: record,
+            invalidateLocalCache: false,
           );
         } else {
           final tableName = _phaseToTable(phase);
@@ -1681,6 +1810,7 @@ class SupabaseService {
           );
         }
       }
+      await _invalidateAuthenticatedMasterFieldCache();
     } catch (e) {
       throw Exception('Gagal bulk upsert $phase: $e');
     }
@@ -1955,6 +2085,7 @@ class SupabaseService {
         data: data,
         errorContext: 'Gagal menyimpan audit pre-harvest',
       );
+      await _invalidateAuthenticatedMasterFieldCache();
     } catch (e) {
       throw Exception('Gagal menyimpan audit pre-harvest: $e');
     }
@@ -1983,6 +2114,7 @@ class SupabaseService {
         data: data,
         errorContext: 'Gagal menyimpan audit harvest',
       );
+      await _invalidateAuthenticatedMasterFieldCache();
     } catch (e) {
       throw Exception('Gagal menyimpan audit harvest: $e');
     }

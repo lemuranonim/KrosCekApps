@@ -710,8 +710,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
       .where((target) => auditStage(target.phase) == _phase)
       .toList(growable: false);
 
-  bool _targetDone(AuditPlanField field) =>
-      field.weekly.isStageDone(_phase);
+  bool _targetDone(AuditPlanField field) => field.weekly.isStageDone(_phase);
 
   bool _targetOverdue(AuditPlanField field) =>
       field.weekly.isStageOverdue(_phase);
@@ -782,6 +781,63 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
         );
   }
 
+  Widget _planningCacheStatus(List<AuditPlanField> fields) {
+    DateTime? oldestSavedAt;
+    var staleRows = 0;
+    for (final field in fields) {
+      final raw = field.parsed.raw;
+      if (raw['_kc_cache_stale'] != true) continue;
+      staleRows++;
+      final savedAt = DateTime.tryParse(
+        raw['_kc_cache_saved_at']?.toString() ?? '',
+      );
+      if (savedAt != null &&
+          (oldestSavedAt == null || savedAt.isBefore(oldestSavedAt))) {
+        oldestSavedAt = savedAt;
+      }
+    }
+    if (staleRows == 0) return const SizedBox.shrink();
+
+    final timeLabel = oldestSavedAt == null
+        ? 'snapshot terakhir'
+        : DateFormat('dd MMM, HH:mm', 'id_ID').format(oldestSavedAt);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4D6),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: const Color(0xFFE8C76A)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.cloud_off_rounded,
+            color: Color(0xFF8A6812),
+            size: 19,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              'Server belum merespons. Planning tetap memakai $staleRows FN '
+              'dari $timeLabel.',
+              style: const TextStyle(
+                fontSize: 12,
+                height: 1.35,
+                color: Color(0xFF6E5310),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _isRefreshing ? null : _refresh,
+            child: const Text('Coba lagi'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _content(List<AuditPlanField> all) {
     final projected = all
         .where(_matchesPlanningFilters)
@@ -812,6 +868,7 @@ class _AuditPlanningScreenState extends ConsumerState<AuditPlanningScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _planningCacheStatus(all),
         _daySelector(projected),
         const SizedBox(height: 8),
         Container(

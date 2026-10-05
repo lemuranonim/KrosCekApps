@@ -286,7 +286,7 @@ final activeMasterFieldRegionsProvider =
         scopedRegions: scopedRegions,
         allSeasonRegions: allSeasonRegions,
       );
-    });
+    }, retry: (_, __) => null);
 
 final masterFieldMapProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
@@ -294,7 +294,7 @@ final masterFieldMapProvider = FutureProvider<List<Map<String, dynamic>>>((
   return ref.watch(
     masterFieldMapScopedProvider(const MasterFieldMapScope.all()).future,
   );
-});
+}, retry: (_, __) => null);
 
 final masterFieldMapScopedProvider =
     FutureProvider.family<List<Map<String, dynamic>>, MasterFieldMapScope>((
@@ -364,7 +364,7 @@ final masterFieldMapScopedProvider =
           .toList();
 
       return _fieldsVisibleToUser(mapFields, user);
-    });
+    }, retry: (_, __) => null);
 
 final masterFieldCoverageScopedProvider =
     FutureProvider.family<List<Map<String, dynamic>>, MasterFieldMapScope>((

@@ -113,9 +113,8 @@ void main() {
     );
     addTearDown(client.dispose);
 
-    await SupabaseService(
-      client: client,
-    ).updateFieldCorrectionGeometryWkt(fieldNumber: 'F1', geometryWkt: wkt);
+    await SupabaseService(client: client)
+        .updateFieldCorrectionGeometryWkt(fieldNumber: 'F1', geometryWkt: wkt);
   });
 
   test('coverage pages load concurrently and remain in field order', () async {
@@ -164,8 +163,8 @@ void main() {
     expect(rows[1000]['field_number'], 'F1000');
     expect(rows[2000]['field_number'], 'F2000');
     expect(rows.last['field_number'], 'F3009');
-    expect(peakRequests, 3);
-    expect(requests, hasLength(4));
+    expect(peakRequests, 2);
+    expect(requests, hasLength(5));
     for (final request in requests) {
       final params = request.url.queryParameters;
       expect(params['is_active'], 'eq.true');
@@ -206,9 +205,8 @@ void main() {
     );
     addTearDown(client.dispose);
 
-    final rows = await SupabaseService(
-      client: client,
-    ).getMasterFieldsForCoverage(region: 'Region 5');
+    final rows = await SupabaseService(client: client)
+        .getMasterFieldsForCoverage(region: 'Region 5');
 
     expect(rows.single['field_number'], 'CACHE-1');
     expect(requests, hasLength(1));
@@ -268,7 +266,7 @@ void main() {
         'Region 4',
         'Region 5',
       });
-      expect(peakRequests, 3);
+      expect(peakRequests, 2);
     },
   );
 
@@ -336,9 +334,8 @@ void main() {
       addTearDown(container.dispose);
 
       final statuses = await container.read(
-        coverageStatusListScopedProvider(
-          const MasterFieldMapScope.all(),
-        ).future,
+        coverageStatusListScopedProvider(const MasterFieldMapScope.all())
+            .future,
       );
       expect(statuses, hasLength(200));
       expect(statuses.first.fieldNumber, 'F0');

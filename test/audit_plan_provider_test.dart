@@ -120,13 +120,12 @@ void main() {
         qaSpv: 'SPV 1',
       );
       expect(rows, hasLength(1001));
-      expect(requests, hasLength(4));
+      expect(requests, hasLength(3));
       expect(requests.skip(1).map((r) => r.url.queryParameters['offset']), [
         '1000',
         '2000',
-        '3000',
       ]);
-      expect(maxActivePages, 3);
+      expect(maxActivePages, 2);
       for (final request in requests) {
         final params = request.url.queryParameters;
         expect(params['is_active'], 'eq.true');
@@ -226,7 +225,7 @@ void main() {
         service.getAuditPlanningIndex(),
         throwsA(isA<TimeoutException>()),
       );
-      expect(requests, 4);
+      expect(requests, 3);
       stalledPage.complete(response([]));
     },
   );
