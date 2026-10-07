@@ -328,7 +328,7 @@ class DapHelper {
 
   static bool isPsp(String? hybrid) {
     final h = hybrid?.toUpperCase().trim() ?? '';
-    return h.startsWith('ASF');
+    return h.startsWith('AS');
   }
 
   static String _normalizeLocation(String? value) {

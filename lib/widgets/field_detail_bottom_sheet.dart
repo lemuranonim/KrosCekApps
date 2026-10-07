@@ -75,10 +75,7 @@ class _FieldDetailBottomSheetState
   }
 
   bool get _isPSP {
-    final hybrid =
-        widget.field['hybrid']?.toString().toUpperCase().trim() ?? '';
-    // PSP (Next): ASF**
-    return hybrid.startsWith('ASF');
+    return DapHelper.isPsp(widget.field['hybrid']?.toString());
   }
 
   // ── Phase data dinamis menyesuaikan tipe crop ──────────────────
@@ -1650,7 +1647,7 @@ class _FieldDetailBottomSheetState
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text(
-                          'Modul PSP (ASF) selain vegetative akan segera hadir.',
+                          'Modul PSP (AS) selain vegetative akan segera hadir.',
                         ),
                       ),
                     );

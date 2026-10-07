@@ -9,6 +9,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'master_field_read_cache.dart';
 
+const String krisnaQaSpvEmail = 'k.bagusandrian@gmail.com';
+
+String effectiveSessionUserRole({required String email, required String role}) {
+  if (email.trim().toLowerCase() == krisnaQaSpvEmail) return 'SPV';
+  return role.trim().isEmpty ? 'FI' : role.trim();
+}
+
 class SessionKeys {
   SessionKeys._();
 
@@ -78,11 +85,13 @@ class SessionManager {
     if (uid == null || uid.isEmpty) return null;
     final reg = prefs.getString(SessionKeys.activeUserRegion);
     final dis = prefs.getString(SessionKeys.activeUserDistrict);
+    final email = prefs.getString(SessionKeys.activeUserEmail) ?? '';
+    final storedRole = prefs.getString(SessionKeys.activeUserRole) ?? 'FI';
 
     return ActiveSession(
       userId: uid,
-      email: prefs.getString(SessionKeys.activeUserEmail) ?? '',
-      role: prefs.getString(SessionKeys.activeUserRole) ?? 'FI',
+      email: email,
+      role: effectiveSessionUserRole(email: email, role: storedRole),
       name: prefs.getString(SessionKeys.activeUserName) ?? '',
       action: prefs.getString(SessionKeys.activeUserAction) ?? 'audit',
       // Tambahkan 2 baris ini di dalam return:

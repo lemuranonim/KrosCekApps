@@ -474,6 +474,7 @@ class SupabaseService {
     String? region,
     String? district,
     bool bypassCache = false,
+    bool forceVersionCheck = false,
   }) async {
     final cacheDataset = _roleScopedCacheDataset(
       'map',
@@ -489,7 +490,7 @@ class SupabaseService {
     ].any((value) => value?.trim().isNotEmpty == true);
     final userId = _supabase.auth.currentUser?.id;
     final localSnapshot =
-        !bypassCache && _mapCacheEnabled && hasCacheScope && userId != null
+        !bypassCache && _mapCacheEnabled && userId != null
         ? await MasterFieldReadCache.read(
             userId: userId,
             dataset: cacheDataset,
@@ -502,7 +503,7 @@ class SupabaseService {
     // Avoid a new remote round-trip when users reopen Map/List within a short
     // window. Older snapshots are validated remotely and remain the fallback
     // if Redis/Postgres is temporarily unavailable.
-    if (_isRecentLocalSnapshot(localSnapshot)) {
+    if (!forceVersionCheck && _isRecentLocalSnapshot(localSnapshot)) {
       return _localSnapshotRows(localSnapshot!, stale: false);
     }
 
@@ -595,7 +596,7 @@ class SupabaseService {
         rethrow;
       }
 
-      if (_mapCacheEnabled && hasCacheScope && userId != null) {
+      if (_mapCacheEnabled && userId != null) {
         unawaited(
           MasterFieldReadCache.write(
             userId: userId,

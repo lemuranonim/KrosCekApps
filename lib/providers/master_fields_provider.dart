@@ -217,19 +217,22 @@ class MasterFieldMapScope {
   final String? region;
   final String? district;
   final bool allSeasons;
+  final bool forceVersionCheck;
 
   const MasterFieldMapScope({
     this.season,
     this.region,
     this.district,
     this.allSeasons = true,
+    this.forceVersionCheck = false,
   });
 
   const MasterFieldMapScope.all()
     : season = null,
       region = null,
       district = null,
-      allSeasons = true;
+      allSeasons = true,
+      forceVersionCheck = false;
 
   @override
   bool operator ==(Object other) =>
@@ -237,10 +240,12 @@ class MasterFieldMapScope {
       other.season == season &&
       other.region == region &&
       other.district == district &&
-      other.allSeasons == allSeasons;
+      other.allSeasons == allSeasons &&
+      other.forceVersionCheck == forceVersionCheck;
 
   @override
-  int get hashCode => Object.hash(season, region, district, allSeasons);
+  int get hashCode =>
+      Object.hash(season, region, district, allSeasons, forceVersionCheck);
 }
 
 final activeMasterFieldRegionsProvider =
@@ -331,6 +336,7 @@ final masterFieldMapScopedProvider =
             qaSpv: roleScope.qaSpv,
             region: seasonIndependentMasterFieldRegion,
             district: scope.district,
+            forceVersionCheck: scope.forceVersionCheck,
           );
         } catch (_) {
           // Keep the existing season-scoped map usable if only the optional
@@ -346,6 +352,7 @@ final masterFieldMapScopedProvider =
           season: scopedSeason,
           region: scope.region,
           district: scope.district,
+          forceVersionCheck: scope.forceVersionCheck,
         ),
         if (resolvedSeason != null && scope.region?.trim().isNotEmpty != true)
           loadTrialFields(),

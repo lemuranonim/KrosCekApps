@@ -18,7 +18,7 @@
 //     Semua CP terisi      → Sampun (FC: 3 CP, SC: 5 CP)
 //     Sebagian terisi      → Dereng Jangkep
 //     Semua kosong         → Dereng Blas
-//     PSP/ASF              → Sampun jika CP5 terisi
+//     PSP/AS               → Sampun jika CP5 terisi
 // ─────────────────────────────────────────────────────────
 
 import 'package:flutter/foundation.dart';
@@ -173,8 +173,7 @@ class AuditStatusHelper {
   }
 
   static bool _checkIsPsp(String? hybrid) {
-    final h = hybrid?.toUpperCase().trim() ?? '';
-    return h.startsWith('ASF');
+    return DapHelper.isPsp(hybrid);
   }
 
   static int _pspVegetativeDoneCount(Map<String, dynamic>? row) {

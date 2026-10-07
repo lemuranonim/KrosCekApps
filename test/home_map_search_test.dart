@@ -18,6 +18,30 @@ void main() {
     expect(closeA, isNot(closeB));
   });
 
+  test('Home Map reacts only to the cache generation for its scope', () {
+    expect(
+      homeMapCacheVersionAffectsScope(
+        namespace: 'master_fields_map:region:region 4',
+        region: ' Region   4 ',
+      ),
+      true,
+    );
+    expect(
+      homeMapCacheVersionAffectsScope(
+        namespace: 'master_fields_map:region:region 5',
+        region: 'Region 4',
+      ),
+      false,
+    );
+    expect(
+      homeMapCacheVersionAffectsScope(
+        namespace: 'master_fields_map',
+        region: null,
+      ),
+      true,
+    );
+  });
+
   test('Home Map keeps Region 1 when switching to all seasons', () {
     final scope = resolveHomeMapSeasonScope(
       allSeasons: true,

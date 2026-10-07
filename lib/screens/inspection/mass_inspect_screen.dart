@@ -10,6 +10,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../providers/master_fields_provider.dart';
 import '../../providers/attendance_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/dap_helper.dart';
 import '../../widgets/advanta_loading_state.dart';
 import 'fc_form_widgets.dart';
 import 'psp_form_widgets.dart' as psp;
@@ -459,22 +460,19 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
 
   bool _isPspSelection(List<Map<String, dynamic>> selectedFields) {
     if (selectedFields.isEmpty) return false;
-    return selectedFields.every((field) {
-      final hybrid = field['hybrid']?.toString().toUpperCase().trim() ?? '';
-      return hybrid.startsWith('ASF');
-    });
+    return selectedFields.every(
+      (field) => DapHelper.isPsp(field['hybrid']?.toString()),
+    );
   }
 
   bool _hasMixedPspSelection(List<Map<String, dynamic>> selectedFields) {
     if (selectedFields.isEmpty) return false;
-    final hasPsp = selectedFields.any((field) {
-      final hybrid = field['hybrid']?.toString().toUpperCase().trim() ?? '';
-      return hybrid.startsWith('ASF');
-    });
-    final hasNonPsp = selectedFields.any((field) {
-      final hybrid = field['hybrid']?.toString().toUpperCase().trim() ?? '';
-      return !hybrid.startsWith('ASF');
-    });
+    final hasPsp = selectedFields.any(
+      (field) => DapHelper.isPsp(field['hybrid']?.toString()),
+    );
+    final hasNonPsp = selectedFields.any(
+      (field) => !DapHelper.isPsp(field['hybrid']?.toString()),
+    );
     return hasPsp && hasNonPsp;
   }
 
@@ -1289,7 +1287,7 @@ class _MassInspectScreenState extends ConsumerState<MassInspectScreen> {
                   if (hasMixedPspSelection) ...[
                     const GenDiscardBanner(
                       message:
-                          'Field PSP/ASF tidak boleh dicampur dengan FC/SC dalam satu mass inspect.',
+                          'Field PSP/AS tidak boleh dicampur dengan FC/SC dalam satu mass inspect.',
                     ),
                     const SizedBox(height: 12),
                   ],

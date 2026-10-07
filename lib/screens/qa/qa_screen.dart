@@ -25,6 +25,7 @@ import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 // url_launcher
 import 'package:url_launcher/url_launcher.dart';
 
@@ -53,6 +54,24 @@ import '../../models/audit_planning_filters.dart';
 enum _WorkMode { single, mass }
 
 const double _homeMapDetailMarkerMinZoom = 12.5;
+const double _homeMapDetailMarkerExitZoom = 12.2;
+const String _masterFieldsMapCacheNamespace = 'master_fields_map';
+
+String homeMapCacheNamespaceForRegion(String? region) {
+  final normalized = region
+      ?.trim()
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .toLowerCase();
+  if (normalized == null || normalized.isEmpty) {
+    return _masterFieldsMapCacheNamespace;
+  }
+  return '$_masterFieldsMapCacheNamespace:region:$normalized';
+}
+
+bool homeMapCacheVersionAffectsScope({
+  required String namespace,
+  String? region,
+}) => namespace.trim().toLowerCase() == homeMapCacheNamespaceForRegion(region);
 
 double homeMapGridCellDegrees(double zoom) {
   final normalizedZoom = zoom.clamp(6.0, _homeMapDetailMarkerMinZoom);
@@ -201,12 +220,21 @@ class _QAScreenState extends ConsumerState<QAScreen>
   // ── Polygon overlay ────────────────────────────────────
   static const double _polygonMinZoom = 14.0;
   static const double _polygonViewportPaddingFactor = 0.35;
-  static const double _markerViewportPaddingFactor = 0.20;
+  static const double _markerViewportPaddingFactor = 0.50;
   static const Duration _mapViewportDebounceDuration = Duration(
-    milliseconds: 120,
+    milliseconds: 40,
+  );
+  static const Duration _mapViewportThrottleDuration = Duration(
+    milliseconds: 80,
   );
   double _currentZoom = 8.0;
   Timer? _mapViewportDebounce;
+  Timer? _mapViewportThrottle;
+  Timer? _mapCacheSyncDebounce;
+  RealtimeChannel? _mapCacheVersionChannel;
+  bool _mapCacheRealtimeWasSubscribed = false;
+  bool _forceMapVersionCheck = false;
+  bool _renderDetailedMarkers = false;
   bool _showPolygons = true; // toggle on/off oleh user
   final LayerHitNotifier<ParsedFieldData> _polygonHitNotifier =
       ValueNotifier<LayerHitResult<ParsedFieldData>?>(null);
@@ -273,17 +301,78 @@ class _QAScreenState extends ConsumerState<QAScreen>
     region: _showAllRegions ? null : _selectedRegion,
     district: _showAllRegions ? null : _selectedDistrict,
     allSeasons: _showAllSeasons,
+    forceVersionCheck: _forceMapVersionCheck,
   );
 
-  void _refreshMapProviders() {
+  void _refreshMapProviders({bool forceVersionCheck = true}) {
+    final previousScope = _currentMapScope;
+    if (forceVersionCheck) _forceMapVersionCheck = true;
     _clearMapCaches();
     final scope = _currentMapScope;
+    if (previousScope != scope) {
+      ref.invalidate(masterFieldMapScopedProvider(previousScope));
+      ref.invalidate(parsedMasterFieldMapScopedProvider(previousScope));
+      if (mounted) setState(() {});
+    }
     ref.invalidate(actSyncStatusProvider);
     ref.invalidate(activeMasterFieldSeasonsProvider);
     ref.invalidate(latestActiveMasterFieldSeasonProvider);
-    ref.invalidate(activeMasterFieldRegionsProvider(scope));
+    ref.invalidate(
+      activeMasterFieldRegionsProvider(
+        MasterFieldMapScope(
+          season: _selectedSeason,
+          allSeasons: _showAllSeasons,
+        ),
+      ),
+    );
     ref.invalidate(masterFieldMapScopedProvider(scope));
     ref.invalidate(parsedMasterFieldMapScopedProvider(scope));
+  }
+
+  void _subscribeToMapCacheVersions() {
+    late final SupabaseClient client;
+    try {
+      client = Supabase.instance.client;
+    } catch (_) {
+      // Unit/widget tests may build Home Map without bootstrapping Supabase.
+      return;
+    }
+    final channel = client.channel(
+      'home-map-cache-version-${identityHashCode(this)}',
+    );
+    _mapCacheVersionChannel = channel;
+    channel
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'app_cache_versions',
+          callback: (payload) {
+            final namespace = payload.newRecord['namespace']?.toString() ?? '';
+            if (!homeMapCacheVersionAffectsScope(
+              namespace: namespace,
+              region: _showAllRegions ? null : _selectedRegion,
+            )) {
+              return;
+            }
+            _scheduleMapCacheRevalidation();
+          },
+        )
+        .subscribe((status, [error]) {
+          if (!mounted || status != RealtimeSubscribeStatus.subscribed) return;
+          if (_mapCacheRealtimeWasSubscribed) {
+            // A reconnect may have missed one or more version events.
+            _scheduleMapCacheRevalidation();
+          }
+          _mapCacheRealtimeWasSubscribed = true;
+        });
+  }
+
+  void _scheduleMapCacheRevalidation() {
+    _mapCacheSyncDebounce?.cancel();
+    _mapCacheSyncDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      _refreshMapProviders(forceVersionCheck: true);
+    });
   }
 
   Widget _buildMapCacheStatusStrip(List<ParsedFieldData> fields) {
@@ -817,12 +906,16 @@ class _QAScreenState extends ConsumerState<QAScreen>
       duration: const Duration(milliseconds: 250),
     );
     _polygonHitNotifier.addListener(_handlePolygonHit);
+    _subscribeToMapCacheVersions();
   }
 
   @override
   void dispose() {
     _searchFocusDebounce?.cancel();
     _mapViewportDebounce?.cancel();
+    _mapViewportThrottle?.cancel();
+    _mapCacheSyncDebounce?.cancel();
+    _mapCacheVersionChannel?.unsubscribe();
     _positionSub?.cancel();
     _polygonHitNotifier.removeListener(_handlePolygonHit);
     _polygonHitNotifier.dispose();
@@ -2491,16 +2584,38 @@ class _QAScreenState extends ConsumerState<QAScreen>
             newZoom < _homeMapDetailMarkerMinZoom) ||
         (_currentZoom < _polygonMinZoom && newZoom >= _polygonMinZoom) ||
         (_currentZoom >= _polygonMinZoom && newZoom < _polygonMinZoom);
-    final shouldDebounce =
-        viewportSettled ||
-        crossedRenderThreshold ||
-        event is MapEventScrollWheelZoom;
-    if (!shouldDebounce) return;
+    if (viewportSettled || crossedRenderThreshold) {
+      _mapViewportThrottle?.cancel();
+      _mapViewportDebounce?.cancel();
+      _mapViewportDebounce = Timer(
+        _mapViewportDebounceDuration,
+        _commitMapViewport,
+      );
+      return;
+    }
 
-    _mapViewportDebounce?.cancel();
-    _mapViewportDebounce = Timer(_mapViewportDebounceDuration, () {
-      if (!mounted) return;
-      setState(() => _currentZoom = _mapController.camera.zoom);
+    // Keep a generous prefetched viewport moving with the camera. Throttling
+    // avoids rebuilding marker widgets every frame while eliminating the old
+    // MoveEnd + 120 ms pop-in on long pans and pinch zooms.
+    if (_mapViewportThrottle?.isActive ?? false) return;
+    _mapViewportThrottle = Timer(
+      _mapViewportThrottleDuration,
+      _commitMapViewport,
+    );
+  }
+
+  void _commitMapViewport() {
+    if (!mounted) return;
+    final zoom = _mapController.camera.zoom;
+    setState(() {
+      _currentZoom = zoom;
+      if (_renderDetailedMarkers) {
+        if (zoom <= _homeMapDetailMarkerExitZoom) {
+          _renderDetailedMarkers = false;
+        }
+      } else if (zoom >= _homeMapDetailMarkerMinZoom) {
+        _renderDetailedMarkers = true;
+      }
     });
   }
 
@@ -2594,8 +2709,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
         // At regional zoom levels, aggregate into lightweight grid markers.
         // Thousands of individual Flutter widgets are created only once the
         // viewport is close enough that their count is naturally bounded.
-        if (_editingPolygonField == null &&
-            _currentZoom < _homeMapDetailMarkerMinZoom)
+        if (_editingPolygonField == null && !_renderDetailedMarkers)
           MarkerLayer(
             markers: _getGridMarkers(
               visibleMarkerFields,
@@ -5204,10 +5318,9 @@ class _QAScreenState extends ConsumerState<QAScreen>
         .toList();
 
     return selectedFields.isNotEmpty &&
-        selectedFields.every((f) {
-          final hybrid = f.raw['hybrid']?.toString().toUpperCase().trim() ?? '';
-          return hybrid.startsWith('ASF');
-        });
+        selectedFields.every(
+          (f) => DapHelper.isPsp(f.raw['hybrid']?.toString()),
+        );
   }
 
   void _showPhaseSheet() {

@@ -51,6 +51,7 @@ class _RegionScopeService extends SupabaseService {
     String? region,
     String? district,
     bool bypassCache = false,
+    bool forceVersionCheck = false,
   }) async {
     mapScopes.add((season: season, region: region));
     mapQaSpvs.add(qaSpv);

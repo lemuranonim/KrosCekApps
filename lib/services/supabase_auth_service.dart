@@ -11,7 +11,17 @@
 // ignore_for_file: avoid_print
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'session_manager.dart';
+
+/// Keeps explicit account exceptions aligned with their operational role.
+///
+/// The database migration applies the same rule server-side. Keeping this
+/// small client guard prevents an old local/profile payload from briefly
+/// opening a broader Manager view while that migration rolls out.
+String effectiveAppUserRole({required String email, required String role}) {
+  return effectiveSessionUserRole(email: email, role: role);
+}
 
 // ─── Model ───────────────────────────────────────────
 class AppUser {
@@ -20,8 +30,8 @@ class AppUser {
   final String name;
   final String role;
   final String action;
-  final String? region;    // <--- TAMBAHAN
-  final String? district;  // <--- TAMBAHAN
+  final String? region; // <--- TAMBAHAN
+  final String? district; // <--- TAMBAHAN
 
   const AppUser({
     required this.id,
@@ -29,19 +39,23 @@ class AppUser {
     required this.name,
     required this.role,
     required this.action,
-    this.region,           // <--- TAMBAHAN
-    this.district,         // <--- TAMBAHAN
+    this.region, // <--- TAMBAHAN
+    this.district, // <--- TAMBAHAN
   });
 
   factory AppUser.fromMap(Map<String, dynamic> map) {
+    final email = map['email']?.toString() ?? '';
     return AppUser(
-      id       : map['id']?.toString() ?? '',
-      email    : map['email']?.toString() ?? '',
-      name     : map['name']?.toString() ?? '',
-      role     : map['role']?.toString() ?? 'FI',
-      action   : map['action']?.toString() ?? 'audit',
-      region   : map['region']?.toString(),        // <--- BACA DARI DATABASE
-      district : map['district_kab']?.toString(),  // <--- BACA DARI DATABASE
+      id: map['id']?.toString() ?? '',
+      email: email,
+      name: map['name']?.toString() ?? '',
+      role: effectiveAppUserRole(
+        email: email,
+        role: map['role']?.toString() ?? 'FI',
+      ),
+      action: map['action']?.toString() ?? 'audit',
+      region: map['region']?.toString(), // <--- BACA DARI DATABASE
+      district: map['district_kab']?.toString(), // <--- BACA DARI DATABASE
     );
   }
 }
@@ -54,7 +68,7 @@ class SupabaseAuthService {
   Future<AppUser?> signInWithEmail(String email, String password) async {
     try {
       final res = await _supabase.auth.signInWithPassword(
-        email   : email,
+        email: email,
         password: password,
       );
       if (res.user == null) return null;
@@ -104,7 +118,9 @@ class SupabaseAuthService {
           .maybeSingle();
 
       if (data == null) {
-        print('=== ERROR: USER ADA DI AUTH TAPI TIDAK ADA DI TABEL APP_USERS ===');
+        print(
+          '=== ERROR: USER ADA DI AUTH TAPI TIDAK ADA DI TABEL APP_USERS ===',
+        );
         return null;
       }
 
@@ -132,11 +148,11 @@ class SupabaseAuthService {
     await SessionManager.instance.saveSession(
       ActiveSession(
         userId: user.id,
-        email:  user.email,
-        name:   user.name,
-        role:   user.role,
+        email: user.email,
+        name: user.name,
+        role: user.role,
         action: user.action,
-        region: user.region,     // <--- TAMBAHAN: Lempar ke Session
+        region: user.region, // <--- TAMBAHAN: Lempar ke Session
         district: user.district, // <--- TAMBAHAN: Lempar ke Session
       ),
     );
@@ -148,10 +164,10 @@ class SupabaseAuthService {
     final session = await SessionManager.instance.getActiveSession();
     if (session == null) return {};
     return {
-      'userId'    : session.userId,
-      'userEmail' : session.email,
-      'userName'  : session.name,
-      'userRole'  : session.role,
+      'userId': session.userId,
+      'userEmail': session.email,
+      'userName': session.name,
+      'userRole': session.role,
       'userAction': session.action,
     };
   }

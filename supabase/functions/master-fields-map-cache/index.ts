@@ -18,6 +18,15 @@ const MONTHLY_REDIS_BYTES_LIMIT = 8_000_000_000;
 const MONTHLY_REDIS_OPS_LIMIT = 350_000;
 const PAGE_SIZE = 1000;
 const PARALLEL_PAGES = 3;
+const QA_SPV_EMAIL_ROLE_OVERRIDES = new Set([
+  "k.bagusandrian@gmail.com",
+]);
+
+function effectiveProfileRole(email: string | null | undefined, role: unknown): string {
+  const normalizedEmail = String(email ?? "").trim().toLowerCase();
+  if (QA_SPV_EMAIL_ROLE_OVERRIDES.has(normalizedEmail)) return "SPV";
+  return String(role ?? "").trim().toUpperCase();
+}
 
 const MAP_SELECT = `
   field_number,
@@ -644,7 +653,7 @@ Deno.serve(async (req) => {
   }
 
   const action = String(profile.action ?? "").trim().toLowerCase();
-  const role = String(profile.role ?? "").trim().toUpperCase();
+  const role = effectiveProfileRole(userData.user.email, profile.role);
   const name = String(profile.name ?? "").trim();
   const isQaRestricted = role === "FI" || role === "SPV";
   if (isQaRestricted && !name) {
