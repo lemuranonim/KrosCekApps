@@ -14,8 +14,8 @@ dependencies:
 
   # Core UI
   cupertino_icons: ^1.0.6
-  google_fonts: ^6.2.1
-  flutter_svg: ^2.0.10+1
+  google_fonts: ^6.3.3
+  flutter_svg: ^2.3.0
   auto_size_text: ^3.0.0
   responsive_framework: ^1.5.1
   shimmer: ^3.0.0
@@ -41,7 +41,7 @@ dependencies:
   # firebase_crashlytics: ^4.2.0
 
   # Network and API
-  http: ^1.2.2
+  http: ^1.6.0
   googleapis: ^11.4.0
   googleapis_auth: ^1.6.0
   gsheets: ^0.5.0
@@ -49,7 +49,7 @@ dependencies:
 
   # Local Storage
   flutter_secure_storage: ^9.2.2
-  shared_preferences: ^2.3.2
+  shared_preferences: ^2.5.5
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   drift: ^2.35.1
@@ -57,23 +57,23 @@ dependencies:
 
   # Location and Maps
   geolocator: ^14.0.1
-  google_maps_flutter: ^2.9.0
+  google_maps_flutter: ^2.18.2
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   geocoding: ^4.0.0
 
   # File and Media
-  image_picker: ^1.1.2
-  path_provider: ^2.0.11
+  image_picker: ^1.2.3
+  path_provider: ^2.1.6
   excel: ^4.0.3
   pdf: ^3.11.3
 
   # Permissions
-  permission_handler: ^12.0.0+1
+  permission_handler: ^12.0.3
 
   # Navigation Bars and Menus
   convex_bottom_bar: ^3.0.0
-  animated_bottom_navigation_bar: ^1.3.3
+  animated_bottom_navigation_bar: ^1.4.1
   spincircle_bottom_bar: ^2.0.0
   circular_menu: ^4.0.0
   sidebarx: ^0.17.1
@@ -87,7 +87,7 @@ dependencies:
   dropdown_button2: ^2.3.9
 
   # Charts and Tables
-  fl_chart: ^1.0.0
+  fl_chart: ^1.2.0
   syncfusion_flutter_datagrid: ^29.2.7+1
 
   # UI Animations and Effects
@@ -101,10 +101,10 @@ dependencies:
   intl: ^0.20.2
 
   # Web and URL Handling
-  url_launcher: ^6.3.0
-  url_launcher_android: ^6.3.9
-  flutter_custom_tabs: ^2.1.0
-  webview_flutter: ^4.8.0
+  url_launcher: ^6.3.3
+  url_launcher_android: ^6.3.33
+  flutter_custom_tabs: ^2.6.0
+  webview_flutter: ^4.14.1
 
   # App Info and Icons
   package_info_plus: ^8.0.0
@@ -123,23 +123,23 @@ dependencies:
   geo: ^0.3.0
   collection: ^1.19.1
   flutter_map_toolkit: ^0.0.3
-  data_table_2: ^2.6.0
-  dio: ^5.8.0+1
-  open_file: ^3.5.10
+  data_table_2: ^2.8.0
+  dio: ^5.11.1
+  open_file: ^3.5.11
   media_store_plus: ^0.1.3
-  android_path_provider: ^0.3.1
+  android_path_provider: ^0.3.2
   device_info_plus: ^11.4.0
-  flutter_downloader: ^1.12.0
+  flutter_downloader: ^1.12.1
   android_intent_plus: ^5.3.0
-  flutter_local_notifications: ^19.3.0
+  flutter_local_notifications: ^19.5.0
   firebase_messaging: ^15.2.9
-  flutter_quill: ^11.4.2
+  flutter_quill: ^11.6.0
   path: ^1.9.1
   flutter_expandable_fab: ^2.5.2
-  supabase_flutter: ^2.12.2
+  supabase_flutter: ^2.18.0
   archive: ^3.6.1
-  flutter_riverpod: ^3.3.1
-  file_picker: ^11.0.2
+  flutter_riverpod: ^3.4.3
+  file_picker: ^11.0.3
   flutter_dotenv: ^6.0.1
 
 dev_dependencies:
