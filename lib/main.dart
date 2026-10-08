@@ -5,7 +5,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -114,7 +113,6 @@ void main() async {
       await NotificationService().init();
       await Permission.notification.request();
       await Permission.location.request();
-      await FlutterDownloader.initialize(debug: true, ignoreSsl: true);
     }
 
     runApp(const ProviderScope(child: MyApp()));

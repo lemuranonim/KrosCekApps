@@ -237,7 +237,7 @@ class _MandatoryPatchUpdateGateState extends State<MandatoryPatchUpdateGate>
                         const SizedBox(height: 10),
                         Text(
                           downloaded
-                              ? 'Patch${patchNumber == null ? '' : ' #$patchNumber'} sudah diunduh. Mulai ulang aplikasi untuk mengaktifkan perbaikan terbaru.'
+                              ? 'Patch${patchNumber == null ? '' : ' #$patchNumber'} sudah diunduh. KC akan mencoba terbuka kembali otomatis. Jika ditahan Android, buka KC dari notifikasi.'
                               : failed
                               ? (_result.errorMessage ??
                                     'Periksa koneksi internet, lalu coba kembali.')
@@ -297,7 +297,7 @@ class _MandatoryPatchUpdateGateState extends State<MandatoryPatchUpdateGate>
                             ),
                             label: Text(
                               downloaded
-                                  ? 'Restart sekarang'
+                                  ? 'Terapkan & restart'
                                   : failed && !_downloadFailed
                                   ? 'Cek kembali'
                                   : _downloadFailed

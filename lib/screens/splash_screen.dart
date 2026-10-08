@@ -1,38 +1,58 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui';
+
+import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'dart:isolate';
-import 'dart:ui';
-import 'package:android_intent_plus/android_intent.dart';
-import 'package:android_intent_plus/flag.dart';
-import 'package:open_file/open_file.dart';
-
-import 'package:android_path_provider/android_path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'dart:io';
-import 'package:flutter_downloader/flutter_downloader.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-import '../../services/session_manager.dart';
+import '../services/full_update_service.dart';
+import '../services/session_manager.dart';
 
 // ── IMPORT TEMA PUSAT ────────────────────────────────
 import '../theme/app_theme.dart';
 
 const _splashWallpaperAsset = 'assets/splash_wallpaper.jpg';
 
-@pragma('vm:entry-point')
-void downloadCallback(String id, int status, int progress) {
-  debugPrint("DOWNLOAD_CALLBACK: Task id=$id, status=$status, progress=$progress%");
-  final SendPort? send = IsolateNameServer.lookupPortByName('downloader_send_port');
-  if (send != null) {
-    send.send([id, status, progress]);
-  } else {
-    debugPrint("DOWNLOAD_CALLBACK_ERROR: Port 'downloader_send_port' tidak ditemukan!");
-  }
+enum _UpdatePhase {
+  idle,
+  preparing,
+  pending,
+  downloading,
+  paused,
+  readyToInstall,
+  installing,
+  failed,
+}
+
+class _UpdateUiState {
+  const _UpdateUiState({
+    this.phase = _UpdatePhase.idle,
+    this.message = '',
+    this.progress,
+  });
+
+  final _UpdatePhase phase;
+  final String message;
+  final double? progress;
+
+  bool get isBusy => switch (phase) {
+    _UpdatePhase.preparing ||
+    _UpdatePhase.pending ||
+    _UpdatePhase.downloading ||
+    _UpdatePhase.paused ||
+    _UpdatePhase.installing => true,
+    _ => false,
+  };
+
+  bool get showsStatus => phase != _UpdatePhase.idle;
+
+  bool get canInstall => phase == _UpdatePhase.readyToInstall;
+
+  bool get canRetry => phase == _UpdatePhase.failed;
 }
 
 class SplashScreen extends StatefulWidget {
@@ -43,40 +63,49 @@ class SplashScreen extends StatefulWidget {
 }
 
 class SplashScreenState extends State<SplashScreen>
-    with TickerProviderStateMixin {
-
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   // ── Animation Controllers ─────────────────────────
   late AnimationController _masterController;
   late AnimationController _shimmerController;
   late AnimationController _pulseController;
 
-  late Animation<double>  _logoFade;
-  late Animation<double>  _logoScale;
-  late Animation<Offset>  _logoSlide;
-  late Animation<double>  _taglineFade;
-  late Animation<Offset>  _taglineSlide;
-  late Animation<double>  _dividerWidth;
-  late Animation<double>  _footerFade;
-  late Animation<double>  _shimmer;
+  late Animation<double> _logoFade;
+  late Animation<double> _logoScale;
+  late Animation<Offset> _logoSlide;
+  late Animation<double> _taglineFade;
+  late Animation<Offset> _taglineSlide;
+  late Animation<double> _dividerWidth;
+  late Animation<double> _footerFade;
+  late Animation<double> _shimmer;
 
-  String _version        = 'Loading...';
-  bool   _updateRequired = false;
+  String _version = 'Loading...';
+  bool _updateRequired = false;
 
-  // ── Download state ────────────────────────────────
-  bool   _isDownloading         = false;
-  String? _downloadTaskId;
-  bool   _installationInitiated = false;
-  final ReceivePort _port       = ReceivePort();
-  bool   _isPortInitialized     = false;
+  // ── Full update state ─────────────────────────────
+  static const _downloadIdKey = 'full_update_download_id';
+  static const _downloadFileKey = 'full_update_download_file';
+  static const _downloadVersionKey = 'full_update_download_version';
+  static const _downloadUrlKey = 'full_update_download_url';
 
-  final ValueNotifier<double> _downloadProgressNotifier = ValueNotifier(0.0);
-  final ValueNotifier<String> _downloadMessageNotifier  = ValueNotifier('');
+  final FullUpdateService _fullUpdateService = const FullUpdateService();
+  final ValueNotifier<_UpdateUiState> _updateState = ValueNotifier(
+    const _UpdateUiState(),
+  );
+  Timer? _downloadPollTimer;
+  int? _downloadTaskId;
+  String? _downloadFileName;
+  String? _activeUpdateVersion;
+  String? _activeApkUrl;
+  bool _pollInFlight = false;
+  bool _updateDialogVisible = false;
+  bool _waitingForInstallerResult = false;
+  bool _installerLaunchInProgress = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setupAnimations();
-    _initializeAndSetupDownloader();
 
     _masterController.forward();
     _shimmerController.repeat();
@@ -93,48 +122,71 @@ class SplashScreenState extends State<SplashScreen>
     // Master: 3.0s total
     _masterController = AnimationController(
       duration: const Duration(milliseconds: 3000),
-      vsync  : this,
+      vsync: this,
     );
 
     // Shimmer for gold line
     _shimmerController = AnimationController(
       duration: const Duration(milliseconds: 1800),
-      vsync  : this,
+      vsync: this,
     );
 
     // Pulse for loading indicator
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1200),
-      vsync  : this,
+      vsync: this,
     );
 
     // Logo animations
     _logoFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _masterController, curve: const Interval(0.0, 0.45, curve: Curves.easeOut)),
+      CurvedAnimation(
+        parent: _masterController,
+        curve: const Interval(0.0, 0.45, curve: Curves.easeOut),
+      ),
     );
     _logoScale = Tween<double>(begin: 0.65, end: 1.0).animate(
-      CurvedAnimation(parent: _masterController, curve: const Interval(0.0, 0.50, curve: Curves.easeOutCubic)),
+      CurvedAnimation(
+        parent: _masterController,
+        curve: const Interval(0.0, 0.50, curve: Curves.easeOutCubic),
+      ),
     );
-    _logoSlide = Tween<Offset>(begin: const Offset(0, -0.15), end: Offset.zero).animate(
-      CurvedAnimation(parent: _masterController, curve: const Interval(0.0, 0.50, curve: Curves.easeOutCubic)),
-    );
+    _logoSlide = Tween<Offset>(begin: const Offset(0, -0.15), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _masterController,
+            curve: const Interval(0.0, 0.50, curve: Curves.easeOutCubic),
+          ),
+        );
 
     // Tagline
     _taglineFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _masterController, curve: const Interval(0.35, 0.70, curve: Curves.easeOut)),
+      CurvedAnimation(
+        parent: _masterController,
+        curve: const Interval(0.35, 0.70, curve: Curves.easeOut),
+      ),
     );
-    _taglineSlide = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
-      CurvedAnimation(parent: _masterController, curve: const Interval(0.35, 0.70, curve: Curves.easeOutCubic)),
-    );
+    _taglineSlide = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _masterController,
+            curve: const Interval(0.35, 0.70, curve: Curves.easeOutCubic),
+          ),
+        );
 
     // Gold divider
     _dividerWidth = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _masterController, curve: const Interval(0.55, 0.80, curve: Curves.easeOutCubic)),
+      CurvedAnimation(
+        parent: _masterController,
+        curve: const Interval(0.55, 0.80, curve: Curves.easeOutCubic),
+      ),
     );
 
     // Footer
     _footerFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _masterController, curve: const Interval(0.70, 1.0, curve: Curves.easeOut)),
+      CurvedAnimation(
+        parent: _masterController,
+        curve: const Interval(0.70, 1.0, curve: Curves.easeOut),
+      ),
     );
 
     // Shimmer & Pulse
@@ -143,49 +195,241 @@ class SplashScreenState extends State<SplashScreen>
     );
   }
 
-  // ── Downloader ────────────────────────────────────
-  Future<void> _initializeAndSetupDownloader() async {
+  // ── Android DownloadManager ───────────────────────
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+
+    if (_waitingForInstallerResult) {
+      _waitingForInstallerResult = false;
+      _installerLaunchInProgress = false;
+      _setUpdateState(
+        const _UpdateUiState(
+          phase: _UpdatePhase.readyToInstall,
+          progress: 1,
+          message: 'APK siap dipasang. Ketuk Pasang jika installer tertutup.',
+        ),
+      );
+    }
+
+    if (_downloadTaskId != null) {
+      unawaited(_pollDownload(allowAutomaticInstall: false));
+    }
+  }
+
+  void _setUpdateState(_UpdateUiState state) {
+    if (!mounted) return;
+    _updateState.value = state;
+  }
+
+  void _startDownloadPolling() {
+    _downloadPollTimer?.cancel();
+    _downloadPollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      unawaited(_pollDownload());
+    });
+    unawaited(_pollDownload());
+  }
+
+  Future<void> _pollDownload({bool allowAutomaticInstall = true}) async {
+    final taskId = _downloadTaskId;
+    if (taskId == null || _pollInFlight) return;
+
+    _pollInFlight = true;
     try {
-      await FlutterDownloader.initialize(debug: true, ignoreSsl: true);
-      FlutterDownloader.registerCallback(downloadCallback);
+      final snapshot = await _fullUpdateService.query(taskId);
+      if (!mounted || taskId != _downloadTaskId) return;
+      await _applyDownloadSnapshot(
+        snapshot,
+        allowAutomaticInstall: allowAutomaticInstall,
+      );
+    } catch (error) {
+      debugPrint('Gagal membaca status update penuh: $error');
+      _setUpdateState(
+        const _UpdateUiState(
+          phase: _UpdatePhase.paused,
+          message: 'Menunggu layanan unduhan Android...',
+        ),
+      );
+    } finally {
+      _pollInFlight = false;
+    }
+  }
 
-      if (!_isPortInitialized) {
-        IsolateNameServer.registerPortWithName(_port.sendPort, 'downloader_send_port');
-        _isPortInitialized = true;
-
-        _port.listen((dynamic data) {
-          if (data is List && data.length >= 3) {
-            String id = data[0] as String;
-            DownloadTaskStatus status = DownloadTaskStatus.fromInt(data[1] as int);
-            int progress = data[2] as int;
-
-            debugPrint('NOTIFIER CALLBACK: id=$id, status=$status, progress=$progress');
-
-            if (mounted && id == _downloadTaskId) {
-              if (status == DownloadTaskStatus.running) {
-                _downloadProgressNotifier.value = progress / 100.0;
-                _downloadMessageNotifier.value = "Mendownload pembaruan: $progress%";
-              } else if (status == DownloadTaskStatus.complete) {
-                _downloadProgressNotifier.value = 1.0;
-                _downloadMessageNotifier.value = "Download selesai. Mempersiapkan instalasi...";
-                Future.delayed(const Duration(seconds: 1), () {
-                  if (mounted && id == _downloadTaskId) {
-                    _installApk(id);
-                  }
-                });
-              } else if (status == DownloadTaskStatus.failed) {
-                _isDownloading = false;
-                _downloadMessageNotifier.value = "Download gagal. Silakan coba lagi.";
-              } else if (status == DownloadTaskStatus.enqueued) {
-                _isDownloading = true;
-                _downloadMessageNotifier.value = "Download sedang dalam antrean...";
-              }
-            }
+  Future<void> _applyDownloadSnapshot(
+    FullUpdateDownloadSnapshot snapshot, {
+    required bool allowAutomaticInstall,
+  }) async {
+    switch (snapshot.status) {
+      case FullUpdateDownloadStatus.pending:
+        _setUpdateState(
+          const _UpdateUiState(
+            phase: _UpdatePhase.pending,
+            message: 'Download sedang dalam antrean Android...',
+          ),
+        );
+        break;
+      case FullUpdateDownloadStatus.running:
+        final progress = snapshot.progress;
+        final percent = progress == null ? null : (progress * 100).round();
+        _setUpdateState(
+          _UpdateUiState(
+            phase: _UpdatePhase.downloading,
+            progress: progress,
+            message: percent == null
+                ? 'Mengunduh pembaruan...'
+                : 'Mengunduh pembaruan: $percent%',
+          ),
+        );
+        break;
+      case FullUpdateDownloadStatus.paused:
+        _setUpdateState(
+          _UpdateUiState(
+            phase: _UpdatePhase.paused,
+            progress: snapshot.progress,
+            message: _pausedDownloadMessage(snapshot.reason),
+          ),
+        );
+        break;
+      case FullUpdateDownloadStatus.successful:
+        _downloadPollTimer?.cancel();
+        _setUpdateState(
+          const _UpdateUiState(
+            phase: _UpdatePhase.readyToInstall,
+            progress: 1,
+            message: 'Download selesai. Mempersiapkan installer...',
+          ),
+        );
+        if (allowAutomaticInstall &&
+            _updateDialogVisible &&
+            !_waitingForInstallerResult) {
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+          if (mounted && _updateDialogVisible && !_waitingForInstallerResult) {
+            await _launchInstaller();
           }
-        });
+        }
+        break;
+      case FullUpdateDownloadStatus.failed:
+        _downloadPollTimer?.cancel();
+        _setUpdateState(
+          _UpdateUiState(
+            phase: _UpdatePhase.failed,
+            message: _failedDownloadMessage(snapshot.reason),
+          ),
+        );
+        break;
+      case FullUpdateDownloadStatus.missing:
+        _downloadPollTimer?.cancel();
+        await _clearPersistedDownload();
+        _setUpdateState(
+          const _UpdateUiState(
+            phase: _UpdatePhase.failed,
+            message: 'Unduhan tidak ditemukan. Silakan coba lagi.',
+          ),
+        );
+        break;
+    }
+  }
+
+  String _pausedDownloadMessage(int reason) {
+    return switch (reason) {
+      1 => 'Koneksi bermasalah. Android akan mencoba lagi otomatis...',
+      2 => 'Menunggu koneksi internet tersedia...',
+      3 => 'Menunggu jaringan Wi-Fi...',
+      _ => 'Download dijeda Android dan akan dilanjutkan otomatis...',
+    };
+  }
+
+  String _failedDownloadMessage(int reason) {
+    return switch (reason) {
+      1006 => 'Ruang penyimpanan tidak cukup untuk mengunduh pembaruan.',
+      1008 => 'Download tidak dapat dilanjutkan. Silakan coba lagi.',
+      1001 => 'File update tidak dapat disimpan di perangkat ini.',
+      1002 ||
+      1004 ||
+      1005 => 'Server update tidak dapat dihubungi. Silakan coba lagi.',
+      _ => 'Download gagal (kode $reason). Silakan coba lagi.',
+    };
+  }
+
+  Future<void> _persistDownload() async {
+    final taskId = _downloadTaskId;
+    final fileName = _downloadFileName;
+    final version = _activeUpdateVersion;
+    final url = _activeApkUrl;
+    if (taskId == null || fileName == null || version == null || url == null) {
+      return;
+    }
+
+    final preferences = await SharedPreferences.getInstance();
+    await Future.wait<bool>([
+      preferences.setInt(_downloadIdKey, taskId),
+      preferences.setString(_downloadFileKey, fileName),
+      preferences.setString(_downloadVersionKey, version),
+      preferences.setString(_downloadUrlKey, url),
+    ]);
+  }
+
+  Future<void> _restorePendingDownload(String version, String apkUrl) async {
+    final preferences = await SharedPreferences.getInstance();
+    final taskId = preferences.getInt(_downloadIdKey);
+    final fileName = preferences.getString(_downloadFileKey);
+    final savedVersion = preferences.getString(_downloadVersionKey);
+    final savedUrl = preferences.getString(_downloadUrlKey);
+
+    if (taskId == null ||
+        fileName == null ||
+        savedVersion != version ||
+        savedUrl != apkUrl) {
+      if (taskId != null ||
+          fileName != null ||
+          savedVersion != null ||
+          savedUrl != null) {
+        await _clearPersistedDownload(
+          downloadId: taskId,
+          removeNative: taskId != null,
+        );
       }
-    } catch (e) {
-      debugPrint("Error initializing FlutterDownloader: $e");
+      _setUpdateState(const _UpdateUiState());
+      return;
+    }
+
+    _downloadTaskId = taskId;
+    _downloadFileName = fileName;
+    _activeUpdateVersion = version;
+    _activeApkUrl = apkUrl;
+    _setUpdateState(
+      const _UpdateUiState(
+        phase: _UpdatePhase.pending,
+        message: 'Memulihkan download pembaruan...',
+      ),
+    );
+    _startDownloadPolling();
+  }
+
+  Future<void> _clearPersistedDownload({
+    int? downloadId,
+    bool removeNative = false,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    final taskId =
+        downloadId ?? _downloadTaskId ?? preferences.getInt(_downloadIdKey);
+    if (removeNative && taskId != null) {
+      try {
+        await _fullUpdateService.remove(taskId);
+      } catch (error) {
+        debugPrint('Gagal membersihkan unduhan update lama: $error');
+      }
+    }
+
+    await Future.wait<bool>([
+      preferences.remove(_downloadIdKey),
+      preferences.remove(_downloadFileKey),
+      preferences.remove(_downloadVersionKey),
+      preferences.remove(_downloadUrlKey),
+    ]);
+    if (taskId == _downloadTaskId) {
+      _downloadTaskId = null;
+      _downloadFileName = null;
     }
   }
 
@@ -221,12 +465,12 @@ class SplashScreenState extends State<SplashScreen>
           .timeout(const Duration(seconds: 3));
 
       final latestVersion = response['latest_version'] as String?;
-      final forceUpdate   = response['force_update'] as bool? ?? false;
-      final downloadUrl   = response['apk_url'] as String?;
+      final forceUpdate = response['force_update'] as bool? ?? false;
+      final downloadUrl = response['apk_url'] as String?;
 
       if (latestVersion == null || downloadUrl == null) return;
 
-      final packageInfo    = await PackageInfo.fromPlatform();
+      final packageInfo = await PackageInfo.fromPlatform();
       final currentVersion = packageInfo.version;
 
       if (currentVersion != latestVersion) {
@@ -234,227 +478,167 @@ class SplashScreenState extends State<SplashScreen>
         if (mounted) {
           _showUpdateDialog(forceUpdate, latestVersion, downloadUrl);
         }
+      } else {
+        // Instalasi berhasil pada proses sebelumnya. Hapus APK dan record lama.
+        await _clearPersistedDownload(removeNative: true);
       }
-    } catch (_) {
+    } catch (error) {
+      debugPrint('Gagal memeriksa update penuh: $error');
       // Gagal cek update → lanjut saja
     }
   }
 
-  Future<void> _downloadAndInstallUpdate(
-      String apkUrl, StateSetter dialogSetState, VoidCallback onDownloadCancelledOrFailed) async {
+  Future<void> _downloadAndInstallUpdate(String apkUrl, String version) async {
+    _downloadPollTimer?.cancel();
+    _setUpdateState(
+      const _UpdateUiState(
+        phase: _UpdatePhase.preparing,
+        message: 'Menyiapkan download pembaruan...',
+      ),
+    );
+    try {
+      final previousTaskId = _downloadTaskId;
+      if (previousTaskId != null) {
+        await _clearPersistedDownload(
+          downloadId: previousTaskId,
+          removeNative: true,
+        );
+      }
 
-    dialogSetState(() {
-      _isDownloading = true;
-      _installationInitiated = false;
-    });
+      // Izin notifikasi tidak boleh menggagalkan download. DownloadManager
+      // tetap dapat bekerja saat izin ditolak.
+      final notificationStatus = await Permission.notification.status;
+      if (notificationStatus.isDenied) {
+        await Permission.notification.request();
+      }
 
-    bool permissionsGranted = await _requestPermissions();
-    if (!permissionsGranted) {
-      dialogSetState(() {
-        _isDownloading = false;
-      });
-      onDownloadCancelledOrFailed();
+      final safeVersion = version.replaceAll(RegExp(r'[^0-9A-Za-z._-]'), '_');
+      final fileName =
+          'kroscek-$safeVersion-${DateTime.now().millisecondsSinceEpoch}.apk';
+      final taskId = await _fullUpdateService.enqueue(
+        url: apkUrl,
+        fileName: fileName,
+        version: version,
+      );
+
+      _downloadTaskId = taskId;
+      _downloadFileName = fileName;
+      _activeUpdateVersion = version;
+      _activeApkUrl = apkUrl;
+      try {
+        await _persistDownload();
+      } catch (error) {
+        // Download tetap dipantau pada sesi ini walaupun penyimpanan metadata
+        // gagal. Jangan membiarkan task Android berjalan tanpa UI.
+        debugPrint('Gagal menyimpan metadata update penuh: $error');
+      }
+      _setUpdateState(
+        const _UpdateUiState(
+          phase: _UpdatePhase.pending,
+          message: 'Download diserahkan ke Android...',
+        ),
+      );
+      _startDownloadPolling();
+    } catch (error) {
+      debugPrint('Gagal memulai update penuh: $error');
+      _setUpdateState(
+        const _UpdateUiState(
+          phase: _UpdatePhase.failed,
+          message: 'Download tidak dapat dimulai. Silakan coba lagi.',
+        ),
+      );
+    }
+  }
+
+  Future<void> _launchInstaller() async {
+    final fileName = _downloadFileName;
+    if (fileName == null || _installerLaunchInProgress) return;
+    _installerLaunchInProgress = true;
+
+    late PermissionStatus installPermission;
+    try {
+      installPermission = await Permission.requestInstallPackages.status;
+      if (!installPermission.isGranted) {
+        installPermission = await Permission.requestInstallPackages.request();
+      }
+    } catch (error) {
+      _installerLaunchInProgress = false;
+      debugPrint('Gagal meminta izin instalasi update: $error');
+      _setUpdateState(
+        const _UpdateUiState(
+          phase: _UpdatePhase.readyToInstall,
+          progress: 1,
+          message: 'Izin instalasi tidak dapat diperiksa. Ketuk Pasang untuk mencoba lagi.',
+        ),
+      );
+      return;
+    }
+    if (!installPermission.isGranted) {
+      _installerLaunchInProgress = false;
+      _setUpdateState(
+        const _UpdateUiState(
+          phase: _UpdatePhase.readyToInstall,
+          progress: 1,
+          message: 'Izinkan KC memasang aplikasi dari sumber ini, lalu ketuk Pasang.',
+        ),
+      );
       return;
     }
 
+    _setUpdateState(
+      const _UpdateUiState(
+        phase: _UpdatePhase.installing,
+        progress: 1,
+        message: 'Membuka installer Android...',
+      ),
+    );
     try {
-      final String downloadPath = await _getDownloadPath();
-      final Directory downloadDir = Directory(downloadPath);
-      if (!await downloadDir.exists()) {
-        await downloadDir.create(recursive: true);
-      }
-
-      final String fileName = 'kroscek-update-${DateTime.now().millisecondsSinceEpoch}.apk';
-
-      final taskId = await FlutterDownloader.enqueue(
-        url: apkUrl,
-        savedDir: downloadPath,
-        fileName: fileName,
-        showNotification: true,
-        openFileFromNotification: false,
-        saveInPublicStorage: false,
-      );
-
-      if (taskId == null) {
-        throw Exception("Failed to enqueue download task.");
-      }
-
-      _downloadTaskId = taskId;
-
-      dialogSetState(() {
-      });
-
-    } catch (e) {
-      dialogSetState(() {
-        _isDownloading = false;
-      });
-      debugPrint("Error during download process: $e");
-      onDownloadCancelledOrFailed();
-    }
-  }
-
-  Future<bool> _requestPermissions() async {
-    final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-    final AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-    final int sdkVersion = androidInfo.version.sdkInt;
-
-    var installPermissionStatus = await Permission.requestInstallPackages.status;
-    if (!installPermissionStatus.isGranted) {
-      installPermissionStatus = await Permission.requestInstallPackages.request();
-    }
-    if (!installPermissionStatus.isGranted) {
-      debugPrint("Request install packages permission denied.");
-      return false;
-    }
-
-    if (sdkVersion < 30) {
-      var storagePermissionStatus = await Permission.storage.status;
-      if (!storagePermissionStatus.isGranted) {
-        storagePermissionStatus = await Permission.storage.request();
-      }
-      if (!storagePermissionStatus.isGranted) {
-        debugPrint("Storage permission denied.");
-        return false;
-      }
-    }
-
-    if (sdkVersion >= 33) {
-      var notificationPermission = await Permission.notification.status;
-      if (!notificationPermission.isGranted) {
-        notificationPermission = await Permission.notification.request();
-      }
-    }
-
-    return true;
-  }
-
-  Future<String> _getDownloadPath() async {
-    try {
-      final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-      final AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-      final int sdkVersion = androidInfo.version.sdkInt;
-
-      String path;
-      if (sdkVersion >= 30) {
-        final directory = await getExternalStorageDirectory();
-        path = directory?.path ?? (await getApplicationDocumentsDirectory()).path;
-      } else {
-        try {
-          path = await AndroidPathProvider.downloadsPath;
-        } catch (e) {
-          final directory = await getExternalStorageDirectory();
-          path = directory?.path ?? (await getApplicationDocumentsDirectory()).path;
-        }
-      }
-      debugPrint("Using download path: $path");
-      return path;
-    } catch (e) {
-      debugPrint("Error getting download path: $e");
-      final directory = await getApplicationDocumentsDirectory();
-      return directory.path;
-    }
-  }
-
-  Future<void> _installApk(String taskId) async {
-    if (!mounted) return;
-
-    setState(() {
-      _installationInitiated = false;
-    });
-
-    try {
-      final tasks = await FlutterDownloader.loadTasksWithRawQuery(
-          query: "SELECT * FROM task WHERE task_id = '$taskId'"
-      );
-
-      if (tasks == null || tasks.isEmpty) {
-        debugPrint("No task found with ID: $taskId");
-        setState(() {
-          _isDownloading = false;
-        });
-        return;
-      }
-
-      final task = tasks.first;
-      final filePath = "${task.savedDir}/${task.filename}";
-      final file = File(filePath);
-
-      debugPrint("Checking file at path: $filePath");
-
-      if (await file.exists()) {
-        debugPrint("File exists, attempting installation");
-
-        bool openResult = false;
-        try {
-          openResult = await FlutterDownloader.open(taskId: taskId);
-          debugPrint("FlutterDownloader.open result: $openResult");
-        } catch (e) {
-          debugPrint("Error with FlutterDownloader.open: $e");
-        }
-
-        if (!openResult) {
-          debugPrint("FlutterDownloader.open failed, trying direct file installation");
-
-          try {
-            final intent = AndroidIntent(
-              action: 'android.intent.action.VIEW',
-              data: 'file://$filePath',
-              type: 'application/vnd.android.package-archive',
-              flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
-            );
-            await intent.launch();
-            debugPrint("Intent launched for installation");
-
-            setState(() {
-              _installationInitiated = true;
-            });
-          } catch (intentError) {
-            debugPrint("Error launching intent: $intentError");
-
-            try {
-              final openAnyResult = await OpenFile.open(filePath);
-              debugPrint("OpenFile result: ${openAnyResult.message}");
-
-              setState(() {
-                _installationInitiated = true;
-              });
-            } catch (openError) {
-              debugPrint("Error opening file: $openError");
-              setState(() {
-                _isDownloading = false;
-              });
-            }
+      _waitingForInstallerResult = true;
+      await _fullUpdateService.openInstaller(fileName);
+      unawaited(
+        Future<void>.delayed(const Duration(seconds: 2), () {
+          if (!mounted ||
+              !_waitingForInstallerResult ||
+              WidgetsBinding.instance.lifecycleState !=
+                  AppLifecycleState.resumed) {
+            return;
           }
-        } else {
-          debugPrint("FlutterDownloader.open succeeded");
-          setState(() {
-            _installationInitiated = true;
-          });
-        }
-      } else {
-        debugPrint("File does not exist at path: $filePath");
-        setState(() {
-          _isDownloading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("Error during installation attempt: $e");
-      setState(() {
-        _isDownloading = false;
-      });
+          _waitingForInstallerResult = false;
+          _installerLaunchInProgress = false;
+          _setUpdateState(
+            const _UpdateUiState(
+              phase: _UpdatePhase.readyToInstall,
+              progress: 1,
+              message: 'APK siap dipasang. Ketuk Pasang jika installer tidak tampil.',
+            ),
+          );
+        }),
+      );
+    } catch (error) {
+      _waitingForInstallerResult = false;
+      _installerLaunchInProgress = false;
+      debugPrint('Gagal membuka installer update: $error');
+      _setUpdateState(
+        const _UpdateUiState(
+          phase: _UpdatePhase.readyToInstall,
+          progress: 1,
+          message:
+              'Installer tidak dapat dibuka. Ketuk Pasang untuk mencoba lagi.',
+        ),
+      );
     }
   }
 
   // ── INI FUNGSI KRUSIAL: Pengecekan status login via SessionManager ────────
   Future<void> _checkLoginStatus() async {
-    if (_isDownloading || _installationInitiated) return;
+    if (_updateState.value.isBusy) return;
 
     final supabaseUser = Supabase.instance.client.auth.currentUser;
-    final session      = await SessionManager.instance.getActiveSession();
+    final session = await SessionManager.instance.getActiveSession();
 
     // Kedua-duanya harus valid — Supabase session + local session
     final isLoggedIn = supabaseUser != null && session != null;
-    final userRole   = session?.role;
+    final userRole = session?.role;
 
     if (!mounted) return;
 
@@ -465,83 +649,80 @@ class SplashScreenState extends State<SplashScreen>
     }
   }
 
-  // ── Update Dialog (UI Baru, Logika Lama) ────────────────────────────────
+  // ── Full update dialog ──────────────────────────────────────────────────
   void _showUpdateDialog(bool forceUpdate, String newVersion, String apkUrl) {
-    debugPrint("Showing update dialog: force=$forceUpdate, url=$apkUrl");
+    debugPrint('Showing update dialog: force=$forceUpdate, url=$apkUrl');
+    _activeUpdateVersion = newVersion;
+    _activeApkUrl = apkUrl;
+    _updateDialogVisible = true;
+    _updateState.value = const _UpdateUiState(
+      phase: _UpdatePhase.preparing,
+      message: 'Memeriksa download pembaruan sebelumnya...',
+    );
 
-    _isDownloading        = false;
-    _installationInitiated = false;
-    _downloadTaskId       = null;
-
-    showDialog(
-      context          : context,
-      barrierDismissible: !forceUpdate && !_isDownloading,
+    final dialogFuture = showDialog<void>(
+      context: context,
+      // Hindari dialog tertutup tanpa sengaja ketika DownloadManager aktif.
+      // Update opsional tetap dapat ditutup melalui tombol Nanti/back.
+      barrierDismissible: false,
       builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (ctx, StateSetter dialogSetState) {
-
-            // Menggunakan logic handle lanjutan dari yang lama
-            void handleNonForcedUpdateContinuation() {
-              if (!forceUpdate && mounted) {
-                debugPrint("Non-forced update cancelled or failed, closing dialog and proceeding.");
-                Navigator.of(dialogContext).pop();
-                _checkLoginStatus();
-              } else if (forceUpdate) {
-                debugPrint("Forced update failed, staying in dialog.");
-              }
-            }
-
+        return ValueListenableBuilder<_UpdateUiState>(
+          valueListenable: _updateState,
+          builder: (context, updateState, _) {
             return PopScope(
-              canPop: !forceUpdate && !_isDownloading && !_installationInitiated,
-              onPopInvokedWithResult: (bool didPop, dynamic result) {
-                debugPrint("Update Dialog PopScope: didPop=$didPop");
-                if (didPop && !forceUpdate) {
-                  debugPrint("Dialog popped (non-forced), proceeding with app flow.");
-                  _checkLoginStatus();
-                }
-              },
+              canPop: !forceUpdate && !updateState.isBusy,
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                 child: Dialog(
-                  shape          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  elevation      : 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  elevation: 0,
                   backgroundColor: Colors.transparent,
                   child: Container(
-                    padding   : const EdgeInsets.all(0),
+                    padding: EdgeInsets.zero,
                     decoration: BoxDecoration(
-                      color       : AdvantaColors.cream,
+                      color: AdvantaColors.cream,
                       borderRadius: BorderRadius.circular(20),
-                      boxShadow   : [
+                      boxShadow: [
                         BoxShadow(
-                          color     : AdvantaColors.deepForest.withAlpha(80),
+                          color: AdvantaColors.deepForest.withAlpha(80),
                           blurRadius: 40,
-                          offset    : const Offset(0, 16),
+                          offset: const Offset(0, 16),
                         ),
                       ],
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      children    : [
-                        // Header strip
+                      children: [
                         Container(
-                          padding     : const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
-                          decoration  : const BoxDecoration(
-                            color       : AdvantaColors.primaryGreen,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 20,
+                            horizontal: 24,
+                          ),
+                          decoration: const BoxDecoration(
+                            color: AdvantaColors.primaryGreen,
                             borderRadius: BorderRadius.only(
-                              topLeft : Radius.circular(20),
+                              topLeft: Radius.circular(20),
                               topRight: Radius.circular(20),
                             ),
                           ),
                           child: Row(
                             children: [
                               Container(
-                                padding   : const EdgeInsets.all(8),
+                                padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color       : AdvantaColors.gold.withAlpha(40),
+                                  color: AdvantaColors.gold.withAlpha(40),
                                   borderRadius: BorderRadius.circular(10),
-                                  border      : Border.all(color: AdvantaColors.gold.withAlpha(100)),
+                                  border: Border.all(
+                                    color: AdvantaColors.gold.withAlpha(100),
+                                  ),
                                 ),
-                                child: const Icon(Icons.system_update_rounded, color: AdvantaColors.goldLight, size: 22),
+                                child: const Icon(
+                                  Icons.system_update_rounded,
+                                  color: AdvantaColors.goldLight,
+                                  size: 22,
+                                ),
                               ),
                               const SizedBox(width: 14),
                               Expanded(
@@ -551,31 +732,37 @@ class SplashScreenState extends State<SplashScreen>
                                     const Text(
                                       'Pembaruan Tersedia',
                                       style: TextStyle(
-                                        color     : Colors.white,
-                                        fontSize  : 16,
+                                        color: Colors.white,
+                                        fontSize: 16,
                                         fontWeight: FontWeight.w700,
                                         letterSpacing: 0.3,
                                       ),
                                     ),
                                     Text(
                                       'Versi $newVersion',
-                                      style: TextStyle(color: Colors.white.withAlpha(180), fontSize: 13),
+                                      style: TextStyle(
+                                        color: Colors.white.withAlpha(180),
+                                        fontSize: 13,
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
                               if (forceUpdate)
                                 Container(
-                                  padding   : const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color       : AdvantaColors.gold,
+                                    color: AdvantaColors.gold,
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: const Text(
                                     'WAJIB',
                                     style: TextStyle(
-                                      color     : AdvantaColors.charcoal,
-                                      fontSize  : 11,
+                                      color: AdvantaColors.charcoal,
+                                      fontSize: 11,
                                       fontWeight: FontWeight.w800,
                                       letterSpacing: 0.8,
                                     ),
@@ -584,8 +771,6 @@ class SplashScreenState extends State<SplashScreen>
                             ],
                           ),
                         ),
-
-                        // Body
                         Padding(
                           padding: const EdgeInsets.all(24),
                           child: Column(
@@ -596,65 +781,66 @@ class SplashScreenState extends State<SplashScreen>
                                     ? 'Pembaruan wajib dipasang untuk melanjutkan penggunaan aplikasi.'
                                     : 'Versi terbaru tersedia. Disarankan untuk memperbarui agar mendapatkan fitur terkini.',
                                 style: const TextStyle(
-                                  color : AdvantaColors.charcoal,
+                                  color: AdvantaColors.charcoal,
                                   fontSize: 14,
-                                  height  : 1.55,
+                                  height: 1.55,
                                 ),
                               ),
+                              if (updateState.showsStatus) ...[
+                                const SizedBox(height: 20),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    value: updateState.progress,
+                                    minHeight: 6,
+                                    backgroundColor: AdvantaColors.primaryGreen
+                                        .withAlpha(30),
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                          AdvantaColors.gold,
+                                        ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  updateState.message,
+                                  style: TextStyle(
+                                    color:
+                                        updateState.phase == _UpdatePhase.failed
+                                        ? Colors.red.shade700
+                                        : AdvantaColors.primaryGreen,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 20),
-
-                              // Download progress
-                              ValueListenableBuilder<double>(
-                                valueListenable: _downloadProgressNotifier,
-                                builder: (_, prog, __) {
-                                  if (!_isDownloading) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  return Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(4),
-                                        child: LinearProgressIndicator(
-                                          value          : prog,
-                                          minHeight      : 6,
-                                          backgroundColor: AdvantaColors.primaryGreen.withAlpha(30),
-                                          valueColor     : const AlwaysStoppedAnimation<Color>(AdvantaColors.gold),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      ValueListenableBuilder<String>(
-                                        valueListenable: _downloadMessageNotifier,
-                                        builder: (_, msg, __) => Text(
-                                          msg,
-                                          style: const TextStyle(
-                                            color   : AdvantaColors.primaryGreen,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 16),
-                                    ],
-                                  );
-                                },
-                              ),
-
-                              // Buttons
                               Row(
                                 children: [
-                                  if (!forceUpdate && !_isDownloading) ...[
+                                  if (!forceUpdate && !updateState.isBusy) ...[
                                     Expanded(
                                       child: OutlinedButton(
-                                        onPressed: handleNonForcedUpdateContinuation,
+                                        onPressed: () =>
+                                            Navigator.of(dialogContext).pop(),
                                         style: OutlinedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(vertical: 14),
-                                          shape  : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                          side   : const BorderSide(color: AdvantaColors.midGreen),
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 14,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                          ),
+                                          side: const BorderSide(
+                                            color: AdvantaColors.midGreen,
+                                          ),
                                         ),
                                         child: const Text(
                                           'Nanti',
-                                          style: TextStyle(color: AdvantaColors.primaryGreen, fontWeight: FontWeight.w600),
+                                          style: TextStyle(
+                                            color: AdvantaColors.primaryGreen,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -663,30 +849,51 @@ class SplashScreenState extends State<SplashScreen>
                                   Expanded(
                                     flex: 2,
                                     child: ElevatedButton(
-                                      onPressed: _isDownloading
+                                      onPressed: updateState.isBusy
                                           ? null
-                                          : () => _downloadAndInstallUpdate(apkUrl, dialogSetState, handleNonForcedUpdateContinuation),
+                                          : updateState.canInstall
+                                          ? _launchInstaller
+                                          : () => _downloadAndInstallUpdate(
+                                              apkUrl,
+                                              newVersion,
+                                            ),
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: AdvantaColors.primaryGreen,
+                                        backgroundColor:
+                                            AdvantaColors.primaryGreen,
                                         foregroundColor: Colors.white,
-                                        disabledBackgroundColor: AdvantaColors.primaryGreen.withAlpha(100),
-                                        padding  : const EdgeInsets.symmetric(vertical: 14),
-                                        shape    : RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        disabledBackgroundColor: AdvantaColors
+                                            .primaryGreen
+                                            .withAlpha(100),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 14,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
                                         elevation: 0,
                                       ),
-                                      child: _isDownloading
+                                      child: updateState.isBusy
                                           ? const SizedBox(
-                                        width : 18,
-                                        height: 18,
-                                        child : CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color      : Colors.white,
-                                        ),
-                                      )
-                                          : const Text(
-                                        'Unduh & Pasang',
-                                        style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.3),
-                                      ),
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : Text(
+                                              updateState.canInstall
+                                                  ? 'Pasang Pembaruan'
+                                                  : updateState.canRetry
+                                                  ? 'Coba Lagi'
+                                                  : 'Unduh & Pasang',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                letterSpacing: 0.3,
+                                              ),
+                                            ),
                                     ),
                                   ),
                                 ],
@@ -703,31 +910,39 @@ class SplashScreenState extends State<SplashScreen>
           },
         );
       },
-    ).then((_) {
-      debugPrint("Update dialog closed.");
-      if (!forceUpdate && mounted && !_isDownloading && !_installationInitiated) {
-        _checkLoginStatus();
-      }
-    }).catchError((error) {
-      debugPrint("Error showing/handling dialog: $error");
-      if (!forceUpdate && mounted) {
-        _checkLoginStatus();
-      }
-    });
+    );
+
+    unawaited(
+      _restorePendingDownload(newVersion, apkUrl).catchError((Object error) {
+        debugPrint('Gagal memulihkan download update: $error');
+        _setUpdateState(const _UpdateUiState());
+      }),
+    );
+    dialogFuture
+        .then((_) {
+          _updateDialogVisible = false;
+          debugPrint('Update dialog closed.');
+          if (!forceUpdate && mounted) {
+            unawaited(_checkLoginStatus());
+          }
+        })
+        .catchError((error) {
+          _updateDialogVisible = false;
+          debugPrint('Error showing/handling dialog: $error');
+          if (!forceUpdate && mounted) {
+            unawaited(_checkLoginStatus());
+          }
+        });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _downloadPollTimer?.cancel();
     _masterController.dispose();
     _shimmerController.dispose();
     _pulseController.dispose();
-
-    if (_isPortInitialized) {
-      IsolateNameServer.removePortNameMapping('downloader_send_port');
-    }
-    _port.close();
-    _downloadProgressNotifier.dispose();
-    _downloadMessageNotifier.dispose();
+    _updateState.dispose();
     super.dispose();
   }
 
@@ -740,7 +955,9 @@ class SplashScreenState extends State<SplashScreen>
 
     final mainTextColor = Colors.white;
     final subTextColor = Colors.white.withAlpha(isDark ? 180 : 210);
-    final accentLineColor = isDark ? AdvantaColors.gold : AdvantaColors.goldLight;
+    final accentLineColor = isDark
+        ? AdvantaColors.gold
+        : AdvantaColors.goldLight;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -751,7 +968,8 @@ class SplashScreenState extends State<SplashScreen>
               _splashWallpaperAsset,
               fit: BoxFit.cover,
               alignment: Alignment.center,
-              errorBuilder: (_, __, ___) => Container(color: AdvantaColors.deepForest),
+              errorBuilder: (_, __, ___) =>
+                  Container(color: AdvantaColors.deepForest),
             ),
           ),
 
@@ -813,7 +1031,11 @@ class SplashScreenState extends State<SplashScreen>
                         offset: Offset(0, _logoSlide.value.dy * 60),
                         child: Transform.scale(
                           scale: _logoScale.value,
-                          child: _buildLogoBlock(mainTextColor, subTextColor, isDark),
+                          child: _buildLogoBlock(
+                            mainTextColor,
+                            subTextColor,
+                            isDark,
+                          ),
                         ),
                       ),
                     ),
@@ -830,7 +1052,11 @@ class SplashScreenState extends State<SplashScreen>
                     const Spacer(),
                     Opacity(
                       opacity: _footerFade.value,
-                      child: _buildLoadingSection(accentLineColor, mainTextColor, isDark),
+                      child: _buildLoadingSection(
+                        accentLineColor,
+                        mainTextColor,
+                        isDark,
+                      ),
                     ),
                     SizedBox(height: size.height * 0.07),
                     Opacity(
@@ -852,10 +1078,15 @@ class SplashScreenState extends State<SplashScreen>
     return Column(
       children: [
         Container(
-          width: 120, height: 120,
+          width: 120,
+          height: 120,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: (isDark ? AdvantaColors.gold : AdvantaColors.primaryGreen).withAlpha(60), width: 1.5),
+            border: Border.all(
+              color: (isDark ? AdvantaColors.gold : AdvantaColors.primaryGreen)
+                  .withAlpha(60),
+              width: 1.5,
+            ),
           ),
           child: Padding(
             padding: const EdgeInsets.all(8),
@@ -866,7 +1097,8 @@ class SplashScreenState extends State<SplashScreen>
                 boxShadow: [
                   BoxShadow(
                     color: AdvantaColors.lightGreen.withAlpha(isDark ? 60 : 20),
-                    blurRadius: 24, spreadRadius: 2,
+                    blurRadius: 24,
+                    spreadRadius: 2,
                   ),
                 ],
               ),
@@ -875,16 +1107,31 @@ class SplashScreenState extends State<SplashScreen>
                 child: Image.asset(
                   'assets/logo_kc_notitle_unbox.png',
                   fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.agriculture_rounded, color: AdvantaColors.primaryGreen, size: 36),
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.agriculture_rounded,
+                    color: AdvantaColors.primaryGreen,
+                    size: 36,
+                  ),
                 ),
               ),
             ),
           ),
         ),
         const SizedBox(height: 28),
-        Text('KROSCEK', style: TextStyle(color: mainText, fontSize: 34, fontWeight: FontWeight.w900, letterSpacing: 0)),
+        Text(
+          'KROSCEK',
+          style: TextStyle(
+            color: mainText,
+            fontSize: 34,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0,
+          ),
+        ),
         const SizedBox(height: 8),
-        Text('Crop Inspection and Check Result', style: TextStyle(color: subText, fontSize: 13, letterSpacing: 0)),
+        Text(
+          'Crop Inspection and Check Result',
+          style: TextStyle(color: subText, fontSize: 13, letterSpacing: 0),
+        ),
       ],
     );
   }
@@ -942,11 +1189,33 @@ class SplashScreenState extends State<SplashScreen>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(width: 6, height: 6, decoration: BoxDecoration(color: badgeColor, shape: BoxShape.circle)),
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: badgeColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
               const SizedBox(width: 10),
-              Text('INSPECTIONS APP', style: TextStyle(color: badgeColor, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0)),
+              Text(
+                'INSPECTIONS APP',
+                style: TextStyle(
+                  color: badgeColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
+                ),
+              ),
               const SizedBox(width: 10),
-              Container(width: 6, height: 6, decoration: BoxDecoration(color: badgeColor, shape: BoxShape.circle)),
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: badgeColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
             ],
           ),
         ),
@@ -954,22 +1223,36 @@ class SplashScreenState extends State<SplashScreen>
         Text(
           'Solusi Audit Lahan\nBerbasis Data Real-Time',
           textAlign: TextAlign.center,
-          style: TextStyle(color: isDark ? Colors.white.withAlpha(200) : AdvantaColors.charcoal, fontSize: 15, height: 1.7),
+          style: TextStyle(
+            color: isDark
+                ? Colors.white.withAlpha(200)
+                : AdvantaColors.charcoal,
+            fontSize: 15,
+            height: 1.7,
+          ),
         ),
       ],
     );
   }
 
   Widget _buildLoadingSection(Color accentColor, Color textColor, bool isDark) {
-    final surfaceColor = isDark ? Colors.white.withAlpha(18) : Colors.white.withAlpha(190);
-    final borderColor = isDark ? AdvantaColors.gold.withAlpha(58) : AdvantaColors.primaryGreen.withAlpha(40);
-    final mutedTextColor = isDark ? Colors.white.withAlpha(150) : AdvantaColors.midGreen.withAlpha(190);
+    final surfaceColor = isDark
+        ? Colors.white.withAlpha(18)
+        : Colors.white.withAlpha(190);
+    final borderColor = isDark
+        ? AdvantaColors.gold.withAlpha(58)
+        : AdvantaColors.primaryGreen.withAlpha(40);
+    final mutedTextColor = isDark
+        ? Colors.white.withAlpha(150)
+        : AdvantaColors.midGreen.withAlpha(190);
 
     return AnimatedBuilder(
       animation: Listenable.merge([_shimmerController, _pulseController]),
       builder: (_, __) {
         final pulse = Curves.easeInOut.transform(_pulseController.value);
-        final panelWidth = (MediaQuery.sizeOf(context).width - 48).clamp(248.0, 340.0).toDouble();
+        final panelWidth = (MediaQuery.sizeOf(context).width - 48)
+            .clamp(248.0, 340.0)
+            .toDouble();
 
         return Container(
           width: panelWidth,
@@ -999,7 +1282,11 @@ class SplashScreenState extends State<SplashScreen>
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: accentColor.withAlpha(70)),
                     ),
-                    child: Icon(Icons.radar_rounded, color: accentColor, size: 18),
+                    child: Icon(
+                      Icons.radar_rounded,
+                      color: accentColor,
+                      size: 18,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1010,14 +1297,24 @@ class SplashScreenState extends State<SplashScreen>
                           'Memuat Kroscek',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: textColor, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0),
+                          style: TextStyle(
+                            color: textColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           'Menyiapkan modul audit lapangan',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: mutedTextColor, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0),
+                          style: TextStyle(
+                            color: mutedTextColor,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0,
+                          ),
                         ),
                       ],
                     ),
@@ -1058,11 +1355,35 @@ class SplashScreenState extends State<SplashScreen>
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(child: _buildLoadingSignal('Database', accentColor, textColor, isDark, 0)),
+                  Expanded(
+                    child: _buildLoadingSignal(
+                      'Database',
+                      accentColor,
+                      textColor,
+                      isDark,
+                      0,
+                    ),
+                  ),
                   const SizedBox(width: 8),
-                  Expanded(child: _buildLoadingSignal('Maps', accentColor, textColor, isDark, 1)),
+                  Expanded(
+                    child: _buildLoadingSignal(
+                      'Maps',
+                      accentColor,
+                      textColor,
+                      isDark,
+                      1,
+                    ),
+                  ),
                   const SizedBox(width: 8),
-                  Expanded(child: _buildLoadingSignal('Audit', accentColor, textColor, isDark, 2)),
+                  Expanded(
+                    child: _buildLoadingSignal(
+                      'Audit',
+                      accentColor,
+                      textColor,
+                      isDark,
+                      2,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -1072,18 +1393,30 @@ class SplashScreenState extends State<SplashScreen>
     );
   }
 
-  Widget _buildLoadingSignal(String label, Color accentColor, Color textColor, bool isDark, int index) {
+  Widget _buildLoadingSignal(
+    String label,
+    Color accentColor,
+    Color textColor,
+    bool isDark,
+    int index,
+  ) {
     final offset = index * 0.22;
     final wave = ((_shimmerController.value + offset) % 1.0);
-    final glow = Curves.easeInOut.transform(wave < 0.5 ? wave * 2 : (1 - wave) * 2);
+    final glow = Curves.easeInOut.transform(
+      wave < 0.5 ? wave * 2 : (1 - wave) * 2,
+    );
 
     return Container(
       height: 26,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withAlpha(10) : AdvantaColors.primaryGreen.withAlpha(10),
+        color: isDark
+            ? Colors.white.withAlpha(10)
+            : AdvantaColors.primaryGreen.withAlpha(10),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: accentColor.withAlpha(24 + (glow * 42).round())),
+        border: Border.all(
+          color: accentColor.withAlpha(24 + (glow * 42).round()),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1102,7 +1435,12 @@ class SplashScreenState extends State<SplashScreen>
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: textColor.withAlpha(isDark ? 180 : 170), fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0),
+              style: TextStyle(
+                color: textColor.withAlpha(isDark ? 180 : 170),
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
             ),
           ),
         ],
@@ -1115,10 +1453,20 @@ class SplashScreenState extends State<SplashScreen>
       children: [
         Container(width: 48, height: 1, color: accentColor.withAlpha(60)),
         const SizedBox(height: 14),
-        Text('© 2024-${DateTime.now().year} Advanta Seeds Indonesia', style: TextStyle(color: textColor.withAlpha(100), fontSize: 11)),
+        Text(
+          '© 2024-${DateTime.now().year} Advanta Seeds Indonesia',
+          style: TextStyle(color: textColor.withAlpha(100), fontSize: 11),
+        ),
         const SizedBox(height: 6),
         if (_version.isNotEmpty)
-          Text('v$_version', style: TextStyle(color: accentColor, fontSize: 11, fontWeight: FontWeight.w700)),
+          Text(
+            'v$_version',
+            style: TextStyle(
+              color: accentColor,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
       ],
     );
   }
@@ -1146,12 +1494,16 @@ class _PremiumLoadingRailPainter extends CustomPainter {
     final railRRect = RRect.fromRectAndRadius(railRect, railRadius);
 
     final trackPaint = Paint()
-      ..color = isDark ? Colors.white.withAlpha(18) : AdvantaColors.deepForest.withAlpha(18);
+      ..color = isDark
+          ? Colors.white.withAlpha(18)
+          : AdvantaColors.deepForest.withAlpha(18);
     canvas.drawRRect(railRRect, trackPaint);
 
     final fieldPath = Path();
     for (double x = 0; x <= size.width; x += 4) {
-      final wave = math.sin((x / size.width * math.pi * 2) + progress * math.pi * 2);
+      final wave = math.sin(
+        (x / size.width * math.pi * 2) + progress * math.pi * 2,
+      );
       final y = 11 + wave * 3;
       if (x == 0) {
         fieldPath.moveTo(x, y);
@@ -1173,12 +1525,21 @@ class _PremiumLoadingRailPainter extends CustomPainter {
     for (int i = 0; i <= 12; i++) {
       final x = size.width * (i / 12);
       final tickHeight = i % 3 == 0 ? 14.0 : 9.0;
-      canvas.drawLine(Offset(x, railTop - tickHeight), Offset(x, railTop - 3), tickPaint);
+      canvas.drawLine(
+        Offset(x, railTop - tickHeight),
+        Offset(x, railTop - 3),
+        tickPaint,
+      );
     }
 
     final segmentWidth = size.width * 0.34;
     final leading = (size.width + segmentWidth) * progress - segmentWidth;
-    final movingRect = Rect.fromLTWH(leading, railTop, segmentWidth, railHeight).intersect(railRect);
+    final movingRect = Rect.fromLTWH(
+      leading,
+      railTop,
+      segmentWidth,
+      railHeight,
+    ).intersect(railRect);
 
     if (!movingRect.isEmpty) {
       final activePaint = Paint()
@@ -1190,7 +1551,10 @@ class _PremiumLoadingRailPainter extends CustomPainter {
             accentColor.withAlpha(0),
           ],
         ).createShader(movingRect.inflate(12));
-      canvas.drawRRect(RRect.fromRectAndRadius(movingRect, railRadius), activePaint);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(movingRect, railRadius),
+        activePaint,
+      );
     }
 
     final headX = leading + segmentWidth * 0.66;
@@ -1198,14 +1562,24 @@ class _PremiumLoadingRailPainter extends CustomPainter {
       final glowPaint = Paint()
         ..color = AdvantaColors.goldLight.withAlpha((70 + pulse * 70).round())
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-      canvas.drawCircle(Offset(headX, railTop + railHeight / 2), 8 + pulse * 3, glowPaint);
+      canvas.drawCircle(
+        Offset(headX, railTop + railHeight / 2),
+        8 + pulse * 3,
+        glowPaint,
+      );
 
       final headPaint = Paint()..color = AdvantaColors.goldLight;
-      canvas.drawCircle(Offset(headX, railTop + railHeight / 2), 3.2, headPaint);
+      canvas.drawCircle(
+        Offset(headX, railTop + railHeight / 2),
+        3.2,
+        headPaint,
+      );
     }
 
     final baselinePaint = Paint()
-      ..color = isDark ? Colors.white.withAlpha(38) : Colors.white.withAlpha(130)
+      ..color = isDark
+          ? Colors.white.withAlpha(38)
+          : Colors.white.withAlpha(130)
       ..strokeWidth = 1;
     canvas.drawLine(
       Offset(0, railTop + railHeight + 7),
@@ -1235,8 +1609,8 @@ class _HexPatternPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.8;
 
-    const r   = 28.0;
-    const h   = r * 1.732; // sqrt(3) * r
+    const r = 28.0;
+    const h = r * 1.732; // sqrt(3) * r
     const col = r * 1.5;
 
     int row = 0;
@@ -1253,8 +1627,8 @@ class _HexPatternPainter extends CustomPainter {
     final path = Path();
     for (int i = 0; i < 6; i++) {
       final angle = (i * 60 - 30) * 3.14159 / 180;
-      final px    = center.dx + r * _cos(angle);
-      final py    = center.dy + r * _sin(angle);
+      final px = center.dx + r * _cos(angle);
+      final py = center.dy + r * _sin(angle);
       if (i == 0) {
         path.moveTo(px, py);
       } else {

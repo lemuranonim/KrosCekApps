@@ -5,7 +5,8 @@ import 'package:flutter/services.dart';
 ///
 /// Older binaries do not contain the native method channel yet. In that case
 /// the app is closed as a safe fallback and the patch is applied when the user
-/// opens KC again.
+/// opens KC again. Newer binaries also leave a notification that can reopen KC
+/// when Android or the device manufacturer delays the automatic relaunch.
 class AppRestartService {
   const AppRestartService();
 

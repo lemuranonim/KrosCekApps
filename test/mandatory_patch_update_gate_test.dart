@@ -91,9 +91,9 @@ void main() {
 
     expect(service.downloadCalls, 1);
     expect(find.text('Pembaruan siap dipakai'), findsOneWidget);
-    expect(find.text('Restart sekarang'), findsOneWidget);
+    expect(find.text('Terapkan & restart'), findsOneWidget);
 
-    await tester.tap(find.text('Restart sekarang'));
+    await tester.tap(find.text('Terapkan & restart'));
     await tester.pump();
     expect(restartCalls, 1);
   });
