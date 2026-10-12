@@ -3526,7 +3526,9 @@ class _PhaseBar extends StatelessWidget {
 
             // 👇 JUMLAH LAHAN (RIIL)
             Text(
-              '${phase.done} / ${phase.total} FN · ${_formatHa(phase.totalHa)}',
+              '${phase.done} / ${phase.total} FN · '
+              '${_formatHaValue(phase.doneHa)} / '
+              '${_formatHa(phase.totalHa)}',
               style: TextStyle(
                 fontSize: 9,
                 color: Colors.grey[600],
@@ -6927,12 +6929,13 @@ class _SkeletonLoaderState extends State<_SkeletonLoader>
 final _idWholeNumber = NumberFormat('#,##0', 'id_ID');
 final _idDecimalNumber = NumberFormat('#,##0.0', 'id_ID');
 
-String _formatHa(double ha) {
-  final value = ha == ha.truncateToDouble()
+String _formatHaValue(double ha) {
+  return ha == ha.truncateToDouble()
       ? _idWholeNumber.format(ha)
       : _idDecimalNumber.format(ha);
-  return '$value ha';
 }
+
+String _formatHa(double ha) => '${_formatHaValue(ha)} ha';
 
 class _WeeklyCoverageControls extends ConsumerWidget {
   final DateTime earliestWeek;

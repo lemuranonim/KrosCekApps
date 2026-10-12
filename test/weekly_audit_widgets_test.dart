@@ -116,6 +116,14 @@ void main() {
           find.text(role == 'MANAGER' ? '148.0 Ha | 3 FN' : '98.0 Ha | 2 FN'),
           findsWidgets,
         );
+        expect(
+          find.text(
+            role == 'MANAGER'
+                ? '0 / 3 FN · 0 / 148 ha'
+                : '0 / 2 FN · 0 / 98 ha',
+          ),
+          findsOneWidget,
+        );
         await tester.ensureVisible(find.text('Lihat detail'));
         await tester.tap(find.text('Lihat detail'));
         await tester.pumpAndSettle();
