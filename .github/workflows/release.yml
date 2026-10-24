@@ -23,8 +23,16 @@ jobs:
       - name: Extract version from tag
         id: version
         run: |
+          set -euo pipefail
           TAG=${GITHUB_REF#refs/tags/v}
+          [[ "$TAG" =~ ^[0-9][0-9A-Za-z._+-]*$ ]] || exit 1
           echo "version=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Require protected release credentials
+        env:
+          RELEASE_KEY: ${{ secrets.SUPABASE_RELEASE_KEY }}
+        run: |
+          test -n "$RELEASE_KEY" || { echo 'Configure SUPABASE_RELEASE_KEY before releasing.'; exit 1; }
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -39,19 +47,23 @@ jobs:
           channel: 'stable'
 
       - name: Create .env file
+        env:
+          CLIENT_URL: ${{ secrets.SUPABASE_URL }}
+          CLIENT_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
-          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
+          printf 'SUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\n' "$CLIENT_URL" "$CLIENT_KEY" > .env
 
       - name: Setup keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/my-release-key.jks
-          cat > android/key.properties << EOF
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          storeFile=my-release-key.jks
-          storePassword=${{ secrets.STORE_PASSWORD }}
-          EOF
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > android/app/my-release-key.jks
+          printf 'keyAlias=%s\nkeyPassword=%s\nstoreFile=my-release-key.jks\nstorePassword=%s\n' "$KEY_ALIAS" "$KEY_PASSWORD" "$STORE_PASSWORD" > android/key.properties
+          python3 scripts/security/check_signing_key.py --keystore android/app/my-release-key.jks --alias "$KEY_ALIAS" --password-env STORE_PASSWORD
           
       - name: Setup Google Services
         run: |
@@ -80,13 +92,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update version in Supabase
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          RELEASE_KEY: ${{ secrets.SUPABASE_RELEASE_KEY }}
         run: |
-          VERSION=${{ steps.version.outputs.version }}
+          set -euo pipefail
           APK_URL="https://github.com/lemuranonim/KrosCekApps/releases/download/v${VERSION}/app-release.apk"
 
-          curl -X PATCH "${{ secrets.SUPABASE_URL }}/rest/v1/app_config?id=eq.kroscek" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+          curl --fail-with-body --silent --show-error -X PATCH "${SUPABASE_URL}/rest/v1/app_config?id=eq.kroscek" \
+            -H "apikey: ${RELEASE_KEY}" \
             -H "Content-Type: application/json" \
             -H "Prefer: return=minimal" \
             -d "{
