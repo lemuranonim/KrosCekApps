@@ -19,6 +19,12 @@ def run(args, check=True):
         raise RuntimeError('Emulator check failed: '+result.stdout[-800:]+result.stderr[-800:])
     return result
 
+def permission_granted_from_dump(dump,package,permission):
+    if f'Package [{package}]' not in dump or permission not in dump:
+        raise RuntimeError('Expected package/permission missing from Package Manager dump')
+    grants=re.findall(r'(?m)^\s*'+re.escape(permission)+r':\s*granted=(true|false)\b',dump)
+    return 'true' in grants
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--serial', default='emulator-5554', choices=['emulator-5554'])
@@ -71,10 +77,13 @@ def main():
     run([*adb,'install','--no-streaming',args.old_apk])
     run([*adb,'install','--no-streaming','-r',args.new_apk])
     permission='com.example.kroscek.KROSCEK_RECEIVER_NOT_EXPORTED_PERMISSION'
-    if run([*adb,'shell','pm','check-permission',permission,'com.example.kroscek','0']).stdout.strip()!='granted':
+    current_dump=run([*adb,'shell','dumpsys','package','com.example.kroscek']).stdout
+    if not permission_granted_from_dump(current_dump,'com.example.kroscek',permission):
         raise RuntimeError('The new app cannot use its own receiver permission')
     run([*adb,'install','--no-streaming',fixtures/'legacy-permission-probe.apk'])
-    if run([*adb,'shell','pm','check-permission',permission,'com.example.kroscek.signingpermissionprobe','0']).stdout.strip()!='denied':
+    probe_package='com.example.kroscek.signingpermissionprobe'
+    probe_dump=run([*adb,'shell','dumpsys','package',probe_package]).stdout
+    if permission_granted_from_dump(probe_dump,probe_package,permission):
         raise RuntimeError('Compromised signer retained internal receiver access')
     real_replay=run([*adb,'install','--no-streaming','-r',fixtures/'legacy-app-replay.apk'],False)
     if real_replay.returncode==0 or 'INSTALL_FAILED_UPDATE_INCOMPATIBLE' not in real_replay.stdout+real_replay.stderr:
