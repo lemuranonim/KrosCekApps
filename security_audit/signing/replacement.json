@@ -1,5 +1,7 @@
 {
   "sha256": "037f78c609ad080f21de6dd6487b7b337c0e24e2269fb7c93d0f2fbfcd3294b7",
   "minimum_android_api": 28,
-  "old_signer_rollback_allowed": false
+  "old_signer_rollback_allowed": false,
+  "old_signer_signature_permissions_allowed": false,
+  "receiver_permission": "com.example.kroscek.KROSCEK_RECEIVER_NOT_EXPORTED_PERMISSION"
 }

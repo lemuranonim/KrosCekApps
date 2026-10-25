@@ -8,11 +8,10 @@ on:
         default: verify
       release_tag:
         type: string
-        default: v4.9.10
+        default: v4.9.11
         required: true
       build_run_id:
         type: string
-        default: '40181628294'
         required: true
       verification_run_id:
         type: string

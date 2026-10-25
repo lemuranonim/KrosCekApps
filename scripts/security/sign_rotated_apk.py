@@ -36,6 +36,17 @@ def main():
     if "package: name='com.example.kroscek'" not in badging:
         raise RuntimeError('Unexpected release package')
     if 'application-debuggable' in badging: raise RuntimeError('Debuggable release rejected')
+    manifest = execute([aapt,'dump','xmltree','--file','AndroidManifest.xml',args.apk])
+    old_permission = 'com.example.kroscek.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'
+    new_permission = 'com.example.kroscek.KROSCEK_RECEIVER_NOT_EXPORTED_PERMISSION'
+    if old_permission in manifest or new_permission not in manifest:
+        raise RuntimeError('Internal receiver permission was not migrated')
+    import zipfile
+    with zipfile.ZipFile(args.apk) as archive:
+        dex = [archive.read(n) for n in archive.namelist() if n.endswith('.dex')]
+    if not dex or any(b'.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION' in item for item in dex) \
+        or not any(b'.KROSCEK_RECEIVER_NOT_EXPORTED_PERMISSION' in item for item in dex):
+        raise RuntimeError('AndroidX runtime permission does not match the new manifest permission')
     temporary = args.apk.with_name(args.apk.stem+'.rotated.apk')
     execute([signer,'sign','--ks',args.keystore,'--ks-key-alias',args.alias,
         '--ks-pass','env:'+args.password_env,'--key-pass','env:'+args.password_env,

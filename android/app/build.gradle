@@ -1,3 +1,6 @@
+import com.android.build.api.instrumentation.InstrumentationScope
+import com.kroscek.build.ReceiverPermissionVisitor
+
 plugins {
     id 'com.android.application'
     id 'kotlin-android'
@@ -86,6 +89,13 @@ android {
 
 flutter {
     source = "../.."
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.instrumentation.transformClassesWith(ReceiverPermissionVisitor,
+                InstrumentationScope.ALL) { }
+    }
 }
 
 // Both local and CI APK releases must carry the approved certificate lineage.

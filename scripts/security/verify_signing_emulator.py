@@ -52,6 +52,11 @@ def main():
         verify_certificate(path,expected)
     verify_certificate(args.old_apk,OLD)
     verify_certificate(args.new_apk,NEW)
+    for name in ['legacy-app-replay.apk','legacy-permission-probe.apk']:
+        path=fixtures/name
+        if hashlib.sha256(path.read_bytes()).hexdigest()!=manifest['sha256'][name]:
+            raise RuntimeError('Additional fixture integrity mismatch')
+        verify_certificate(path,OLD)
     # This package and the production package exist only in this fresh CI emulator.
     run([*adb,'uninstall',PACKAGE],False)
     run([*adb,'install','--no-streaming',fixtures/'legacy-v1.apk'])
@@ -65,10 +70,21 @@ def main():
         raise RuntimeError('Old signer rejection or data preservation failed')
     run([*adb,'install','--no-streaming',args.old_apk])
     run([*adb,'install','--no-streaming','-r',args.new_apk])
+    permission='com.example.kroscek.KROSCEK_RECEIVER_NOT_EXPORTED_PERMISSION'
+    if run([*adb,'shell','pm','check-permission',permission,'com.example.kroscek','0']).stdout.strip()!='granted':
+        raise RuntimeError('The new app cannot use its own receiver permission')
+    run([*adb,'install','--no-streaming',fixtures/'legacy-permission-probe.apk'])
+    if run([*adb,'shell','pm','check-permission',permission,'com.example.kroscek.signingpermissionprobe','0']).stdout.strip()!='denied':
+        raise RuntimeError('Compromised signer retained internal receiver access')
+    real_replay=run([*adb,'install','--no-streaming','-r',fixtures/'legacy-app-replay.apk'],False)
+    if real_replay.returncode==0 or 'INSTALL_FAILED_UPDATE_INCOMPATIBLE' not in real_replay.stdout+real_replay.stderr:
+        raise RuntimeError('Real application accepted a higher-version APK signed by the old key')
     report={'api':api,'old_key_initial_install':True,'new_key_lineage_upgrade':True,
         'application_data_preserved':True,'old_key_higher_version_rejected':True,
         'distributed_v4_9_8_certificate_matches_compromised_key':True,
         'real_app_upgrade_from_v4_9_8':True,'installed_on_user_device':False,
+        'real_app_old_key_higher_version_rejected':True,'old_key_receiver_permission_denied':True,
+        'new_app_receiver_permission_granted':True,
         'release_apk_sha256':hashlib.sha256(args.new_apk.read_bytes()).hexdigest(),
         'release_tag':os.environ.get('RELEASE_TAG'),
         'source_build_run_id':os.environ.get('BUILD_RUN_ID')}
@@ -78,5 +94,6 @@ def main():
     print(json.dumps(report))
     run([*adb,'uninstall',PACKAGE])
     run([*adb,'uninstall','com.example.kroscek'])
+    run([*adb,'uninstall','com.example.kroscek.signingpermissionprobe'])
 
 if __name__ == '__main__': main()

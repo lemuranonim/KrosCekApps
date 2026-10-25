@@ -1,6 +1,8 @@
 {
-  "purpose": "Code-free signing migration fixtures; no private keys",
+  "purpose": "Code-free APKs for disposable emulator tests only; no private keys or application code",
   "sha256": {
+    "legacy-app-replay.apk": "055ebf83175ae8ba72d1824e521b33df89595ea5203818bc3464195c1aa9a065",
+    "legacy-permission-probe.apk": "0dfcce0de1287df7700ae20f8462418244a6b3ae97e7aa2af758586edd4751c1",
     "legacy-v1.apk": "50e925fa452d5903f66ee2b846be4cfcc6d7004235f20e66d72ab53111e47d4a",
     "legacy-v3.apk": "c2b4b3427c9ba5cf9ef2a87e75506927a2814fc78902337fba64374bedbf7d3b",
     "rotated-v2.apk": "1208dde913d1a0ef16909296fc94fe715ec02bf15fc6e795bd0c3d0c36d5cc62"

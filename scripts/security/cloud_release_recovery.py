@@ -11,7 +11,9 @@ import zipfile
 
 REPOSITORY='lemuranonim/KrosCekApps'
 CHECKS=['old_key_initial_install','new_key_lineage_upgrade','application_data_preserved',
-    'old_key_higher_version_rejected','real_app_upgrade_from_v4_9_8']
+    'old_key_higher_version_rejected','real_app_upgrade_from_v4_9_8',
+    'real_app_old_key_higher_version_rejected','old_key_receiver_permission_denied',
+    'new_app_receiver_permission_granted']
 
 def number(name):
     value=os.environ[name]
