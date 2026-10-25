@@ -68,7 +68,7 @@ def main():
     report={'api':api,'old_key_initial_install':True,'new_key_lineage_upgrade':True,
         'application_data_preserved':True,'old_key_higher_version_rejected':True,
         'distributed_v4_9_8_certificate_matches_compromised_key':True,
-        'real_app_upgrade_v4_9_8_to_v4_9_9':True,'installed_on_user_device':False,
+        'real_app_upgrade_from_v4_9_8':True,'installed_on_user_device':False,
         'release_apk_sha256':hashlib.sha256(args.new_apk.read_bytes()).hexdigest()}
     args.output.parent.mkdir(parents=True,exist_ok=True)
     with args.output.open('w',encoding='utf-8') as handle:

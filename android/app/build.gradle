@@ -88,6 +88,34 @@ flutter {
     source = "../.."
 }
 
+// Both local and CI APK releases must carry the approved certificate lineage.
+// Passwords are passed to the signer through the process environment only.
+def rotatedReleaseSigning = tasks.register('signRotatedRelease', Exec) {
+    def releaseApk = layout.buildDirectory.file('outputs/apk/release/app-release.apk')
+    def python = System.getenv('KROSCEK_PYTHON') ?:
+            (System.getProperty('os.name').toLowerCase().contains('windows') ? 'python' : 'python3')
+    commandLine python, rootProject.file('../scripts/security/sign_rotated_apk.py'),
+            '--apk', releaseApk.get().asFile,
+            '--keystore', android.signingConfigs.release.storeFile,
+            '--alias', keystoreProperties['keyAlias'],
+            '--password-env', 'KROSCEK_RELEASE_STORE_PASSWORD'
+    environment 'KROSCEK_RELEASE_STORE_PASSWORD', keystoreProperties['storePassword']
+    environment 'JAVA_HOME', System.getProperty('java.home')
+    environment 'PATH', new File(System.getProperty('java.home'), 'bin').absolutePath +
+            File.pathSeparator + System.getenv('PATH')
+    environment 'ANDROID_SDK_ROOT', localProperties.getProperty('sdk.dir') ?:
+            System.getenv('ANDROID_SDK_ROOT') ?: System.getenv('ANDROID_HOME')
+    doLast {
+        copy {
+            from releaseApk
+            into layout.buildDirectory.dir('outputs/flutter-apk')
+        }
+    }
+}
+tasks.configureEach { task ->
+    if (task.name == 'assembleRelease') task.finalizedBy(rotatedReleaseSigning)
+}
+
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation 'com.android.support:multidex:2.0.1'

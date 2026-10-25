@@ -28,7 +28,9 @@ def main():
     env = os.environ.copy()
     env['JAVA_HOME'] = 'C:/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot'
     env['PATH'] = env['JAVA_HOME'] + '/bin;' + env['PATH']
-    properties = dict(line.split('=', 1) for line in (ROOT/'android/key.properties').read_text().splitlines()
+    legacy_properties = ROOT/'.security/legacy-signing-key.properties'
+    if not legacy_properties.exists(): legacy_properties = ROOT/'android/key.properties'
+    properties = dict(line.split('=', 1) for line in legacy_properties.read_text().splitlines()
         if '=' in line and not line.lstrip().startswith('#'))
     new = json.loads((PRIVATE/'credentials.json').read_text())
     env['KROSCEK_OLD_STORE_PASSWORD'] = properties['storePassword']
