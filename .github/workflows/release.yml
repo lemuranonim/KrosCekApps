@@ -88,9 +88,6 @@ jobs:
       - name: Test update source validation
         run: flutter test --no-pub test/full_update_service_test.dart
 
-      - name: Test internal permission migration
-        run: ./android/gradlew --project-dir android/buildSrc --no-daemon --max-workers=2 test
-
       - name: Setup Shorebird
         uses: shorebirdtech/setup-shorebird@v1
         with:
@@ -101,6 +98,9 @@ jobs:
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+
+      - name: Test internal permission migration
+        run: bash ./android/gradlew --project-dir android/buildSrc --no-daemon --max-workers=2 test
 
       - name: Apply and verify signing-key rotation
         env:
