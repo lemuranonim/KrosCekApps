@@ -164,26 +164,12 @@ jobs:
         env:
           API: ${{ matrix.api }}
           ARCH: ${{ matrix.arch }}
-        run: |
-          set -euo pipefail
-          IMAGE="system-images;android-${API};google_apis;${ARCH}"
-          sdkmanager "$IMAGE" 'build-tools;36.0.0'
-          echo no | avdmanager create avd --name security-signing --package "$IMAGE" --force
-          sudo setfacl -m "u:${USER}:rw" /dev/kvm
-          "$ANDROID_HOME/emulator/emulator" -avd security-signing -port 5554 \
-            -no-window -no-audio -no-snapshot -gpu swiftshader_indirect \
-            -memory 2048 -cores 2 > security-test/emulator.log 2>&1 &
-          for attempt in $(seq 1 120); do
-            if [[ "$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then
-              exit 0
-            fi
-            sleep 3
-          done
-          tail -80 security-test/emulator.log
-          exit 1
+        run: bash scripts/security/start_emulator.sh
       - name: Verify real APK upgrade, data preservation, and old-key rejection
         env:
           API: ${{ matrix.api }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          BUILD_RUN_ID: ${{ github.run_id }}
         run: |
           python3 scripts/security/verify_signing_emulator.py \
             --old-apk security-test/legacy-app.apk --new-apk security-test/app-release.apk \
