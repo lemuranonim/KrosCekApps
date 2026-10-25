@@ -31,7 +31,7 @@ def main():
     digest = signing_digest(args.keystore,args.alias,args.password_env)
     if digest != expected: raise RuntimeError('The key is not the approved replacement')
     badging = execute([aapt,'dump','badging',args.apk])
-    minimum = re.search(r"sdkVersion:'(\d+)'", badging)
+    minimum = re.search(r"(?:sdkVersion|minSdkVersion):'(\d+)'", badging)
     if not minimum or int(minimum.group(1)) < 28: raise RuntimeError('Release must require Android 9+')
     if "package: name='com.example.kroscek'" not in badging:
         raise RuntimeError('Unexpected release package')
