@@ -27,9 +27,11 @@ export const MANAGED_FIELDS = [
 ] as const;
 
 export type ManagedField = (typeof MANAGED_FIELDS)[number];
-export type CanonicalPayload = Partial<Record<ManagedField, string | number>> & {
-  field_number: string;
-};
+export type CanonicalPayload =
+  & Partial<Record<ManagedField, string | number>>
+  & {
+    field_number: string;
+  };
 
 export interface ParsedSourceRow {
   sourceType: SourceType;
@@ -63,6 +65,15 @@ export interface SyncChange {
 export interface ReconciliationResult {
   changes: SyncChange[];
   summary: Record<string, number>;
+  sourceDuplicateResolutions: SourceDuplicateResolution[];
+}
+
+export interface SourceDuplicateResolution {
+  field_number: string;
+  selected_source_type: SourceType;
+  selected_source_row: number;
+  ignored_source_rows: Array<{ source_type: SourceType; source_row: number }>;
+  reason: "ADVANCE_STATUS" | "MOST_COMPLETE_COMPATIBLE_ROW";
 }
 
 const HEADER_ALIASES: Record<ManagedField, string[]> = {
@@ -281,12 +292,20 @@ export function normalizeDate(value: unknown): string | null {
   const text = cleanText(value);
   if (!text) return null;
   const iso = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+  if (iso) {
+    return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+  }
   const local = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
-  if (local) return `${local[3]}-${local[2].padStart(2, "0")}-${local[1].padStart(2, "0")}`;
+  if (local) {
+    return `${local[3]}-${local[2].padStart(2, "0")}-${
+      local[1].padStart(2, "0")
+    }`;
+  }
 
   const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+  return Number.isNaN(parsed.getTime())
+    ? null
+    : parsed.toISOString().slice(0, 10);
 }
 
 function buildLookup(row: Record<string, unknown>): Map<string, unknown> {
@@ -361,7 +380,9 @@ export function mapExportRow(
   const dateRaw = readAlias(lookup, "planting_date_pdn");
   const date = normalizeDate(dateRaw);
   if (date) payload.planting_date_pdn = date;
-  else if (cleanText(dateRaw)) validationErrors.push("invalid_date:planting_date_pdn");
+  else if (cleanText(dateRaw)) {
+    validationErrors.push("invalid_date:planting_date_pdn");
+  }
 
   payload.type = SOURCE_DB_TYPE[sourceType];
 
@@ -370,16 +391,22 @@ export function mapExportRow(
   const effective = payload.effective_area_ha as number | undefined;
   const harvestedArea = payload.harvested_area_ha as number | undefined;
   const harvestedQty = payload.harvested_qty_kg as number | undefined;
-  for (const [name, value] of [
-    ["total_area_planted_ha", planted],
-    ["discard_area_ha", discard],
-    ["effective_area_ha", effective],
-    ["harvested_area_ha", harvestedArea],
-    ["harvested_qty_kg", harvestedQty],
-  ] as const) {
-    if (value !== undefined && value < 0) validationErrors.push(`negative_area:${name}`);
+  for (
+    const [name, value] of [
+      ["total_area_planted_ha", planted],
+      ["discard_area_ha", discard],
+      ["effective_area_ha", effective],
+      ["harvested_area_ha", harvestedArea],
+      ["harvested_qty_kg", harvestedQty],
+    ] as const
+  ) {
+    if (value !== undefined && value < 0) {
+      validationErrors.push(`negative_area:${name}`);
+    }
   }
-  if (planted !== undefined && discard !== undefined && discard - planted > 0.01) {
+  if (
+    planted !== undefined && discard !== undefined && discard - planted > 0.01
+  ) {
     validationErrors.push("discard_exceeds_planted");
   }
   if (
@@ -402,7 +429,9 @@ export function mapExportRow(
   };
 }
 
-export function pickManagedFields(row: Record<string, unknown>): Record<string, unknown> {
+export function pickManagedFields(
+  row: Record<string, unknown>,
+): Record<string, unknown> {
   const picked: Record<string, unknown> = {};
   for (const field of MANAGED_FIELDS) {
     if (Object.hasOwn(row, field)) picked[field] = row[field];
@@ -421,6 +450,103 @@ function comparable(field: ManagedField, value: unknown): unknown {
   return text;
 }
 
+const DUPLICATE_IDENTITY_FIELDS: ManagedField[] = [
+  "planting_date_pdn",
+  "hybrid",
+  "total_area_planted_ha",
+];
+
+function hasSourceValue(value: unknown): boolean {
+  return value !== null && value !== undefined && cleanText(value) !== "";
+}
+
+export function normalizeActAdvanceStatus(value: unknown): 1 | 2 | 3 | null {
+  switch (cleanText(value).toLowerCase()) {
+    case "1":
+    case "advance":
+      return 1;
+    case "2":
+    case "no advance":
+      return 2;
+    case "3":
+    case "custom advance":
+      return 3;
+    default:
+      return null;
+  }
+}
+
+export function mapPlantingTableRow(
+  row: unknown[],
+  sourceType: SourceType,
+  sourceRow: number,
+): ParsedSourceRow {
+  return mapExportRow(
+    {
+      "Female Date": row[1] ?? null,
+      "Field Number": row[2] ?? null,
+      "Farmer": row[3] ?? null,
+      "Organizer": row[4] ?? null,
+      "Field Assistant": row[5] ?? null,
+      "Planted Area(Ha)": row[6] ?? null,
+      "Hybrid": row[7] ?? null,
+      "Village": row[8] ?? null,
+      "Sub District": row[9] ?? null,
+      "District": row[10] ?? null,
+      "Province": row[11] ?? null,
+      "_act_planting_id": cleanText(row[0]),
+      "_act_advance_status": normalizeActAdvanceStatus(row[12]),
+    },
+    sourceType,
+    sourceRow,
+  );
+}
+
+function isAdvance(row: ParsedSourceRow): boolean {
+  return normalizeActAdvanceStatus(
+    row.rawPayload._act_advance_status ?? row.rawPayload.Advance,
+  ) === 1;
+}
+
+// Advance has authority within the same planting. Among equal-priority rows,
+// a winner must contain every populated value from the others. Column counts
+// alone could discard a conflicting value; never manufacture a merged row.
+function mostCompleteCompatibleSourceRow(
+  rows: ParsedSourceRow[],
+): ParsedSourceRow | null {
+  const first = rows[0];
+  if (
+    rows.some((row) =>
+      row.sourceType !== first.sourceType || row.validationErrors.length > 0 ||
+      DUPLICATE_IDENTITY_FIELDS.some((field) =>
+        !hasSourceValue(row.sourcePayload[field]) ||
+        comparable(field, row.sourcePayload[field]) !==
+          comparable(field, first.sourcePayload[field])
+      )
+    )
+  ) return null;
+
+  const advanceRows = rows.filter(isAdvance);
+  const pool = advanceRows.length > 0 ? advanceRows : rows;
+  const candidates = pool.filter((candidate) =>
+    pool.every((other) =>
+      Object.entries(other.sourcePayload).every(([key, value]) =>
+        !hasSourceValue(value) ||
+        (hasSourceValue(candidate.sourcePayload[key as ManagedField]) &&
+          comparable(
+              key as ManagedField,
+              candidate.sourcePayload[key as ManagedField],
+            ) ===
+            comparable(key as ManagedField, value))
+      )
+    )
+  );
+  // Equal complete rows are interchangeable; retain a stable source position.
+  return candidates.sort((left, right) =>
+    left.sourceRow - right.sourceRow
+  )[0] ?? null;
+}
+
 export function changedColumns(
   current: Record<string, unknown>,
   incoming: CanonicalPayload,
@@ -435,7 +561,10 @@ export function changedColumns(
     } else if (before === after) {
       continue;
     }
-    changes[field] = { old: current[field] ?? null, new: incoming[field] ?? null };
+    changes[field] = {
+      old: current[field] ?? null,
+      new: incoming[field] ?? null,
+    };
   }
   return changes;
 }
@@ -445,11 +574,13 @@ export function reconcile(
   currentRows: Record<string, unknown>[],
 ): ReconciliationResult {
   const changes: SyncChange[] = [];
+  const sourceDuplicateResolutions: SourceDuplicateResolution[] = [];
   const sourceGroups = new Map<string, ParsedSourceRow[]>();
   const currentGroups = new Map<string, Record<string, unknown>[]>();
 
   for (const row of sourceRows) {
-    const key = row.fieldNumberNorm || `__INVALID_SOURCE_${row.sourceType}_${row.sourceRow}`;
+    const key = row.fieldNumberNorm ||
+      `__INVALID_SOURCE_${row.sourceType}_${row.sourceRow}`;
     const group = sourceGroups.get(key) ?? [];
     group.push(row);
     sourceGroups.set(key, group);
@@ -464,11 +595,17 @@ export function reconcile(
 
   const seenValidSource = new Set<string>();
   for (const [key, rows] of sourceGroups) {
-    const first = rows[0];
+    const selected = rows.length > 1 && rows[0].fieldNumberNorm
+      ? mostCompleteCompatibleSourceRow(rows)
+      : null;
+    const first = selected ?? rows[0];
     // A malformed or duplicate ACT row is still present in the snapshot. Mark
     // it as seen so the same FN is not also misclassified as MISSING_SOURCE.
     if (first.fieldNumberNorm) seenValidSource.add(first.fieldNumberNorm);
-    if (!first.fieldNumberNorm || first.validationErrors.length > 0) {
+    if (
+      !first.fieldNumberNorm ||
+      (rows.length === 1 && first.validationErrors.length > 0)
+    ) {
       changes.push({
         fieldNumberNorm: first.fieldNumberNorm || key,
         sourceType: first.sourceType,
@@ -476,11 +613,13 @@ export function reconcile(
         currentPayload: null,
         sourcePayload: first.sourcePayload,
         changedColumns: {},
-        validationErrors: [...new Set(rows.flatMap((row) => row.validationErrors))],
+        validationErrors: [
+          ...new Set(rows.flatMap((row) => row.validationErrors)),
+        ],
       });
       continue;
     }
-    if (rows.length > 1) {
+    if (rows.length > 1 && !selected) {
       changes.push({
         fieldNumberNorm: first.fieldNumberNorm,
         sourceType: first.sourceType,
@@ -489,10 +628,28 @@ export function reconcile(
         sourcePayload: first.sourcePayload,
         changedColumns: {},
         validationErrors: [
-          `duplicate_source_rows:${rows.map((row) => `${row.sourceType}:${row.sourceRow}`).join(",")}`,
+          `duplicate_source_rows:${
+            rows.map((row) => `${row.sourceType}:${row.sourceRow}`).join(",")
+          }`,
         ],
       });
       continue;
+    }
+    if (selected) {
+      sourceDuplicateResolutions.push({
+        field_number: selected.fieldNumberNorm,
+        selected_source_type: selected.sourceType,
+        selected_source_row: selected.sourceRow,
+        ignored_source_rows: rows.filter((row) => row !== selected).map((
+          row,
+        ) => ({
+          source_type: row.sourceType,
+          source_row: row.sourceRow,
+        })).sort((left, right) => left.source_row - right.source_row),
+        reason: isAdvance(selected)
+          ? "ADVANCE_STATUS"
+          : "MOST_COMPLETE_COMPATIBLE_ROW",
+      });
     }
     const currentMatches = currentGroups.get(first.fieldNumberNorm) ?? [];
     if (currentMatches.length > 1) {
@@ -515,7 +672,9 @@ export function reconcile(
         currentPayload: null,
         sourcePayload: first.sourcePayload,
         changedColumns: Object.fromEntries(
-          Object.entries(first.sourcePayload).map(([field, value]) => [field, { old: null, new: value }]),
+          Object.entries(first.sourcePayload).map((
+            [field, value],
+          ) => [field, { old: null, new: value }]),
         ),
         validationErrors: [],
       });
@@ -551,31 +710,42 @@ export function reconcile(
   const summary: Record<string, number> = {
     source_rows: sourceRows.length,
     current_rows: currentRows.length,
+    resolved_source_duplicate: sourceDuplicateResolutions.length,
+    ignored_source_duplicate_rows: sourceDuplicateResolutions.reduce(
+      (total, resolution) => total + resolution.ignored_source_rows.length,
+      0,
+    ),
   };
+  summary.source_rows_after_deduplication = sourceRows.length -
+    summary.ignored_source_duplicate_rows;
   for (const change of changes) {
     summary[change.changeKind.toLowerCase()] =
       (summary[change.changeKind.toLowerCase()] ?? 0) + 1;
   }
-  summary.blockers =
-    (summary.invalid ?? 0) +
+  summary.blockers = (summary.invalid ?? 0) +
     (summary.conflict_source_duplicate ?? 0) +
     (summary.conflict_kc_duplicate ?? 0);
   summary.actionable = (summary.insert ?? 0) + (summary.update ?? 0);
-  return { changes, summary };
+  return { changes, summary, sourceDuplicateResolutions };
 }
 
 export function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   const object = value as Record<string, unknown>;
-  return `{${Object.keys(object)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${stableStringify(object[key])}`)
-    .join(",")}}`;
+  return `{${
+    Object.keys(object)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(object[key])}`)
+      .join(",")
+  }}`;
 }
 
 export async function sha256(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(stableStringify(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(
+    new Uint8Array(digest),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
 }

@@ -2,6 +2,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kroscek/services/full_update_service.dart';
 
 void main() {
+  test('update URL accepts only official GitHub release APKs', () {
+    FullUpdateService.validateUpdateUrl(
+      'https://github.com/lemuranonim/KrosCekApps/releases/download/v4.9.9/app-release.apk',
+    );
+    for (final url in [
+      'http://github.com/lemuranonim/KrosCekApps/releases/download/v4/app-release.apk',
+      'https://github.com.attacker.test/lemuranonim/KrosCekApps/releases/download/v4/app-release.apk',
+      'https://github.com/attacker/KrosCekApps/releases/download/v4/app-release.apk',
+      'https://attacker@github.com/lemuranonim/KrosCekApps/releases/download/v4/app-release.apk',
+      'https://github.com:444/lemuranonim/KrosCekApps/releases/download/v4/app-release.apk',
+      'https://github.com/lemuranonim/KrosCekApps/releases/download/v4/app-release.apk?redirect=evil',
+      'https://github.com/lemuranonim/KrosCekApps/releases/download/v4/app-release.apk#evil',
+      'https://github.com/lemuranonim/KrosCekApps/releases/download/v4/%61pp-release.apk',
+    ]) {
+      expect(() => FullUpdateService.validateUpdateUrl(url), throwsFormatException);
+    }
+  });
   group('FullUpdateDownloadSnapshot', () {
     test('memetakan status dan progress dari Android DownloadManager', () {
       final snapshot = FullUpdateDownloadSnapshot.fromMap(

@@ -424,3 +424,8 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/master-fields-map-cache/deno.json"
 entrypoint = "./functions/master-fields-map-cache/index.ts"
+
+[functions.release-config]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/release-config/index.ts"

@@ -29,9 +29,7 @@ class WeatherService {
   // ============================================================================
 
   Future<http.Client> getHttpClient() async {
-    final HttpClient client = HttpClient()
-      ..badCertificateCallback =
-      ((X509Certificate cert, String host, int port) => true);
+    final HttpClient client = HttpClient();
     return IOClient(client);
   }
 

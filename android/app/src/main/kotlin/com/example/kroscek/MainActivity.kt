@@ -93,6 +93,9 @@ class MainActivity : FlutterActivity() {
         result: MethodChannel.Result,
     ) {
         requireSafeApkFileName(fileName)
+        require(ReleaseSourcePolicy.isTrusted(url)) {
+            "Sumber update bukan rilis resmi Kroscek"
+        }
         val downloadUri = Uri.parse(url)
         require(downloadUri.scheme.equals("https", ignoreCase = true) && !downloadUri.host.isNullOrBlank()) {
             "URL update harus menggunakan HTTPS"

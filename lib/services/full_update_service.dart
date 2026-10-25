@@ -49,6 +49,24 @@ class FullUpdateDownloadSnapshot {
 class FullUpdateService {
   const FullUpdateService();
 
+  static void validateUpdateUrl(String url) {
+    final uri = Uri.tryParse(url);
+    final allowedPath = RegExp(
+      r'^/lemuranonim/KrosCekApps/releases/download/v[0-9][0-9A-Za-z._+\-]*/app-release\.apk$',
+    );
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.toLowerCase() != 'github.com' ||
+        uri.userInfo.isNotEmpty ||
+        (uri.hasPort && uri.port != 443) ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        url.contains('%') ||
+        !allowedPath.hasMatch(uri.path)) {
+      throw const FormatException('Sumber pembaruan aplikasi tidak dipercaya.');
+    }
+  }
+
   static const MethodChannel _channel = MethodChannel(
     'com.example.kroscek/full_update',
   );
@@ -58,6 +76,7 @@ class FullUpdateService {
     required String fileName,
     required String version,
   }) async {
+    validateUpdateUrl(url);
     final id = await _channel.invokeMethod<num>('enqueue', <String, Object>{
       'url': url,
       'fileName': fileName,

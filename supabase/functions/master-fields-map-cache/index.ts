@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { isServerToken } from "../_shared/admin-auth.ts";
 
 const CACHE_NAMESPACE = "master_fields_map";
 const MAP_CACHE_TTL_SECONDS = 21_600;
@@ -349,19 +350,6 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function jwtRole(token: string): string | null {
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    const claims = JSON.parse(atob(padded)) as { role?: unknown };
-    return typeof claims.role === "string" ? claims.role : null;
-  } catch (_) {
-    return null;
-  }
-}
-
 async function sha256(value: string): Promise<string> {
   const bytes = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -397,7 +385,7 @@ async function compressJson(value: unknown): Promise<string> {
 
 async function decompressJson(value: string): Promise<unknown> {
   const compressed = base64ToBytes(value);
-  const stream = new Blob([compressed]).stream().pipeThrough(
+  const stream = new Blob([compressed.slice().buffer]).stream().pipeThrough(
     new DecompressionStream("gzip"),
   );
   return JSON.parse(await new Response(stream).text());
@@ -550,7 +538,7 @@ Deno.serve(async (req) => {
   // JWT (whose signature is verified by the Edge gateway) and never returns
   // endpoint or token values.
   if (input.healthCheck === true) {
-    if (jwtRole(token) !== "service_role") {
+    if (!await isServerToken(token, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) && !await isServerToken(token, Deno.env.get("ACT_SYNC_CRON_TOKEN"))) {
       return jsonResponse({ error: "Service role required" }, 403);
     }
     if (!redisEnabled) {
@@ -609,7 +597,7 @@ Deno.serve(async (req) => {
     : dataset === "planning_index"
     ? "master_fields_planning_index"
     : CACHE_NAMESPACE;
-  const selectColumns = dataset === "coverage"
+  const selectColumns: string = dataset === "coverage"
     ? COVERAGE_SELECT
     : dataset === "planning_index"
     ? PLANNING_INDEX_SELECT
@@ -717,6 +705,8 @@ Deno.serve(async (req) => {
     : { role: "ALL", action };
   const cacheIdentity = JSON.stringify({
     version,
+    userId: userData.user.id,
+    profileRole: role,
     access: accessIdentity,
     scope,
   });

@@ -15,10 +15,8 @@ class ProfileRenameState {
   bool get isSynced => profileName.trim().toLowerCase() == mappingName.trim().toLowerCase();
   final DateTime? lastRenameAt;
 
-  bool get canRename {
-    if (lastRenameAt == null) return true;
-    return DateTime.now().difference(lastRenameAt!) >= const Duration(days: _kRenameCooldownDays);
-  }
+  // Profile names currently participate in server-side QA ownership.
+  bool get canRename => false;
 
   int get cooldownDaysLeft {
     if (lastRenameAt == null) return 0;
@@ -86,7 +84,7 @@ class ProfileRenameNotifier extends AsyncNotifier<ProfileRenameState> {
     final current = state.value; // Ganti .valueOrNull menjadi .value
     if (current == null) return;
     if (!current.canRename) {
-      throw Exception('Rename masih dalam cooldown ${current.cooldownDaysLeft} hari lagi.');
+      throw Exception('Perubahan nama profil harus melalui administrator.');
     }
     if (newName.trim().isEmpty) {
       throw Exception('Nama baru tidak boleh kosong.');

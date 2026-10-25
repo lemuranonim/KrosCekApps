@@ -545,7 +545,7 @@ class _ProfileSheetContentState extends ConsumerState<_ProfileSheetContent> {
             color: Colors.orange,
             message:
                 'Nama profil "${renameState.profileName}" tidak cocok dengan nama di pemetaan wilayah '
-                '"${renameState.mappingName}". Silakan lakukan rename agar data wilayah dapat tampil dengan benar.',
+                '"${renameState.mappingName}". Hubungi administrator untuk memperbaiki identitas dan penugasan.',
           ),
           const SizedBox(height: 12),
         ],
@@ -557,7 +557,7 @@ class _ProfileSheetContentState extends ConsumerState<_ProfileSheetContent> {
                 size: 16, color: theme.colorScheme.primary),
             const SizedBox(width: 6),
             Text(
-              'Ganti Nama Profil',
+              'Identitas Profil',
               style: AdvantaText.bodyBold
                   .copyWith(color: theme.colorScheme.onSurface),
             ),
@@ -569,7 +569,7 @@ class _ProfileSheetContentState extends ConsumerState<_ProfileSheetContent> {
             icon: Icons.lock_clock_outlined,
             color: AdvantaColors.mutedGrey,
             message:
-                'Nama sudah pernah diganti. Bisa ganti lagi dalam ${renameState.cooldownDaysLeft} hari.',
+                'Nama profil dikelola administrator agar akses penugasan tetap sesuai.',
           ),
         ] else if (renameState.lastRenameAt != null) ...[
           Text(

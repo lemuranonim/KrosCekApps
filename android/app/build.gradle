@@ -33,7 +33,8 @@ android {
 
     defaultConfig {
         applicationId "com.example.kroscek"
-        minSdkVersion flutter.minSdkVersion
+        // APK signing-key rotation is supported from Android 9 (API 28).
+        minSdkVersion 28
         targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName

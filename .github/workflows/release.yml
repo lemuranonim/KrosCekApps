@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+  release:
+    types: [published]
 
 permissions:
   contents: write  # ← tambahkan ini
@@ -14,6 +16,7 @@ env:
 
 jobs:
   build-and-release:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
 
     steps:
@@ -25,7 +28,15 @@ jobs:
         run: |
           set -euo pipefail
           TAG=${GITHUB_REF#refs/tags/v}
-          [[ "$TAG" =~ ^[0-9][0-9A-Za-z._+-]*$ ]] || exit 1
+          [[ "$TAG" =~ ^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}$ ]] || exit 1
+          python3 - "$TAG" <<'PY'
+          from pathlib import Path
+          import sys
+          version = next(line.split(':', 1)[1].strip().split('+', 1)[0]
+                         for line in Path('pubspec.yaml').read_text().splitlines() if line.startswith('version:'))
+          if version != sys.argv[1]:
+              raise SystemExit('Tag must match pubspec release version')
+          PY
           echo "version=$TAG" >> $GITHUB_OUTPUT
 
       - name: Require protected release credentials
@@ -70,7 +81,12 @@ jobs:
           echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > android/app/google-services.json
 
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          flutter config --enable-native-assets
+          flutter pub get
+
+      - name: Test update source validation
+        run: flutter test test/full_update_service_test.dart
 
       - name: Setup Shorebird
         uses: shorebirdtech/setup-shorebird@v1
@@ -83,30 +99,44 @@ jobs:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
 
+      - name: Apply and verify signing-key rotation
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          python3 scripts/security/sign_rotated_apk.py \
+            --apk build/app/outputs/apk/release/app-release.apk \
+            --keystore android/app/my-release-key.jks \
+            --alias "$KEY_ALIAS" --password-env STORE_PASSWORD
+
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: build/app/outputs/apk/release/app-release.apk
           name: "KROSCEK v${{ steps.version.outputs.version }}"
+          draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update version in Supabase
+  publish-update-configuration:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Publish approved release configuration
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          CLIENT_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           RELEASE_KEY: ${{ secrets.SUPABASE_RELEASE_KEY }}
         run: |
           set -euo pipefail
-          APK_URL="https://github.com/lemuranonim/KrosCekApps/releases/download/v${VERSION}/app-release.apk"
-
-          curl --fail-with-body --silent --show-error -X PATCH "${SUPABASE_URL}/rest/v1/app_config?id=eq.kroscek" \
-            -H "apikey: ${RELEASE_KEY}" \
+          VERSION=${RELEASE_TAG#v}
+          [[ "$VERSION" =~ ^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}$ ]] || exit 1
+          test -n "$RELEASE_KEY"
+          curl --fail-with-body --silent --show-error -X POST "${SUPABASE_URL}/functions/v1/release-config" \
+            -H "apikey: ${CLIENT_KEY}" \
+            -H "Authorization: Bearer ${CLIENT_KEY}" \
+            -H "X-Release-Token: ${RELEASE_KEY}" \
             -H "Content-Type: application/json" \
-            -H "Prefer: return=minimal" \
-            -d "{
-              \"latest_version\": \"${VERSION}\",
-              \"min_version\": \"${VERSION}\",
-              \"apk_url\": \"${APK_URL}\",
-              \"force_update\": true
-            }"
+            -d "{\"version\":\"${VERSION}\"}"

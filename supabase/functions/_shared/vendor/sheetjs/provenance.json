@@ -1,0 +1,21 @@
+{
+  "package": "xlsx",
+  "version": "0.20.3",
+  "files": {
+    "xlsx-0.20.3.mjs": {
+      "source_url": "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs",
+      "sha256": "399e220f6b994a8d5e1612305b1ab11190e61afd1885ba3f3e679fede1676941",
+      "bytes": 1009255
+    },
+    "index.d.ts": {
+      "source_url": "https://cdn.sheetjs.com/xlsx-0.20.3/package/types/index.d.ts",
+      "sha256": "20e6b6bf84d537ef8c3c478634e68c5ba43ff79f8b14591528d8fbd73304d7de",
+      "bytes": 28842
+    },
+    "LICENSE": {
+      "source_url": "https://raw.githubusercontent.com/SheetJS/sheetjs/master/LICENSE",
+      "sha256": "4d2a38ac35cda06a555c84074a819d413339cd3691b822cae50f8f322fe01f64",
+      "bytes": 11355
+    }
+  }
+}

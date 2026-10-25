@@ -1,9 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
-import * as XLSX from "npm:xlsx@0.18.5";
+import { parseWorkbook } from "./workbook-parser.ts";
+import { AdminAuthorizationError, authorizeAdmin } from "../_shared/admin-auth.ts";
 import {
   mapExportRow,
   mapFinalPldAreas,
+  mapPlantingTableRow,
   normalizeDate,
   normalizeFieldNumber,
   normalizeHeader,
@@ -129,6 +131,7 @@ const JSON_HEADERS = {
 };
 
 interface SyncRequest {
+  authorizationCheck?: boolean;
   runId?: string;
   inspectSource?: SourceType;
   inspectExportJobId?: string;
@@ -332,7 +335,7 @@ class ActClient {
     if (!response.ok) throw new Error(`ACT export queue returned HTTP ${response.status}`);
     const payload = await response.json();
     const rows = Array.isArray(payload?.data) ? payload.data : [];
-    return rows.map(parseExportJob).filter((job): job is ExportJob => job !== null);
+    return rows.map(parseExportJob).filter((job: ExportJob | null): job is ExportJob => job !== null);
   }
 
   async startBackgroundExport(
@@ -618,56 +621,7 @@ function normalizeLooseDate(value: string): string {
   return value.trim();
 }
 
-function parseWorkbook(bytes: Uint8Array, sourceType: SourceType): ParsedSourceRow[] {
-  const workbook = XLSX.read(bytes, { type: "array", cellDates: true, dense: true });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error(`ACT ${sourceType} workbook has no sheet`);
-  const sheet = workbook.Sheets[sheetName] as unknown as Record<string, unknown> & unknown[][];
-  const reference = String((sheet as Record<string, unknown>)["!ref"] ?? "");
-  if (!reference) throw new Error(`ACT ${sourceType} workbook has no cells`);
-  const range = XLSX.utils.decode_range(reference);
-  const cellValue = (row: number, column: number): unknown => {
-    const denseCell = Array.isArray(sheet) ? sheet[row]?.[column] : undefined;
-    const sparseCell = !Array.isArray(sheet)
-      ? (sheet as Record<string, unknown>)[XLSX.utils.encode_cell({ r: row, c: column })]
-      : undefined;
-    const cell = (denseCell ?? sparseCell) as { v?: unknown } | undefined;
-    return cell?.v ?? null;
-  };
-  let headerIndex = -1;
-  for (
-    let row = range.s.r;
-    row <= Math.min(range.e.r, range.s.r + 24) && headerIndex < 0;
-    row++
-  ) {
-    for (let column = range.s.c; column <= range.e.c; column++) {
-      const header = normalizeHeader(cellValue(row, column));
-      if (header === "field number" || header === "field no" || header === "fn") {
-        headerIndex = row;
-        break;
-      }
-    }
-  }
-  if (headerIndex < 0) throw new Error(`ACT ${sourceType} workbook has no Field Number header`);
 
-  const headers: string[] = [];
-  for (let column = range.s.c; column <= range.e.c; column++) {
-    headers.push(String(cellValue(headerIndex, column) ?? `column_${column + 1}`).trim());
-  }
-  const rows: ParsedSourceRow[] = [];
-  for (let row = headerIndex + 1; row <= range.e.r; row++) {
-    const values = headers.map((_, offset) => cellValue(row, range.s.c + offset));
-    if (values.every((value) => value === null || String(value).trim() === "")) {
-      continue;
-    }
-    const raw: Record<string, unknown> = {};
-    headers.forEach((header, column) => {
-      raw[header] = values[column] ?? null;
-    });
-    rows.push(mapExportRow(raw, sourceType, row + 1));
-  }
-  return rows;
-}
 
 async function fetchAllMasterFields(supabase: SupabaseClient): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = [];
@@ -679,7 +633,7 @@ async function fetchAllMasterFields(supabase: SupabaseClient): Promise<Record<st
       .order("field_number", { ascending: true })
       .range(from, from + pageSize - 1);
     if (error) throw new Error(`Cannot read KC master_fields: ${error.message}`);
-    const page = (data ?? []) as Record<string, unknown>[];
+    const page = (data ?? []) as unknown as Record<string, unknown>[];
     rows.push(...page);
     if (page.length < pageSize) break;
   }
@@ -738,26 +692,6 @@ async function stageParsedRows(
       "run_id,source_type,source_row",
     );
   }
-}
-
-function mapPlantingTableRow(
-  row: unknown[],
-  sourceType: SourceType,
-  sourceRow: number,
-): ParsedSourceRow {
-  return mapExportRow({
-    "Female Date": row[1] ?? null,
-    "Field Number": row[2] ?? null,
-    "Farmer": row[3] ?? null,
-    "Organizer": row[4] ?? null,
-    "Field Assistant": row[5] ?? null,
-    "Planted Area(Ha)": row[6] ?? null,
-    "Hybrid": row[7] ?? null,
-    "Village": row[8] ?? null,
-    "Sub District": row[9] ?? null,
-    "District": row[10] ?? null,
-    "Province": row[11] ?? null,
-  }, sourceType, sourceRow);
 }
 
 async function stageArtifact(
@@ -1040,7 +974,7 @@ async function fetchAllStagedRows(
       .order("source_row", { ascending: true })
       .range(from, from + pageSize - 1);
     if (error) throw new Error(`Cannot read staged ACT rows: ${error.message}`);
-    const page = (data ?? []) as Record<string, unknown>[];
+    const page = (data ?? []) as unknown as Record<string, unknown>[];
     for (const row of page) {
       rows.push({
         sourceType: String(row.source_type) as SourceType,
@@ -1092,13 +1026,14 @@ async function finalizeStagedRun(
   );
 
   const guardErrors: string[] = [];
-  if (sourceRows.length < input.minimumRows) {
-    guardErrors.push(`source_rows_below_minimum:${sourceRows.length}<${input.minimumRows}`);
+  const effectiveSourceRows = result.summary.source_rows_after_deduplication;
+  if (effectiveSourceRows < input.minimumRows) {
+    guardErrors.push(`source_rows_below_minimum:${effectiveSourceRows}<${input.minimumRows}`);
   }
   for (const source of input.sources) {
     if ((sourceCounts[source] ?? 0) === 0) guardErrors.push(`empty_source:${source}`);
   }
-  const changeRatio = result.summary.actionable / Math.max(sourceRows.length, 1);
+  const changeRatio = result.summary.actionable / Math.max(effectiveSourceRows, 1);
   if (input.apply && changeRatio > input.maxChangeRatio) {
     guardErrors.push(`change_ratio_exceeded:${changeRatio.toFixed(4)}>${input.maxChangeRatio}`);
   }
@@ -1115,7 +1050,10 @@ async function finalizeStagedRun(
     .update({
       status: readyStatus,
       source_counts: sourceCounts,
-      source_meta: sourceMeta,
+      source_meta: {
+        ...sourceMeta,
+        source_duplicate_resolutions: result.sourceDuplicateResolutions,
+      },
       summary,
       progress_at: new Date().toISOString(),
       completed_at: input.apply && !blocked ? null : new Date().toISOString(),
@@ -1172,40 +1110,19 @@ function recordValue(value: unknown): Record<string, unknown> {
 }
 
 async function authorize(req: Request, service: SupabaseClient): Promise<string | null> {
-  const authorization = req.headers.get("Authorization") ?? "";
-  const token = authorization.replace(/^Bearer\s+/i, "").trim();
-  if (!token) throw new HttpError("Missing authorization", 401);
-
-  const claims = decodeJwtClaims(token);
-  if (claims?.role === "service_role") return null;
-
-  const { data: userData, error: userError } = await service.auth.getUser(token);
-  if (userError || !userData.user) throw new HttpError("Invalid authorization", 401);
-  const { data: profile, error: profileError } = await service
-    .from("app_users")
-    .select("id, role, is_active")
-    .eq("id", userData.user.id)
-    .maybeSingle();
-  if (profileError || !profile || profile.is_active === false) {
-    throw new HttpError("Active KC profile required", 403);
-  }
-  const role = String(profile.role ?? "").trim().toUpperCase();
-  if (!new Set(["ADMIN", "DEV"]).has(role)) {
-    throw new HttpError("Only KC ADMIN or DEV can run ACT synchronization", 403);
-  }
-  return userData.user.id;
-}
-
-function decodeJwtClaims(token: string): Record<string, unknown> | null {
-  try {
-    const segment = token.split(".")[1];
-    if (!segment) return null;
-    const normalized = segment.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
+  return await authorizeAdmin(req, {
+    serviceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+    cronServiceKey: Deno.env.get("ACT_SYNC_CRON_TOKEN"),
+    verifyUser: async (token) => {
+      const { data, error } = await service.auth.getUser(token);
+      return error ? null : data.user;
+    },
+    readProfile: async (id) => {
+      const { data, error } = await service.from("app_users")
+        .select("role, is_active").eq("id", id).maybeSingle();
+      return error ? null : data;
+    },
+  });
 }
 
 function validateRequest(input: SyncRequest): ValidatedSyncRequest {
@@ -1303,7 +1220,7 @@ function mergeCookies(existing: string, incoming: string[]): string {
 }
 
 async function sha256Bytes(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const digest = await crypto.subtle.digest("SHA-256", bytes.slice().buffer);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
@@ -1338,6 +1255,7 @@ Deno.serve(async (req) => {
   try {
     const requestedBy = await authorize(req, service);
     const requestInput = await req.json() as SyncRequest;
+    if (requestInput.authorizationCheck === true) return jsonResponse({ authorized: true });
 
     if (requestInput.inspectExportJobId) {
       const act = new ActClient();
@@ -2339,7 +2257,7 @@ Deno.serve(async (req) => {
     await act.login(actUsername, actPassword);
 
     if (input.exportMode === "table") {
-      const tableState = Object.fromEntries(
+      const tableState: Record<string, Record<string, unknown>> = Object.fromEntries(
         input.sources.map((source) => [
           source,
           { next_start: 0, processed_rows: 0, table_total: null, complete: false },
@@ -2500,7 +2418,7 @@ Deno.serve(async (req) => {
         // stops waiting for its response. Never downgrade that committed run.
         .neq("status", "COMPLETED");
     }
-    const status = error instanceof HttpError ? error.status : 500;
+    const status = error instanceof HttpError || error instanceof AdminAuthorizationError ? error.status : 500;
     return jsonResponse({ error: message, run_id: activeRunId }, status);
   }
 });

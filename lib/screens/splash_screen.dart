@@ -469,6 +469,7 @@ class SplashScreenState extends State<SplashScreen>
       final downloadUrl = response['apk_url'] as String?;
 
       if (latestVersion == null || downloadUrl == null) return;
+      FullUpdateService.validateUpdateUrl(downloadUrl);
 
       final packageInfo = await PackageInfo.fromPlatform();
       final currentVersion = packageInfo.version;

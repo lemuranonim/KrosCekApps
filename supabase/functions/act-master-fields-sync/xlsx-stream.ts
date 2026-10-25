@@ -80,9 +80,11 @@ async function* zipEntryText(
     entry.compressedStart,
     entry.compressedStart + entry.compressedSize,
   );
-  let stream: ReadableStream<Uint8Array> = new Blob([compressed]).stream();
+  const blob = new Blob([compressed.slice().buffer]);
+  let stream = blob.stream();
   if (entry.compressionMethod === 8) {
-    stream = stream.pipeThrough(new DecompressionStream("deflate-raw"));
+    const source: ReadableStream<BufferSource> = blob.stream();
+    stream = source.pipeThrough(new DecompressionStream("deflate-raw"));
   } else if (entry.compressionMethod !== 0) {
     throw new Error(`Unsupported XLSX ZIP compression method: ${entry.compressionMethod}`);
   }

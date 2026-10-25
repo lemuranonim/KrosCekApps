@@ -10,6 +10,7 @@
 .svn/
 .codex/
 .agents/
+/.security/
 .codex-remote-attachments
 migrate_working_dir/
 key.properties
@@ -58,6 +59,12 @@ assets/config.json
 !/supabase/functions/act-master-fields-sync/**
 !/supabase/functions/master-fields-map-cache/
 !/supabase/functions/master-fields-map-cache/**
+!/supabase/functions/_shared/
+!/supabase/functions/_shared/**
+!/supabase/functions/recall-sync-to-act/
+!/supabase/functions/recall-sync-to-act/**
+!/supabase/functions/release-config/
+!/supabase/functions/release-config/**
 !/supabase/migrations/
 /supabase/migrations/*
 !/supabase/migrations/*.sql
