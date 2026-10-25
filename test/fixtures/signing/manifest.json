@@ -1,0 +1,8 @@
+{
+  "purpose": "Code-free signing migration fixtures; no private keys",
+  "sha256": {
+    "legacy-v1.apk": "50e925fa452d5903f66ee2b846be4cfcc6d7004235f20e66d72ab53111e47d4a",
+    "legacy-v3.apk": "c2b4b3427c9ba5cf9ef2a87e75506927a2814fc78902337fba64374bedbf7d3b",
+    "rotated-v2.apk": "1208dde913d1a0ef16909296fc94fe715ec02bf15fc6e795bd0c3d0c36d5cc62"
+  }
+}
