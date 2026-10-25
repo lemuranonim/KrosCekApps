@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import * as XLSX from "npm:xlsx@0.18.5";
+// @deno-types="../_shared/vendor/sheetjs/index.d.ts"
+import * as XLSX from "../_shared/vendor/sheetjs/xlsx-0.20.3.mjs";
 import { readFirstSheetRowsChunk } from "./xlsx-stream.ts";
 
 function workbookBytes(): Uint8Array {

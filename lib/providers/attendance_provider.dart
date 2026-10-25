@@ -1,7 +1,10 @@
 // lib/providers/attendance_provider.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'master_fields_provider.dart';
+import 'attendance_clock_provider.dart';
+import '../utils/attendance_policy.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE
@@ -141,17 +144,36 @@ class AttendanceActivity {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AttendanceNotifier extends Notifier<AttendanceState> {
+  int _generation = 0;
+
   @override
-  AttendanceState build() => const AttendanceState();
+  AttendanceState build() {
+    final userId = ref.watch(
+      currentUserProvider.select((value) => value.value?.id),
+    );
+    ref.watch(attendanceDayProvider);
+    final generation = ++_generation;
+    if (userId != null && userId.isNotEmpty) {
+      Future.microtask(() {
+        if (ref.mounted && generation == _generation) {
+          loadTodayAttendance(userId);
+        }
+      });
+    }
+    return AttendanceState(isLoading: userId != null);
+  }
 
   /// Load semua data attendance hari ini termasuk activities
   Future<void> loadTodayAttendance(String userId) async {
+    if (ref.read(currentUserProvider).value?.id != userId) return;
+    final generation = ++_generation;
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       final service = ref.read(supabaseServiceProvider);
 
       // Load header
       final header = await service.getTodayAttendance(userId);
+      if (!ref.mounted || generation != _generation) return;
       if (header == null) {
         state = const AttendanceState();
         return;
@@ -168,6 +190,7 @@ class AttendanceNotifier extends Notifier<AttendanceState> {
             .map((e) => AttendanceActivity.fromMap(e))
             .toList();
       }
+      if (!ref.mounted || generation != _generation) return;
 
       state = AttendanceState(
         attendanceId: attendanceId,
@@ -191,6 +214,7 @@ class AttendanceNotifier extends Notifier<AttendanceState> {
         isLoading: false,
       );
     } catch (e) {
+      if (!ref.mounted || generation != _generation) return;
       debugPrint('Error loading attendance: $e');
       state = state.copyWith(
         isLoading: false,
@@ -206,6 +230,12 @@ class AttendanceNotifier extends Notifier<AttendanceState> {
     required double lng,
     String? photoUrl,
   }) async {
+    if (state.isLoading || state.isCheckedIn) {
+      throw StateError(
+        'Absensi sedang dimuat atau absen masuk sudah tercatat.',
+      );
+    }
+    final generation = ++_generation;
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       final service = ref.read(supabaseServiceProvider);
@@ -215,6 +245,7 @@ class AttendanceNotifier extends Notifier<AttendanceState> {
         lng: lng,
         photoUrl: photoUrl,
       );
+      if (!ref.mounted || generation != _generation) return;
       state = state.copyWith(
         attendanceId: id,
         isCheckedIn: true,
@@ -225,7 +256,9 @@ class AttendanceNotifier extends Notifier<AttendanceState> {
         status: 'open',
         isLoading: false,
       );
+      await loadTodayAttendance(userId);
     } catch (e) {
+      if (!ref.mounted || generation != _generation) return;
       state = state.copyWith(isLoading: false, errorMessage: '$e');
       rethrow;
     }
@@ -238,15 +271,22 @@ class AttendanceNotifier extends Notifier<AttendanceState> {
     required double lng,
     String? notes,
   }) async {
+    if (state.isLoading ||
+        !AttendancePolicy.canCheckOut(
+          checkedIn: state.isCheckedIn,
+          checkedOut: state.isCheckedOut,
+          now: DateTime.now(),
+        )) {
+      throw StateError(
+        'Absen pulang tersedia mulai pukul 15.00 WIB setelah absen masuk.',
+      );
+    }
+    final generation = ++_generation;
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       final service = ref.read(supabaseServiceProvider);
-      await service.checkOut(
-        userId: userId,
-        lat: lat,
-        lng: lng,
-        notes: notes,
-      );
+      await service.checkOut(userId: userId, lat: lat, lng: lng, notes: notes);
+      if (!ref.mounted || generation != _generation) return;
       state = state.copyWith(
         isCheckedOut: true,
         checkOutTime: DateTime.now(),
@@ -256,7 +296,9 @@ class AttendanceNotifier extends Notifier<AttendanceState> {
         status: 'closed',
         isLoading: false,
       );
+      await loadTodayAttendance(userId);
     } catch (e) {
+      if (!ref.mounted || generation != _generation) return;
       state = state.copyWith(isLoading: false, errorMessage: '$e');
       rethrow;
     }
@@ -272,7 +314,11 @@ class AttendanceNotifier extends Notifier<AttendanceState> {
     required double lng,
     String? referenceInspectionId,
   }) async {
-    if (state.attendanceId == null) return;
+    if (state.attendanceId == null ||
+        !state.isCheckedIn ||
+        state.isCheckedOut) {
+      return;
+    }
     try {
       final service = ref.read(supabaseServiceProvider);
       await service.logActivity(
@@ -286,9 +332,7 @@ class AttendanceNotifier extends Notifier<AttendanceState> {
         referenceInspectionId: referenceInspectionId,
       );
       // Refresh activity count
-      state = state.copyWith(
-        totalActivities: state.totalActivities + 1,
-      );
+      await refreshActivities();
     } catch (e) {
       debugPrint('Error logging activity: $e');
     }
@@ -297,9 +341,13 @@ class AttendanceNotifier extends Notifier<AttendanceState> {
   /// Refresh hanya activity list (tanpa reload full)
   Future<void> refreshActivities() async {
     if (state.attendanceId == null) return;
+    final attendanceId = state.attendanceId;
     try {
       final service = ref.read(supabaseServiceProvider);
-      final activityData = await service.getTodayActivities(state.attendanceId!);
+      final activityData = await service.getTodayActivities(
+        state.attendanceId!,
+      );
+      if (!ref.mounted || state.attendanceId != attendanceId) return;
       final activities = activityData
           .map((e) => AttendanceActivity.fromMap(e))
           .toList();
@@ -320,9 +368,9 @@ class AttendanceNotifier extends Notifier<AttendanceState> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 final attendanceProvider =
-NotifierProvider<AttendanceNotifier, AttendanceState>(
-  AttendanceNotifier.new,
-);
+    NotifierProvider<AttendanceNotifier, AttendanceState>(
+      AttendanceNotifier.new,
+    );
 
 /// Provider untuk computed work duration (real-time)
 final workDurationProvider = Provider<String>((ref) {

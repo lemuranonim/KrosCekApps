@@ -36,7 +36,6 @@ import '../../providers/attendance_provider.dart';
 import '../../widgets/field_detail_bottom_sheet.dart';
 import '../../services/supabase_auth_service.dart';
 import '../../theme/app_theme.dart';
-import '../../services/session_manager.dart';
 import '../../widgets/field_list_view.dart'; // Sesuaikan path ini
 import '../../utils/audit_status_helper.dart';
 import '../../utils/active_phase_filter.dart';
@@ -48,6 +47,7 @@ import '../../widgets/act_sync_status_strip.dart';
 import '../../widgets/audit_status_widgets.dart';
 import '../../widgets/phase_asset_icon.dart';
 import '../../widgets/shorebird_settings_indicator.dart';
+import '../../widgets/attendance_avatar_button.dart';
 import '../../models/audit_planning_filters.dart';
 
 // ─── Work mode enum ──────────────────────────────────────
@@ -899,7 +899,6 @@ class _QAScreenState extends ConsumerState<QAScreen>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
-    _loadUser();
     _initUserLocation();
     _speedDialCtrl = AnimationController(
       vsync: this,
@@ -936,13 +935,6 @@ class _QAScreenState extends ConsumerState<QAScreen>
         setState(() => _topOverlayHeight = h);
       }
     });
-  }
-
-  Future<void> _loadUser() async {
-    final session = await SessionManager.instance.getActiveSession();
-    final uid = session?.userId ?? '';
-    if (uid.isEmpty || !mounted) return;
-    ref.read(attendanceProvider.notifier).loadTodayAttendance(uid);
   }
 
   Future<void> _initUserLocation() async {
@@ -1691,7 +1683,7 @@ class _QAScreenState extends ConsumerState<QAScreen>
       child: Row(
         children: [
           // Dot Attendance Compact
-          _CompactAttendanceDot(attendance: att),
+          const AttendanceAvatarButton(),
           const SizedBox(width: 8),
 
           // Search Bar di Tengah
@@ -5552,57 +5544,6 @@ class _CoordinateQualityPill extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _CompactAttendanceDot extends StatelessWidget {
-  final AttendanceState attendance;
-  const _CompactAttendanceDot({required this.attendance});
-
-  @override
-  Widget build(BuildContext context) {
-    final isNotCheckedIn = !attendance.isCheckedIn;
-    final isCheckedOut = attendance.isCheckedOut;
-    final isActive = attendance.isCheckedIn && !attendance.isCheckedOut;
-
-    Color color;
-    if (isNotCheckedIn) {
-      color = AdvantaColors.error;
-    } else if (isCheckedOut) {
-      color = AdvantaColors.gold;
-    } else {
-      color = AdvantaColors.primaryGreen;
-    }
-
-    return GestureDetector(
-      onTap: () {
-        if (isNotCheckedIn) {
-          context.push('/checkin');
-        } else if (isActive) {
-          context.push('/checkout');
-        }
-      },
-      child: Container(
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color.withAlpha(40),
-          border: Border.all(color: color, width: 2),
-        ),
-        child: Center(
-          child: Icon(
-            isNotCheckedIn
-                ? Icons.warning_amber_rounded
-                : isCheckedOut
-                ? Icons.task_alt_rounded
-                : Icons.person,
-            color: color,
-            size: 18,
-          ),
-        ),
       ),
     );
   }

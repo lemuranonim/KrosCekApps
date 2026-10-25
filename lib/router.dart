@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 // Admin
 // import 'screens/admin/admin_dashboard.dart';
 // QA
@@ -36,6 +37,7 @@ import 'screens/inspection/form_harvest.dart';
 import 'screens/inspection/mass_inspect_screen.dart';
 import 'screens/attendance/check_in_screen.dart';
 import 'screens/attendance/check_out_screen.dart';
+import 'screens/profile/personal_profile_screen.dart';
 import 'screens/coverage/coverage_screen.dart';
 import 'screens/act/act_data_monitor_screen.dart';
 import 'screens/qa/detasseling_map_screen.dart';
@@ -176,6 +178,10 @@ final router = GoRouter(
 
     // --- NEW ATTENDANCE ROUTES ---
     GoRoute(
+      path: '/profile',
+      builder: (context, state) => const PersonalProfileScreen(),
+    ),
+    GoRoute(
       path: '/checkin',
       builder: (context, state) => const CheckInScreen(),
     ),
@@ -189,15 +195,13 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/act-data-monitor',
-      builder: (context, state) => const ActDataMonitorScreen(
-        mode: ActDataMonitorMode.syncStatus,
-      ),
+      builder: (context, state) =>
+          const ActDataMonitorScreen(mode: ActDataMonitorMode.syncStatus),
     ),
     GoRoute(
       path: '/planting-data-monitor',
-      builder: (context, state) => const ActDataMonitorScreen(
-        mode: ActDataMonitorMode.plantingData,
-      ),
+      builder: (context, state) =>
+          const ActDataMonitorScreen(mode: ActDataMonitorMode.plantingData),
     ),
     GoRoute(
       path: '/detasseling-map',

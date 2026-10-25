@@ -80,6 +80,65 @@ creates an auditable decision for each field:
   safeguard for older records.
 - Every applied insert/update is stored in `act_master_fields_change_log`.
 
+## Duplicate Planting Field Numbers
+
+The sync retains all staged ACT rows and selects one existing row per duplicate
+FN. It never deletes or edits the duplicate in ACT. The selection order is:
+
+1. Prefer the explicit **Advance** status. ACT's Planting table returns this
+   status in column 12: `1=Advance`, `2=No Advance`, `3=Custom Advance`.
+   `No Advance` and `Custom Advance` do not receive Advance priority.
+2. Among rows with the same priority, choose a row that contains every populated
+   value from the other candidates. A higher column count alone is insufficient;
+   contradictory or complementary partial rows remain blocked. Equal complete
+   candidates use the earliest source-row position for reproducible retries.
+3. Every duplicate must be valid and have the same crop source, planting date,
+   hybrid, and original planted area. Missing or different planting identities
+   remain blocked even when one row has Advance, so reused FN are not mistaken
+   for duplicate entries within a planting.
+
+An Advance row may win over a more complete non-Advance row. Missing columns in
+the selected row retain the existing KC values under the existing update rules;
+the sync does not combine the losing row into the selected ACT transaction.
+Multiple contradictory Advance rows require correction or verification.
+
+The original ACT record ID and Advance status are retained in staged
+`raw_payload` as `_act_planting_id` and `_act_advance_status`. These are extraction
+metadata and are never written to `master_fields`. Older snapshots do not
+contain these keys; their Advance status cannot be inferred retrospectively.
+Deploy both the database migration and Edge Function to capture the status on
+new extractions.
+
+Each run retains `source_meta.source_duplicate_resolutions`, including the
+selected source row, candidate positions/hashes/statuses, and selection reason.
+The summary reports `resolved_source_duplicate` and
+`ignored_source_duplicate_rows`; unresolved duplicates still contribute to
+`conflict_source_duplicate` and `blockers`. The normal staging-retention policy
+continues to apply. Harvest/PLD review upserts use one representative per FN so
+safe duplicate entries do not produce duplicate review-key errors.
+Harvest/PLD reconciliation passes the affected FN into duplicate selection and
+returns lightweight source-row IDs before fetching payloads by primary key.
+This prevents a small Harvest checkpoint from materializing every polygon in
+the full-season Planting snapshot. Regression coverage includes a 2,000-event
+Harvest batch on 34,592 staged rows with large polygon payloads.
+Minimum-row and change-ratio guards use `source_rows_after_deduplication`, so
+ignored duplicate rows cannot inflate the size of an otherwise incomplete run.
+
+Run the core regression tests with Node 24 or newer:
+
+```powershell
+node supabase/functions/act-master-fields-sync/sync-core_test.ts
+```
+
+The PostgreSQL integration test runs entirely in memory with PGlite. Its test
+dependency lives outside the production Edge Function:
+
+```powershell
+npm install --prefix .dart_tool/act-sync-tests --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.10
+$env:NODE_PATH = Join-Path (Get-Location) '.dart_tool/act-sync-tests/node_modules'
+node supabase/functions/act-master-fields-sync/source-duplicates-sql_test.ts
+```
+
 ## Database setup
 
 Apply migration:

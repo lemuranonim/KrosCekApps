@@ -24,6 +24,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Pilih foto untuk profil akun Kroscek Anda.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Lokasi GPS digunakan untuk mencatat koordinat absensi dan inspeksi lapangan.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

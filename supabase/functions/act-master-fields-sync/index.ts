@@ -1255,7 +1255,9 @@ Deno.serve(async (req) => {
   try {
     const requestedBy = await authorize(req, service);
     const requestInput = await req.json() as SyncRequest;
-    if (requestInput.authorizationCheck === true) return jsonResponse({ authorized: true });
+    if (requestInput.authorizationCheck === true) {
+      return jsonResponse({ authorized: true });
+    }
 
     if (requestInput.inspectExportJobId) {
       const act = new ActClient();

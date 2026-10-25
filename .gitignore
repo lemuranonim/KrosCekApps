@@ -11,6 +11,9 @@
 .codex/
 .agents/
 /.security/
+/.codex-attachments/
+/tmp/
+**/.gradle/
 .codex-remote-attachments
 migrate_working_dir/
 key.properties
@@ -47,6 +50,8 @@ assets/config.json
 .pub/
 /build/
 **/build/
+!/android/buildSrc/src/**/
+!/android/buildSrc/src/**/*.java
 **/.cxx/
 /docs/
 # Supabase local runtime is ignored, while the ACT sync implementation is

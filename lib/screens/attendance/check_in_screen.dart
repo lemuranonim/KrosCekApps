@@ -1,12 +1,15 @@
 // lib/screens/attendance/check_in_screen.dart
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+
 import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/attendance_policy.dart';
 
 class CheckInScreen extends ConsumerStatefulWidget {
   const CheckInScreen({super.key});
@@ -54,18 +57,20 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
       duration: const Duration(milliseconds: 700),
     );
 
-    _pulseAnim = Tween<double>(begin: 0.95, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
-    );
+    _pulseAnim = Tween<double>(
+      begin: 0.95,
+      end: 1.05,
+    ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
     _slideAnim = Tween<Offset>(
       begin: const Offset(0, 0.3),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOut));
 
-    _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOut),
-    );
+    _fadeAnim = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOut));
 
     _slideCtrl.forward();
   }
@@ -87,6 +92,7 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
   // ── Location ─────────────────────────────────────────────────────────────
   Future<void> _determinePosition() async {
     setState(() {
+      _position = null;
       _locationStatus = _LocationStatus.loading;
       _statusMessage = 'Mengakses GPS…';
     });
@@ -108,6 +114,7 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
         return;
       }
 
+      if (!mounted) return;
       setState(() => _statusMessage = 'Memperhalus akurasi…');
 
       final position = await Geolocator.getCurrentPosition(
@@ -116,14 +123,16 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
           timeLimit: Duration(seconds: 15),
         ),
       );
-
+      if (!mounted) return;
       setState(() {
         _position = position;
         _locationStatus = _LocationStatus.found;
         _statusMessage = _accuracyLabel(position.accuracy);
       });
     } catch (e) {
-      _setError('Gagal mengambil lokasi.\nCoba lagi atau pindah ke area terbuka.');
+      _setError(
+        'Gagal mengambil lokasi.\nCoba lagi atau pindah ke area terbuka.',
+      );
     }
   }
 
@@ -151,6 +160,12 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
   // ── Check-in ─────────────────────────────────────────────────────────────
   Future<void> _handleCheckIn() async {
     if (_position == null || _isSubmitting) return;
+    final attendance = ref.read(attendanceProvider);
+    if (attendance.isLoading ||
+        attendance.isCheckedIn ||
+        attendance.errorMessage != null) {
+      return;
+    }
     setState(() => _isSubmitting = true);
 
     try {
@@ -160,11 +175,24 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
         throw Exception('Sesi tidak valid. Silakan login ulang.');
       }
 
-      await ref.read(attendanceProvider.notifier).performCheckIn(
-        userId: userId,
-        lat: _position!.latitude,
-        lng: _position!.longitude,
-      );
+      if (_position == null ||
+          DateTime.now().difference(_position!.timestamp) >
+              const Duration(minutes: 2)) {
+        await _determinePosition();
+      }
+      if (!mounted) return;
+      if (_position == null) {
+        setState(() => _isSubmitting = false);
+        return;
+      }
+
+      await ref
+          .read(attendanceProvider.notifier)
+          .performCheckIn(
+            userId: userId,
+            lat: _position!.latitude,
+            lng: _position!.longitude,
+          );
 
       if (mounted) {
         _showSuccessAndPop();
@@ -180,12 +208,16 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
   void _showSuccessAndPop() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(children: [
-          const Icon(Icons.check_circle, color: Colors.white, size: 18),
-          const SizedBox(width: 8),
-          Text('Check-in berhasil! Selamat bekerja 💪',
-              style: AdvantaText.bodyBold.copyWith(color: Colors.white)),
-        ]),
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              'Check-in berhasil! Selamat bekerja 💪',
+              style: AdvantaText.bodyBold.copyWith(color: Colors.white),
+            ),
+          ],
+        ),
         backgroundColor: AdvantaColors.success,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -198,8 +230,10 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
   void _showErrorSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg,
-            style: AdvantaText.body2.copyWith(color: Colors.white)),
+        content: Text(
+          msg,
+          style: AdvantaText.body2.copyWith(color: Colors.white),
+        ),
         backgroundColor: AdvantaColors.error,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -212,8 +246,13 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final attendance = ref.watch(attendanceProvider);
     final canCheckIn =
-        _locationStatus == _LocationStatus.found && !_isSubmitting;
+        _locationStatus == _LocationStatus.found &&
+        !_isSubmitting &&
+        !attendance.isLoading &&
+        !attendance.isCheckedIn &&
+        attendance.errorMessage == null;
 
     return Scaffold(
       backgroundColor: isDark ? AdvantaColors.deepForest : AdvantaColors.cream,
@@ -240,6 +279,27 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
                 _buildCoordinateCard(isDark),
                 const SizedBox(height: 32),
                 _buildCheckInButton(canCheckIn, isDark),
+                if (attendance.isCheckedIn)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 12),
+                    child: Text(
+                      'Absen masuk hari ini sudah tercatat.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                if (attendance.errorMessage != null)
+                  TextButton(
+                    onPressed: () async {
+                      final session = await SessionManager.instance
+                          .getActiveSession();
+                      if (mounted && session != null) {
+                        await ref
+                            .read(attendanceProvider.notifier)
+                            .loadTodayAttendance(session.userId);
+                      }
+                    },
+                    child: const Text('Muat ulang absensi'),
+                  ),
                 const SizedBox(height: 16),
                 _buildRefreshButton(),
               ],
@@ -253,9 +313,10 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
   // ── UI Widgets ────────────────────────────────────────────────────────────
 
   Widget _buildClockCard(bool isDark) {
-    final timeStr = DateFormat('HH:mm').format(_now);
-    final secStr = DateFormat('ss').format(_now);
-    final dateStr = DateFormat('EEEE, d MMMM yyyy', 'id_ID').format(_now);
+    final local = AttendancePolicy.workTime(_now);
+    final timeStr = DateFormat('HH:mm').format(local);
+    final secStr = DateFormat('ss').format(local);
+    final dateStr = '${DateFormat('EEEE, d MMMM yyyy', 'id_ID').format(local)} · WIB';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
@@ -354,14 +415,16 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
               color: AdvantaColors.gold.withAlpha(30),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.location_searching_rounded,
-                color: AdvantaColors.gold, size: 32),
+            child: const Icon(
+              Icons.location_searching_rounded,
+              color: AdvantaColors.gold,
+              size: 32,
+            ),
           ),
         );
         break;
       case _LocationStatus.found:
-        statusColor =
-            _accuracyColor(_position?.accuracy ?? 100);
+        statusColor = _accuracyColor(_position?.accuracy ?? 100);
         statusIcon = Container(
           width: 64,
           height: 64,
@@ -369,8 +432,7 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
             color: statusColor.withAlpha(30),
             shape: BoxShape.circle,
           ),
-          child: Icon(Icons.my_location_rounded,
-              color: statusColor, size: 32),
+          child: Icon(Icons.my_location_rounded, color: statusColor, size: 32),
         );
         break;
       case _LocationStatus.error:
@@ -382,8 +444,11 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
             color: AdvantaColors.error.withAlpha(20),
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.location_off_rounded,
-              color: AdvantaColors.error, size: 32),
+          child: const Icon(
+            Icons.location_off_rounded,
+            color: AdvantaColors.error,
+            size: 32,
+          ),
         );
         break;
     }
@@ -542,21 +607,21 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
       decoration: BoxDecoration(
         gradient: canCheckIn
             ? const LinearGradient(
-          colors: [AdvantaColors.midGreen, AdvantaColors.primaryGreen],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        )
+                colors: [AdvantaColors.midGreen, AdvantaColors.primaryGreen],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
             : null,
         color: canCheckIn ? null : AdvantaColors.mutedGrey.withAlpha(60),
         borderRadius: AdvantaRadius.buttonRadius,
         boxShadow: canCheckIn
             ? [
-          BoxShadow(
-            color: AdvantaColors.primaryGreen.withAlpha(80),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          )
-        ]
+                BoxShadow(
+                  color: AdvantaColors.primaryGreen.withAlpha(80),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ]
             : null,
       ),
       child: Material(
@@ -590,13 +655,12 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen>
   Widget _buildRefreshButton() {
     return Center(
       child: TextButton.icon(
-        onPressed:
-        _locationStatus != _LocationStatus.loading ? _determinePosition : null,
+        onPressed: _locationStatus != _LocationStatus.loading
+            ? _determinePosition
+            : null,
         icon: const Icon(Icons.refresh_rounded, size: 18),
         label: const Text('Perbarui Lokasi'),
-        style: TextButton.styleFrom(
-          foregroundColor: AdvantaColors.mutedGrey,
-        ),
+        style: TextButton.styleFrom(foregroundColor: AdvantaColors.mutedGrey),
       ),
     );
   }

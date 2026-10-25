@@ -1,12 +1,15 @@
 // lib/screens/attendance/check_out_screen.dart
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+
 import '../../providers/attendance_provider.dart';
 import '../../services/session_manager.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/attendance_policy.dart';
 
 class CheckOutScreen extends ConsumerStatefulWidget {
   const CheckOutScreen({super.key});
@@ -43,7 +46,7 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
     _startTimer();
     _determinePosition();
     _notesController.addListener(
-          () => setState(() => _notesLength = _notesController.text.length),
+      () => setState(() => _notesLength = _notesController.text.length),
     );
   }
 
@@ -58,9 +61,10 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOut));
 
-    _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOut),
-    );
+    _fadeAnim = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOut));
   }
 
   void _startTimer() {
@@ -81,9 +85,21 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
   Future<void> _determinePosition() async {
     setState(() {
       _isLocating = true;
+      _position = null;
       _locationStatus = 'Mencari sinyal GPS…';
     });
     try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw StateError('GPS belum aktif');
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw StateError('Izin lokasi belum diberikan');
+      }
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -95,7 +111,7 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
           _position = position;
           _isLocating = false;
           _locationStatus =
-          'Lokasi terdeteksi (±${position.accuracy.toInt()}m)';
+              'Lokasi terdeteksi (±${position.accuracy.toInt()}m)';
         });
       }
     } catch (e) {
@@ -111,9 +127,19 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
   // ── Check-out ─────────────────────────────────────────────────────────
   Future<void> _handleCheckOut() async {
     if (_position == null || _isSubmitting) return;
+    final attendance = ref.read(attendanceProvider);
+    if (attendance.isLoading ||
+        attendance.errorMessage != null ||
+        !AttendancePolicy.canCheckOut(
+          checkedIn: attendance.isCheckedIn,
+          checkedOut: attendance.isCheckedOut,
+          now: DateTime.now(),
+        )) {
+      return;
+    }
 
     final confirm = await _showConfirmDialog();
-    if (!confirm) return;
+    if (!confirm || !mounted) return;
 
     setState(() => _isSubmitting = true);
 
@@ -124,17 +150,30 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
         throw Exception('Sesi tidak valid. Silakan login ulang.');
       }
 
+      if (_position == null ||
+          DateTime.now().difference(_position!.timestamp) >
+              const Duration(minutes: 2)) {
+        await _determinePosition();
+      }
+      if (!mounted) return;
+      if (_position == null) {
+        setState(() => _isSubmitting = false);
+        return;
+      }
+
       // Refresh activities terlebih dahulu untuk data akurat
       await ref.read(attendanceProvider.notifier).refreshActivities();
 
-      await ref.read(attendanceProvider.notifier).performCheckOut(
-        userId: userId,
-        lat: _position!.latitude,
-        lng: _position!.longitude,
-        notes: _notesController.text.trim().isEmpty
-            ? null
-            : _notesController.text.trim(),
-      );
+      await ref
+          .read(attendanceProvider.notifier)
+          .performCheckOut(
+            userId: userId,
+            lat: _position!.latitude,
+            lng: _position!.longitude,
+            notes: _notesController.text.trim().isEmpty
+                ? null
+                : _notesController.text.trim(),
+          );
 
       if (mounted) {
         _showSummarySheet();
@@ -143,13 +182,16 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Gagal check-out: $e',
-                style: AdvantaText.body2.copyWith(color: Colors.white)),
+            content: Text(
+              'Gagal check-out: $e',
+              style: AdvantaText.body2.copyWith(color: Colors.white),
+            ),
             backgroundColor: AdvantaColors.error,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(16),
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
         setState(() => _isSubmitting = false);
@@ -159,38 +201,41 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
 
   Future<bool> _showConfirmDialog() async {
     return await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: AdvantaRadius.dialogRadius),
-        title: Text('Konfirmasi Check-out',
-            style: AdvantaText.heading2),
-        content: Text(
-          'Anda akan mengakhiri hari kerja ini. Yakin?',
-          style: AdvantaText.body2
-              .copyWith(color: AdvantaColors.mutedGrey),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Batal',
-                style: AdvantaText.bodyBold
-                    .copyWith(color: AdvantaColors.mutedGrey)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AdvantaColors.gold,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-              elevation: 0,
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: AdvantaRadius.dialogRadius,
             ),
-            child: const Text('Ya, Check-out'),
+            title: Text('Konfirmasi Check-out', style: AdvantaText.heading2),
+            content: Text(
+              'Anda akan mengakhiri hari kerja ini. Yakin?',
+              style: AdvantaText.body2.copyWith(color: AdvantaColors.mutedGrey),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(
+                  'Batal',
+                  style: AdvantaText.bodyBold.copyWith(
+                    color: AdvantaColors.mutedGrey,
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AdvantaColors.gold,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  elevation: 0,
+                ),
+                child: const Text('Ya, Check-out'),
+              ),
+            ],
           ),
-        ],
-      ),
-    ) ??
+        ) ??
         false;
   }
 
@@ -198,9 +243,9 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
   void _showSummarySheet() {
     final attendance = ref.read(attendanceProvider);
     final checkInStr = attendance.checkInTime != null
-        ? DateFormat('HH:mm').format(attendance.checkInTime!)
+        ? DateFormat('HH:mm').format(AttendancePolicy.workTime(attendance.checkInTime!))
         : '--:--';
-    final checkOutStr = DateFormat('HH:mm').format(DateTime.now());
+    final checkOutStr = DateFormat('HH:mm').format(AttendancePolicy.workTime(DateTime.now()));
     final duration = attendance.workDurationFormatted;
     final totalActivities = attendance.totalActivities;
 
@@ -209,9 +254,9 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
       isDismissible: false,
       enableDrag: false,
       shape: const RoundedRectangleBorder(
-          borderRadius: AdvantaRadius.sheetRadius),
-      backgroundColor:
-      Theme.of(context).brightness == Brightness.dark
+        borderRadius: AdvantaRadius.sheetRadius,
+      ),
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
           ? AdvantaColors.midGreen
           : Colors.white,
       builder: (sheetCtx) => _SummarySheet(
@@ -232,11 +277,19 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final attendance = ref.watch(attendanceProvider);
-    final canCheckOut = _position != null && !_isSubmitting;
+    final canCheckOut =
+        _position != null &&
+        !_isSubmitting &&
+        !attendance.isLoading &&
+        attendance.errorMessage == null &&
+        AttendancePolicy.canCheckOut(
+          checkedIn: attendance.isCheckedIn,
+          checkedOut: attendance.isCheckedOut,
+          now: _now,
+        );
 
     return Scaffold(
-      backgroundColor:
-      isDark ? AdvantaColors.deepForest : AdvantaColors.cream,
+      backgroundColor: isDark ? AdvantaColors.deepForest : AdvantaColors.cream,
       appBar: AppBar(title: const Text('Selesai Hari Ini')),
       body: FadeTransition(
         opacity: _fadeAnim,
@@ -256,6 +309,20 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
                 _buildNotesField(isDark),
                 const SizedBox(height: 32),
                 _buildCheckOutButton(canCheckOut),
+                if (!attendance.isCheckedIn ||
+                    attendance.isCheckedOut ||
+                    AttendancePolicy.workTime(_now).hour < 15)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(
+                      attendance.isCheckedOut
+                          ? 'Absensi hari ini sudah selesai.'
+                          : !attendance.isCheckedIn
+                          ? 'Absen masuk terlebih dahulu.'
+                          : 'Absen pulang tersedia mulai pukul 15.00 WIB.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 _buildRefreshButton(),
               ],
@@ -270,9 +337,10 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
 
   Widget _buildStatusCard(bool isDark, AttendanceState attendance) {
     final checkInStr = attendance.checkInTime != null
-        ? DateFormat('HH:mm').format(attendance.checkInTime!)
+        ? DateFormat('HH:mm')
+              .format(AttendancePolicy.workTime(attendance.checkInTime!))
         : '--:--';
-    final nowStr = DateFormat('HH:mm').format(_now);
+    final nowStr = DateFormat('HH:mm').format(AttendancePolicy.workTime(_now));
     final duration = attendance.workDurationFormatted;
 
     return Container(
@@ -312,12 +380,17 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
               Expanded(
                 child: Column(
                   children: [
-                    const Icon(Icons.arrow_forward_rounded,
-                        color: Colors.white60, size: 18),
+                    const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Colors.white60,
+                      size: 18,
+                    ),
                     const SizedBox(height: 4),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withAlpha(30),
                         borderRadius: BorderRadius.circular(20),
@@ -347,8 +420,9 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
       children: [
         Text(
           label,
-          style: AdvantaText.caption
-              .copyWith(color: Colors.white.withAlpha(180)),
+          style: AdvantaText.caption.copyWith(
+            color: Colors.white.withAlpha(180),
+          ),
         ),
         const SizedBox(height: 4),
         Text(
@@ -431,8 +505,11 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
               color: AdvantaColors.primaryGreen.withAlpha(30),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.grass_rounded,
-                color: AdvantaColors.primaryGreen, size: 22),
+            child: const Icon(
+              Icons.grass_rounded,
+              color: AdvantaColors.primaryGreen,
+              size: 22,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -478,8 +555,12 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
           controller: _notesController,
           maxLines: 4,
           maxLength: _maxNotesLength,
-          buildCounter: (_, {required currentLength, required isFocused, maxLength}) =>
-          null,
+          buildCounter: (
+            _, {
+            required currentLength,
+            required isFocused,
+            maxLength,
+          }) => null,
           style: AdvantaText.body2.copyWith(
             color: isDark ? AdvantaColors.goldLight : AdvantaColors.deepForest,
           ),
@@ -489,8 +570,11 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
             alignLabelWithHint: true,
             prefixIcon: const Padding(
               padding: EdgeInsets.only(left: 12, right: 8, top: 14),
-              child: Icon(Icons.note_alt_outlined,
-                  color: AdvantaColors.mutedGrey, size: 20),
+              child: Icon(
+                Icons.note_alt_outlined,
+                color: AdvantaColors.mutedGrey,
+                size: 20,
+              ),
             ),
           ),
         ),
@@ -516,7 +600,9 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
             width: 24,
             height: 24,
             child: CircularProgressIndicator(
-                strokeWidth: 2.5, color: Colors.white),
+              strokeWidth: 2.5,
+              color: Colors.white,
+            ),
           ),
         ),
       );
@@ -527,21 +613,21 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
       decoration: BoxDecoration(
         gradient: canCheckOut
             ? const LinearGradient(
-          colors: [AdvantaColors.goldLight, AdvantaColors.gold],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        )
+                colors: [AdvantaColors.goldLight, AdvantaColors.gold],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
             : null,
         color: canCheckOut ? null : AdvantaColors.mutedGrey.withAlpha(60),
         borderRadius: AdvantaRadius.buttonRadius,
         boxShadow: canCheckOut
             ? [
-          BoxShadow(
-            color: AdvantaColors.gold.withAlpha(80),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          )
-        ]
+                BoxShadow(
+                  color: AdvantaColors.gold.withAlpha(80),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ]
             : null,
       ),
       child: Material(
@@ -554,8 +640,11 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.stop_circle_rounded,
-                    color: Colors.white, size: 22),
+                const Icon(
+                  Icons.stop_circle_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
                 const SizedBox(width: 10),
                 Text(
                   'SELESAI HARI INI',
@@ -614,11 +703,17 @@ class _SummarySheetState extends State<_SummarySheet>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 600));
-    _scaleAnim = Tween<double>(begin: 0.7, end: 1.0).animate(
-        CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut));
-    _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-        CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _scaleAnim = Tween<double>(
+      begin: 0.7,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut));
+    _fadeAnim = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
     _ctrl.forward();
   }
 
@@ -657,7 +752,10 @@ class _SummarySheetState extends State<_SummarySheet>
                 height: 80,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [AdvantaColors.lightGreen, AdvantaColors.primaryGreen],
+                    colors: [
+                      AdvantaColors.lightGreen,
+                      AdvantaColors.primaryGreen,
+                    ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -667,11 +765,14 @@ class _SummarySheetState extends State<_SummarySheet>
                       color: AdvantaColors.primaryGreen.withAlpha(80),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
-                    )
+                    ),
                   ],
                 ),
-                child: const Icon(Icons.check_rounded,
-                    color: Colors.white, size: 40),
+                child: const Icon(
+                  Icons.check_rounded,
+                  color: Colors.white,
+                  size: 40,
+                ),
               ),
             ),
           ),
@@ -680,8 +781,7 @@ class _SummarySheetState extends State<_SummarySheet>
           const SizedBox(height: 8),
           Text(
             'Terima kasih atas kerja keras Anda hari ini.',
-            style: AdvantaText.body2
-                .copyWith(color: AdvantaColors.mutedGrey),
+            style: AdvantaText.body2.copyWith(color: AdvantaColors.mutedGrey),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 28),
@@ -735,11 +835,14 @@ class _SummarySheetState extends State<_SummarySheet>
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 shape: RoundedRectangleBorder(
-                    borderRadius: AdvantaRadius.buttonRadius),
+                  borderRadius: AdvantaRadius.buttonRadius,
+                ),
                 elevation: 0,
               ),
-              child: Text('KEMBALI KE BERANDA',
-                  style: AdvantaText.button.copyWith(color: Colors.white)),
+              child: Text(
+                'KEMBALI KE BERANDA',
+                style: AdvantaText.button.copyWith(color: Colors.white),
+              ),
             ),
           ),
         ],
@@ -762,15 +865,16 @@ class _SummarySheetState extends State<_SummarySheet>
         const SizedBox(height: 2),
         Text(
           label,
-          style: AdvantaText.caption
-              .copyWith(color: AdvantaColors.mutedGrey, letterSpacing: 0.5),
+          style: AdvantaText.caption.copyWith(
+            color: AdvantaColors.mutedGrey,
+            letterSpacing: 0.5,
+          ),
         ),
       ],
     );
   }
 
   Widget _divider() {
-    return Container(
-        width: 1, height: 40, color: AdvantaColors.dividerGrey);
+    return Container(width: 1, height: 40, color: AdvantaColors.dividerGrey);
   }
 }

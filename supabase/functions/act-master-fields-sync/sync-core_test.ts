@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import {
   mapExportRow,
   mapFinalPldAreas,
+  mapPlantingTableRow,
+  normalizeActAdvanceStatus,
   normalizeFieldNumber,
   reconcile,
 } from "./sync-core.ts";
@@ -74,10 +76,15 @@ test("detects the reported DC6FHK045 hybrid change", () => {
     }],
   );
 
-  const change = result.changes.find((item) => item.fieldNumberNorm === "DC6FHK045");
+  const change = result.changes.find((item) =>
+    item.fieldNumberNorm === "DC6FHK045"
+  );
   assert.equal(change?.changeKind, "UPDATE");
   assert.deepEqual(change?.changedColumns.hybrid, { old: "AX01", new: "AX04" });
-  assert.deepEqual(change?.changedColumns.type, { old: "Field Corn", new: "Sweet Corn" });
+  assert.deepEqual(change?.changedColumns.type, {
+    old: "Field Corn",
+    new: "Sweet Corn",
+  });
   assert.equal(result.summary.update, 1);
 });
 
@@ -91,10 +98,139 @@ test("classifies a new ACT field as insert", () => {
 test("blocks duplicate field numbers across ACT source files", () => {
   const fc = mapExportRow({ FN: "DUP001", Hybrid: "ADV01" }, "FC", 2);
   const sc = mapExportRow({ FN: "dup001", Hybrid: "AX04" }, "SC", 2);
-  const result = reconcile([fc, sc], [{ field_number: "DUP001", hybrid: "OLD" }]);
+  const result = reconcile([fc, sc], [{
+    field_number: "DUP001",
+    hybrid: "OLD",
+  }]);
   assert.equal(result.changes[0].changeKind, "CONFLICT_SOURCE_DUPLICATE");
-  assert.equal(result.changes.filter((item) => item.fieldNumberNorm === "DUP001").length, 1);
+  assert.equal(
+    result.changes.filter((item) => item.fieldNumberNorm === "DUP001").length,
+    1,
+  );
   assert.equal(result.summary.blockers, 1);
+});
+
+test("keeps ACT table record identity and the exact Advance status outside managed fields", () => {
+  const row = mapPlantingTableRow(
+    [
+      "act-record-1",
+      "2026-06-11",
+      "DC68CC024",
+      "Farmer A",
+      "Grower A",
+      "FA A",
+      0.2,
+      "AX09",
+      "Village A",
+      "District A",
+      "Regency A",
+      "Province A",
+      1,
+    ],
+    "FC",
+    8601,
+  );
+  assert.equal(row.rawPayload._act_planting_id, "act-record-1");
+  assert.equal(row.rawPayload._act_advance_status, 1);
+  assert.equal("_act_advance_status" in row.sourcePayload, false);
+  assert.equal(normalizeActAdvanceStatus("No Advance"), 2);
+  assert.equal(normalizeActAdvanceStatus("Custom Advance"), 3);
+  assert.equal(normalizeActAdvanceStatus(0), null);
+  assert.equal(normalizeActAdvanceStatus("unknown advance"), null);
+});
+
+test("selects a complete duplicate regardless of source order and retains the raw candidates", () => {
+  const incomplete = mapExportRow(
+    {
+      FN: "DC68CC024",
+      "Female Date": "2026-06-11",
+      Hybrid: "AX09",
+      "Planted Area(Ha)": 0.2,
+    },
+    "FC",
+    8601,
+  );
+  const complete = mapExportRow(
+    {
+      ...incomplete.rawPayload,
+      Farmer: "Farmer A",
+      Organizer: "Grower A",
+      Village: "Village A",
+    },
+    "FC",
+    29474,
+  );
+  for (const rows of [[incomplete, complete], [complete, incomplete]]) {
+    const result = reconcile(rows, []);
+    assert.equal(result.changes[0].changeKind, "INSERT");
+    assert.deepEqual(result.changes[0].sourcePayload, complete.sourcePayload);
+    assert.equal(result.summary.blockers, 0);
+    assert.equal(result.summary.resolved_source_duplicate, 1);
+    assert.equal(result.summary.ignored_source_duplicate_rows, 1);
+    assert.equal(
+      result.sourceDuplicateResolutions[0].selected_source_row,
+      29474,
+    );
+    assert.equal(
+      result.sourceDuplicateResolutions[0].reason,
+      "MOST_COMPLETE_COMPATIBLE_ROW",
+    );
+    assert.equal(rows.length, 2);
+    assert.equal("farmer_name" in incomplete.sourcePayload, false);
+  }
+});
+
+test("prefers Advance even when a No Advance duplicate is more complete", () => {
+  const advance = mapExportRow(
+    {
+      FN: "ADV001",
+      "Female Date": "2026-06-11",
+      Hybrid: "AX09",
+      "Planted Area(Ha)": 0.2,
+      _act_advance_status: 1,
+    },
+    "FC",
+    2,
+  );
+  const noAdvance = mapExportRow(
+    {
+      ...advance.rawPayload,
+      Farmer: "Other farmer",
+      Village: "Other village",
+      _act_advance_status: 2,
+    },
+    "FC",
+    3,
+  );
+  const result = reconcile([noAdvance, advance], []);
+  assert.deepEqual(result.changes[0].sourcePayload, advance.sourcePayload);
+  assert.equal(result.sourceDuplicateResolutions[0].reason, "ADVANCE_STATUS");
+});
+
+test("keeps different planting identities and contradictory equal-priority duplicates blocked", () => {
+  const raw = {
+    FN: "DUP001",
+    "Female Date": "2026-06-11",
+    Hybrid: "AX09",
+    "Planted Area(Ha)": 0.2,
+    Farmer: "Farmer A",
+  };
+  for (
+    const changed of [
+      { Farmer: "Farmer B" },
+      { "Female Date": "2026-10-01", _act_advance_status: 1 },
+      { Hybrid: "AX05" },
+      { "Planted Area(Ha)": 0.3 },
+    ]
+  ) {
+    const result = reconcile([
+      mapExportRow(raw, "FC", 2),
+      mapExportRow({ ...raw, ...changed }, "FC", 3),
+    ], []);
+    assert.equal(result.changes[0].changeKind, "CONFLICT_SOURCE_DUPLICATE");
+    assert.equal(result.summary.blockers, 1);
+    assert.equal(result.sourceDuplicateResolutions.length, 0);
+  }
 });
 
 test("blocks inconsistent planted, discarded and effective areas", () => {
@@ -153,18 +289,27 @@ test("maps final ACT PLD columns as planted, discarded, then nett area", () => {
 });
 
 test("missing ACT rows are informational and never actionable", () => {
-  const result = reconcile([], [{ field_number: "KC_ONLY_001", hybrid: "AX01" }]);
+  const result = reconcile([], [{
+    field_number: "KC_ONLY_001",
+    hybrid: "AX01",
+  }]);
   assert.equal(result.changes[0].changeKind, "MISSING_SOURCE");
   assert.equal(result.summary.actionable, 0);
 });
 
 test("sync migrations preserve PLD actual area and review unsafe Harvest area", () => {
   const mergeSql = readFileSync(
-    new URL("../../migrations/20260928100000_fix_pld_and_add_harvest_sync.sql", import.meta.url),
+    new URL(
+      "../../migrations/20260928100000_fix_pld_and_add_harvest_sync.sql",
+      import.meta.url,
+    ),
     "utf8",
   );
   const scheduleSql = readFileSync(
-    new URL("../../migrations/20260928102000_schedule_act_season_ranges.sql", import.meta.url),
+    new URL(
+      "../../migrations/20260928102000_schedule_act_season_ranges.sql",
+      import.meta.url,
+    ),
     "utf8",
   );
   const reviewFallbackSql = readFileSync(
@@ -268,7 +413,10 @@ test("sync migrations preserve PLD actual area and review unsafe Harvest area", 
     plantingMonitorSql,
     /effective_area_ha - a\.harvested_area_ha/,
   );
-  assert.match(plantingMonitorSql, /least\(raw_harvested_area_ha, effective_area_ha\)/);
+  assert.match(
+    plantingMonitorSql,
+    /least\(raw_harvested_area_ha, effective_area_ha\)/,
+  );
   assert.match(scopedPlantingMonitorSql, /u\.id = auth\.uid\(\)/);
   assert.match(scopedPlantingMonitorSql, /scope\.role = 'SPV'/);
   assert.match(scopedPlantingMonitorSql, /scope\.role = 'FI'/);
@@ -277,24 +425,48 @@ test("sync migrations preserve PLD actual area and review unsafe Harvest area", 
   assert.match(scopedDailySyncSql, /get_act_sync_scoped_daily_summary/);
   assert.match(scopedDailySyncSql, /get_act_sync_scoped_daily_changes/);
   assert.match(scopedDailySyncSql, /u\.id = auth\.uid\(\)/);
-  assert.match(scopedDailySyncSql, /act_monitor_name_matches\(field_data\.qa_spv/);
-  assert.match(scopedDailySyncSql, /act_monitor_name_matches\(field_data\.qa_fi/);
-  assert.match(scopedDailySyncSql, /least\(greatest\(coalesce\(p_limit, 20\), 1\), 50\)/);
+  assert.match(
+    scopedDailySyncSql,
+    /act_monitor_name_matches\(field_data\.qa_spv/,
+  );
+  assert.match(
+    scopedDailySyncSql,
+    /act_monitor_name_matches\(field_data\.qa_fi/,
+  );
+  assert.match(
+    scopedDailySyncSql,
+    /least\(greatest\(coalesce\(p_limit, 20\), 1\), 50\)/,
+  );
   assert.match(scopedDailySyncSql, /latest\.status = 'COMPLETED'/);
-  assert.match(optimizedScopedDailySyncSql, /act_sync_runs_completed_latest_idx/);
+  assert.match(
+    optimizedScopedDailySyncSql,
+    /act_sync_runs_completed_latest_idx/,
+  );
   assert.match(optimizedScopedDailySyncSql, /field_owners as materialized/);
-  assert.match(optimizedScopedDailySyncSql, /visible_field_numbers as materialized/);
+  assert.match(
+    optimizedScopedDailySyncSql,
+    /visible_field_numbers as materialized/,
+  );
   assert.match(optimizedScopedDailySyncSql, /page_ids as materialized/);
   assert.match(optimizedScopedDailySyncSql, /page_with_safe_changes as/);
   assert.match(
     optimizedScopedDailySyncSql,
     /from page_ids[\s\S]*?left join lateral \([\s\S]*?from public\.master_fields/,
   );
-  assert.match(pldLifecycleSql, /create table if not exists public\.audit_pld_lifecycle/);
-  assert.match(pldLifecycleSql, /create table if not exists public\.audit_revision_history/);
+  assert.match(
+    pldLifecycleSql,
+    /create table if not exists public\.audit_pld_lifecycle/,
+  );
+  assert.match(
+    pldLifecycleSql,
+    /create table if not exists public\.audit_revision_history/,
+  );
   assert.match(pldLifecycleSql, /PLD_ACT_CONFIRMED_LOCKED/);
   assert.match(pldLifecycleSql, /before update or delete/);
-  assert.match(pldLifecycleSql, /status in \('PENDING', 'CONFIRMED', 'UPDATED'\)/);
+  assert.match(
+    pldLifecycleSql,
+    /status in \('PENDING', 'CONFIRMED', 'UPDATED'\)/,
+  );
   assert.match(pldLifecycleSql, /v_effective is not null and v_effective <= 0/);
   assert.match(pldLifecycleSql, /run\.status in \('APPLYING', 'COMPLETED'\)/);
   assert.match(pldLifecycleSql, /get_field_pld_audit_lifecycle/);
@@ -302,7 +474,10 @@ test("sync migrations preserve PLD actual area and review unsafe Harvest area", 
     optimizedPldMergeSql,
     /refresh_act_sync_harvest_reviews_for_fields/,
   );
-  assert.match(optimizedPldMergeSql, /r\.field_number_norm = any\(p_field_numbers\)/);
+  assert.match(
+    optimizedPldMergeSql,
+    /r\.field_number_norm = any\(p_field_numbers\)/,
+  );
   assert.match(optimizedPldMergeSql, /set statement_timeout = '60s'/);
   assert.doesNotMatch(
     optimizedPldMergeSql,

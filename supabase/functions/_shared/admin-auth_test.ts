@@ -23,6 +23,10 @@ Deno.test("only the configured server secret bypasses user lookup", async () => 
   }), null);
   assert.equal(await isServerToken("test-server-secret-other", options.serviceRoleKey), false);
   assert.equal(await isServerToken("anything", undefined), false);
+  assert.equal(await authorizeAdmin(request("legacy-cron-secret"), {
+    ...options, cronServiceKey: "legacy-cron-secret",
+    verifyUser: async () => { throw new Error("must not run"); },
+  }), null);
 });
 Deno.test("active ADMIN/DEV allowed; inactive, missing and operational profiles denied", async () => {
   for (const role of ["ADMIN", "DEV", " admin "]) {

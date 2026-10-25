@@ -1,9 +1,11 @@
 // lib/widgets/attendance_banner.dart
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
+
 import '../providers/attendance_provider.dart';
 import '../theme/app_theme.dart';
 
@@ -34,9 +36,10 @@ class _AttendanceBannerState extends ConsumerState<AttendanceBanner>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
-    _pulseOpacity = Tween<double>(begin: 0.7, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
-    );
+    _pulseOpacity = Tween<double>(
+      begin: 0.7,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -88,16 +91,14 @@ class _AttendanceBannerState extends ConsumerState<AttendanceBanner>
         checkInStr: checkInStr,
         liveDuration: liveDuration,
         totalActivities: attendance.totalActivities,
-        onCheckOut: () => context.push('/checkout'),
+        onCheckOut: () => context.push('/profile'),
       );
     }
 
     // ── BELUM CHECK-IN ───────────────────────────────────────────────────
     return FadeTransition(
       opacity: _pulseOpacity,
-      child: _NotCheckedInBanner(
-        onCheckIn: () => context.push('/checkin'),
-      ),
+      child: _NotCheckedInBanner(onCheckIn: () => context.push('/checkin')),
     );
   }
 }
@@ -132,8 +133,11 @@ class _NotCheckedInBanner extends StatelessWidget {
                 color: Colors.white.withAlpha(30),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.warning_rounded,
-                  color: Colors.white, size: 20),
+              child: const Icon(
+                Icons.warning_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
             ),
             const SizedBox(width: 12),
             const Expanded(
@@ -164,8 +168,10 @@ class _NotCheckedInBanner extends StatelessWidget {
             GestureDetector(
               onTap: onCheckIn,
               child: Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
@@ -262,8 +268,10 @@ class _ActiveBanner extends StatelessWidget {
             GestureDetector(
               onTap: onCheckOut,
               child: Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
+                ),
                 decoration: BoxDecoration(
                   color: AdvantaColors.gold,
                   borderRadius: BorderRadius.circular(8),
@@ -377,8 +385,11 @@ class _ClosedBanner extends StatelessWidget {
                 color: Colors.white.withAlpha(30),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.task_alt_rounded,
-                  color: Colors.white, size: 18),
+              child: const Icon(
+                Icons.task_alt_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(

@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'master_field_read_cache.dart';
 import '../utils/master_field_region_scope.dart';
+import '../utils/attendance_policy.dart';
 
 class SupabaseService {
   static const Duration _localSnapshotFastPathAge = Duration(minutes: 2);
@@ -489,8 +490,7 @@ class SupabaseService {
       district,
     ].any((value) => value?.trim().isNotEmpty == true);
     final userId = _supabase.auth.currentUser?.id;
-    final localSnapshot =
-        !bypassCache && _mapCacheEnabled && userId != null
+    final localSnapshot = !bypassCache && _mapCacheEnabled && userId != null
         ? await MasterFieldReadCache.read(
             userId: userId,
             dataset: cacheDataset,
@@ -1954,7 +1954,7 @@ class SupabaseService {
 
   Future<Map<String, dynamic>?> getTodayAttendance(String userId) async {
     try {
-      final today = DateTime.now().toIso8601String().split('T')[0];
+      final today = AttendancePolicy.dateKey(DateTime.now());
       return await _supabase
           .from('attendance_header')
           .select()
@@ -1973,18 +1973,23 @@ class SupabaseService {
     String? photoUrl,
   }) async {
     try {
-      final today = DateTime.now().toIso8601String().split('T')[0];
+      AttendancePolicy.validateCoordinates(lat, lng);
+      final today = AttendancePolicy.dateKey(DateTime.now());
+      final existing = await getTodayAttendance(userId);
+      if (existing != null && existing['check_in_time'] != null) {
+        throw StateError('Absen masuk hari ini sudah tercatat.');
+      }
       final result = await _supabase
           .from('attendance_header')
-          .upsert({
+          .insert({
             'user_id': userId,
             'attendance_date': today,
-            'check_in_time': DateTime.now().toIso8601String(),
+            'check_in_time': DateTime.now().toUtc().toIso8601String(),
             'check_in_lat': lat,
             'check_in_lng': lng,
             'check_in_photo': photoUrl,
             'status': 'open',
-          }, onConflict: 'user_id,attendance_date')
+          })
           .select('attendance_id')
           .single();
       return result['attendance_id'];
@@ -2000,20 +2005,111 @@ class SupabaseService {
     String? notes,
   }) async {
     try {
-      final today = DateTime.now().toIso8601String().split('T')[0];
-      await _supabase
+      AttendancePolicy.validateCoordinates(lat, lng);
+      final now = DateTime.now();
+      if (AttendancePolicy.workTime(now).hour < 15) {
+        throw StateError('Absen pulang tersedia mulai pukul 15.00 WIB.');
+      }
+      final today = AttendancePolicy.dateKey(now);
+      final result = await _supabase
           .from('attendance_header')
           .update({
-            'check_out_time': DateTime.now().toIso8601String(),
+            'check_out_time': now.toUtc().toIso8601String(),
             'check_out_lat': lat,
             'check_out_lng': lng,
             'notes': notes,
             'status': 'closed',
           })
           .eq('user_id', userId)
-          .eq('attendance_date', today);
+          .eq('attendance_date', today)
+          .eq('status', 'open')
+          .not('check_in_time', 'is', null)
+          .isFilter('check_out_time', null)
+          .select('attendance_id')
+          .maybeSingle();
+      if (result == null) {
+        throw StateError(
+          'Absen masuk belum tercatat atau absen pulang sudah selesai.',
+        );
+      }
     } catch (e) {
       throw Exception('Gagal check-out: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getAttendanceHistory(
+    String userId, {
+    int limit = 7,
+  }) async {
+    final rows = await _supabase
+        .from('attendance_header')
+        .select(
+          'attendance_id,attendance_date,check_in_time,check_out_time,check_in_lat,check_in_lng,check_out_lat,check_out_lng,status,notes',
+        )
+        .eq('user_id', userId)
+        .order('attendance_date', ascending: false)
+        .limit(limit.clamp(1, 90));
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<String?> getProfilePhotoUrl(String userId) async {
+    final user = _supabase.auth.currentUser;
+    if (user?.id != userId) return null;
+    final path = user?.userMetadata?['profile_photo_path']?.toString();
+    if (path != null && path.startsWith('$userId/')) {
+      return _supabase.storage
+          .from('profile-photos')
+          .createSignedUrl(path, 3600);
+    }
+    final avatar = user?.userMetadata?['avatar_url']?.toString();
+    return avatar != null && Uri.tryParse(avatar)?.scheme == 'https'
+        ? avatar
+        : null;
+  }
+
+  Future<void> uploadProfilePhoto(
+    String userId,
+    Uint8List bytes,
+    String extension,
+  ) async {
+    if (_supabase.auth.currentUser?.id != userId) {
+      throw StateError('Sesi akun berubah. Silakan coba lagi.');
+    }
+    if (bytes.isEmpty || bytes.length > 3 * 1024 * 1024) {
+      throw ArgumentError('Ukuran foto maksimal 3 MB.');
+    }
+    final ext = extension.toLowerCase();
+    if (!const {'jpg', 'jpeg', 'png', 'webp'}.contains(ext)) {
+      throw ArgumentError('Gunakan foto JPG, PNG, atau WebP.');
+    }
+    final path = '$userId/${DateTime.now().microsecondsSinceEpoch}.$ext';
+    final bucket = _supabase.storage.from('profile-photos');
+    final oldPath = _supabase
+        .auth
+        .currentUser
+        ?.userMetadata?['profile_photo_path']
+        ?.toString();
+    await bucket.uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(
+        contentType: 'image/${ext == 'jpg' ? 'jpeg' : ext}',
+      ),
+    );
+    try {
+      await _supabase.auth.updateUser(
+        UserAttributes(data: {'profile_photo_path': path}),
+      );
+    } catch (_) {
+      await bucket.remove([path]);
+      rethrow;
+    }
+    if (oldPath != null && oldPath.startsWith('$userId/')) {
+      try {
+        await bucket.remove([oldPath]);
+      } catch (_) {
+        /* The new photo is already saved. */
+      }
     }
   }
 

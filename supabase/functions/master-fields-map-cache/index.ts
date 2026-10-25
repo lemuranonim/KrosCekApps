@@ -534,11 +534,11 @@ Deno.serve(async (req) => {
   const redisToken = Deno.env.get("UPSTASH_REDIS_REST_TOKEN")?.trim();
   const redisEnabled = Boolean(redisUrl && redisToken);
 
-  // Operational probe for deployments. It is protected by the service-role
-  // JWT (whose signature is verified by the Edge gateway) and never returns
-  // endpoint or token values.
+  // Operational probe requires an explicitly configured server credential.
+  // Never authorize by merely decoding the role in an unverified JWT payload.
   if (input.healthCheck === true) {
-    if (!await isServerToken(token, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) && !await isServerToken(token, Deno.env.get("ACT_SYNC_CRON_TOKEN"))) {
+    if (!await isServerToken(token, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) &&
+        !await isServerToken(token, Deno.env.get("ACT_SYNC_CRON_TOKEN"))) {
       return jsonResponse({ error: "Service role required" }, 403);
     }
     if (!redisEnabled) {
