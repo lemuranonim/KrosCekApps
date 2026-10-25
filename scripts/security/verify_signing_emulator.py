@@ -69,7 +69,9 @@ def main():
         'application_data_preserved':True,'old_key_higher_version_rejected':True,
         'distributed_v4_9_8_certificate_matches_compromised_key':True,
         'real_app_upgrade_from_v4_9_8':True,'installed_on_user_device':False,
-        'release_apk_sha256':hashlib.sha256(args.new_apk.read_bytes()).hexdigest()}
+        'release_apk_sha256':hashlib.sha256(args.new_apk.read_bytes()).hexdigest(),
+        'release_tag':os.environ.get('RELEASE_TAG'),
+        'source_build_run_id':os.environ.get('BUILD_RUN_ID')}
     args.output.parent.mkdir(parents=True,exist_ok=True)
     with args.output.open('w',encoding='utf-8') as handle:
         json.dump(report,handle,indent=2); handle.write('\n'); handle.flush(); os.fsync(handle.fileno())
