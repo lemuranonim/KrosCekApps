@@ -61,6 +61,7 @@ def verify_build(tag,build_run):
     jobs=github('/actions/runs/'+str(build_run)+'/jobs?per_page=100')['jobs']
     builders=[j for j in jobs if j['name']=='build-and-release']
     if len(builders)!=1 or builders[0]['conclusion']!='success': raise RuntimeError('Release build did not pass')
+    return commit
 
 def config_request(path,method='GET',payload=None,publisher=False):
     url=os.environ['SUPABASE_URL'].rstrip('/')
@@ -75,7 +76,7 @@ def config_request(path,method='GET',payload=None,publisher=False):
     with urllib.request.urlopen(request,timeout=40) as response: return json.load(response)
 
 def publish(tag,build_run,verification_run):
-    verify_build(tag,build_run)
+    release_commit=verify_build(tag,build_run)
     run=github('/actions/runs/'+str(verification_run))
     if run['path']!='.github/workflows/security-recovery.yml' or run['event']!='workflow_dispatch' or run['conclusion']!='success':
         raise RuntimeError('Recovery verification workflow has not passed')
@@ -102,7 +103,8 @@ def publish(tag,build_run,verification_run):
     if len(before)!=1: raise RuntimeError('Missing release configuration')
     if tuple(map(int,before[0]['latest_version'].split('.')))>tuple(map(int,tag[1:].split('.'))):
         raise RuntimeError('Refusing a release downgrade')
-    github('/releases/'+str(release['id']),'PATCH',{'name':'KROSCEK '+tag+' - Pembaruan Keamanan',
+    github('/releases/'+str(release['id']),'PATCH',{'tag_name':tag,'target_commitish':release_commit,
+        'name':'KROSCEK '+tag+' - Pembaruan Keamanan',
         'draft':False,'prerelease':False,'make_latest':'true','body':
         'Pembaruan keamanan untuk Android 9 atau lebih baru.\n\n'
         '- Kunci signing pengganti dengan upgrade dan penolakan key lama yang diuji pada Android 9 dan 12.\n'
