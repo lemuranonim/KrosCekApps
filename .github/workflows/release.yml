@@ -85,8 +85,13 @@ jobs:
           flutter config --enable-native-assets
           flutter pub get
 
-      - name: Test update source validation
-        run: flutter test --no-pub test/full_update_service_test.dart
+      - name: Test attendance, personal profile, and update validation
+        run: >-
+          flutter test --no-pub
+          test/attendance_provider_test.dart
+          test/personal_attendance_test.dart
+          test/personal_profile_screen_test.dart
+          test/full_update_service_test.dart
 
       - name: Setup Shorebird
         uses: shorebirdtech/setup-shorebird@v1
@@ -154,6 +159,7 @@ jobs:
         with:
           cmdline-tools-version: '12266719'
           packages: 'platform-tools emulator'
+          log-accepted-android-sdk-licenses: 'false'
       - uses: actions/download-artifact@v4
         with:
           name: signed-security-apk
@@ -163,6 +169,9 @@ jobs:
           curl --fail --location --silent --show-error \
             'https://github.com/lemuranonim/KrosCekApps/releases/download/v4.9.8/app-release.apk' \
             --output security-test/legacy-app.apk
+          curl --fail --location --silent --show-error \
+            'https://github.com/lemuranonim/KrosCekApps/releases/download/v4.9.11/app-release.apk' \
+            --output security-test/previous-app.apk
       - name: Prepare disposable Android emulator
         env:
           API: ${{ matrix.api }}
@@ -176,6 +185,7 @@ jobs:
         run: |
           python3 scripts/security/verify_signing_emulator.py \
             --old-apk security-test/legacy-app.apk --new-apk security-test/app-release.apk \
+            --previous-apk security-test/previous-app.apk \
             --output "security-test/signing-api${API}.json"
       - name: Save verification evidence
         if: always()

@@ -30,6 +30,7 @@ def main():
     parser.add_argument('--serial', default='emulator-5554', choices=['emulator-5554'])
     parser.add_argument('--old-apk', type=Path, required=True)
     parser.add_argument('--new-apk', type=Path, required=True)
+    parser.add_argument('--previous-apk', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     sdk = Path(os.environ.get('ANDROID_SDK_ROOT') or os.environ['ANDROID_HOME'])
@@ -58,6 +59,8 @@ def main():
         verify_certificate(path,expected)
     verify_certificate(args.old_apk,OLD)
     verify_certificate(args.new_apk,NEW)
+    if args.previous_apk:
+        verify_certificate(args.previous_apk,NEW)
     for name in ['legacy-app-replay.apk','legacy-permission-probe.apk']:
         path=fixtures/name
         if hashlib.sha256(path.read_bytes()).hexdigest()!=manifest['sha256'][name]:
@@ -88,6 +91,10 @@ def main():
     real_replay=run([*adb,'install','--no-streaming','-r',fixtures/'legacy-app-replay.apk'],False)
     if real_replay.returncode==0 or 'INSTALL_FAILED_UPDATE_INCOMPATIBLE' not in real_replay.stdout+real_replay.stderr:
         raise RuntimeError('Real application accepted a higher-version APK signed by the old key')
+    if args.previous_apk:
+        run([*adb,'uninstall','com.example.kroscek'])
+        run([*adb,'install','--no-streaming',args.previous_apk])
+        run([*adb,'install','--no-streaming','-r',args.new_apk])
     report={'api':api,'old_key_initial_install':True,'new_key_lineage_upgrade':True,
         'application_data_preserved':True,'old_key_higher_version_rejected':True,
         'distributed_v4_9_8_certificate_matches_compromised_key':True,
@@ -97,6 +104,9 @@ def main():
         'release_apk_sha256':hashlib.sha256(args.new_apk.read_bytes()).hexdigest(),
         'release_tag':os.environ.get('RELEASE_TAG'),
         'source_build_run_id':os.environ.get('BUILD_RUN_ID')}
+    if args.previous_apk:
+        report['real_app_upgrade_from_previous_release'] = True
+        report['previous_release_apk_sha256'] = hashlib.sha256(args.previous_apk.read_bytes()).hexdigest()
     args.output.parent.mkdir(parents=True,exist_ok=True)
     with args.output.open('w',encoding='utf-8') as handle:
         json.dump(report,handle,indent=2); handle.write('\n'); handle.flush(); os.fsync(handle.fileno())
