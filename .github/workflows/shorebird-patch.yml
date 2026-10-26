@@ -1,0 +1,132 @@
+name: Validate and publish Shorebird patch
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [validate, publish]
+        default: validate
+        required: true
+      release_version:
+        type: string
+        default: '4.9.12+186'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shorebird-patch-${{ inputs.release_version }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: '3.47.4'
+  RELEASE_VERSION: ${{ inputs.release_version }}
+
+jobs:
+  validate-and-publish:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify source and target release
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          release = os.environ['RELEASE_VERSION']
+          if not re.fullmatch(r'[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}\+[0-9]{1,8}', release):
+              raise SystemExit('Invalid release version')
+          current = re.search(r'^version:\s*(\S+)', Path('pubspec.yaml').read_text(), re.M).group(1)
+          if current != release:
+              raise SystemExit('Patch target must match pubspec.yaml')
+          PY
+          BASE_TAG="v${RELEASE_VERSION%+*}"
+          git rev-parse --verify "$BASE_TAG^{commit}"
+          git diff --exit-code "$BASE_TAG" HEAD -- android ios windows macos linux assets pubspec.yaml pubspec.lock shorebird.yaml
+          mkdir -p patch-evidence
+          git rev-parse HEAD > patch-evidence/source-commit.txt
+          printf '%s\n' "$RELEASE_VERSION" > patch-evidence/release-version.txt
+
+      - name: Require patch credentials
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+        run: test -n "$SHOREBIRD_TOKEN"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - name: Restore the release build configuration
+        env:
+          CLIENT_URL: ${{ secrets.SUPABASE_URL }}
+          CLIENT_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf 'SUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\n' "$CLIENT_URL" "$CLIENT_KEY" > .env
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > android/app/my-release-key.jks
+          printf 'keyAlias=%s\nkeyPassword=%s\nstoreFile=my-release-key.jks\nstorePassword=%s\n' "$KEY_ALIAS" "$KEY_PASSWORD" "$STORE_PASSWORD" > android/key.properties
+          printf '%s' "$GOOGLE_SERVICES_JSON" | base64 -d > android/app/google-services.json
+          python3 scripts/security/check_signing_key.py --keystore android/app/my-release-key.jks --alias "$KEY_ALIAS" --password-env STORE_PASSWORD
+
+      - name: Resolve the locked dependencies
+        run: |
+          flutter config --enable-native-assets
+          flutter pub get --enforce-lockfile
+
+      - name: Test coverage and patch update flow
+        run: >-
+          flutter test --no-pub
+          test/weekly_audit_test.dart
+          test/weekly_audit_widgets_test.dart
+          test/mandatory_patch_update_gate_test.dart
+          test/shorebird_update_notice_test.dart
+          test/full_update_service_test.dart
+
+      - uses: shorebirdtech/setup-shorebird@v1
+        with:
+          cache: true
+
+      - name: Validate patch compatibility
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+        run: |
+          set -euo pipefail
+          shorebird patches list --release-version "$RELEASE_VERSION" --json > patch-evidence/patches-before.json
+          shorebird patch android --release-version "$RELEASE_VERSION" --dry-run --no-confirm 2>&1 | tee patch-evidence/validation.log
+
+      - name: Publish validated patch to stable
+        if: inputs.operation == 'publish'
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+        run: |
+          set -euo pipefail
+          shorebird patch android --release-version "$RELEASE_VERSION" --track stable --no-confirm 2>&1 | tee patch-evidence/publication.log
+          shorebird patches list --release-version "$RELEASE_VERSION" --json > patch-evidence/patches-after.json
+
+      - name: Save patch verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shorebird-patch-evidence
+          path: patch-evidence/
+          retention-days: 30
