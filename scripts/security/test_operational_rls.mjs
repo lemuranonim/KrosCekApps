@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 const { PGlite } = createRequire(resolve('.dart_tool/act-sync-tests/package.json'))('@electric-sql/pglite');
 const db = new PGlite();
 let passed = 0;
+const indexedScope = process.argv.includes('--indexed-scope');
 async function test(name, callback) { await callback(); passed++; console.log('ok - ' + name); }
 async function asUser(id, callback) {
   await db.exec('begin');
@@ -48,6 +49,38 @@ try {
     create function test_geometry_history() returns trigger language plpgsql as $$ begin
       insert into master_field_geometry_history(field_number,value) values(new.field_number,'changed');return new;end $$;
     create trigger test_history after update of area on master_fields for each row execute function test_geometry_history();`);
+
+  if (indexedScope) {
+    await db.exec(readFileSync('supabase/migrations/20261026100000_optimize_operational_scope_checks.sql','utf8'));
+    const before = new Map();
+    for (const id of [uid(1),uid(2),uid(3),uid(4),uid(5),uid(6),uid(99)]) {
+      before.set(id, await asUser(id, async () =>
+        (await db.query('select f from kroscek_readable_field_numbers() f order by f')).rows));
+    }
+    await db.exec(readFileSync('supabase/migrations/20261026110000_index_operational_assignment_scope.sql','utf8'));
+    await test('indexed scope preserves every role and inactive/orphan result', async () => {
+      for (const [id, expected] of before) {
+        const actual = await asUser(id, async () =>
+          (await db.query('select f from kroscek_readable_field_numbers() f order by f')).rows);
+        assert.deepEqual(actual,expected,id);
+      }
+    });
+    await test('indexed tokens preserve exact legacy name/list matching', async () => {
+      const assignments = [null,'','Alice',' alice ','Alice Smith','Alice  Smith',
+        'Alice,Bob','Alice; Bob','Alice|Bob','Alice/Bob','Alice & Bob','Alice dan Bob',
+        'Alice AND Bob','Alice Anderson','Bob\tand\tAlice','Álice / Bob','A%_B'];
+      for (const names of assignments) for (const actor of ['Alice','Bob','alice smith','Álice','A%_B','A','Other']) {
+        const row = (await db.query(`select act_monitor_name_matches($1,$2) old,
+          kroscek_assignment_name_tokens($1) @> array[lower(regexp_replace(btrim($2),'\\s+',' ','g'))] optimized`,[names,actor])).rows[0];
+        assert.equal(row.optimized,row.old,JSON.stringify({names,actor}));
+      }
+    });
+    await test('anonymous cannot execute scope or normalization helpers', async () => {
+      for (const signature of ['kroscek_readable_field_numbers()','kroscek_assignment_name_tokens(text)']) {
+        assert.equal((await db.query("select has_function_privilege('anon',$1,'EXECUTE') allowed",[signature])).rows[0].allowed,false);
+      }
+    });
+  }
 
   await test('anonymous table grants removed for all sixteen targets', async () => {
     for (const name of names) {
@@ -98,5 +131,37 @@ try {
       assert.equal((await db.query('select * from provinsi')).rows.length,0);
     });
   });
+  if (indexedScope) {
+    await test('generative upsert remains scoped to the assigned FI', async () => {
+      await asUser(uid(1), async () => {
+        await db.exec("insert into audit_generative(field_number,value) values('A','checkpoint 2')");
+        assert.equal((await db.query("update audit_generative set value='updated checkpoint 2' where field_number='A' returning value")).rows[0].value,'updated checkpoint 2');
+      });
+      await assert.rejects(() => asUser(uid(2), () => db.exec("insert into audit_generative(field_number,value) values('A','other account')")),/row-level security/);
+      await assert.rejects(() => asUser(uid(1), () => db.exec("insert into audit_generative(field_number,value) values('MISSING','orphan')")),/row-level security/);
+    });
+    await db.exec(`insert into master_fields(field_number,qa_fi,qa_spv,area)
+      select 'SYNTHETIC-'||n,'Unrelated FI '||n,'Unrelated SPV '||n,1 from generate_series(1,35000) n;
+      analyze master_fields;`);
+    await test('35,000 unrelated assignments use both GIN indexes', async () => {
+      for (const [column,target,index] of [['qa_fi','alice','master_fields_qa_fi_assignment_tokens_idx'],
+        ['qa_spv','sue','master_fields_qa_spv_assignment_tokens_idx']]) {
+        const plan = await db.query(`explain (format json) select field_number from master_fields
+          where kroscek_assignment_name_tokens(${column}) @> array[$1]`,[target]);
+        assert.ok(JSON.stringify(plan.rows).includes(index),index);
+      }
+    });
+    await test('audit upsert succeeds with 35,000 unrelated assignments', async () => {
+      await db.exec('create unique index audit_generative_test_field_key on audit_generative(field_number)');
+      const started = performance.now();
+      await asUser(uid(1), async () => {
+        const rows = await db.query(`insert into audit_generative(field_number,value) values('A','checkpoint 2')
+          on conflict(field_number) do update set value=excluded.value returning field_number`);
+        assert.equal(rows.rows[0].field_number,'A');
+        assert.deepEqual((await db.query('select field_number from master_fields order by 1')).rows.map(r=>r.field_number),['A','AB']);
+      });
+      console.log(`35,000-row scoped audit upsert/read: ${Math.round(performance.now()-started)} ms locally`);
+    });
+  }
   console.log(`${passed} isolated PostgreSQL security checks passed`);
 } finally { await db.close(); }
