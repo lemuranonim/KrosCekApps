@@ -194,8 +194,6 @@ void main() {
 
       await tester.tap(find.widgetWithText(InkWell, 'QA SPV'));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(CheckboxListTile, 'BF'), findsOneWidget);
-      expect(find.widgetWithText(CheckboxListTile, 'Belum Flagging'), findsOneWidget);
       expect(
         tester
             .widget<Text>(find.byKey(const ValueKey('coverage-account-name')))
@@ -391,6 +389,8 @@ void main() {
       );
       await tester.tap(find.byType(ActionChip));
       await tester.pumpAndSettle();
+      expect(find.widgetWithText(CheckboxListTile, 'BF'), findsOneWidget);
+      expect(find.widgetWithText(CheckboxListTile, 'Belum Flagging'), findsOneWidget);
       expect(
         tester
             .widget<CheckboxListTile>(
