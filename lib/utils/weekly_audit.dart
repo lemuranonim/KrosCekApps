@@ -173,8 +173,18 @@ const auditStageLabels = {
 };
 
 const auditNotYetFlagging = 'Not Yet Flagging';
-const auditFlagLabels = ['GF', 'RFI', 'RFD', 'PLD', auditNotYetFlagging];
-const defaultAuditFlags = {'GF', 'RFI', 'RFD', 'PLD', auditNotYetFlagging};
+const auditFlagLabels = ['GF', 'RFI', 'RFD', 'BF', 'PLD', auditNotYetFlagging];
+const defaultAuditFlags = {
+  'GF',
+  'RFI',
+  'RFD',
+  'BF',
+  'PLD',
+  auditNotYetFlagging,
+};
+
+String auditFlagLabel(String flag) =>
+    flag == auditNotYetFlagging ? 'Belum Flagging' : flag;
 
 double auditTargetWeight(String phase, {String? hybrid}) {
   if (!phase.startsWith('generative_')) return 1;
@@ -284,6 +294,7 @@ class WeeklyAuditField {
   });
 
   double get areaHa => auditArea(raw['effective_area_ha']);
+
   /// PLD/discard is a terminal field state: it remains available for
   /// traceability, but must not create audit workload or overdue targets.
   bool get isAuditEligible => areaHa > 0 && flag != 'PLD';
@@ -721,6 +732,10 @@ class WeeklyAuditSummary {
   double get targetHa => fields.fold(0.0, (sum, f) => sum + f.areaHa);
   double get achievedHa =>
       fields.where((f) => f.done).fold(0.0, (sum, f) => sum + f.areaHa);
+
+  /// Includes partially completed targets, independently of a field's flag.
+  double get pendingHa =>
+      fields.where((f) => !f.done).fold(0.0, (sum, f) => sum + f.areaHa);
   double get overdueHa =>
       fields.where((f) => f.overdue).fold(0.0, (sum, f) => sum + f.areaHa);
   int get targetFn => fields.length;

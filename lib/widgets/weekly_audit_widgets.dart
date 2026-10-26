@@ -263,7 +263,7 @@ class AuditFlagFilter extends StatelessWidget {
                                   ...auditFlagLabels
                                       .map((flag) => CheckboxListTile(
                                           dense: true,
-                                          title: Text(flag),
+                                          title: Text(auditFlagLabel(flag)),
                                           value: draft.contains(flag),
                                           onChanged: (checked) => update(() {
                                                 if (checked == true) {
@@ -296,9 +296,15 @@ class AuditFlagFilter extends StatelessWidget {
 
 class WeeklyAuditCards extends StatelessWidget {
   final WeeklyAuditSummary summary;
+  final String? phase;
+  final Set<String> selectedFlags;
   final void Function(String title, List<WeeklyAuditField> fields) onDetail;
   const WeeklyAuditCards(
-      {super.key, required this.summary, required this.onDetail});
+      {super.key,
+      required this.summary,
+      this.phase,
+      this.selectedFlags = defaultAuditFlags,
+      required this.onDetail});
 
   @override
   Widget build(BuildContext context) {
@@ -319,6 +325,33 @@ class WeeklyAuditCards extends StatelessWidget {
     return Padding(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
         child: Column(children: [
+          _card('Status audit', Icons.fact_check_outlined, [
+            _note(
+              phase == null
+                  ? 'Belum Audit: masih ada fase target yang belum selesai, termasuk audit parsial.'
+                  : 'Belum Audit: audit fase ${auditStageLabels[phase] ?? phase} belum selesai, termasuk audit parsial.',
+            ),
+            _metric(
+              'Belum Audit',
+              AuditAreaMetric(
+                summary.pendingHa,
+                summary.targetHa,
+                summary.targetHa,
+              ),
+              AdvantaColors.error,
+              () => _open('Belum Audit', (f) => !f.done),
+            ),
+            _metric(
+              'Selesai Audit',
+              AuditAreaMetric(
+                summary.achievedHa,
+                summary.targetHa,
+                summary.targetHa,
+              ),
+              AdvantaColors.midGreen,
+              () => _open('Selesai Audit', (f) => f.done),
+            ),
+          ]),
           _card('NC primer negatif', Icons.warning_amber_rounded, [
             _metric('Roguing belum Done', roguing, AdvantaColors.error,
                 () => _open('NC · Roguing', (f) => f.roguingNegative)),
@@ -328,19 +361,36 @@ class WeeklyAuditCards extends StatelessWidget {
                 () => _open('NC · Isolasi', (f) => f.isolationNegative)),
           ]),
           _card('Komposisi flagging', Icons.flag_rounded, [
+            _note(
+              phase == null
+                  ? 'Flagging terakhir lintas fase target.'
+                  : 'Flagging fase ${auditStageLabels[phase] ?? phase}.',
+            ),
+            _note(
+              'Belum Flagging: belum ada flag valid pada lingkup ini. PLD dikecualikan dari target audit dan komposisi ini.',
+            ),
             if (flags.isEmpty)
               _note('Tidak ada target audit untuk filter ini.'),
-            ...auditFlagLabels.where(flags.containsKey).map((flag) => _metric(
-                flag,
-                flags[flag]!,
-                flag == 'GF'
-                    ? AdvantaColors.midGreen
-                    : flag == 'RFI'
-                        ? AdvantaColors.gold
-                        : flag == auditNotYetFlagging
-                            ? AdvantaColors.mutedGrey
-                            : AdvantaColors.error,
-                () => _open('Flagging · $flag', (f) => f.flag == flag))),
+            ...auditFlagLabels
+                .where((flag) => flag != 'PLD' && selectedFlags.contains(flag))
+                .map(
+                  (flag) => _metric(
+                    auditFlagLabel(flag),
+                    flags[flag] ??
+                        AuditAreaMetric(0, summary.targetHa, summary.targetHa),
+                    flag == 'GF'
+                        ? AdvantaColors.midGreen
+                        : flag == 'RFI'
+                            ? AdvantaColors.gold
+                            : flag == auditNotYetFlagging
+                                ? AdvantaColors.mutedGrey
+                                : AdvantaColors.error,
+                    () => _open(
+                      'Flagging · ${auditFlagLabel(flag)}',
+                      (f) => f.flag == flag,
+                    ),
+                  ),
+                ),
           ]),
           Container(
               margin: const EdgeInsets.only(bottom: 12),

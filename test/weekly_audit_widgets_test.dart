@@ -194,6 +194,8 @@ void main() {
 
       await tester.tap(find.widgetWithText(InkWell, 'QA SPV'));
       await tester.pumpAndSettle();
+      expect(find.widgetWithText(CheckboxListTile, 'BF'), findsOneWidget);
+      expect(find.widgetWithText(CheckboxListTile, 'Belum Flagging'), findsOneWidget);
       expect(
         tester
             .widget<Text>(find.byKey(const ValueKey('coverage-account-name')))
@@ -416,6 +418,140 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Terapkan'));
       expect(chosen, isEmpty);
+    },
+  );
+
+  testWidgets('audit backlog and missing flags have separate drill-downs', (
+    tester,
+  ) async {
+    final fontPath = Platform.environment['AUDIT_QA_FONT'];
+    if (fontPath != null) {
+      await tester.runAsync(() async {
+        final font = FontLoader('AuditPreview')
+          ..addFont(File(fontPath).readAsBytes().then(ByteData.sublistView));
+        await font.load();
+        final icons = FontLoader('MaterialIcons')
+          ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+        await icons.load();
+      });
+    }
+    tester.view.physicalSize = const Size(360, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final summary = WeeklyAuditSummary([
+      for (final entry in {'OLD_GF': 99.3, 'NO_FLAG': .7}.entries)
+        WeeklyAuditField.fromRaw(
+          fixtures.fieldAt(
+            100,
+            id: entry.key,
+            area: entry.value,
+            veg: entry.key == 'NO_FLAG'
+                ? null
+                : {'date_of_audit': '2026-06-01', 'flagging': 'GF'},
+          ),
+          weekStart: fixtures.week,
+          now: fixtures.end,
+          includeHistoricalTargets: true,
+        ),
+    ]);
+    String? title;
+    List<WeeklyAuditField>? details;
+    final captureKey = GlobalKey();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(fontFamily: fontPath == null ? null : 'AuditPreview'),
+        home: Scaffold(
+          backgroundColor: const Color(0xfff2f5f3),
+          body: RepaintBoundary(
+            key: captureKey,
+            child: ColoredBox(
+              color: const Color(0xfff2f5f3),
+              child: SingleChildScrollView(
+                child: WeeklyAuditCards(
+                  summary: summary,
+                  onDetail: (value, fields) {
+                    title = value;
+                    details = fields;
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Flagging terakhir lintas fase target.'), findsOneWidget);
+    expect(find.text('BF'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.ancestor(of: find.text('BF'), matching: find.byType(InkWell)),
+        matching: find.text('0.00% · 0 ha'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('100.00% · 100 ha'), findsOneWidget);
+    expect(find.text('0.70% · 0,7 ha'), findsOneWidget);
+    await tester.ensureVisible(find.text('Belum Audit'));
+    await tester.tap(find.text('Belum Audit'));
+    expect(title, 'Belum Audit');
+    expect(details!.map((f) => f.raw['field_number']), ['OLD_GF', 'NO_FLAG']);
+    await tester.ensureVisible(find.text('Belum Flagging'));
+    await tester.tap(find.text('Belum Flagging'));
+    expect(title, 'Flagging · Belum Flagging');
+    expect(details!.single.raw['field_number'], 'NO_FLAG');
+    expect(tester.takeException(), isNull);
+    if (Platform.environment['AUDIT_QA_CAPTURE'] == 'true') {
+      await tester.runAsync(() async {
+        final boundary = captureKey.currentContext!.findRenderObject()!
+            as RenderRepaintBoundary;
+        final image = await boundary.toImage();
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        final file = File('build/qa/flagging_audit_status_mobile.png');
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(bytes!.buffer.asUint8List());
+        image.dispose();
+      });
+    }
+  });
+
+  testWidgets(
+    'zero flag categories stay visible and phase captions follow selection',
+    (tester) async {
+      final field = fixtures
+          .project(
+            fixtures.fieldAt(
+              20,
+              veg: {'date_of_audit': '2026-08-24', 'flagging': 'GF'},
+            ),
+          )
+          .scopedToStage('vegetative');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: WeeklyAuditCards(
+                phase: 'vegetative',
+                selectedFlags: const {'GF', 'BF', auditNotYetFlagging},
+                summary: WeeklyAuditSummary([field]),
+                onDetail: (_, __) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Flagging fase Vegetative.'), findsOneWidget);
+      expect(
+        find.textContaining('audit fase Vegetative belum selesai'),
+        findsOneWidget,
+      );
+      expect(find.text('BF'), findsOneWidget);
+      expect(find.text('Belum Flagging'), findsOneWidget);
+      expect(find.text('RFI'), findsNothing);
+      expect(find.text('RFD'), findsNothing);
+      expect(tester.takeException(), isNull);
     },
   );
 

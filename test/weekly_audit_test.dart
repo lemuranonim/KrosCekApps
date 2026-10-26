@@ -466,6 +466,106 @@ void main() {
     );
   });
 
+  test('pending audit area is independent of the last cross-phase flag', () {
+    final fields = [
+      for (final entry in {'A': 70.0, 'B': 29.3, 'C': .7}.entries)
+        WeeklyAuditField.fromRaw(
+          fieldAt(
+            100,
+            id: entry.key,
+            area: entry.value,
+            veg: entry.key == 'C'
+                ? null
+                : {'date_of_audit': '2026-06-01', 'flagging': 'GF'},
+          ),
+          weekStart: week,
+          now: end,
+          includeHistoricalTargets: true,
+        ),
+    ];
+    final all = WeeklyAuditSummary(fields);
+    final harvest = WeeklyAuditSummary(
+      fields.map((field) => field.scopedToStage('harvest')),
+    );
+    final vegetative = WeeklyAuditSummary(
+      fields.map((field) => field.scopedToStage('vegetative')),
+    );
+
+    expect(all.targetHa, 100);
+    expect(all.pendingHa, 100);
+    expect(all.composition((f) => f.flag)['GF']!.areaHa, 99.3);
+    expect(all.composition((f) => f.flag)[auditNotYetFlagging]!.areaHa, .7);
+    expect(harvest.pendingHa, 100);
+    expect(
+      harvest.composition((f) => f.flag)[auditNotYetFlagging]!.areaHa,
+      100,
+    );
+    expect(vegetative.pendingHa, .7);
+    expect(vegetative.achievedHa, 99.3);
+  });
+
+  test('a completed checkpoint without flagging is not pending audit', () {
+    final field = WeeklyAuditField.fromRaw(
+      fieldAt(50, gen: {'date_of_audit_1': '2026-08-24'}),
+      weekStart: week,
+      now: end,
+      targetPhases: {'generative_1'},
+    );
+    final summary = WeeklyAuditSummary([field]);
+    expect(field.flag, auditNotYetFlagging);
+    expect(summary.achievedHa, 10);
+    expect(summary.pendingHa, 0);
+  });
+
+  test('an undated master flag does not imply a completed audit', () {
+    final field = project({...fieldAt(20), 'flagging_final': 'GF'});
+    expect(field.flag, 'GF');
+    expect(WeeklyAuditSummary([field]).pendingHa, 10);
+    expect(WeeklyAuditSummary([field]).achievedHa, 0);
+  });
+
+  test('BF is recognized across phases and replaces an older GF', () {
+    final samples = [
+      fieldAt(20, veg: {'date_of_audit': '2026-08-24', 'flagging': 'BF'}),
+      fieldAt(60, gen: {'date_of_audit_3': '2026-08-24', 'flagging': 'BF'}),
+      fieldAt(
+        71,
+        veg: {'date_of_audit': '2026-08-01', 'flagging': 'GF'},
+        ph: {'audit_date': '2026-08-24', 'final_flagging': 'BF'},
+      ),
+      fieldAt(95, hv: {'date_of_audit': '2026-08-24', 'final_flagging': 'BF'}),
+    ];
+    expect(defaultAuditFlags, contains('BF'));
+    for (final raw in samples) {
+      final field = WeeklyAuditField.fromRaw(
+        raw,
+        weekStart: week,
+        now: end,
+        includeHistoricalTargets: true,
+      );
+      expect(field.flag, 'BF');
+      expect(field.needsAttention, true);
+      expect(
+        WeeklyAuditSummary([field]).composition((f) => f.flag)['BF']!.areaHa,
+        10,
+      );
+      final coverage = FieldCoverageStatus.fromRaw(
+        raw,
+        weekStart: week,
+        now: end,
+      );
+      expect(
+        projectCoverageWeeks(
+          [coverage],
+          weeks: {week},
+          flags: {'BF'},
+          now: end,
+        ),
+        hasLength(1),
+      );
+    }
+  });
+
   test('missing flagging is explicit and is never silently good', () {
     final f = project(fieldAt(20));
     expect(f.flag, auditNotYetFlagging);
@@ -692,6 +792,7 @@ void main() {
     expect(f.targets.single.completion, .25);
     expect(f.done, false);
     expect(WeeklyAuditSummary([f]).achievementPercent, 25);
+    expect(WeeklyAuditSummary([f]).pendingHa, 10);
     expect(f.latest((o) => o.ch), 'Fair');
     expect(f.lsvNegative, true);
   });

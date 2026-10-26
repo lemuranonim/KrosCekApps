@@ -1562,6 +1562,8 @@ class _ManagerViewState extends ConsumerState<_ManagerView> {
             ),
             SliverToBoxAdapter(
               child: WeeklyAuditCards(
+                phase: sharedFilters.phase,
+                selectedFlags: sharedFilters.flags,
                 summary: WeeklyAuditSummary(
                   dashboardFields.map((f) => f.weekly),
                 ),
@@ -2012,6 +2014,8 @@ class _SPVViewState extends ConsumerState<_SPVView> {
             ),
             SliverToBoxAdapter(
               child: WeeklyAuditCards(
+                phase: sharedFilters.phase,
+                selectedFlags: sharedFilters.flags,
                 summary: WeeklyAuditSummary(
                   dashboardFields.map((f) => f.weekly),
                 ),
@@ -2460,6 +2464,8 @@ class _FIViewState extends ConsumerState<_FIView> {
             ),
             SliverToBoxAdapter(
               child: WeeklyAuditCards(
+                phase: sharedFilters.phase,
+                selectedFlags: sharedFilters.flags,
                 summary: WeeklyAuditSummary(
                   dashboardFields.map((f) => f.weekly),
                 ),
@@ -7828,7 +7834,7 @@ class _WeeklyFieldCard extends StatelessWidget {
                   const SizedBox(width: 7),
                   _FieldInfoPill(
                     icon: Icons.flag_rounded,
-                    label: field.flag,
+                    label: auditFlagLabel(field.flag),
                     color: AdvantaColors.deepForest,
                   ),
                   const Spacer(),
